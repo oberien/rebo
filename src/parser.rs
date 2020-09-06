@@ -88,8 +88,19 @@ impl<'a, 'i> Expr<'a, 'i> {
 
 pub fn parse<'a, 'i>(arena: &'a Arena<Expr<'a, 'i>>, mut tokens: Tokens<'i>) -> Ast<'a, 'i> {
     let mut exprs = Vec::new();
+    let mut last_expr = false;
     while !tokens.is_empty() && tokens.peek(0).unwrap().typ != TokenType::Eof {
-        exprs.push(parse_expr_or_stmt(arena, &mut tokens));
+        let expr = parse_expr_or_stmt(arena, &mut tokens);
+        match expr.typ {
+            ExprType::Statement(_) => (),
+            _ => {
+                if last_expr {
+                    todo!("error handling: semicolon required for all except the last expression");
+                }
+                last_expr = true;
+            },
+        }
+        exprs.push(expr);
     }
     Ast { exprs }
 }

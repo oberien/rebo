@@ -12,7 +12,7 @@ mod vm;
 
 fn main() {
     env_logger::init();
-    let code = fs::read_to_string("test.ob").unwrap();
+    let code = fs::read_to_string("test.re").unwrap();
     let tokens = lexer::lex(&code).unwrap();
     println!("{}", tokens);
     let arena = Arena::new();

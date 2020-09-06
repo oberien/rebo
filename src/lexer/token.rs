@@ -151,7 +151,8 @@ impl Mark<'_> {
                 l.consume = lookahead.consume;
             },
             None => for _ in 0..lookahead.consume {
-                trace!("consuming {:?}", tokens.tokens.pop_front());
+                let token = tokens.tokens.pop_front();
+                trace!("consuming {:?}", token);
             }
         }
         self.done = true;
