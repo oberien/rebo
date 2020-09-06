@@ -3,7 +3,7 @@ use std::collections::VecDeque;
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use crate::span::Span;
+use crate::diagnostics::Span;
 
 #[derive(Debug)]
 pub struct Tokens<'i> {
@@ -37,7 +37,7 @@ pub enum TokenType<'i> {
     Ident(&'i str),
     DqString(String),
     Integer(i64, Radix),
-    Float(f64),
+    Float(f64, Radix),
     Let,
     Mut,
     // =
@@ -193,12 +193,8 @@ impl<'i> fmt::Display for TokenType<'i> {
         match self {
             TokenType::Ident(name) => write!(f, "{} ", name),
             TokenType::DqString(s) => write!(f, "{:?} ", s),
-            TokenType::Integer(i, radix) => match radix {
-                Radix::Bin => write!(f, "{:#b} ", i),
-                Radix::Dec => write!(f, "{} ", i),
-                Radix::Hex => write!(f, "{:#x} ", i),
-            }
-            TokenType::Float(fl) => write!(f, "{:2.1} ", fl),
+            &TokenType::Integer(i, radix) => write!(f, "{} ", lexical::to_string_radix(i, radix.to_u8())),
+            &TokenType::Float(fl, radix) => write!(f, "{} ", lexical::to_string_radix(fl, radix.to_u8())),
             TokenType::Let => write!(f, "let "),
             TokenType::Mut => write!(f, "mut "),
             TokenType::Assign => write!(f, "= "),

@@ -1,31 +1,36 @@
 use std::collections::VecDeque;
 
-use thiserror::Error;
-use lexical_core::Error as NumberError;
-
-use crate::span::Span;
+use crate::diagnostics::{Span, FileId, Diagnostics, ErrorCode};
 
 mod token;
 
-pub use token::{Tokens, Token, TokenType};
-use crate::lexer::token::Radix;
+pub use token::{Tokens, Token, TokenType, Radix};
 
-#[derive(Error, Debug)]
+#[derive(Debug)]
 pub enum Error {
-    #[error("unexpected EOF when parsing double quoted string from {} to {}", .0.start, .0.end)]
-    DqStringEof(Span),
-    #[error("unexpected EOF at {0}")]
-    UnexpectedEof(usize),
-    #[error("invalid character in number at {0}: {1:?}")]
-    InvalidNumber(usize, NumberError),
+    /// The current token is handled by the current function, but it was incorrect in an
+    /// unrecoverable way and a diagnostic was emitted. Abort lexing.
+    Abort,
 }
 
-pub fn lex(s: &str) -> Result<Tokens, Error> {
+#[derive(Debug)]
+pub enum MaybeToken<'i> {
+    /// The current token was correctly parsed by the current function. Continue parsing after
+    /// the end of the span of the contained token.
+    Token(Token<'i>),
+    /// The current token is not a token handled by the current function. Try the next one.
+    Backtrack,
+    /// The current token is handles by the current function, but there is an error. A diagnostic
+    /// was printed and we could recover from it. Continue lexing from the contained offset.
+    Diagnostic(usize),
+}
+
+pub fn lex<'i>(diagnostics: &Diagnostics<'_>, file: FileId, s: &'i str) -> Result<Tokens<'i>, Error> {
     trace!("lex");
     let mut index = 0;
     let mut res = VecDeque::new();
     loop {
-        match lex_next(s, index)? {
+        match lex_next(diagnostics, file, s, index)? {
             token @ Token { typ: TokenType::Eof, .. } => {
                 res.push_back(token);
                 return Ok(Tokens::new(res))
@@ -38,31 +43,39 @@ pub fn lex(s: &str) -> Result<Tokens, Error> {
     }
 }
 
-pub fn lex_next(s: &str, index: usize) -> Result<Token, Error> {
+fn lex_next<'i>(diagnostics: &Diagnostics<'_>, file: FileId, s: &'i str, index: usize) -> Result<Token<'i>, Error> {
     trace!("lex_next: {}", index);
     // skip preceding whitespace
     let index = match skip_whitespace(s, index) {
         Some(index) => index,
-        None => return Ok(Token::new(Span::new(index, index), TokenType::Eof)),
+        None => return Ok(Token::new(Span::new(file, index, index), TokenType::Eof)),
     };
 
     if s[index..].is_empty() {
-        return Ok(Token::new(Span::new(index, index), TokenType::Eof));
+        return Ok(Token::new(Span::new(file, index, index), TokenType::Eof));
     }
 
-    match try_lex_token(s, index)? {
-        Some(token) => return Ok(token),
-        None => ()
+    let functions = [
+        try_lex_token,
+        try_lex_number,
+        try_lex_ident,
+    ];
+
+    for f in &functions {
+        match f(diagnostics, file, s, index)? {
+            MaybeToken::Token(token) => {
+                trace!("lexed {:?} as {:?}", &s[token.span.start..token.span.end], token.typ);
+                return Ok(token)
+            },
+            MaybeToken::Backtrack => continue,
+            MaybeToken::Diagnostic(cont) => return lex_next(diagnostics, file, s, cont),
+        }
     }
-    match try_lex_number(s, index)? {
-        Some(token) => return Ok(token),
-        None => ()
-    }
-    match try_lex_ident(s, index)? {
-        Some(token) => return Ok(token),
-        None => ()
-    }
-    Err(Error::UnexpectedEof(index))
+
+    diagnostics.error(ErrorCode::UnexpectedEof)
+        .with_error_label(Span::new(file, index, s.len()), "this expression is not complete")
+        .emit();
+    Err(Error::Abort)
 }
 
 fn skip_whitespace(s: &str, mut index: usize) -> Option<usize> {
@@ -75,35 +88,35 @@ fn skip_whitespace(s: &str, mut index: usize) -> Option<usize> {
     }
 }
 
-fn try_lex_token(s: &str, index: usize) -> Result<Option<Token>, Error> {
+fn try_lex_token<'i>(diagnostics: &Diagnostics<'_>, file: FileId, s: &'i str, index: usize) -> Result<MaybeToken<'i>, Error> {
     trace!("try_lex_token: {}", index);
     if s[index..].starts_with("let") {
-        return Ok(Some(Token::new(Span::new(index, index+3), TokenType::Let)));
+        return Ok(MaybeToken::Token(Token::new(Span::new(file, index, index+3), TokenType::Let)));
     }
     if s[index..].starts_with("mut") {
-        return Ok(Some(Token::new(Span::new(index, index+3), TokenType::Mut)));
+        return Ok(MaybeToken::Token(Token::new(Span::new(file, index, index+3), TokenType::Mut)));
     }
     let char = s[index..].chars().next().unwrap();
-    let span = Span::new(index, index + char.len_utf8());
+    let span = Span::new(file, index, index + char.len_utf8());
     match char {
-        '(' => Ok(Some(Token::new(span, TokenType::OpenParen))),
-        ')' => Ok(Some(Token::new(span, TokenType::CloseParen))),
-        ';' => Ok(Some(Token::new(span, TokenType::Semicolon))),
-        '+' => Ok(Some(Token::new(span, TokenType::Plus))),
-        '-' => Ok(Some(Token::new(span, TokenType::Minus))),
-        '*' => Ok(Some(Token::new(span, TokenType::Star))),
-        '/' => Ok(Some(Token::new(span, TokenType::Slash))),
-        ',' => Ok(Some(Token::new(span, TokenType::Comma))),
+        '(' => Ok(MaybeToken::Token(Token::new(span, TokenType::OpenParen))),
+        ')' => Ok(MaybeToken::Token(Token::new(span, TokenType::CloseParen))),
+        ';' => Ok(MaybeToken::Token(Token::new(span, TokenType::Semicolon))),
+        '+' => Ok(MaybeToken::Token(Token::new(span, TokenType::Plus))),
+        '-' => Ok(MaybeToken::Token(Token::new(span, TokenType::Minus))),
+        '*' => Ok(MaybeToken::Token(Token::new(span, TokenType::Star))),
+        '/' => Ok(MaybeToken::Token(Token::new(span, TokenType::Slash))),
+        ',' => Ok(MaybeToken::Token(Token::new(span, TokenType::Comma))),
         '=' => match s[index+1..].chars().next() {
-                Some('=') => Ok(Some(Token::new(Span::new(index, index + 2), TokenType::Equals))),
-                _ => Ok(Some(Token::new(Span::new(index, index + 1), TokenType::Assign))),
+                Some('=') => Ok(MaybeToken::Token(Token::new(Span::new(file, index, index + 2), TokenType::Equals))),
+                _ => Ok(MaybeToken::Token(Token::new(Span::new(file, index, index + 1), TokenType::Assign))),
             }
-        '"' => lex_double_quoted_string(s, index).map(Some),
-        _ => Ok(None),
+        '"' => Ok(MaybeToken::Token(lex_double_quoted_string(diagnostics, file, s, index)?)),
+        _ => Ok(MaybeToken::Backtrack),
     }
 }
 
-fn try_lex_number(s: &str, mut index: usize) -> Result<Option<Token>, Error> {
+fn try_lex_number<'i>(diagnostics: &Diagnostics<'_>, file: FileId, s: &'i str, mut index: usize) -> Result<MaybeToken<'i>, Error> {
     trace!("try_lex_number: {}", index);
     let start = index;
     let mut radix = Radix::Dec;
@@ -114,41 +127,44 @@ fn try_lex_number(s: &str, mut index: usize) -> Result<Option<Token>, Error> {
         index += 2;
         radix = Radix::Hex;
     }
-    let float = lexical_core::parse_partial_radix::<f64>(s[index..].as_bytes(), radix.to_u8());
-    let int = lexical_core::parse_partial_radix::<i64>(s[index..].as_bytes(), radix.to_u8());
+    let number_end = index + s[index..].chars()
+        .take_while(|&c| !c.is_whitespace() && c != ';')
+        .map(char::len_utf8)
+        .sum::<usize>();
+    let int = lexical::parse_radix::<i64, _>(&s[index..number_end], radix.to_u8());
+    let float = lexical::parse_radix::<f64, _>(&s[index..number_end], radix.to_u8());
 
-    match (float, int) {
-        (Ok((_f, flen)), Ok((i, ilen))) if flen == ilen =>
-            Ok(Some(Token::new(Span::new(start, index + ilen), TokenType::Integer(i, radix)))),
-        (Ok((_f, flen)), _) if flen == 0 => Ok(None),
-        (Ok((f, flen)), _) =>
-            Ok(Some(Token::new(Span::new(start, index + flen), TokenType::Float(f)))),
-        (Err(_), Ok((_i, ilen))) if ilen == 0 => Ok(None),
-        (Err(_), Ok((i, ilen))) =>
-            Ok(Some(Token::new(Span::new(start, index + ilen), TokenType::Integer(i, radix)))),
-        (Err(e1), Err(e2)) if e1.index == 0 && e2.index == 0 => Ok(None),
-        (Err(e), _) => Err(Error::InvalidNumber(start, e))
+    match (int, float) {
+        (Ok(i), _) => Ok(MaybeToken::Token(Token::new(Span::new(file, start, number_end), TokenType::Integer(i, radix)))),
+        (_, Ok(f)) => Ok(MaybeToken::Token(Token::new(Span::new(file, start, number_end), TokenType::Float(f, radix)))),
+        (Err(e), _) if e.index == 0 && radix == Radix::Dec => Ok(MaybeToken::Backtrack),
+        (Err(e), _) => {
+            diagnostics.error(ErrorCode::InvalidNumber)
+                .with_error_label(Span::new(file, start, number_end), "")
+                .emit();
+            Ok(MaybeToken::Diagnostic(number_end))
+        }
     }
 }
 
-fn try_lex_ident(s: &str, mut index: usize) -> Result<Option<Token>, Error> {
+fn try_lex_ident<'i>(diagnostics: &Diagnostics<'_>, file: FileId, s: &'i str, mut index: usize) -> Result<MaybeToken<'i>, Error> {
     trace!("try_lex_ident: {}", index);
     let start = index;
     // first character
     let first = s[index..].chars().next().unwrap();
     match first {
         'a'..='z' | 'A'..='Z' | '_' => index += first.len_utf8(),
-        _ => return Ok(None),
+        _ => return Ok(MaybeToken::Backtrack),
     }
     loop {
         match s[index..].chars().next() {
             Some('a'..='z') | Some('A'..='Z') | Some('_') | Some('0'..='9') => index += 1,
-            Some(_) | None => return Ok(Some(Token::new(Span::new(start, index), TokenType::Ident(&s[start..index])))),
+            Some(_) | None => return Ok(MaybeToken::Token(Token::new(Span::new(file, start, index), TokenType::Ident(&s[start..index])))),
         }
     }
 }
 
-fn lex_double_quoted_string(s: &str, mut index: usize) -> Result<Token, Error> {
+fn lex_double_quoted_string<'i>(diagnostics: &Diagnostics<'_>, file: FileId, s: &'i str, mut index: usize) -> Result<Token<'i>, Error> {
     trace!("lex_double_quoted_string: {}", index);
     assert_eq!(s[index..].chars().next(), Some('"'));
     let mut res = String::new();
@@ -156,10 +172,16 @@ fn lex_double_quoted_string(s: &str, mut index: usize) -> Result<Token, Error> {
     index += 1;
     loop {
         if let Some('"') = s[index..].chars().next() {
-            return Ok(Token::new(Span::new(start, index + 1), TokenType::DqString(res)));
+            return Ok(Token::new(Span::new(file, start, index + 1), TokenType::DqString(res)));
         }
         match lex_string_char(s, index, false) {
-            None => return Err(Error::DqStringEof(Span::new(start, index))),
+            None => {
+                diagnostics.error(ErrorCode::UnterminatedString)
+                    .with_error_label(Span::new(file, start, index), "this string is unterminated")
+                    .with_info_label(Span::new(file, index, index), "try adding a closing `\"`")
+                    .emit();
+                return Err(Error::Abort)
+            },
             Some((c, idx)) => {
                 res.push(c);
                 index = idx;

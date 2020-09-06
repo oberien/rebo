@@ -7,8 +7,9 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-thiserror = "1.0.20"
-lexical-core = { version = "0.7.4", features = ["radix"] }
+lexical = { version = "5.2.0", features = ["radix"] }
 typed-arena = "2.0.1"
 log = "0.4.11"
 env_logger = "0.7.1"
+codespan-reporting = "0.9.5"
+backtrace = "0.3.50"

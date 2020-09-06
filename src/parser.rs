@@ -3,7 +3,7 @@ use std::fmt;
 use typed_arena::Arena;
 
 use crate::lexer::{Tokens, Token, TokenType};
-use crate::span::Span;
+use crate::diagnostics::Span;
 
 #[derive(Debug)]
 pub struct Ast<'a, 'i> {
@@ -110,7 +110,7 @@ fn parse_expr_or_stmt<'a, 'i>(arena: &'a Arena<Expr<'a, 'i>>, tokens: &mut Token
     match tokens.peek(0) {
         Some(Token { span, typ: TokenType::Semicolon }) => {
             drop(tokens.next());
-            arena.alloc(Expr::new(Span::new(expr.span.start, span.end), ExprType::Statement(expr)))
+            arena.alloc(Expr::new(Span::new(span.file, expr.span.start, span.end), ExprType::Statement(expr)))
         }
         _ => expr
     }
@@ -193,7 +193,7 @@ fn try_parse_bind<'a, 'i>(arena: &'a Arena<Expr<'a, 'i>>, tokens: &mut Tokens<'i
     };
     let res = match try_parse_assign(arena, tokens) {
         Some(&Expr { span, typ: ExprType::Assign((ident, ident_span), expr) }) => {
-            Some(&*arena.alloc(Expr::new(Span::new(let_span.start, span.end), ExprType::Bind((ident, ident_span), is_mut, expr))))
+            Some(&*arena.alloc(Expr::new(Span::new(span.file, let_span.start, span.end), ExprType::Bind((ident, ident_span), is_mut, expr))))
         }
         _ => return None,
     };
@@ -215,7 +215,7 @@ fn try_parse_assign<'a, 'i>(arena: &'a Arena<Expr<'a, 'i>>, tokens: &mut Tokens<
     };
     let expr = try_parse_expr(arena, tokens)?;
     mark.apply();
-    Some(arena.alloc(Expr::new(Span::new(ident_span.start, expr.span.end), ExprType::Assign((ident, ident_span), expr))))
+    Some(arena.alloc(Expr::new(Span::new(expr.span.file, ident_span.start, expr.span.end), ExprType::Assign((ident, ident_span), expr))))
 }
 
 fn try_parse_immediate<'a, 'i>(arena: &'a Arena<Expr<'a, 'i>>, tokens: &mut Tokens<'i>) -> Option<&'a Expr<'a, 'i>> {
@@ -225,7 +225,7 @@ fn try_parse_immediate<'a, 'i>(arena: &'a Arena<Expr<'a, 'i>>, tokens: &mut Toke
             drop(tokens.next());
             Some(arena.alloc(Expr::new(span, ExprType::Integer(i))))
         }
-        Token { span, typ: TokenType::Float(f) } => {
+        Token { span, typ: TokenType::Float(f, _radix) } => {
             drop(tokens.next());
             Some(arena.alloc(Expr::new(span, ExprType::Float(f))))
         }
@@ -278,7 +278,7 @@ fn try_parse_fn_call<'a, 'i>(arena: &'a Arena<Expr<'a, 'i>>, tokens: &mut Tokens
         match tokens.peek(0) {
             Some(Token { span, typ: TokenType::CloseParen }) => {
                 drop(tokens.next());
-                return Some(arena.alloc(Expr::new(Span::new(ident.1.start, span.end), ExprType::FunctionCall(ident, args))));
+                return Some(arena.alloc(Expr::new(Span::new(span.file, ident.1.start, span.end), ExprType::FunctionCall(ident, args))));
             },
             None => todo!("error handling"),
             _ => (),
@@ -287,7 +287,7 @@ fn try_parse_fn_call<'a, 'i>(arena: &'a Arena<Expr<'a, 'i>>, tokens: &mut Tokens
         match tokens.peek(0) {
             Some(Token { span, typ: TokenType::Comma }) | Some(Token { span, typ: TokenType::CloseParen }) => {
                 drop(tokens.next());
-                return Some(arena.alloc(Expr::new(Span::new(ident.1.start, span.end), ExprType::FunctionCall(ident, args))));
+                return Some(arena.alloc(Expr::new(Span::new(span.file, ident.1.start, span.end), ExprType::FunctionCall(ident, args))));
             },
             _ => todo!("error handling"),
         }
