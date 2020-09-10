@@ -1,6 +1,6 @@
+#![allow(dead_code)]
 use std::fmt;
 use std::cell::RefCell;
-use std::io::Write;
 
 use codespan_reporting::files::SimpleFiles;
 use codespan_reporting::diagnostic::{Severity, Diagnostic, Label, LabelStyle};
@@ -53,21 +53,21 @@ impl<'a> Diagnostics<'a> {
             files: &self.files,
             stderr: &self.stderr,
             config: &self.config,
-            diagnostics: Vec::new(),
             severity,
             code,
             message,
             labels: Vec::new(),
+            notes: Vec::new(),
         }
     }
     pub fn bug<S: Into<String>>(&self, code: ErrorCode, message: S) -> DiagnosticBuilder<'a, '_> {
         let mut diag =
-            Some(self.diagnostic(Severity::Bug, code, message.into()).note("please report this"));
+            Some(self.diagnostic(Severity::Bug, code, message.into()).with_note("please report this"));
         backtrace::trace(|frame| {
             let ip = frame.ip();
             backtrace::resolve(ip, |symbol| {
-                diag = Some(diag.take().unwrap().note(format!(
-                    "in heradoc file {:?} name {:?} line {:?} address {:?}",
+                diag = Some(diag.take().unwrap().with_note(format!(
+                    "in file {:?} name {:?} line {:?} address {:?}",
                     symbol.filename(),
                     symbol.name(),
                     symbol.lineno(),
@@ -101,64 +101,26 @@ pub struct DiagnosticBuilder<'a, 'd> {
     files: &'d RefCell<SimpleFiles<String, &'a str>>,
     stderr: &'d StandardStream,
     config: &'d Config,
-    diagnostics: Vec<Diagnostic<usize>>,
 
     severity: Severity,
     code: ErrorCode,
     message: String,
     labels: Vec<Label<usize>>,
+    notes: Vec<String>,
 }
 
 impl<'a: 'b, 'b> DiagnosticBuilder<'a, 'b> {
     pub fn emit(self) {
-        let Self { files, stderr, config, mut diagnostics, severity, message, code, labels } = self;
-        diagnostics.push(Diagnostic { severity, message, code: Some(code.code_str().to_string()), labels, notes: Vec::new() });
+        let Self { files, stderr, config, severity, message, code, labels, notes } = self;
+        let diagnostic = Diagnostic { severity, message, code: Some(code.code_str().to_string()), labels, notes };
 
         let mut stderr = stderr.lock();
-        for diagnostic in diagnostics {
-            term::emit(&mut stderr, config, &*files.borrow(), &diagnostic)
-                .expect("stderr is gone???");
-        }
-        writeln!(&mut stderr).expect("stderr is gone???");
+        term::emit(&mut stderr, config, &*files.borrow(), &diagnostic)
+            .expect("stderr is gone???");
+        // writeln!(&mut stderr).expect("stderr is gone???");
     }
 
-    fn diagnostic(self, new_severity: Severity, new_message: String) -> Self {
-        let Self { files, stderr, config, mut diagnostics, severity, message, code, labels } = self;
-        diagnostics.push(Diagnostic { severity, message, code: Some(code.code_str().to_string()), labels, notes: Vec::new() });
-
-        Self {
-            files,
-            config,
-            stderr,
-            diagnostics,
-            severity: new_severity,
-            message: new_message,
-            code,
-            labels: Vec::new(),
-        }
-    }
-
-    pub fn bug<S: Into<String>>(self, message: S) -> Self {
-        self.diagnostic(Severity::Bug, message.into())
-    }
-
-    pub fn error<S: Into<String>>(self, message: S) -> Self {
-        self.diagnostic(Severity::Error, message.into())
-    }
-
-    pub fn warning<S: Into<String>>(self, message: S) -> Self {
-        self.diagnostic(Severity::Warning, message.into())
-    }
-
-    pub fn note<S: Into<String>>(self, message: S) -> Self {
-        self.diagnostic(Severity::Note, message.into())
-    }
-
-    pub fn help<S: Into<String>>(self, message: S) -> Self {
-        self.diagnostic(Severity::Help, message.into())
-    }
-
-    fn with_section<S: Into<String>>(
+    fn with_label<S: Into<String>>(
         mut self, style: LabelStyle, span: Span, message: S,
     ) -> Self {
         self.labels.push(Label {
@@ -170,14 +132,17 @@ impl<'a: 'b, 'b> DiagnosticBuilder<'a, 'b> {
         self
     }
 
-    /// message can be empty
     pub fn with_error_label<S: Into<String>>(self, span: Span, message: S) -> Self {
-        self.with_section(LabelStyle::Primary, span, message)
+        self.with_label(LabelStyle::Primary, span, message)
     }
 
-    /// message can be empty
     pub fn with_info_label<S: Into<String>>(self, span: Span, message: S) -> Self {
-        self.with_section(LabelStyle::Secondary, span, message)
+        self.with_label(LabelStyle::Secondary, span, message)
+    }
+
+    pub fn with_note<S: Into<String>>(mut self, message: S) -> Self {
+        self.notes.push(message.into());
+        self
     }
 }
 

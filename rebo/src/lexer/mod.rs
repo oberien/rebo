@@ -140,14 +140,14 @@ fn try_lex_number<'i>(diagnostics: &Diagnostics<'_>, file: FileId, s: &'i str, m
         (Err(e), _) if e.index == 0 && radix == Radix::Dec => Ok(MaybeToken::Backtrack),
         (Err(e), _) => {
             diagnostics.error(ErrorCode::InvalidNumber)
-                .with_error_label(Span::new(file, start, number_end), "")
+                .with_error_label(Span::new(file, start, number_end), format!("{:?}", e.code))
                 .emit();
             Ok(MaybeToken::Diagnostic(number_end))
         }
     }
 }
 
-fn try_lex_ident<'i>(diagnostics: &Diagnostics<'_>, file: FileId, s: &'i str, mut index: usize) -> Result<MaybeToken<'i>, Error> {
+fn try_lex_ident<'i>(_diagnostics: &Diagnostics<'_>, file: FileId, s: &'i str, mut index: usize) -> Result<MaybeToken<'i>, Error> {
     trace!("try_lex_ident: {}", index);
     let start = index;
     // first character

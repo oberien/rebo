@@ -144,7 +144,7 @@ pub struct Mark<'i> {
 impl Mark<'_> {
     pub fn apply(mut self) {
         let mut tokens = self.tokens.borrow_mut();
-        let mut lookahead = tokens.lookahead.pop().unwrap();
+        let lookahead = tokens.lookahead.pop().unwrap();
         match tokens.lookahead.last_mut() {
             Some(l) => {
                 trace!("updating consume from {} to {}", l.consume, lookahead.consume);

@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::mem;
 
-use crate::types::{Value, FromValues, IntoValue, Function, FunctionType};
+use crate::types::{Value, Function};
 
 pub struct Scope {
     parent: Option<Box<Scope>>,

@@ -11,14 +11,14 @@ pub fn add_to_root_scope(scope: &mut Scope) {
     scope.add_function("add_one".to_string(), add_one);
 }
 
-fn print(scope: &mut Scope, values: Vec<Value>) -> Value {
+fn print(_scope: &mut Scope, values: Vec<Value>) -> Value {
     for val in values {
         match val {
             Value::Unit => print!("{:<8?}", ()),
             Value::Integer(i) => print!("{:<8}", i),
             Value::Float(i) => print!("{:<8}", i),
             Value::String(s) => print!("{:<8?}", s),
-            Value::Function(i) => todo!("function print representation"),
+            Value::Function(_f) => todo!("function print representation"),
         }
     }
     println!();

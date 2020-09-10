@@ -1,6 +1,3 @@
-use std::collections::HashMap;
-use std::mem;
-
 use crate::parser::{Expr, ExprType, Ast};
 use crate::types::{Value, Function, FunctionType};
 use crate::scope::Scope;
@@ -16,24 +13,24 @@ pub fn run(scope: &mut Scope, ast: &Ast) -> Value {
 
 fn eval_expr(scope: &mut Scope, expr: &Expr) -> Value {
     match expr {
-        Expr { span, typ: ExprType::Ident(ident) } => load_ident(scope, ident),
-        &Expr { span, typ: ExprType::Integer(i) } => Value::Integer(i),
-        &Expr { span, typ: ExprType::Float(f) } => Value::Float(f),
-        Expr { span, typ: ExprType::String(s) } => Value::String(s.clone()),
-        &Expr { span, typ: ExprType::Assign((ident, ident_span), expr) }
-        | &Expr { span, typ: ExprType::Bind((ident, ident_span), _, expr)} => {
+        Expr { span: _, typ: ExprType::Ident(ident) } => load_ident(scope, ident),
+        &Expr { span: _, typ: ExprType::Integer(i) } => Value::Integer(i),
+        &Expr { span: _, typ: ExprType::Float(f) } => Value::Float(f),
+        Expr { span: _, typ: ExprType::String(s) } => Value::String(s.clone()),
+        &Expr { span: _, typ: ExprType::Assign((ident, _), expr) }
+        | &Expr { span: _, typ: ExprType::Bind((ident, _), _, expr)} => {
             let value = eval_expr(scope, expr);
             assign(scope, ident.to_string(), value)
         },
-        Expr { span, typ: ExprType::Add(a, b) } => math::<Add>(eval_expr(scope, a), eval_expr(scope, b)),
-        Expr { span, typ: ExprType::Sub(a, b) } => math::<Sub>(eval_expr(scope, a), eval_expr(scope, b)),
-        Expr { span, typ: ExprType::Mul(a, b) } => math::<Mul>(eval_expr(scope, a), eval_expr(scope, b)),
-        Expr { span, typ: ExprType::Div(a, b) } => math::<Div>(eval_expr(scope, a), eval_expr(scope, b)),
-        Expr { span, typ: ExprType::Statement(expr) } => {
+        Expr { span: _, typ: ExprType::Add(a, b) } => math::<Add>(eval_expr(scope, a), eval_expr(scope, b)),
+        Expr { span: _, typ: ExprType::Sub(a, b) } => math::<Sub>(eval_expr(scope, a), eval_expr(scope, b)),
+        Expr { span: _, typ: ExprType::Mul(a, b) } => math::<Mul>(eval_expr(scope, a), eval_expr(scope, b)),
+        Expr { span: _, typ: ExprType::Div(a, b) } => math::<Div>(eval_expr(scope, a), eval_expr(scope, b)),
+        Expr { span: _, typ: ExprType::Statement(expr) } => {
             eval_expr(scope, expr);
             Value::Unit
         }
-        Expr { span, typ: ExprType::FunctionCall((name, fspan), args) } => call_function(scope, name, args),
+        Expr { span: _, typ: ExprType::FunctionCall((name, _), args) } => call_function(scope, name, args),
     }
 }
 

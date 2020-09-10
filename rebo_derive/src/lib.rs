@@ -66,6 +66,6 @@ pub fn function(_args: TokenStream, input: TokenStream) -> TokenStream {
             typ: ::rebo::types::FunctionType::Rust(#fn_ident),
         };
     }.into();
-    eprintln!("{}", res);
+    // eprintln!("{}", res);
     res
 }

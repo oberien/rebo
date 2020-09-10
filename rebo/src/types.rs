@@ -17,13 +17,10 @@ impl<T: FromValue> FromValues for T {
     }
 }
 
-fn take_generic<T>() -> usize {
-    1
-}
-
 macro_rules! impl_from_values {
     ($last:ident $($name:ident)*) => {
         impl<$last: FromValues, $($name: FromValue,)*> FromValues for ($($name,)* $last,) {
+            #[allow(unused_mut)]
             fn from_values(mut values: impl Iterator<Item = Value>) -> Self {
                 ($($name::from_value(values.next().unwrap()),)* $last::from_values(values),)
             }
@@ -96,7 +93,7 @@ pub enum FunctionType {
 impl fmt::Debug for FunctionType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            FunctionType::Rust(fun) => write!(f, "FunctionType::Rust(_)"),
+            FunctionType::Rust(_) => write!(f, "FunctionType::Rust(_)"),
         }
     }
 }

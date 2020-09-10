@@ -209,8 +209,8 @@ fn try_parse_assign<'a, 'i>(arena: &'a Arena<Expr<'a, 'i>>, tokens: &mut Tokens<
         _ => return None,
     };
     // TODO: Type
-    let assign_span = match tokens.next() {
-        Some(Token { span, typ: TokenType::Assign }) => span,
+    match tokens.next() {
+        Some(Token { span: _, typ: TokenType::Assign }) => (),
         _ => return None,
     };
     let expr = try_parse_expr(arena, tokens)?;
