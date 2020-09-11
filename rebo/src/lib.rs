@@ -10,6 +10,7 @@ use crate::diagnostics::Diagnostics;
 use scope::Scope;
 
 pub use rebo_derive::function;
+use crate::parser::Parser;
 
 mod diagnostics;
 mod lexer;
@@ -30,7 +31,8 @@ pub fn do_stuff() {
 
     println!("{}", tokens);
     let arena = Arena::new();
-    let ast = parser::parse(&arena, tokens);
+    let mut parser = Parser::new(&arena, tokens);
+    let ast = parser.parse();
     for expr in &ast.exprs {
         println!("{:?}", expr.typ);
     }

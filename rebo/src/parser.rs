@@ -86,210 +86,222 @@ impl<'a, 'i> Expr<'a, 'i> {
     }
 }
 
-pub fn parse<'a, 'i>(arena: &'a Arena<Expr<'a, 'i>>, mut tokens: Tokens<'i>) -> Ast<'a, 'i> {
-    let mut exprs = Vec::new();
-    let mut last_expr = false;
-    while !tokens.is_empty() && tokens.peek(0).unwrap().typ != TokenType::Eof {
-        let expr = parse_expr_or_stmt(arena, &mut tokens);
-        match expr.typ {
-            ExprType::Statement(_) => (),
-            _ => {
-                if last_expr {
-                    todo!("error handling: semicolon required for all except the last expression");
-                }
-                last_expr = true;
-            },
-        }
-        exprs.push(expr);
-    }
-    Ast { exprs }
+pub struct Parser<'a, 'i> {
+    arena: &'a Arena<Expr<'a, 'i>>,
+    tokens: Tokens<'i>,
 }
 
-fn parse_expr_or_stmt<'a, 'i>(arena: &'a Arena<Expr<'a, 'i>>, tokens: &mut Tokens<'i>) -> &'a Expr<'a, 'i> {
-    let expr = parse_expr(arena, tokens);
-    match tokens.peek(0) {
-        Some(Token { span, typ: TokenType::Semicolon }) => {
-            drop(tokens.next());
-            arena.alloc(Expr::new(Span::new(span.file, expr.span.start, span.end), ExprType::Statement(expr)))
-        }
-        _ => expr
+impl<'a, 'i> Parser<'a, 'i> {
+    pub fn new(arena: &'a Arena<Expr<'a, 'i>>, tokens: Tokens<'i>) -> Self {
+        Parser { arena, tokens }
     }
-}
 
-fn parse_expr<'a, 'i>(arena: &'a Arena<Expr<'a, 'i>>, tokens: &mut Tokens<'i>) -> &'a Expr<'a, 'i> {
-    let res = match try_parse_expr(arena, tokens) {
-        Some(expr) => expr,
-        None => todo!("error handling"),
-    };
-    trace!("parsed expr {:?}", res);
-    res
-}
-fn try_parse_expr<'a, 'i>(arena: &'a Arena<Expr<'a, 'i>>, tokens: &mut Tokens<'i>) -> Option<&'a Expr<'a, 'i>> {
-    trace!("parse_expr");
-    match try_parse_string(arena, tokens) {
-        Some(expr) => return Some(expr),
-        None => (),
-    }
-    match try_parse_bind(arena, tokens) {
-        Some(expr) => return Some(expr),
-        None => (),
-    }
-    match try_parse_assign(arena, tokens) {
-        Some(expr) => return Some(expr),
-        None => (),
-    }
-    match try_parse_math(arena, tokens) {
-        Some(expr) => return Some(expr),
-        None => (),
-    }
-    match try_parse_immediate(arena, tokens) {
-        Some(expr) => return Some(expr),
-        None => (),
-    }
-    match try_parse_fn_call(arena, tokens) {
-        Some(expr) => return Some(expr),
-        None => (),
-    }
-    match try_parse_ident(arena, tokens) {
-        Some(expr) => return Some(expr),
-        None => (),
-    }
-    None
-}
-
-fn try_parse_string<'a, 'i>(arena: &'a Arena<Expr<'a, 'i>>, tokens: &mut Tokens<'i>) -> Option<&'a Expr<'a, 'i>> {
-    match tokens.peek(0) {
-        Some(Token { span, typ: TokenType::DqString(s) }) => {
-            drop(tokens.next());
-            Some(arena.alloc(Expr::new(span, ExprType::String(s))))
-        }
-        _ => None,
-    }
-}
-
-fn try_parse_ident<'a, 'i>(arena: &'a Arena<Expr<'a, 'i>>, tokens: &mut Tokens<'i>) -> Option<&'a Expr<'a, 'i>> {
-    match tokens.peek(0) {
-        Some(Token { span, typ: TokenType::Ident(ident) }) => {
-            drop(tokens.next());
-            Some(arena.alloc(Expr::new(span, ExprType::Ident(ident))))
-        },
-        _ => None,
-    }
-}
-
-fn try_parse_bind<'a, 'i>(arena: &'a Arena<Expr<'a, 'i>>, tokens: &mut Tokens<'i>) -> Option<&'a Expr<'a, 'i>> {
-    trace!("try_parse_bind");
-    let mark = tokens.mark();
-    let let_span = match tokens.next() {
-        Some(Token { span, typ: TokenType::Let }) => span,
-        _ => return None,
-    };
-    let is_mut = match tokens.peek(0) {
-        Some(Token { typ: TokenType::Mut, .. }) => {
-            drop(tokens.next());
-            true
-        }
-        _ => false
-    };
-    let res = match try_parse_assign(arena, tokens) {
-        Some(&Expr { span, typ: ExprType::Assign((ident, ident_span), expr) }) => {
-            Some(&*arena.alloc(Expr::new(Span::new(span.file, let_span.start, span.end), ExprType::Bind((ident, ident_span), is_mut, expr))))
-        }
-        _ => return None,
-    };
-    mark.apply();
-    res
-}
-
-fn try_parse_assign<'a, 'i>(arena: &'a Arena<Expr<'a, 'i>>, tokens: &mut Tokens<'i>) -> Option<&'a Expr<'a, 'i>> {
-    trace!("try_parse_assign");
-    let mark = tokens.mark();
-    let (ident, ident_span) = match tokens.next() {
-        Some(Token { span, typ: TokenType::Ident(ident)}) => (ident, span),
-        _ => return None,
-    };
-    // TODO: Type
-    match tokens.next() {
-        Some(Token { span: _, typ: TokenType::Assign }) => (),
-        _ => return None,
-    };
-    let expr = try_parse_expr(arena, tokens)?;
-    mark.apply();
-    Some(arena.alloc(Expr::new(Span::new(expr.span.file, ident_span.start, expr.span.end), ExprType::Assign((ident, ident_span), expr))))
-}
-
-fn try_parse_immediate<'a, 'i>(arena: &'a Arena<Expr<'a, 'i>>, tokens: &mut Tokens<'i>) -> Option<&'a Expr<'a, 'i>> {
-    trace!("try_parse_immediate");
-    match tokens.peek(0)? {
-        Token { span, typ: TokenType::Integer(i, _radix) } => {
-            drop(tokens.next());
-            Some(arena.alloc(Expr::new(span, ExprType::Integer(i))))
-        }
-        Token { span, typ: TokenType::Float(f, _radix) } => {
-            drop(tokens.next());
-            Some(arena.alloc(Expr::new(span, ExprType::Float(f))))
-        }
-        _ => None,
-    }
-}
-
-fn try_parse_math<'a, 'i>(arena: &'a Arena<Expr<'a, 'i>>, tokens: &mut Tokens<'i>) -> Option<&'a Expr<'a, 'i>> {
-    trace!("try_parse_math");
-    match tokens.peek(0)? {
-        Token { span, typ: TokenType::Plus }
-        | Token { span, typ: TokenType::Minus }
-        | Token { span, typ: TokenType::Star }
-        | Token { span, typ: TokenType::Slash } => {
-            // consume the operator token
-            let op = tokens.next().unwrap();
-            let a = parse_expr(arena, tokens);
-            let b = parse_expr(arena, tokens);
-            match op.typ {
-                TokenType::Plus => Some(arena.alloc(Expr::new(span, ExprType::Add(a, b)))),
-                TokenType::Minus => Some(arena.alloc(Expr::new(span, ExprType::Sub(a, b)))),
-                TokenType::Star => Some(arena.alloc(Expr::new(span, ExprType::Mul(a, b)))),
-                TokenType::Slash => Some(arena.alloc(Expr::new(span, ExprType::Div(a, b)))),
-                _ => unreachable!(),
+    pub fn parse(&mut self) -> Ast<'a, 'i> {
+        let mut exprs = Vec::new();
+        let mut last_expr = false;
+        while !self.tokens.is_empty() && self.tokens.peek(0).unwrap().typ != TokenType::Eof {
+            let expr = self.parse_expr_or_stmt();
+            match expr.typ {
+                ExprType::Statement(_) => (),
+                _ => {
+                    if last_expr {
+                        todo!("error handling: semicolon required for all except the last expression");
+                    }
+                    last_expr = true;
+                },
             }
-        },
-        _ => None,
-    }
-}
-
-fn try_parse_fn_call<'a, 'i>(arena: &'a Arena<Expr<'a, 'i>>, tokens: &mut Tokens<'i>) -> Option<&'a Expr<'a, 'i>> {
-    trace!("try_parse_fn_call");
-    match tokens.peek(0)? {
-        Token { typ: TokenType::Ident(_), .. } => (),
-        _ => return None,
-    }
-    match tokens.peek(1)? {
-        Token { typ: TokenType::OpenParen, ..} => (),
-        _ => return None,
-    }
-
-    // actually consume
-    let ident = match tokens.next().unwrap() {
-        Token { span, typ: TokenType::Ident(ident) } => (ident, span),
-        _ => unreachable!(),
-    };
-    drop(tokens.next());
-    let mut args = Vec::new();
-    loop {
-        match tokens.peek(0) {
-            Some(Token { span, typ: TokenType::CloseParen }) => {
-                drop(tokens.next());
-                return Some(arena.alloc(Expr::new(Span::new(span.file, ident.1.start, span.end), ExprType::FunctionCall(ident, args))));
-            },
-            None => todo!("error handling"),
-            _ => (),
+            exprs.push(expr);
         }
-        args.push(parse_expr(arena, tokens));
-        match tokens.peek(0) {
-            Some(Token { span, typ: TokenType::Comma }) | Some(Token { span, typ: TokenType::CloseParen }) => {
-                drop(tokens.next());
-                return Some(arena.alloc(Expr::new(Span::new(span.file, ident.1.start, span.end), ExprType::FunctionCall(ident, args))));
+        Ast { exprs }
+    }
+
+    fn parse_expr_or_stmt(&mut self) -> &'a Expr<'a, 'i> {
+        let expr = self.parse_expr();
+        match self.tokens.peek(0) {
+            Some(Token { span, typ: TokenType::Semicolon }) => {
+                drop(self.tokens.next());
+                self.arena.alloc(Expr::new(Span::new(span.file, expr.span.start, span.end), ExprType::Statement(expr)))
+            }
+            _ => expr
+        }
+    }
+
+    fn parse_expr(&mut self) -> &'a Expr<'a, 'i> {
+        let res = match self.try_parse_expr() {
+            Some(expr) => expr,
+            None => todo!("error handling"),
+        };
+        trace!("parsed expr {:?}", res);
+        res
+    }
+
+    fn try_parse_expr(&mut self) -> Option<&'a Expr<'a, 'i>> {
+        trace!("parse_expr");
+        match self.try_parse_string() {
+            Some(expr) => return Some(expr),
+            None => (),
+        }
+        match self.try_parse_bind() {
+            Some(expr) => return Some(expr),
+            None => (),
+        }
+        match self.try_parse_assign() {
+            Some(expr) => return Some(expr),
+            None => (),
+        }
+        match self.try_parse_math() {
+            Some(expr) => return Some(expr),
+            None => (),
+        }
+        match self.try_parse_immediate() {
+            Some(expr) => return Some(expr),
+            None => (),
+        }
+        match self.try_parse_fn_call() {
+            Some(expr) => return Some(expr),
+            None => (),
+        }
+        match self.try_parse_ident() {
+            Some(expr) => return Some(expr),
+            None => (),
+        }
+        None
+    }
+
+    fn try_parse_string(&mut self) -> Option<&'a Expr<'a, 'i>> {
+        match self.tokens.peek(0) {
+            Some(Token { span, typ: TokenType::DqString(s) }) => {
+                drop(self.tokens.next());
+                Some(self.arena.alloc(Expr::new(span, ExprType::String(s))))
+            }
+            _ => None,
+        }
+    }
+
+    fn try_parse_ident(&mut self) -> Option<&'a Expr<'a, 'i>> {
+        match self.tokens.peek(0) {
+            Some(Token { span, typ: TokenType::Ident(ident) }) => {
+                drop(self.tokens.next());
+                Some(self.arena.alloc(Expr::new(span, ExprType::Ident(ident))))
             },
-            _ => todo!("error handling"),
+            _ => None,
+        }
+    }
+
+    fn try_parse_bind(&mut self) -> Option<&'a Expr<'a, 'i>> {
+        trace!("try_parse_bind");
+        let mark = self.tokens.mark();
+        let let_span = match self.tokens.next() {
+            Some(Token { span, typ: TokenType::Let }) => span,
+            _ => return None,
+        };
+        let is_mut = match self.tokens.peek(0) {
+            Some(Token { typ: TokenType::Mut, .. }) => {
+                drop(self.tokens.next());
+                true
+            }
+            _ => false
+        };
+        let res = match self.try_parse_assign() {
+            Some(&Expr { span, typ: ExprType::Assign((ident, ident_span), expr) }) => {
+                Some(&*self.arena.alloc(Expr::new(Span::new(span.file, let_span.start, span.end), ExprType::Bind((ident, ident_span), is_mut, expr))))
+            }
+            _ => return None,
+        };
+        mark.apply();
+        res
+    }
+
+    fn try_parse_assign(&mut self) -> Option<&'a Expr<'a, 'i>> {
+        trace!("try_parse_assign");
+        let mark = self.tokens.mark();
+        let (ident, ident_span) = match self.tokens.next() {
+            Some(Token { span, typ: TokenType::Ident(ident)}) => (ident, span),
+            _ => return None,
+        };
+        // TODO: Type
+        match self.tokens.next() {
+            Some(Token { span: _, typ: TokenType::Assign }) => (),
+            _ => return None,
+        };
+        let expr = self.try_parse_expr()?;
+        mark.apply();
+        Some(self.arena.alloc(Expr::new(Span::new(expr.span.file, ident_span.start, expr.span.end), ExprType::Assign((ident, ident_span), expr))))
+    }
+
+    fn try_parse_immediate(&mut self) -> Option<&'a Expr<'a, 'i>> {
+        trace!("try_parse_immediate");
+        match self.tokens.peek(0)? {
+            Token { span, typ: TokenType::Integer(i, _radix) } => {
+                drop(self.tokens.next());
+                Some(self.arena.alloc(Expr::new(span, ExprType::Integer(i))))
+            }
+            Token { span, typ: TokenType::Float(f, _radix) } => {
+                drop(self.tokens.next());
+                Some(self.arena.alloc(Expr::new(span, ExprType::Float(f))))
+            }
+            _ => None,
+        }
+    }
+
+    fn try_parse_math(&mut self) -> Option<&'a Expr<'a, 'i>> {
+        trace!("try_parse_math");
+        match self.tokens.peek(0)? {
+            Token { span, typ: TokenType::Plus }
+            | Token { span, typ: TokenType::Minus }
+            | Token { span, typ: TokenType::Star }
+            | Token { span, typ: TokenType::Slash } => {
+                // consume the operator token
+                let op = self.tokens.next().unwrap();
+                let a = self.parse_expr();
+                let b = self.parse_expr();
+                match op.typ {
+                    TokenType::Plus => Some(self.arena.alloc(Expr::new(span, ExprType::Add(a, b)))),
+                    TokenType::Minus => Some(self.arena.alloc(Expr::new(span, ExprType::Sub(a, b)))),
+                    TokenType::Star => Some(self.arena.alloc(Expr::new(span, ExprType::Mul(a, b)))),
+                    TokenType::Slash => Some(self.arena.alloc(Expr::new(span, ExprType::Div(a, b)))),
+                    _ => unreachable!(),
+                }
+            },
+            _ => None,
+        }
+    }
+
+    fn try_parse_fn_call(&mut self) -> Option<&'a Expr<'a, 'i>> {
+        trace!("try_parse_fn_call");
+        match self.tokens.peek(0)? {
+            Token { typ: TokenType::Ident(_), .. } => (),
+            _ => return None,
+        }
+        match self.tokens.peek(1)? {
+            Token { typ: TokenType::OpenParen, ..} => (),
+            _ => return None,
+        }
+
+        // actually consume
+        let ident = match self.tokens.next().unwrap() {
+            Token { span, typ: TokenType::Ident(ident) } => (ident, span),
+            _ => unreachable!(),
+        };
+        drop(self.tokens.next());
+        let mut args = Vec::new();
+        loop {
+            match self.tokens.peek(0) {
+                Some(Token { span, typ: TokenType::CloseParen }) => {
+                    drop(self.tokens.next());
+                    return Some(self.arena.alloc(Expr::new(Span::new(span.file, ident.1.start, span.end), ExprType::FunctionCall(ident, args))));
+                },
+                None => todo!("error handling"),
+                _ => (),
+            }
+            args.push(self.parse_expr());
+            match self.tokens.peek(0) {
+                Some(Token { span, typ: TokenType::Comma }) | Some(Token { span, typ: TokenType::CloseParen }) => {
+                    drop(self.tokens.next());
+                    return Some(self.arena.alloc(Expr::new(Span::new(span.file, ident.1.start, span.end), ExprType::FunctionCall(ident, args))));
+                },
+                _ => todo!("error handling"),
+            }
         }
     }
 }
