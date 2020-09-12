@@ -120,9 +120,7 @@ impl<'a: 'b, 'b> DiagnosticBuilder<'a, 'b> {
         // writeln!(&mut stderr).expect("stderr is gone???");
     }
 
-    fn with_label<S: Into<String>>(
-        mut self, style: LabelStyle, span: Span, message: S,
-    ) -> Self {
+    fn with_label<S: Into<String>>(mut self, style: LabelStyle, span: Span, message: S) -> Self {
         self.labels.push(Label {
             style,
             file_id: span.file.0,

@@ -1,48 +1,79 @@
-use crate::parser::{Expr, ExprType, Ast};
+use crate::parser::{Expr, ExprType, Binding};
 use crate::types::{Value, Function, FunctionType};
-use crate::scope::Scope;
+use crate::scope::{Scopes, RootScope};
 
-pub fn run(scope: &mut Scope, ast: &Ast) -> Value {
-    trace!("run");
-    let mut value = None;
-    for expr in &ast.exprs {
-        value = Some(eval_expr(scope, expr));
-    }
-    return value.unwrap_or(Value::Unit);
+pub struct Vm {
+    scopes: Scopes,
 }
 
-fn eval_expr(scope: &mut Scope, expr: &Expr) -> Value {
-    match expr {
-        Expr { span: _, typ: ExprType::Ident(ident) } => load_ident(scope, ident),
-        &Expr { span: _, typ: ExprType::Integer(i) } => Value::Integer(i),
-        &Expr { span: _, typ: ExprType::Float(f) } => Value::Float(f),
-        Expr { span: _, typ: ExprType::String(s) } => Value::String(s.clone()),
-        &Expr { span: _, typ: ExprType::Assign((ident, _), expr) }
-        | &Expr { span: _, typ: ExprType::Bind((ident, _), _, expr)} => {
-            let value = eval_expr(scope, expr);
-            assign(scope, ident.to_string(), value)
-        },
-        Expr { span: _, typ: ExprType::Add(a, b) } => math::<Add>(eval_expr(scope, a), eval_expr(scope, b)),
-        Expr { span: _, typ: ExprType::Sub(a, b) } => math::<Sub>(eval_expr(scope, a), eval_expr(scope, b)),
-        Expr { span: _, typ: ExprType::Mul(a, b) } => math::<Mul>(eval_expr(scope, a), eval_expr(scope, b)),
-        Expr { span: _, typ: ExprType::Div(a, b) } => math::<Div>(eval_expr(scope, a), eval_expr(scope, b)),
-        Expr { span: _, typ: ExprType::Statement(expr) } => {
-            eval_expr(scope, expr);
-            Value::Unit
+impl Vm {
+    pub fn new(root_scope: RootScope) -> Self {
+        Vm {
+            scopes: Scopes::new(root_scope),
         }
-        Expr { span: _, typ: ExprType::FunctionCall((name, _), args) } => call_function(scope, name, args),
     }
-}
 
-fn load_ident(scope: &mut Scope, ident: &str) -> Value {
-    trace!("load_ident: {}", ident);
-    scope.get(ident).unwrap().clone()
-}
+    pub fn run(mut self, ast: &Vec<&Expr>) -> Value {
+        trace!("run");
+        let mut value = None;
+        for expr in ast {
+            value = Some(self.eval_expr(expr));
+        }
+        return value.unwrap_or(Value::Unit);
+    }
 
-fn assign(scope: &mut Scope, ident: String, value: Value) -> Value {
-    trace!("assign {} = {:?}", ident, value);
-    scope.set(ident, value);
-    Value::Unit
+
+    fn load_binding(&self, binding: &Binding) -> Value {
+        trace!("load_binding: {}", binding.ident);
+        self.scopes.get(binding.id).unwrap().clone()
+    }
+
+    fn bind(&mut self, binding: &Binding, value: Value) -> Value {
+        trace!("bind {} = {:?}", binding.ident, value);
+        self.scopes.create(binding.id, value);
+        Value::Unit
+    }
+
+    fn assign(&mut self, binding: &Binding, value: Value) -> Value {
+        trace!("assign {} = {:?}", binding.ident, value);
+        self.scopes.assign(binding.id, value);
+        Value::Unit
+    }
+
+    fn eval_expr(&mut self, expr: &Expr) -> Value {
+        match expr {
+            Expr { span: _, typ: ExprType::Variable((binding, _)) } => self.load_binding(binding),
+            &Expr { span: _, typ: ExprType::Integer(i) } => Value::Integer(i),
+            &Expr { span: _, typ: ExprType::Float(f) } => Value::Float(f),
+            Expr { span: _, typ: ExprType::String(s) } => Value::String(s.clone()),
+            Expr { span: _, typ: ExprType::Assign((binding, _), expr) } => {
+                let value = self.eval_expr(expr);
+                self.assign(binding, value)
+            },
+            Expr { span: _, typ: ExprType::Bind(binding, expr)} => {
+                let value = self.eval_expr(expr);
+                self.bind(binding, value)
+            },
+            Expr { span: _, typ: ExprType::Add(a, b) } => math::<Add>(self.eval_expr(a), self.eval_expr(b)),
+            Expr { span: _, typ: ExprType::Sub(a, b) } => math::<Sub>(self.eval_expr(a), self.eval_expr(b)),
+            Expr { span: _, typ: ExprType::Mul(a, b) } => math::<Mul>(self.eval_expr(a), self.eval_expr(b)),
+            Expr { span: _, typ: ExprType::Div(a, b) } => math::<Div>(self.eval_expr(a), self.eval_expr(b)),
+            Expr { span: _, typ: ExprType::Statement(expr) } => {
+                self.eval_expr(expr);
+                Value::Unit
+            }
+            Expr { span: _, typ: ExprType::FunctionCall((binding, _), args) } => self.call_function(binding, args),
+        }
+    }
+
+    fn call_function(&mut self, binding: &Binding, args: &Vec<&Expr>) -> Value {
+        trace!("call_function: {}({:?})", binding.ident, args);
+        let args = args.iter().map(|expr| self.eval_expr(expr)).collect();
+        match self.load_binding(&binding) {
+            Value::Function(Function { typ: FunctionType::Rust(f), .. }) => f(&mut self.scopes, args),
+            _ => unreachable!("call_function called with a binding that isn't a function"),
+        }
+    }
 }
 
 trait MathOp {
@@ -82,15 +113,6 @@ fn math<O: MathOp>(a: Value, b: Value) -> Value {
     match (a, b) {
         (Value::Integer(a), Value::Integer(b)) => Value::Integer(O::integer(a, b)),
         (Value::Float(a), Value::Float(b)) => Value::Float(O::float(a, b)),
-        _ => todo!("error handling"),
-    }
-}
-
-fn call_function(scope: &mut Scope, name: &str, args: &Vec<&Expr>) -> Value {
-    trace!("call_function: {}({:?})", name, args);
-    let args = args.iter().map(|expr| eval_expr(scope, expr)).collect();
-    match scope.get(name).unwrap() {
-        Value::Function(Function { typ: FunctionType::Rust(f), .. }) => f(scope, args),
         _ => todo!("error handling"),
     }
 }

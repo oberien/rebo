@@ -234,6 +234,7 @@ dependencies = [
  "backtrace",
  "codespan-reporting",
  "env_logger",
+ "lazy_static",
  "lexical",
  "log",
  "rebo_derive",

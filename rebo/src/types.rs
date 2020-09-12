@@ -1,6 +1,6 @@
 use std::fmt;
 
-use crate::scope::Scope;
+use crate::scope::Scopes;
 
 pub trait FromValues {
     fn from_values(values: impl Iterator<Item = Value>) -> Self;
@@ -88,7 +88,7 @@ pub struct Function {
 
 #[derive(Clone)]
 pub enum FunctionType {
-    Rust(fn(&mut Scope, Vec<Value>) -> Value),
+    Rust(fn(&mut Scopes, Vec<Value>) -> Value),
 }
 impl fmt::Debug for FunctionType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

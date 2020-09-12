@@ -1,17 +1,17 @@
 use crate::types::{Value, Function, Type, FunctionType};
-use crate::scope::Scope;
+use crate::scope::{RootScope, Scopes};
 use crate as rebo;
 
-pub fn add_to_root_scope(scope: &mut Scope) {
-    scope.add_function("print".to_string(), Function {
+pub fn add_to_root_scope(scope: &mut RootScope) {
+    scope.add_function("print", Function {
         arg_types: &[Type::Varargs],
         return_type: Type::Unit,
         typ: FunctionType::Rust(print)
     });
-    scope.add_function("add_one".to_string(), add_one);
+    scope.add_function("add_one", add_one);
 }
 
-fn print(_scope: &mut Scope, values: Vec<Value>) -> Value {
+fn print(_scopes: &mut Scopes, values: Vec<Value>) -> Value {
     for val in values {
         match val {
             Value::Unit => print!("{:<8?}", ()),
