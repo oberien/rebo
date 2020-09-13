@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use typed_arena::Arena;
 
 use crate::lexer::{Tokens, Token, TokenType};
-use crate::diagnostics::{Span, Diagnostics, ErrorCode};
+use crate::diagnostics::{Span, Diagnostics, ErrorCode, DiagnosticBuilder};
 use crate::scope::BindingId;
 
 mod expr;
@@ -239,7 +239,7 @@ impl<'a, 'i, 'r> Parser<'a, 'i, 'r> {
                 drop(self.tokens.next());
                 let binding = match self.get_binding(ident) {
                     Some(binding) => binding,
-                    None => self.diagnostic_unknown_identifier(span, ident),
+                    None => self.diagnostic_unknown_identifier(span, ident, |d| d),
                 };
                 Ok(self.arena.alloc(Expr::new(span, ExprType::Variable((binding, span)))))
             },
@@ -302,7 +302,7 @@ impl<'a, 'i, 'r> Parser<'a, 'i, 'r> {
             CreateBinding::No => {
                 let binding = match self.get_binding(ident) {
                     Some(binding) => binding,
-                    None => self.diagnostic_unknown_identifier(ident_span, ident),
+                    None => self.diagnostic_unknown_identifier(ident_span, ident, |d| d.with_info_label(ident_span, format!("use `let {} = ...` to create a new binding", ident))),
                 };
 
                 // check mutability
@@ -372,7 +372,7 @@ impl<'a, 'i, 'r> Parser<'a, 'i, 'r> {
         }
         let binding = match self.get_binding(ident) {
             Some(binding) => binding,
-            None => self.diagnostic_unknown_identifier(ident_span, ident),
+            None => self.diagnostic_unknown_identifier(ident_span, ident, |d| d),
         };
         let mut args = Vec::new();
         let mut last_span = ident_span;
@@ -404,14 +404,15 @@ impl<'a, 'i, 'r> Parser<'a, 'i, 'r> {
         self.scopes.iter()
             .flat_map(|scope| scope.idents.keys())
             .map(|s| (strsim::levenshtein(ident, s), s))
-            .filter(|&(dist, _)| dist <= 3)
+            // .filter(|&(dist, _)| dist <= 3)
             .min_by_key(|&(dist, _)| dist)
             .map(|(_, &s)| s)
     }
 
-    fn diagnostic_unknown_identifier(&mut self, span: Span, ident: &'i str) -> Binding<'i> {
+    fn diagnostic_unknown_identifier(&mut self, span: Span, ident: &'i str, f: impl for<'d> FnOnce(DiagnosticBuilder<'i, 'd>) -> DiagnosticBuilder<'i, 'd>) -> Binding<'i> {
         let mut d = self.diagnostics.error(ErrorCode::UnknownIdentifier)
             .with_error_label(span, format!("variable `{}` doesn't exist", ident));
+        d = f(d);
         if let Some(similar) = self.similar_ident(ident) {
             d = d.with_info_label(span, format!("did you mean the similarly named variable `{}`", similar));
         }
@@ -439,9 +440,13 @@ impl<'a, 'i, 'r> Parser<'a, 'i, 'r> {
                 }
             }).collect();
         let expected = expected.join(", ");
-        self.diagnostics.error(code)
-            .with_error_label(span, format!("expected one of `{}`", expected))
-            .emit()
+        let mut d = self.diagnostics.error(code);
+        if expected.len() == 1 {
+            d = d.with_error_label(span, format!("expected {}", expected));
+        } else {
+            d = d.with_error_label(span, format!("expected one of {}", expected));
+        }
+        d.emit()
     }
 
     /// Consume until the next end token (`;`, `}`) in the hope that that allows us to recover.

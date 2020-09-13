@@ -23,19 +23,19 @@ pub struct Diagnostics<'i> {
     config: Config,
     error_printed: RefCell<bool>,
 }
-impl<'s> fmt::Debug for Diagnostics<'s> {
+impl<'i> fmt::Debug for Diagnostics<'i> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.debug_struct("Diagnostics")
-            .field("source_arena", &"&'s Arena<String>")
-            .field("files", &"RefCell<SimpleFiles<String, &'s str>>")
+            .field("source_arena", &"&'i Arena<String>")
+            .field("files", &"RefCell<SimpleFiles<String, &'i str>>")
             .field("stderr", &"StandardStream")
             .field("config", &self.config)
             .finish()
     }
 }
 
-impl<'s> Diagnostics<'s> {
-    pub fn new(source_arena: &'s Arena<String>) -> Diagnostics<'s> {
+impl<'i> Diagnostics<'i> {
+    pub fn new(source_arena: &'i Arena<String>) -> Diagnostics<'i> {
         Diagnostics {
             source_arena,
             files: RefCell::new(SimpleFiles::new()),
@@ -45,7 +45,7 @@ impl<'s> Diagnostics<'s> {
         }
     }
 
-    pub fn add_file(&self, name: String, source: String) -> (FileId, &'s str) {
+    pub fn add_file(&self, name: String, source: String) -> (FileId, &'i str) {
         let source = self.source_arena.alloc(source);
         (FileId(self.files.borrow_mut().add(name, source)), source)
     }
@@ -54,7 +54,7 @@ impl<'s> Diagnostics<'s> {
         *self.error_printed.borrow()
     }
 
-    fn diagnostic(&self, severity: Severity, code: ErrorCode, message: String) -> DiagnosticBuilder<'s, '_> {
+    fn diagnostic(&self, severity: Severity, code: ErrorCode, message: String) -> DiagnosticBuilder<'i, '_> {
         DiagnosticBuilder {
             files: &self.files,
             stderr: &self.stderr,
@@ -66,7 +66,7 @@ impl<'s> Diagnostics<'s> {
             notes: Vec::new(),
         }
     }
-    pub fn bug<S: Into<String>>(&self, code: ErrorCode, message: S) -> DiagnosticBuilder<'s, '_> {
+    pub fn bug<S: Into<String>>(&self, code: ErrorCode, message: S) -> DiagnosticBuilder<'i, '_> {
         *self.error_printed.borrow_mut() = true;
         let mut diag =
             Some(self.diagnostic(Severity::Bug, code, message.into()).with_note("please report this"));
@@ -86,27 +86,27 @@ impl<'s> Diagnostics<'s> {
         diag.unwrap()
     }
 
-    pub fn error(&self, code: ErrorCode) -> DiagnosticBuilder<'s, '_> {
+    pub fn error(&self, code: ErrorCode) -> DiagnosticBuilder<'i, '_> {
         *self.error_printed.borrow_mut() = true;
         self.diagnostic(Severity::Error, code, code.message().to_string())
     }
 
-    pub fn warning(&self, code: ErrorCode) -> DiagnosticBuilder<'s, '_> {
+    pub fn warning(&self, code: ErrorCode) -> DiagnosticBuilder<'i, '_> {
         self.diagnostic(Severity::Warning, code, code.message().to_string())
     }
 
-    pub fn note(&self, code: ErrorCode) -> DiagnosticBuilder<'s, '_> {
+    pub fn note(&self, code: ErrorCode) -> DiagnosticBuilder<'i, '_> {
         self.diagnostic(Severity::Note, code, code.message().to_string())
     }
 
-    pub fn help(&self, code: ErrorCode) -> DiagnosticBuilder<'s, '_> {
+    pub fn help(&self, code: ErrorCode) -> DiagnosticBuilder<'i, '_> {
         self.diagnostic(Severity::Help, code, code.message().to_string())
     }
 }
 
 #[must_use = "call `emit` to emit the diagnostic"]
-pub struct DiagnosticBuilder<'s, 'd> {
-    files: &'d RefCell<SimpleFiles<String, &'s str>>,
+pub struct DiagnosticBuilder<'i, 'd> {
+    files: &'d RefCell<SimpleFiles<String, &'i str>>,
     stderr: &'d StandardStream,
     config: &'d Config,
 
@@ -117,7 +117,7 @@ pub struct DiagnosticBuilder<'s, 'd> {
     notes: Vec<String>,
 }
 
-impl<'s: 'b, 'b> DiagnosticBuilder<'s, 'b> {
+impl<'i, 'd> DiagnosticBuilder<'i, 'd> {
     pub fn emit(self) {
         let Self { files, stderr, config, severity, message, code, labels, notes } = self;
         let diagnostic = Diagnostic { severity, message, code: Some(code.code_str().to_string()), labels, notes };
