@@ -42,6 +42,7 @@ impl Vm {
 
     fn eval_expr(&mut self, expr: &Expr) -> Value {
         match expr {
+            Expr { span: _, typ: ExprType::Unit } => Value::Unit,
             Expr { span: _, typ: ExprType::Variable((binding, _)) } => self.load_binding(binding),
             &Expr { span: _, typ: ExprType::Integer(i) } => Value::Integer(i),
             &Expr { span: _, typ: ExprType::Float(f) } => Value::Float(f),

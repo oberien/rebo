@@ -136,6 +136,7 @@ impl<'i> TokensInner<'i> {
     }
 }
 
+#[must_use]
 pub struct Mark<'i> {
     tokens: Rc<RefCell<TokensInner<'i>>>,
     done: bool,

@@ -16,39 +16,45 @@ pub use error_codes::ErrorCode;
 #[derive(Debug, Clone, Copy)]
 pub struct FileId(usize);
 
-pub struct Diagnostics<'a> {
-    source_arena: &'a Arena<String>,
-    files: RefCell<SimpleFiles<String, &'a str>>,
+pub struct Diagnostics<'i> {
+    source_arena: &'i Arena<String>,
+    files: RefCell<SimpleFiles<String, &'i str>>,
     stderr: StandardStream,
     config: Config,
+    error_printed: RefCell<bool>,
 }
-impl<'a> fmt::Debug for Diagnostics<'a> {
+impl<'s> fmt::Debug for Diagnostics<'s> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.debug_struct("Diagnostics")
-            .field("source_arena", &"&'a Arena<String>")
-            .field("files", &"RefCell<SimpleFiles<String, &'a str>>")
+            .field("source_arena", &"&'s Arena<String>")
+            .field("files", &"RefCell<SimpleFiles<String, &'s str>>")
             .field("stderr", &"StandardStream")
             .field("config", &self.config)
             .finish()
     }
 }
 
-impl<'a> Diagnostics<'a> {
-    pub fn new(source_arena: &'a Arena<String>) -> Diagnostics<'a> {
+impl<'s> Diagnostics<'s> {
+    pub fn new(source_arena: &'s Arena<String>) -> Diagnostics<'s> {
         Diagnostics {
             source_arena,
             files: RefCell::new(SimpleFiles::new()),
             stderr: StandardStream::stderr(ColorChoice::Auto),
             config: Config::default(),
+            error_printed: RefCell::new(false),
         }
     }
 
-    pub fn add_file(&self, name: String, source: String) -> (FileId, &'a str) {
+    pub fn add_file(&self, name: String, source: String) -> (FileId, &'s str) {
         let source = self.source_arena.alloc(source);
         (FileId(self.files.borrow_mut().add(name, source)), source)
     }
 
-    fn diagnostic(&self, severity: Severity, code: ErrorCode, message: String) -> DiagnosticBuilder<'a, '_> {
+    pub fn error_printed(&self) -> bool {
+        *self.error_printed.borrow()
+    }
+
+    fn diagnostic(&self, severity: Severity, code: ErrorCode, message: String) -> DiagnosticBuilder<'s, '_> {
         DiagnosticBuilder {
             files: &self.files,
             stderr: &self.stderr,
@@ -60,7 +66,8 @@ impl<'a> Diagnostics<'a> {
             notes: Vec::new(),
         }
     }
-    pub fn bug<S: Into<String>>(&self, code: ErrorCode, message: S) -> DiagnosticBuilder<'a, '_> {
+    pub fn bug<S: Into<String>>(&self, code: ErrorCode, message: S) -> DiagnosticBuilder<'s, '_> {
+        *self.error_printed.borrow_mut() = true;
         let mut diag =
             Some(self.diagnostic(Severity::Bug, code, message.into()).with_note("please report this"));
         backtrace::trace(|frame| {
@@ -79,26 +86,27 @@ impl<'a> Diagnostics<'a> {
         diag.unwrap()
     }
 
-    pub fn error(&self, code: ErrorCode) -> DiagnosticBuilder<'a, '_> {
+    pub fn error(&self, code: ErrorCode) -> DiagnosticBuilder<'s, '_> {
+        *self.error_printed.borrow_mut() = true;
         self.diagnostic(Severity::Error, code, code.message().to_string())
     }
 
-    pub fn warning(&self, code: ErrorCode) -> DiagnosticBuilder<'a, '_> {
+    pub fn warning(&self, code: ErrorCode) -> DiagnosticBuilder<'s, '_> {
         self.diagnostic(Severity::Warning, code, code.message().to_string())
     }
 
-    pub fn note(&self, code: ErrorCode) -> DiagnosticBuilder<'a, '_> {
+    pub fn note(&self, code: ErrorCode) -> DiagnosticBuilder<'s, '_> {
         self.diagnostic(Severity::Note, code, code.message().to_string())
     }
 
-    pub fn help(&self, code: ErrorCode) -> DiagnosticBuilder<'a, '_> {
+    pub fn help(&self, code: ErrorCode) -> DiagnosticBuilder<'s, '_> {
         self.diagnostic(Severity::Help, code, code.message().to_string())
     }
 }
 
 #[must_use = "call `emit` to emit the diagnostic"]
-pub struct DiagnosticBuilder<'a, 'd> {
-    files: &'d RefCell<SimpleFiles<String, &'a str>>,
+pub struct DiagnosticBuilder<'s, 'd> {
+    files: &'d RefCell<SimpleFiles<String, &'s str>>,
     stderr: &'d StandardStream,
     config: &'d Config,
 
@@ -109,7 +117,7 @@ pub struct DiagnosticBuilder<'a, 'd> {
     notes: Vec<String>,
 }
 
-impl<'a: 'b, 'b> DiagnosticBuilder<'a, 'b> {
+impl<'s: 'b, 'b> DiagnosticBuilder<'s, 'b> {
     pub fn emit(self) {
         let Self { files, stderr, config, severity, message, code, labels, notes } = self;
         let diagnostic = Diagnostic { severity, message, code: Some(code.code_str().to_string()), labels, notes };

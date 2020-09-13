@@ -39,12 +39,14 @@ pub fn do_stuff() {
     stdlib::add_to_root_scope(&mut root_scope);
 
     let arena = Arena::new();
-    let parser = Parser::new(&arena, tokens, root_scope.binding_id_mapping());
-    let ast = parser.parse();
+    let parser = Parser::new(&arena, tokens, &diagnostics, root_scope.binding_id_mapping());
+    let ast = parser.parse().unwrap();
     println!("{}", ast);
     let Ast { exprs, bindings } = ast;
-    for expr in &exprs {
-        println!("{:?}", expr.typ);
+
+    if diagnostics.error_printed() {
+        eprintln!("Aborted due to errors");
+        return;
     }
 
     let vm = Vm::new(root_scope);
