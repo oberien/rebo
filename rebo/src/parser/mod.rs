@@ -439,12 +439,12 @@ impl<'a, 'i, 'r> Parser<'a, 'i, 'r> {
                     Comma => "`,`",
                 }
             }).collect();
-        let expected = expected.join(", ");
+        let joined = expected.join(", ");
         let mut d = self.diagnostics.error(code);
         if expected.len() == 1 {
-            d = d.with_error_label(span, format!("expected {}", expected));
+            d = d.with_error_label(span, format!("expected {}", joined));
         } else {
-            d = d.with_error_label(span, format!("expected one of {}", expected));
+            d = d.with_error_label(span, format!("expected one of {}", joined));
         }
         d.emit()
     }
