@@ -1,9 +1,5 @@
 use std::fmt;
-use std::collections::HashMap;
 
-use typed_arena::Arena;
-
-use crate::lexer::{Tokens, Token, TokenType};
 use crate::diagnostics::Span;
 use crate::scope::BindingId;
 
@@ -13,7 +9,7 @@ pub struct Expr<'a, 'i> {
     pub typ: ExprType<'a, 'i>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Hash)]
 pub struct Binding<'i> {
     pub id: BindingId,
     pub ident: &'i str,

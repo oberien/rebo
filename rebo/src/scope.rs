@@ -1,10 +1,19 @@
 use std::collections::HashMap;
+use std::fmt;
 
 use crate::types::{Value, Function};
 use std::sync::atomic::{AtomicU32, Ordering};
+use crate::typeck::{BindingTypes, Type};
+use crate::parser::Binding;
+use crate::diagnostics::Span;
 
 #[derive(Debug, Clone, Copy, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub struct BindingId(u32);
+impl fmt::Display for BindingId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
 
 static NEXT_BINDING_ID: AtomicU32 = AtomicU32::new(0);
 
@@ -23,8 +32,9 @@ pub struct Scopes {
     scopes: Vec<Scope>,
 }
 
-pub struct RootScope {
+pub struct RootScope<'a, 'i> {
     scope: Scope,
+    binding_types: &'a mut BindingTypes<'i>,
     binding_id_mapping: HashMap<&'static str, BindingId>,
 }
 
@@ -32,29 +42,40 @@ pub struct Scope {
     variables: HashMap<BindingId, Value>,
 }
 
-impl RootScope {
-    pub fn new() -> Self {
+impl<'a, 'i> RootScope<'a, 'i> {
+    pub fn new(binding_types: &'a mut BindingTypes<'i>) -> Self {
         RootScope {
             scope: Scope::new(),
+            binding_types,
             binding_id_mapping: HashMap::new(),
         }
     }
 
-    pub(crate) fn binding_id_mapping(&self) -> &HashMap<&'static str, BindingId> {
-        &self.binding_id_mapping
+    pub(crate) fn into_inner(self) -> (Scope, HashMap<&'static str, BindingId>) {
+        (self.scope, self.binding_id_mapping)
     }
 
     pub fn add_function(&mut self, name: &'static str, f: Function) {
         let binding_id = BindingId::new();
-        self.scope.create(binding_id, Value::Function(f));
+        let binding = Binding {
+            id: binding_id,
+            ident: name,
+            mutable: false,
+            span: Span::external(),
+            rogue: false,
+        };
+        self.scope.create(binding_id, Value::Function(f.imp));
+        self.binding_types.insert(binding, Type::Function(Box::new(f.typ)), binding.span);
         self.binding_id_mapping.insert(name, binding_id);
     }
 }
 
 
 impl Scopes {
-    pub fn new(root_scope: RootScope) -> Self {
-        Scopes { scopes: vec![root_scope.scope] }
+    pub fn new() -> Self {
+        Scopes {
+            scopes: Vec::new(),
+        }
     }
 
     pub fn push_scope(&mut self, scope: Scope) {

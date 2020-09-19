@@ -61,9 +61,11 @@ pub fn function(_args: TokenStream, input: TokenStream) -> TokenStream {
 
         #[allow(non_upper_case_globals)]
         const #ident: ::rebo::types::Function = ::rebo::types::Function {
-            arg_types: &[#(<#input_types as ::rebo::types::FromValue>::TYPE),*],
-            return_type: <#output as ::rebo::types::FromValue>::TYPE,
-            typ: ::rebo::types::FunctionType::Rust(#fn_ident),
+            typ: ::rebo::typeck::FunctionType {
+                args: &[#(<#input_types as ::rebo::types::FromValue>::TYPE),*],
+                ret: <#output as ::rebo::types::FromValue>::TYPE,
+            },
+            imp: ::rebo::types::FunctionImpl::Rust(#fn_ident),
         };
     }.into();
     // eprintln!("{}", res);

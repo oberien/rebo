@@ -1,12 +1,15 @@
-use crate::types::{Value, Function, Type, FunctionType};
+use crate::types::{Value, Function, FunctionImpl};
+use crate::typeck::{Type, FunctionType};
 use crate::scope::{RootScope, Scopes};
 use crate as rebo;
 
 pub fn add_to_root_scope(scope: &mut RootScope) {
     scope.add_function("print", Function {
-        arg_types: &[Type::Varargs],
-        return_type: Type::Unit,
-        typ: FunctionType::Rust(print)
+        typ: FunctionType {
+            args: &[Type::Varargs],
+            ret: Type::Unit,
+        },
+        imp: FunctionImpl::Rust(print),
     });
     scope.add_function("add_one", add_one);
 }

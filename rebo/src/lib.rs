@@ -21,6 +21,7 @@ mod types;
 mod stdlib;
 
 pub use rebo_derive::function;
+use crate::typeck::{BindingTypes, Typechecker};
 
 const EXTERNAL_SOURCE: &str = "defined externally";
 
@@ -35,14 +36,17 @@ pub fn do_stuff() {
     let tokens = lexer::lex(&diagnostics, file, code).unwrap();
     println!("{}", tokens);
 
-    let mut root_scope = RootScope::new();
+    let mut binding_types = BindingTypes::new();
+    let mut root_scope = RootScope::new(&mut binding_types);
     stdlib::add_to_root_scope(&mut root_scope);
+    let (root_scope, binding_id_mapping) = root_scope.into_inner();
 
     let arena = Arena::new();
-    let parser = Parser::new(&arena, tokens, &diagnostics, root_scope.binding_id_mapping());
+    let parser = Parser::new(&arena, tokens, &diagnostics, &binding_id_mapping);
     let ast = parser.parse().unwrap();
     println!("{}", ast);
     let Ast { exprs, bindings } = ast;
+    Typechecker::new(&diagnostics, &mut binding_types).typeck(&exprs);
 
     if diagnostics.error_printed() {
         eprintln!("Aborted due to errors");

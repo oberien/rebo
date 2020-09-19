@@ -1,6 +1,7 @@
 use std::fmt;
 
 use crate::scope::Scopes;
+use crate::typeck::{Type, FunctionType};
 
 pub trait FromValues {
     fn from_values(values: impl Iterator<Item = Value>) -> Self;
@@ -65,35 +66,23 @@ pub enum Value {
     Integer(i64),
     Float(f64),
     String(String),
-    Function(Function),
-}
-
-#[derive(Debug, Clone)]
-pub enum Type {
-    Unit,
-    Integer,
-    Float,
-    String,
-    Function,
-    Any,
-    Varargs,
+    Function(FunctionImpl),
 }
 
 #[derive(Debug, Clone)]
 pub struct Function {
-    pub arg_types: &'static [Type],
-    pub return_type: Type,
     pub typ: FunctionType,
+    pub imp: FunctionImpl,
 }
 
 #[derive(Clone)]
-pub enum FunctionType {
+pub enum FunctionImpl {
     Rust(fn(&mut Scopes, Vec<Value>) -> Value),
 }
-impl fmt::Debug for FunctionType {
+impl fmt::Debug for FunctionImpl {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            FunctionType::Rust(_) => write!(f, "FunctionType::Rust(_)"),
+            FunctionImpl::Rust(_) => write!(f, "FunctionImpl::Rust(_)"),
         }
     }
 }
@@ -105,7 +94,7 @@ impl From<&'_ Value> for Type {
             Value::Integer(_) => Type::Integer,
             Value::Float(_) => Type::Float,
             Value::String(_) => Type::String,
-            Value::Function(_) => Type::Function,
+            Value::Function(_) => todo!(),
         }
     }
 }
@@ -149,4 +138,4 @@ impl IntoValue for () {
 impl_from_into!(i64, Integer);
 impl_from_into!(f64, Float);
 impl_from_into!(String, String);
-impl_from_into!(Function, Function);
+// impl_from_into!(Function, Function);

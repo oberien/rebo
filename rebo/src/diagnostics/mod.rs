@@ -13,7 +13,7 @@ mod error_codes;
 pub use span::Span;
 pub use error_codes::ErrorCode;
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Hash)]
 pub struct FileId(usize);
 
 pub struct Diagnostics<'i> {

@@ -1,5 +1,6 @@
 #[derive(Debug, Clone, Copy)]
 pub enum ErrorCode {
+    InternalCompilerError,
     MissingSemicolon,
     UnterminatedString,
     UnexpectedEof,
@@ -9,12 +10,17 @@ pub enum ErrorCode {
     ImmutableAssign,
     InvalidLetBinding,
     IncompleteLetBinding,
+    IncompatibleMathTypes,
+    TypeConflict,
+    UnableToInferType,
+
 }
 use ErrorCode::*;
 
 impl ErrorCode {
     pub fn code_str(&self) -> &'static str {
         match self {
+            InternalCompilerError => "0000",
             MissingSemicolon => "0001",
             UnterminatedString => "0002",
             UnexpectedEof => "0003",
@@ -24,11 +30,15 @@ impl ErrorCode {
             ImmutableAssign => "0007",
             InvalidLetBinding => "0008",
             IncompleteLetBinding => "0009",
+            IncompatibleMathTypes => "0010",
+            TypeConflict => "0011",
+            UnableToInferType => "0012",
         }
     }
 
     pub fn message(&self) -> &'static str {
         match self {
+            InternalCompilerError => "internal compiler error (please report this)",
             MissingSemicolon => "missing semicolon",
             UnterminatedString => "unterminated double quote string",
             UnexpectedEof => "unexpected end of file",
@@ -38,6 +48,9 @@ impl ErrorCode {
             ImmutableAssign => "assignment to immutable variable",
             InvalidLetBinding => "invalid let binding",
             IncompleteLetBinding => "incomplete let binding",
+            IncompatibleMathTypes => "incompatible types for math operation",
+            TypeConflict => "type conflict",
+            UnableToInferType => "unable to infer type",
         }
     }
 }

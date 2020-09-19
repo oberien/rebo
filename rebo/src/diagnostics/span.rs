@@ -1,7 +1,7 @@
 use crate::diagnostics::FileId;
 use crate::EXTERNAL_SOURCE;
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Hash)]
 pub struct Span {
     pub file: FileId,
     pub start: usize,

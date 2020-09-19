@@ -386,7 +386,6 @@ impl<'a, 'i, 'r> Parser<'a, 'i, 'r> {
                 _ => (),
             }
             let arg = self.parse_expr(last_span)?;
-            last_span = arg.span;
             args.push(arg);
             match self.tokens.next() {
                 Some(Token { typ: TokenType::Comma, span }) => last_span = span,

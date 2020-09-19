@@ -1,15 +1,17 @@
 use crate::parser::{Expr, ExprType, Binding};
-use crate::types::{Value, Function, FunctionType};
-use crate::scope::{Scopes, RootScope};
+use crate::types::{Value, Function, FunctionImpl};
+use crate::scope::{Scopes, RootScope, Scope};
 
 pub struct Vm {
     scopes: Scopes,
 }
 
 impl Vm {
-    pub fn new(root_scope: RootScope) -> Self {
+    pub fn new(root_scope: Scope) -> Self {
+        let mut scopes = Scopes::new();
+        scopes.push_scope(root_scope);
         Vm {
-            scopes: Scopes::new(root_scope),
+            scopes,
         }
     }
 
@@ -71,7 +73,7 @@ impl Vm {
         trace!("call_function: {}({:?})", binding.ident, args);
         let args = args.iter().map(|expr| self.eval_expr(expr)).collect();
         match self.load_binding(&binding) {
-            Value::Function(Function { typ: FunctionType::Rust(f), .. }) => f(&mut self.scopes, args),
+            Value::Function(FunctionImpl::Rust(f)) => f(&mut self.scopes, args),
             _ => unreachable!("call_function called with a binding that isn't a function"),
         }
     }
