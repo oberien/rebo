@@ -245,6 +245,7 @@ impl<'a, 'i, 'r> Parser<'a, 'i, 'r> {
             match last {
                 Last::Terminated => (),
                 Last::Unterminated(span) => self.diagnostics.error(ErrorCode::MissingSemicolon)
+                    .with_error_label(span, "")
                     .with_info_label(Span::new(span.file, span.end, span.end), "try adding a semicolon here")
                     .emit(),
             }
