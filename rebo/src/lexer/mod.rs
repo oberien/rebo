@@ -101,6 +101,8 @@ fn try_lex_token<'i>(diagnostics: &Diagnostics<'_>, file: FileId, s: &'i str, in
     match char {
         '(' => Ok(MaybeToken::Token(Token::new(span, TokenType::OpenParen))),
         ')' => Ok(MaybeToken::Token(Token::new(span, TokenType::CloseParen))),
+        '{' => Ok(MaybeToken::Token(Token::new(span, TokenType::OpenCurly))),
+        '}' => Ok(MaybeToken::Token(Token::new(span, TokenType::CloseCurly))),
         ';' => Ok(MaybeToken::Token(Token::new(span, TokenType::Semicolon))),
         '+' => Ok(MaybeToken::Token(Token::new(span, TokenType::Plus))),
         '-' => Ok(MaybeToken::Token(Token::new(span, TokenType::Minus))),

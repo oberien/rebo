@@ -73,6 +73,13 @@ impl<'a, 'i> Checker<'a, 'i> {
                 }
                 f.ret.clone()
             },
+            Block(ref exprs) => {
+                let mut typ = Type::Unit;
+                for expr in exprs {
+                    typ = self.get_type(expr).0;
+                }
+                typ
+            }
         };
         (typ, expr.span)
     }

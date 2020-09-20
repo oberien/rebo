@@ -1,7 +1,8 @@
-use std::fmt;
+use std::fmt::{self, Write};
 
 use crate::diagnostics::Span;
 use crate::scope::BindingId;
+use crate::util::PadFmt;
 
 #[derive(Debug)]
 pub struct Expr<'a, 'i> {
@@ -38,6 +39,7 @@ pub enum ExprType<'a, 'i> {
     Mul(&'a Expr<'a, 'i>, &'a Expr<'a, 'i>),
     Div(&'a Expr<'a, 'i>, &'a Expr<'a, 'i>),
     Statement(&'a Expr<'a, 'i>),
+    Block(Vec<&'a Expr<'a, 'i>>),
     FunctionCall((Binding<'i>, Span), Vec<&'a Expr<'a, 'i>>),
 }
 
@@ -68,6 +70,15 @@ impl<'a, 'i> fmt::Display for ExprType<'a, 'i> {
             ExprType::Mul(a, b) => write!(f, "* {}{}", a, b),
             ExprType::Div(a, b) => write!(f, "/ {}{}", a, b),
             ExprType::Statement(expr) => write!(f, "{}; ", expr),
+            ExprType::Block(exprs) => {
+                writeln!(f, "{{")?;
+                let mut padded = PadFmt::new(&mut *f);
+                for expr in exprs {
+                    write!(&mut padded, "{}", expr)?;
+                }
+                writeln!(f)?;
+                write!(f, "}}")
+            },
             ExprType::FunctionCall((binding, _), exprs) => {
                 write!(f, "{}(", binding.ident)?;
                 for expr in exprs {

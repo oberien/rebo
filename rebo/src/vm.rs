@@ -65,6 +65,13 @@ impl Vm {
                 self.eval_expr(expr);
                 Value::Unit
             }
+            Expr { span: _, typ: ExprType::Block(exprs) } => {
+                let mut val = Value::Unit;
+                for expr in exprs {
+                    val = self.eval_expr(expr);
+                }
+                val
+            }
             Expr { span: _, typ: ExprType::FunctionCall((binding, _), args) } => self.call_function(binding, args),
         }
     }

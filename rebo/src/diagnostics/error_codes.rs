@@ -15,6 +15,7 @@ pub enum ErrorCode {
     UnableToInferType,
     InvalidArgumentType,
     NotAFunction,
+    UnclosedBlock,
 }
 use ErrorCode::*;
 
@@ -36,6 +37,7 @@ impl ErrorCode {
             UnableToInferType => "0012",
             InvalidArgumentType => "0013",
             NotAFunction => "0014",
+            UnclosedBlock => "0015",
         }
     }
 
@@ -56,6 +58,7 @@ impl ErrorCode {
             UnableToInferType => "unable to infer type",
             InvalidArgumentType => "invalid argument type",
             NotAFunction => "tried to call a non-function",
+            UnclosedBlock => "unclosed block, missing `}`",
         }
     }
 }

@@ -76,18 +76,18 @@ impl<'a, 'i> ConstraintCreator<'a, 'i> {
                 let type_a = self.get_type(a);
                 let type_b = self.get_type(b);
                 match (type_a, type_b) {
-                    (TypeOrBinding::Type(typ_a, span_a), TypeOrBinding::Type(typ_b, span_b)) => match (typ_a, typ_b) {
+                    (TypeOrBinding::Type(typ_a, _span_a), TypeOrBinding::Type(typ_b, _span_b)) => match (typ_a, typ_b) {
                         (t @ Type::Integer, Type::Integer) | (t @ Type::Float, Type::Float) => {
                             TypeOrBinding::Type(t, expr.span)
                         },
                         _ => TypeOrBinding::Type(Type::Any, expr.span),
                     },
-                    (TypeOrBinding::Binding(binding, binding_span), TypeOrBinding::Type(typ, typ_span))
-                    | (TypeOrBinding::Type(typ, typ_span), TypeOrBinding::Binding(binding, binding_span)) => {
+                    (TypeOrBinding::Binding(binding, _binding_span), TypeOrBinding::Type(typ, _typ_span))
+                    | (TypeOrBinding::Type(typ, _typ_span), TypeOrBinding::Binding(binding, _binding_span)) => {
                         self.constraints.push(Constraint::Type(binding, typ.clone(), expr.span));
                         TypeOrBinding::Type(typ, expr.span)
                     },
-                    (TypeOrBinding::Binding(binding_a, span_a), TypeOrBinding::Binding(binding_b, span_b)) => {
+                    (TypeOrBinding::Binding(binding_a, _span_a), TypeOrBinding::Binding(binding_b, _span_b)) => {
                         self.constraints.push(Constraint::Eq(binding_a, binding_b, expr.span));
                         TypeOrBinding::Binding(binding_a, expr.span)
                     },
@@ -98,6 +98,8 @@ impl<'a, 'i> ConstraintCreator<'a, 'i> {
                     (TypeOrBinding::RetOf(fun, _), TypeOrBinding::RetOf(_, _)) => TypeOrBinding::RetOf(fun, expr.span),
                 }
             },
+            Block(exprs) => exprs.last().map(|expr| self.get_type(expr))
+                .unwrap_or(TypeOrBinding::Type(Type::Unit, expr.span)),
         }
     }
 }

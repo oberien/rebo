@@ -19,6 +19,7 @@ mod vm;
 mod scope;
 mod types;
 mod stdlib;
+mod util;
 
 pub use rebo_derive::function;
 use crate::typeck::{BindingTypes, Typechecker};

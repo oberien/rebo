@@ -50,6 +50,8 @@ pub enum TokenType<'i> {
     Slash,
     OpenParen,
     CloseParen,
+    OpenCurly,
+    CloseCurly,
     Comma,
     Semicolon,
     Eof,
@@ -130,7 +132,7 @@ impl<'i> TokensInner<'i> {
 
     fn is_empty(&self) -> bool {
         match self.lookahead.last() {
-            Some(lookahead) => self.tokens.len() >= lookahead.peek,
+            Some(lookahead) => self.tokens.len() <= lookahead.peek,
             None => self.tokens.is_empty()
         }
     }
@@ -148,6 +150,8 @@ impl Mark<'_> {
         let lookahead = tokens.lookahead.pop().unwrap();
         match tokens.lookahead.last_mut() {
             Some(l) => {
+                trace!("updating peek from {} to {}", l.peek, lookahead.peek);
+                l.peek = lookahead.peek;
                 trace!("updating consume from {} to {}", l.consume, lookahead.consume);
                 l.consume = lookahead.consume;
             },
@@ -206,6 +210,8 @@ impl<'i> fmt::Display for TokenType<'i> {
             TokenType::Slash => write!(f, "/ "),
             TokenType::OpenParen => write!(f, "( "),
             TokenType::CloseParen => write!(f, ") "),
+            TokenType::OpenCurly => write!(f, "{{ "),
+            TokenType::CloseCurly => write!(f, "}} "),
             TokenType::Comma => write!(f, ", "),
             TokenType::Semicolon => writeln!(f, ";"),
             TokenType::Eof => Ok(()),

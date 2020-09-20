@@ -91,7 +91,7 @@ impl<'a, 'i> ConstraintSolver<'a, 'i> {
 
     /// Applies a known type to all of its dependents
     fn apply_backwards(&mut self, binding: Binding<'i>) {
-        let (typ, typ_span) = self.binding_types.get(binding).unwrap().clone();
+        let (typ, _typ_span) = self.binding_types.get(binding).unwrap().clone();
         let deps = match self.dependents.remove(&binding) {
             Some(deps) => deps,
             None => return,
