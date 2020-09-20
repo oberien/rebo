@@ -50,21 +50,38 @@ impl<'a, 'i> Checker<'a, 'i> {
                 self.get_type(e);
                 Type::Unit
             },
-            FunctionCall((f, f_span), ref args) => {
-                // check argument types
-                let arg_types = args.iter().map(|expr| (self.get_type(expr).0, expr.span));
-                let f = match self.binding_types.get(f).unwrap() {
+            FunctionCall((fun, f_span), ref args) => {
+                // check that we are actually calling a function
+                let f = match self.binding_types.get(fun).unwrap() {
                     (Type::Function(f), _) => f,
                     (t, _) => {
                         self.diagnostics.error(ErrorCode::NotAFunction)
                             .with_error_label(expr.span, "in this function call")
-                            .with_info_label(f_span, format!("`{}` is of type `{}`", f.ident, t))
-                            .with_info_label(f.span, format!("`{}` defined here", f.ident))
+                            .with_info_label(f_span, format!("`{}` is of type `{}`", fun.ident, t))
+                            .with_info_label(fun.span, format!("`{}` defined here", fun.ident))
                             .emit();
                         return (Type::Any, expr.span);
                     },
                 };
-                for (expected, (actual, actual_span)) in f.args.iter().zip(arg_types) {
+                // check argument length
+                let is_varargs = match f.args.last() {
+                    Some(Type::Varargs) => true,
+                    _ => false,
+                };
+                if (is_varargs && args.len() < f.args.len() - 1) || (!is_varargs && args.len() != f.args.len()) {
+                    self.diagnostics.error(ErrorCode::InvalidNumberOfArguments)
+                        .with_error_label(expr.span, "in this function call")
+                        .with_info_label(expr.span, format!("got {} arguments, expected {} arguments", args.len(), f.args.len()))
+                        .with_info_label(fun.span, "function defined here")
+                        .emit();
+                }
+                // check argument types
+                let expected_arg_types = match is_varargs {
+                    true => f.args.iter().chain(Some(Type::Varargs).iter().cycle()),
+                    false => f.args.iter().chain(None.iter().cycle()),
+                };
+                let arg_types = args.iter().map(|expr| (self.get_type(expr).0, expr.span));
+                for (expected, (actual, actual_span)) in expected_arg_types.zip(arg_types) {
                     if *expected != actual {
                         self.diagnostics.error(ErrorCode::InvalidArgumentType)
                             .with_error_label(actual_span, format!("expected type `{}`, got type `{}`", expected, actual))

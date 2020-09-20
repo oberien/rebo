@@ -16,6 +16,7 @@ pub enum ErrorCode {
     InvalidArgumentType,
     NotAFunction,
     UnclosedBlock,
+    InvalidNumberOfArguments,
 }
 use ErrorCode::*;
 
@@ -38,6 +39,7 @@ impl ErrorCode {
             InvalidArgumentType => "0013",
             NotAFunction => "0014",
             UnclosedBlock => "0015",
+            InvalidNumberOfArguments => "0016",
         }
     }
 
@@ -59,6 +61,7 @@ impl ErrorCode {
             InvalidArgumentType => "invalid argument type",
             NotAFunction => "tried to call a non-function",
             UnclosedBlock => "unclosed block, missing `}`",
+            InvalidNumberOfArguments => "invalid number of arguments",
         }
     }
 }
