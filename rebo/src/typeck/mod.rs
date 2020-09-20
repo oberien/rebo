@@ -7,9 +7,11 @@ use crate::parser::{Expr, Binding};
 
 mod constraints;
 mod solver;
+mod checker;
 
 use constraints::ConstraintCreator;
-use crate::typeck::solver::ConstraintSolver;
+use solver::ConstraintSolver;
+use checker::Checker;
 
 #[derive(Debug, Clone)]
 pub struct BindingTypes<'i> {
@@ -40,7 +42,6 @@ pub enum Type {
     Function(Box<FunctionType>),
     Any,
     Varargs,
-    Bottom,
 }
 #[derive(Debug, Clone)]
 pub struct FunctionType {
@@ -51,7 +52,6 @@ impl PartialEq for Type {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
             (Type::Any, _) | (_, Type::Any) | (Type::Varargs, _) | (_, Type::Varargs) => true,
-            (Type::Bottom, _) | (_, Type::Bottom) => false,
             (Type::Unit, Type::Unit) => true,
             (Type::Integer, Type::Integer) => true,
             (Type::Float, Type::Float) => true,
@@ -82,7 +82,6 @@ impl fmt::Display for Type {
             },
             Type::Any => write!(f, "any"),
             Type::Varargs => write!(f, "varargs..."),
-            Type::Bottom => write!(f, "⊥"),
         }
     }
 }
@@ -109,14 +108,8 @@ impl<'i> Typechecker<'i> {
         trace!("got constraints: {:#?}", constraints.iter().map(ToString::to_string).collect::<Vec<_>>());
         let cs = ConstraintSolver::new(&self.diagnostics, self.binding_types);
         cs.solve(constraints);
-
-        // self.diagnostics.error(ErrorCode::IncompatibleMathTypes)
-        //     .with_error_label(expr.span, "in this math operation")
-        //     .with_info_label(span_a, format!("this has type {}", typ_a))
-        //     .with_info_label(span_b, format!("while this has type {}", typ_b))
-        //     .with_note("math operations are only supported for integers with integers and floats with floats")
-        //     .with_note("help: try casting operands like `... as integer` or `... as float`")
+        let c = Checker::new(&self.diagnostics, self.binding_types);
+        c.check(exprs);
     }
-
 }
 

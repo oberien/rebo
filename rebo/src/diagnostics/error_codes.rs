@@ -13,7 +13,8 @@ pub enum ErrorCode {
     IncompatibleMathTypes,
     TypeConflict,
     UnableToInferType,
-
+    InvalidArgumentType,
+    NotAFunction,
 }
 use ErrorCode::*;
 
@@ -33,6 +34,8 @@ impl ErrorCode {
             IncompatibleMathTypes => "0010",
             TypeConflict => "0011",
             UnableToInferType => "0012",
+            InvalidArgumentType => "0013",
+            NotAFunction => "0014",
         }
     }
 
@@ -51,6 +54,8 @@ impl ErrorCode {
             IncompatibleMathTypes => "incompatible types for math operation",
             TypeConflict => "type conflict",
             UnableToInferType => "unable to infer type",
+            InvalidArgumentType => "invalid argument type",
+            NotAFunction => "tried to call a non-function",
         }
     }
 }

@@ -25,7 +25,7 @@ pub struct Binding<'i> {
 #[derive(Debug)]
 pub enum ExprType<'a, 'i> {
     Unit,
-    Variable((Binding<'i>, Span)),
+    Variable(Binding<'i>),
     Integer(i64),
     Float(f64),
     String(String),
@@ -51,7 +51,7 @@ impl<'a, 'i> fmt::Display for ExprType<'a, 'i> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             ExprType::Unit => write!(f, "() ", ),
-            ExprType::Variable((binding, _)) => write!(f, "{} ", binding.ident),
+            ExprType::Variable(binding) => write!(f, "{} ", binding.ident),
             ExprType::Integer(i) => write!(f, "{} ", i),
             ExprType::Float(fl) => write!(f, "{:2.1} ", fl),
             ExprType::String(s) => write!(f, "{:?} ", s),

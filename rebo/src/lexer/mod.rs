@@ -128,7 +128,7 @@ fn try_lex_number<'i>(diagnostics: &Diagnostics<'_>, file: FileId, s: &'i str, m
         radix = Radix::Hex;
     }
     let number_end = index + s[index..].chars()
-        .take_while(|&c| !c.is_whitespace() && c != ';')
+        .take_while(|&c| c.is_alphanumeric() || c == '.')
         .map(char::len_utf8)
         .sum::<usize>();
     let int = lexical::parse_radix::<i64, _>(&s[index..number_end], radix.to_u8());

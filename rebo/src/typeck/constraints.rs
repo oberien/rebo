@@ -1,6 +1,6 @@
 use std::fmt;
 
-use crate::parser::{Expr, ExprType::*, Binding};
+use crate::parser::{Expr, ExprType, Binding};
 use crate::typeck::{Type, BindingTypes};
 use crate::diagnostics::Span;
 
@@ -16,9 +16,9 @@ pub enum Constraint<'i> {
 impl<'i> fmt::Display for Constraint<'i> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Constraint::Eq(a, b, _) => write!(f, "{} ({}) = {} ({})", a.ident, a.id, b.ident, b.id),
-            Constraint::Type(a, typ, _) => write!(f, "{} ({}) = {}", a.ident, a.id, typ),
-            Constraint::RetOf(a, fun, _) => write!(f, "{} ({}) = RetOf({} ({}))", a.ident, a.id, fun.ident, fun.id),
+            Constraint::Eq(a, b, _) => write!(f, "{}({}) = {}({})", a.ident, a.id, b.ident, b.id),
+            Constraint::Type(a, typ, _) => write!(f, "{}({}) = {}", a.ident, a.id, typ),
+            Constraint::RetOf(a, fun, _) => write!(f, "{}({}) = RetOf({}({}))", a.ident, a.id, fun.ident, fun.id),
         }
     }
 }
@@ -51,22 +51,23 @@ impl<'a, 'i> ConstraintCreator<'a, 'i> {
         self.constraints
     }
     fn get_type(&mut self, expr: &Expr<'_, 'i>) -> TypeOrBinding<'i> {
+        use ExprType::*;
         match &expr.typ {
             Unit => TypeOrBinding::Type(Type::Unit, expr.span),
-            &Variable((binding, _)) => TypeOrBinding::Binding(binding, expr.span),
+            &Variable(binding) => TypeOrBinding::Binding(binding, expr.span),
             Integer(_) => TypeOrBinding::Type(Type::Integer, expr.span),
             Float(_) => TypeOrBinding::Type(Type::Float, expr.span),
             String(_) => TypeOrBinding::Type(Type::String, expr.span),
-            Statement(expr) => {
-                self.get_type(expr);
+            Statement(inner) => {
+                self.get_type(inner);
                 TypeOrBinding::Type(Type::Unit, expr.span)
-            },
+            }
             &FunctionCall((binding, _), _) => TypeOrBinding::RetOf(binding, expr.span),
             &Assign((binding, _), expr) | &Bind(binding, expr) => {
                 let constraint = match self.get_type(expr) {
-                    TypeOrBinding::Type(typ, span) => Constraint::Type(binding, typ, span),
-                    TypeOrBinding::Binding(var, span) => Constraint::Eq(binding, var, span),
-                    TypeOrBinding::RetOf(ret, span) => Constraint::RetOf(binding, ret, span),
+                    TypeOrBinding::Type(typ, _) => Constraint::Type(binding, typ, expr.span),
+                    TypeOrBinding::Binding(var, _) => Constraint::Eq(binding, var, expr.span),
+                    TypeOrBinding::RetOf(ret, _) => Constraint::RetOf(binding, ret, expr.span),
                 };
                 self.constraints.push(constraint);
                 TypeOrBinding::Type(Type::Unit, expr.span)
@@ -77,24 +78,24 @@ impl<'a, 'i> ConstraintCreator<'a, 'i> {
                 match (type_a, type_b) {
                     (TypeOrBinding::Type(typ_a, span_a), TypeOrBinding::Type(typ_b, span_b)) => match (typ_a, typ_b) {
                         (t @ Type::Integer, Type::Integer) | (t @ Type::Float, Type::Float) => {
-                            TypeOrBinding::Type(t, span_a)
+                            TypeOrBinding::Type(t, expr.span)
                         },
                         _ => TypeOrBinding::Type(Type::Any, expr.span),
                     },
                     (TypeOrBinding::Binding(binding, binding_span), TypeOrBinding::Type(typ, typ_span))
                     | (TypeOrBinding::Type(typ, typ_span), TypeOrBinding::Binding(binding, binding_span)) => {
-                        self.constraints.push(Constraint::Type(binding, typ.clone(), typ_span));
-                        TypeOrBinding::Type(typ, typ_span)
+                        self.constraints.push(Constraint::Type(binding, typ.clone(), expr.span));
+                        TypeOrBinding::Type(typ, expr.span)
                     },
                     (TypeOrBinding::Binding(binding_a, span_a), TypeOrBinding::Binding(binding_b, span_b)) => {
                         self.constraints.push(Constraint::Eq(binding_a, binding_b, expr.span));
-                        TypeOrBinding::Binding(binding_a, span_a)
+                        TypeOrBinding::Binding(binding_a, expr.span)
                     },
-                    (TypeOrBinding::RetOf(_, _), TypeOrBinding::Type(typ, _)) => TypeOrBinding::Type(typ, b.span),
-                    (TypeOrBinding::Type(typ, _), TypeOrBinding::RetOf(_, _)) => TypeOrBinding::Type(typ, a.span),
-                    (TypeOrBinding::RetOf(_, _), TypeOrBinding::Binding(binding, _)) => TypeOrBinding::Binding(binding, b.span),
-                    (TypeOrBinding::Binding(binding, _), TypeOrBinding::RetOf(_, _)) => TypeOrBinding::Binding(binding, a.span),
-                    (TypeOrBinding::RetOf(fun, _), TypeOrBinding::RetOf(_, _)) => TypeOrBinding::RetOf(fun, a.span),
+                    (TypeOrBinding::RetOf(_, _), TypeOrBinding::Type(typ, _)) => TypeOrBinding::Type(typ, expr.span),
+                    (TypeOrBinding::Type(typ, _), TypeOrBinding::RetOf(_, _)) => TypeOrBinding::Type(typ, expr.span),
+                    (TypeOrBinding::RetOf(_, _), TypeOrBinding::Binding(binding, _)) => TypeOrBinding::Binding(binding, expr.span),
+                    (TypeOrBinding::Binding(binding, _), TypeOrBinding::RetOf(_, _)) => TypeOrBinding::Binding(binding, expr.span),
+                    (TypeOrBinding::RetOf(fun, _), TypeOrBinding::RetOf(_, _)) => TypeOrBinding::RetOf(fun, expr.span),
                 }
             },
         }

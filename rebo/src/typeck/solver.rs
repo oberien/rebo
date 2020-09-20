@@ -1,7 +1,7 @@
 use std::collections::{HashMap, VecDeque};
 
 use crate::diagnostics::{Diagnostics, Span, ErrorCode};
-use crate::typeck::{BindingTypes, Type, FunctionType};
+use crate::typeck::{BindingTypes, Type};
 use crate::typeck::constraints::Constraint;
 use crate::parser::Binding;
 
@@ -66,7 +66,16 @@ impl<'a, 'i> ConstraintSolver<'a, 'i> {
         while let Some(workitem) = self.worklist.pop_front() {
             self.apply_backwards(workitem);
         }
-        // check that everything is solved
+        // check that everything could be inferred
+        for (typ, span) in self.binding_types.types.values() {
+            match typ {
+                Type::Any => self.diagnostics.error(ErrorCode::UnableToInferType)
+                    .with_error_label(*span, "can't infer type for this binding")
+                    .emit(),
+                _ => (),
+            }
+        }
+        // check that no dependents are left
         for (binding, deps) in self.dependents {
             let mut diag = self.diagnostics.error(ErrorCode::UnableToInferType)
                 .with_error_label(binding.span, "can't infer type for this binding");

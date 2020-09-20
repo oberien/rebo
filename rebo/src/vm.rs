@@ -1,6 +1,6 @@
 use crate::parser::{Expr, ExprType, Binding};
-use crate::types::{Value, Function, FunctionImpl};
-use crate::scope::{Scopes, RootScope, Scope};
+use crate::types::{Value, FunctionImpl};
+use crate::scope::{Scopes, Scope};
 
 pub struct Vm {
     scopes: Scopes,
@@ -45,7 +45,7 @@ impl Vm {
     fn eval_expr(&mut self, expr: &Expr) -> Value {
         match expr {
             Expr { span: _, typ: ExprType::Unit } => Value::Unit,
-            Expr { span: _, typ: ExprType::Variable((binding, _)) } => self.load_binding(binding),
+            Expr { span: _, typ: ExprType::Variable(binding) } => self.load_binding(binding),
             &Expr { span: _, typ: ExprType::Integer(i) } => Value::Integer(i),
             &Expr { span: _, typ: ExprType::Float(f) } => Value::Float(f),
             Expr { span: _, typ: ExprType::String(s) } => Value::String(s.clone()),

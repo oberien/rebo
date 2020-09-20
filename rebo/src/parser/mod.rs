@@ -241,7 +241,7 @@ impl<'a, 'i, 'r> Parser<'a, 'i, 'r> {
                     Some(binding) => binding,
                     None => self.diagnostic_unknown_identifier(span, ident, |d| d),
                 };
-                Ok(self.arena.alloc(Expr::new(span, ExprType::Variable((binding, span)))))
+                Ok(self.arena.alloc(Expr::new(span, ExprType::Variable(binding))))
             },
             _ => Err(InternalError::Backtrack(Cow::Borrowed(&[Expected::Ident]))),
         }
@@ -347,10 +347,10 @@ impl<'a, 'i, 'r> Parser<'a, 'i, 'r> {
                 let a = self.parse_expr(span)?;
                 let b = self.parse_expr(span)?;
                 match op.typ {
-                    TokenType::Plus => Ok(self.arena.alloc(Expr::new(span, ExprType::Add(a, b)))),
-                    TokenType::Minus => Ok(self.arena.alloc(Expr::new(span, ExprType::Sub(a, b)))),
-                    TokenType::Star => Ok(self.arena.alloc(Expr::new(span, ExprType::Mul(a, b)))),
-                    TokenType::Slash => Ok(self.arena.alloc(Expr::new(span, ExprType::Div(a, b)))),
+                    TokenType::Plus => Ok(self.arena.alloc(Expr::new(Span::new(span.file, span.start, b.span.end), ExprType::Add(a, b)))),
+                    TokenType::Minus => Ok(self.arena.alloc(Expr::new(Span::new(span.file, span.start, b.span.end), ExprType::Sub(a, b)))),
+                    TokenType::Star => Ok(self.arena.alloc(Expr::new(Span::new(span.file, span.start, b.span.end), ExprType::Mul(a, b)))),
+                    TokenType::Slash => Ok(self.arena.alloc(Expr::new(Span::new(span.file, span.start, b.span.end), ExprType::Div(a, b)))),
                     _ => unreachable!(),
                 }
             },
