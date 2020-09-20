@@ -99,9 +99,9 @@ impl<'i> Typechecker<'i> {
         }
     }
 
-    // Step 1: Create constraint set
-    // Step 2: Solve constraint set and output unification errors
-    // Step 3: Check math operations and function calls, outputting type errors
+    // Step 1: Create constraint set and collect function types
+    // Step 2: Solve constraint set and print unification errors
+    // Step 3: Check math operations and function calls, printing type errors
     pub fn typeck(&mut self, exprs: &Vec<&Expr<'_, 'i>>) {
         let cc = ConstraintCreator::new(self.binding_types);
         let constraints = cc.get_constraints(exprs);

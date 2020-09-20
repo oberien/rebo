@@ -37,8 +37,8 @@ impl<'a, 'i> Checker<'a, 'i> {
                     _ => {
                         self.diagnostics.error(ErrorCode::IncompatibleMathTypes)
                             .with_error_label(expr.span, "in this math operation")
-                            .with_info_label(a.span, format!("this has type {}", a_typ))
-                            .with_info_label(b.span, format!("while this has type {}", b_typ))
+                            .with_info_label(a.span, format!("this has type `{}`", a_typ))
+                            .with_info_label(b.span, format!("while this has type `{}`", b_typ))
                             .with_note("math operations are only supported for integers with integers and floats with floats")
                             .with_note("help: try casting with `... as integer` or `... as float`")
                             .emit();
