@@ -50,6 +50,7 @@ impl<'a, 'i> Checker<'a, 'i> {
                 self.get_type(e);
                 Type::Unit
             },
+            Parenthezised(e) => self.get_type(e).0,
             FunctionCall((fun, f_span), ref args) => {
                 // check that we are actually calling a function
                 let f = match self.binding_types.get(fun).unwrap() {

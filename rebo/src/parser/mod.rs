@@ -9,8 +9,10 @@ use crate::diagnostics::{Span, Diagnostics, ErrorCode, DiagnosticBuilder};
 use crate::scope::BindingId;
 
 mod expr;
+mod precedence;
 
 pub use expr::{Binding, Expr, ExprType};
+use crate::parser::precedence::Math;
 
 #[derive(Debug)]
 pub enum Error {
@@ -173,27 +175,61 @@ impl<'a, 'i, 'r> Parser<'a, 'i, 'r> {
         }
     }
 
-    fn try_parse_expr(&mut self, depth: usize) -> Result<&'a Expr<'a, 'i>, InternalError> {
-        trace!("{}try_parse_expr", "|".repeat(depth));
+    fn try_parse_multiple(&mut self, fns: &[fn(&mut Self, usize) -> Result<&'a Expr<'a, 'i>, InternalError>], depth: usize) -> Result<&'a Expr<'a, 'i>, InternalError> {
         let mut expected = Vec::new();
-        let fns = &[
-            Self::try_parse_block,
-            Self::try_parse_string,
-            Self::try_parse_bind,
-            |this: &mut Parser<'a, 'i, 'r>, depth: usize| Self::try_parse_assign(this, CreateBinding::No, depth),
-            Self::try_parse_math,
-            Self::try_parse_immediate,
-            Self::try_parse_fn_call,
-            Self::try_parse_variable,
-        ];
         for f in fns {
-            match f(self, depth+1) {
+            match f(self, depth) {
                 Ok(expr) => return Ok(expr),
                 Err(InternalError::Backtrack(expect)) => expected.extend(expect.into_iter().copied()),
                 e @ Err(InternalError::Error(_)) => return e,
             }
         }
         Err(InternalError::Backtrack(expected.into()))
+    }
+
+    fn try_parse_non_math(&mut self, depth: usize) -> Result<&'a Expr<'a, 'i>, InternalError> {
+        trace!("{}try_parse_non_math", "|".repeat(depth));
+        self.try_parse_multiple(&[
+            Self::try_parse_parens,
+            Self::try_parse_block,
+            Self::try_parse_bind,
+            |this: &mut Parser<'a, 'i, 'r>, depth: usize| Self::try_parse_assign(this, CreateBinding::No, depth),
+            Self::try_parse_string,
+            Self::try_parse_immediate,
+            Self::try_parse_fn_call,
+            Self::try_parse_variable,
+        ], depth+1)
+    }
+
+    fn try_parse_expr(&mut self, depth: usize) -> Result<&'a Expr<'a, 'i>, InternalError> {
+        trace!("{}try_parse_expr", "|".repeat(depth));
+        self.try_parse_multiple(&[
+            // Self::try_parse_math,
+            Self::try_parse_precedence::<Math>,
+            Self::try_parse_non_math,
+        ], depth+1)
+    }
+
+    fn try_parse_parens(&mut self, depth: usize) -> Result<&'a Expr<'a, 'i>, InternalError> {
+        trace!("{}try_parse_parens", "|".repeat(depth));
+        let start_span = match self.tokens.peek(0) {
+            Some(Token { span, typ: TokenType::OpenParen }) => span,
+            _ => return Err(InternalError::Backtrack(Cow::Borrowed(&[Expected::OpenParen]))),
+        };
+        drop(self.tokens.next());
+        let expr = self.try_parse_expr(depth+1)?;
+        let span = match self.tokens.next() {
+            Some(Token { span, typ: TokenType::CloseParen }) => span,
+            _ => {
+                let span = Span::new(start_span.file, start_span.start, expr.span.end);
+                self.diagnostics.error(ErrorCode::UnclosedParen)
+                    .with_error_label(span, "unclosed parenthesis")
+                    .with_info_label(Span::new(expr.span.file, expr.span.end, expr.span.end), "try inserting a `)` here")
+                    .emit();
+                span
+            },
+        };
+        Ok(self.arena.alloc(Expr::new(Span::new(start_span.file, start_span.start, span.end), ExprType::Parenthezised(expr))))
     }
 
     fn try_parse_block(&mut self, depth: usize) -> Result<&'a Expr<'a, 'i>, InternalError> {
@@ -209,7 +245,8 @@ impl<'a, 'i, 'r> Parser<'a, 'i, 'r> {
             _ => {
                 let span = Span::new(start_span.file, start_span.start, body.last().map(|e| e.span.end).unwrap_or(start_span.start));
                 self.diagnostics.error(ErrorCode::UnclosedBlock)
-                    .with_error_label(span, "unclosed block").emit();
+                    .with_error_label(span, "unclosed block")
+                    .emit();
                 span
             },
         };

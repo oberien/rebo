@@ -61,7 +61,8 @@ impl<'a, 'i> ConstraintCreator<'a, 'i> {
             Statement(inner) => {
                 self.get_type(inner);
                 TypeOrBinding::Type(Type::Unit, expr.span)
-            }
+            },
+            Parenthezised(inner) => self.get_type(inner),
             &FunctionCall((binding, _), _) => TypeOrBinding::RetOf(binding, expr.span),
             &Assign((binding, _), expr) | &Bind(binding, expr) => {
                 let constraint = match self.get_type(expr) {

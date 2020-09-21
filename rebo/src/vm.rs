@@ -65,6 +65,7 @@ impl Vm {
                 self.eval_expr(expr);
                 Value::Unit
             }
+            Expr { span: _, typ: ExprType::Parenthezised(expr) } => self.eval_expr(expr),
             Expr { span: _, typ: ExprType::Block(exprs) } => {
                 let mut val = Value::Unit;
                 for expr in exprs {

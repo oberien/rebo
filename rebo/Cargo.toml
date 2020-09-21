@@ -17,3 +17,4 @@ backtrace = "0.3.50"
 rebo_derive = { path = "../rebo_derive" }
 lazy_static = "1.4.0"
 strsim = "0.10.0"
+itertools = "0.9.0"
