@@ -61,20 +61,28 @@ impl Precedence for Math {
 
 impl<'a, 'i, 'r> Parser<'a, 'i, 'r> {
     pub(super) fn try_parse_precedence<P: Precedence>(&mut self, depth: usize) -> Result<&'a Expr<'a, 'i>, InternalError> {
-        trace!("{}try_parse_precedence", "|".repeat(depth));
+        trace!("{}try_parse_precedence: {}", "|".repeat(depth), self.tokens.peek(0).map(|t| t.to_string()).unwrap_or_else(|| "".to_string()));
         let mark = self.tokens.mark();
-        let lhs = P::primitive_parse_fn()(self, depth+1)?;
-        let res = self.try_parse_precedence_inner::<P>(lhs, depth + 1)?;
-        mark.apply();
-        Ok(res)
+        let mut lhs = P::primitive_parse_fn()(self, depth+1)?;
+        lhs = self.try_parse_precedence_inner::<P>(lhs, depth + 1)?;
+        loop {
+            lhs = match self.try_parse_precedence_inner::<P>(lhs, depth + 1) {
+                Ok(expr) => expr,
+                Err(_) => {
+                    mark.apply();
+                    return Ok(lhs)
+                }
+            }
+        }
     }
 
     fn try_parse_precedence_inner<P: Precedence>(&mut self, lhs: &'a Expr<'a, 'i>, depth: usize) -> Result<&'a Expr<'a, 'i>, InternalError> {
-        trace!("{}try_parse_precedence_inner", "|".repeat(depth));
-        let next = match self.tokens.next() {
+        trace!("{}try_parse_precedence_inner: {}", "|".repeat(depth), self.tokens.peek(0).map(|t| t.to_string()).unwrap_or_else(|| "".to_string()));
+        let next = match self.tokens.peek(0) {
             Some(token) => token,
             None => return Err(InternalError::Backtrack(P::expected())),
         };
+        drop(self.tokens.next());
         let op = P::try_from_token(next)?;
         let mut rhs = P::primitive_parse_fn()(self, depth+1)?;
         loop {
@@ -89,7 +97,10 @@ impl<'a, 'i, 'r> Parser<'a, 'i, 'r> {
             if op2.precedence() <= op.precedence() {
                 return Ok(self.arena.alloc(Expr::new(Span::new(lhs.span.file, lhs.span.start, rhs.span.end), op.expr_type_constructor()(lhs, rhs))));
             }
-            rhs = self.try_parse_precedence_inner::<P>(rhs, depth+1)?;
+            rhs = match self.try_parse_precedence_inner::<P>(rhs, depth+1) {
+                Ok(rhs) => rhs,
+                Err(_) => return Ok(self.arena.alloc(Expr::new(Span::new(lhs.span.file, lhs.span.start, rhs.span.end), op.expr_type_constructor()(lhs, rhs)))),
+            }
         }
     }
 }

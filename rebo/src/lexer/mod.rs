@@ -1,5 +1,7 @@
 use std::collections::VecDeque;
 
+use itertools::Itertools;
+
 use crate::diagnostics::{Span, FileId, Diagnostics, ErrorCode};
 
 mod token;
@@ -107,7 +109,11 @@ fn try_lex_token<'i>(diagnostics: &Diagnostics<'_>, file: FileId, s: &'i str, in
         '+' => Ok(MaybeToken::Token(Token::new(span, TokenType::Plus))),
         '-' => Ok(MaybeToken::Token(Token::new(span, TokenType::Minus))),
         '*' => Ok(MaybeToken::Token(Token::new(span, TokenType::Star))),
-        '/' => Ok(MaybeToken::Token(Token::new(span, TokenType::Slash))),
+        '/' => match s[index+1..].chars().next() {
+            Some('/') => Ok(MaybeToken::Token(lex_line_comment(file, s, index))),
+            Some('*') => Ok(MaybeToken::Token(lex_block_comment(diagnostics, file, s, index))),
+            _ => Ok(MaybeToken::Token(Token::new(span, TokenType::Slash))),
+        }
         ',' => Ok(MaybeToken::Token(Token::new(span, TokenType::Comma))),
         '=' => match s[index+1..].chars().next() {
                 Some('=') => Ok(MaybeToken::Token(Token::new(Span::new(file, index, index + 2), TokenType::Equals))),
@@ -162,6 +168,58 @@ fn try_lex_ident<'i>(_diagnostics: &Diagnostics<'_>, file: FileId, s: &'i str, m
         match s[index..].chars().next() {
             Some('a'..='z') | Some('A'..='Z') | Some('_') | Some('0'..='9') => index += 1,
             Some(_) | None => return Ok(MaybeToken::Token(Token::new(Span::new(file, start, index), TokenType::Ident(&s[start..index])))),
+        }
+    }
+}
+
+fn lex_line_comment<'i>(file: FileId, s: &'i str, index: usize) -> Token<'i> {
+    trace!("lex_line_comment: {}", index);
+    assert_eq!(s[index..].chars().next(), Some('/'));
+    assert_eq!(s[index+1..].chars().next(), Some('/'));
+    let mut end = index + 2;
+    loop {
+        match s[end..].chars().next() {
+            Some('\n') => {
+                end += 1;
+                break
+            },
+            Some(_) => end += 1,
+            None => break,
+        }
+    }
+    Token::new(Span::new(file, index, end), TokenType::LineComment(&s[index..end]))
+}
+fn lex_block_comment<'i>(diagnostics: &Diagnostics<'_>, file: FileId, s: &'i str, index: usize) -> Token<'i> {
+    trace!("lex_block_comment: {}", index);
+    assert_eq!(s[index..].chars().next(), Some('/'));
+    assert_eq!(s[index+1..].chars().next(), Some('*'));
+    let warn = |start, end| {
+        diagnostics.warning(ErrorCode::UnclosedBlockComment)
+            .with_info_label(Span::new(file, start, end), "")
+            .with_info_label(Span::new(file, end, end), "try inserting `*/` here")
+            .emit();
+        Token::new(Span::new(file, start, end), TokenType::BlockComment(&s[start..end]))
+    };
+    let mut end = index + 2;
+    let mut depth = 0;
+    loop {
+        let c1 = match s[end..].chars().next() {
+            Some(c) => c,
+            None => return warn(index, end),
+        };
+        end += c1.len_utf8();
+        let c2 = match s[end..].chars().next() {
+            Some(c) => c,
+            None => return warn(index, end),
+        };
+        match (c1, c2) {
+            ('*', '/') if depth == 0 => {
+                end += c2.len_utf8();
+                return Token::new(Span::new(file, index, end), TokenType::BlockComment(&s[index..end]))
+            },
+            ('*', '/') => depth -= 1,
+            ('/', '*') => depth += 1,
+            _ => (),
         }
     }
 }

@@ -54,6 +54,10 @@ pub enum TokenType<'i> {
     CloseCurly,
     Comma,
     Semicolon,
+    /// Line Comment including starting `//` and ending newline
+    LineComment(&'i str),
+    /// Block Comment including starting `/*` and ending `*/`
+    BlockComment(&'i str),
     Eof,
 }
 
@@ -214,6 +218,8 @@ impl<'i> fmt::Display for TokenType<'i> {
             TokenType::CloseCurly => write!(f, "}} "),
             TokenType::Comma => write!(f, ", "),
             TokenType::Semicolon => writeln!(f, ";"),
+            TokenType::LineComment(c) => writeln!(f, "{}", c),
+            TokenType::BlockComment(c) => write!(f, "{}", c),
             TokenType::Eof => Ok(()),
         }
     }

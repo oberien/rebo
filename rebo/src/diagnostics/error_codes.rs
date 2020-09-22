@@ -18,6 +18,7 @@ pub enum ErrorCode {
     UnclosedBlock,
     InvalidNumberOfArguments,
     UnclosedParen,
+    UnclosedBlockComment,
 }
 use ErrorCode::*;
 
@@ -42,6 +43,7 @@ impl ErrorCode {
             UnclosedBlock => "0015",
             InvalidNumberOfArguments => "0016",
             UnclosedParen => "0017",
+            UnclosedBlockComment => "0018",
         }
     }
 
@@ -65,6 +67,7 @@ impl ErrorCode {
             UnclosedBlock => "unclosed block, missing `}`",
             InvalidNumberOfArguments => "invalid number of arguments",
             UnclosedParen => "unclosed parenthesis",
+            UnclosedBlockComment => "unclosed block coment",
         }
     }
 }

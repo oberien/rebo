@@ -90,6 +90,7 @@ enum CreateBinding {
     No,
 }
 
+/// All expression parsing function consume whitespace and comments before tokens, but not after.
 impl<'a, 'i, 'r> Parser<'a, 'i, 'r> {
     pub fn new(arena: &'a Arena<Expr<'a, 'i>>, tokens: Tokens<'i>, diagnostics: &'i Diagnostics<'i>, root_scope_binding_ids: &'r HashMap<&'static str, BindingId>) -> Self {
         let mut parser = Parser {
@@ -141,6 +142,15 @@ impl<'a, 'i, 'r> Parser<'a, 'i, 'r> {
         }
     }
 
+    fn next_token(&mut self) -> Option<Token<'i>> {
+        self.consume_comments();
+        self.tokens.next()
+    }
+    fn peek_token(&mut self, index: usize) -> Option<Token<'i>> {
+        self.consume_comments();
+        self.tokens.peek(index)
+    }
+
     pub fn parse(mut self) -> Result<Ast<'a, 'i>, Error> {
         trace!("parse");
         // file scope
@@ -152,11 +162,11 @@ impl<'a, 'i, 'r> Parser<'a, 'i, 'r> {
     }
 
     fn parse_expr_or_stmt(&mut self, last_span: Span, depth: usize) -> Result<&'a Expr<'a, 'i>, Error> {
-        trace!("{}parse_expr_or_stmt", "|".repeat(depth));
+        trace!("{}parse_expr_or_stmt: {}", "|".repeat(depth), self.peek_token(0).map(|t| t.to_string()).unwrap_or_else(|| "".to_string()));
         let expr = self.parse_expr(last_span, depth+1)?;
-        match self.tokens.peek(0) {
+        match self.peek_token(0) {
             Some(Token { span, typ: TokenType::Semicolon }) => {
-                drop(self.tokens.next());
+                drop(self.next_token());
                 Ok(self.arena.alloc(Expr::new(Span::new(span.file, expr.span.start, span.end), ExprType::Statement(expr))))
             }
             _ => Ok(expr)
@@ -164,7 +174,7 @@ impl<'a, 'i, 'r> Parser<'a, 'i, 'r> {
     }
 
     fn parse_expr(&mut self, last_span: Span, depth: usize) -> Result<&'a Expr<'a, 'i>, Error> {
-        trace!("{}parse_expr", "|".repeat(depth));
+        trace!("{}parse_expr: {}", "|".repeat(depth), self.peek_token(0).map(|t| t.to_string()).unwrap_or_else(|| "".to_string()));
         match self.try_parse_expr(depth+1) {
             Ok(expr) => Ok(expr),
             Err(InternalError::Backtrack(expected)) => {
@@ -188,7 +198,7 @@ impl<'a, 'i, 'r> Parser<'a, 'i, 'r> {
     }
 
     fn try_parse_non_math(&mut self, depth: usize) -> Result<&'a Expr<'a, 'i>, InternalError> {
-        trace!("{}try_parse_non_math", "|".repeat(depth));
+        trace!("{}try_parse_non_math: {}", "|".repeat(depth), self.peek_token(0).map(|t| t.to_string()).unwrap_or_else(|| "".to_string()));
         self.try_parse_multiple(&[
             Self::try_parse_parens,
             Self::try_parse_block,
@@ -202,7 +212,7 @@ impl<'a, 'i, 'r> Parser<'a, 'i, 'r> {
     }
 
     fn try_parse_expr(&mut self, depth: usize) -> Result<&'a Expr<'a, 'i>, InternalError> {
-        trace!("{}try_parse_expr", "|".repeat(depth));
+        trace!("{}try_parse_expr: {}", "|".repeat(depth), self.peek_token(0).map(|t| t.to_string()).unwrap_or_else(|| "".to_string()));
         self.try_parse_multiple(&[
             // Self::try_parse_math,
             Self::try_parse_precedence::<Math>,
@@ -211,14 +221,14 @@ impl<'a, 'i, 'r> Parser<'a, 'i, 'r> {
     }
 
     fn try_parse_parens(&mut self, depth: usize) -> Result<&'a Expr<'a, 'i>, InternalError> {
-        trace!("{}try_parse_parens", "|".repeat(depth));
-        let start_span = match self.tokens.peek(0) {
+        trace!("{}try_parse_parens: {}", "|".repeat(depth), self.peek_token(0).map(|t| t.to_string()).unwrap_or_else(|| "".to_string()));
+        let start_span = match self.peek_token(0) {
             Some(Token { span, typ: TokenType::OpenParen }) => span,
             _ => return Err(InternalError::Backtrack(Cow::Borrowed(&[Expected::OpenParen]))),
         };
-        drop(self.tokens.next());
+        drop(self.next_token());
         let expr = self.try_parse_expr(depth+1)?;
-        let span = match self.tokens.next() {
+        let span = match self.next_token() {
             Some(Token { span, typ: TokenType::CloseParen }) => span,
             _ => {
                 let span = Span::new(start_span.file, start_span.start, expr.span.end);
@@ -233,14 +243,14 @@ impl<'a, 'i, 'r> Parser<'a, 'i, 'r> {
     }
 
     fn try_parse_block(&mut self, depth: usize) -> Result<&'a Expr<'a, 'i>, InternalError> {
-        trace!("{}try_parse_block", "|".repeat(depth));
-        let start_span = match self.tokens.peek(0) {
+        trace!("{}try_parse_block: {}", "|".repeat(depth), self.peek_token(0).map(|t| t.to_string()).unwrap_or_else(|| "".to_string()));
+        let start_span = match self.peek_token(0) {
             Some(Token { span, typ: TokenType::OpenCurly }) => span,
             _ => return Err(InternalError::Backtrack(Cow::Borrowed(&[Expected::OpenCurly])))
         };
-        drop(self.tokens.next());
+        drop(self.next_token());
         let body = self.parse_block_body(depth+1);
-        let span = match self.tokens.next() {
+        let span = match self.next_token() {
             Some(Token { span, typ: TokenType::CloseCurly }) => span,
             _ => {
                 let span = Span::new(start_span.file, start_span.start, body.last().map(|e| e.span.end).unwrap_or(start_span.start));
@@ -254,7 +264,7 @@ impl<'a, 'i, 'r> Parser<'a, 'i, 'r> {
     }
 
     fn parse_block_body(&mut self, depth: usize) -> Vec<&'a Expr<'a, 'i>> {
-        trace!("{}parse_block_body", "|".repeat(depth));
+        trace!("{}parse_block_body: {}", "|".repeat(depth), self.peek_token(0).map(|t| t.to_string()).unwrap_or_else(|| "".to_string()));
         enum Last {
             Terminated,
             Unterminated(Span),
@@ -263,10 +273,10 @@ impl<'a, 'i, 'r> Parser<'a, 'i, 'r> {
         self.push_scope();
         let mut exprs = Vec::new();
         let mut last = Last::Terminated;
-        let mut last_span = self.tokens.peek(0).unwrap().span;
+        let mut last_span = self.peek_token(0).unwrap().span;
 
-        while !self.tokens.is_empty() && self.tokens.peek(0).unwrap().typ != TokenType::Eof && self.tokens.peek(0).unwrap().typ != TokenType::CloseCurly {
-            let span = self.tokens.peek(0).unwrap().span;
+        while !self.tokens.is_empty() && self.peek_token(0).unwrap().typ != TokenType::Eof && self.peek_token(0).unwrap().typ != TokenType::CloseCurly {
+            let span = self.peek_token(0).unwrap().span;
             let expr = match self.parse_expr_or_stmt(last_span, depth+1) {
                 Ok(expr) => expr,
                 Err(_) => {
@@ -299,10 +309,10 @@ impl<'a, 'i, 'r> Parser<'a, 'i, 'r> {
     }
 
     fn try_parse_string(&mut self, depth: usize) -> Result<&'a Expr<'a, 'i>, InternalError> {
-        trace!("{}trace_parse_string", "|".repeat(depth));
-        match self.tokens.peek(0) {
+        trace!("{}trace_parse_string: {}", "|".repeat(depth), self.peek_token(0).map(|t| t.to_string()).unwrap_or_else(|| "".to_string()));
+        match self.peek_token(0) {
             Some(Token { span, typ: TokenType::DqString(s) }) => {
-                drop(self.tokens.next());
+                drop(self.next_token());
                 Ok(self.arena.alloc(Expr::new(span, ExprType::String(s))))
             }
             _ => Err(InternalError::Backtrack(Cow::Borrowed(&[Expected::DqString]))),
@@ -310,10 +320,10 @@ impl<'a, 'i, 'r> Parser<'a, 'i, 'r> {
     }
 
     fn try_parse_variable(&mut self, depth: usize) -> Result<&'a Expr<'a, 'i>, InternalError> {
-        trace!("{}try_parse_variable", "|".repeat(depth));
-        match self.tokens.peek(0) {
+        trace!("{}try_parse_variable: {}", "|".repeat(depth), self.peek_token(0).map(|t| t.to_string()).unwrap_or_else(|| "".to_string()));
+        match self.peek_token(0) {
             Some(Token { span, typ: TokenType::Ident(ident) }) => {
-                drop(self.tokens.next());
+                drop(self.next_token());
                 let binding = match self.get_binding(ident) {
                     Some(binding) => binding,
                     None => self.diagnostic_unknown_identifier(span, ident, |d| d),
@@ -325,15 +335,15 @@ impl<'a, 'i, 'r> Parser<'a, 'i, 'r> {
     }
 
     fn try_parse_bind(&mut self, depth: usize) -> Result<&'a Expr<'a, 'i>, InternalError> {
-        trace!("{}try_parse_bind", "|".repeat(depth));
+        trace!("{}try_parse_bind: {}", "|".repeat(depth), self.peek_token(0).map(|t| t.to_string()).unwrap_or_else(|| "".to_string()));
         let mark = self.tokens.mark();
-        let let_span = match self.tokens.next() {
+        let let_span = match self.next_token() {
             Some(Token { span, typ: TokenType::Let }) => span,
             _ => return Err(InternalError::Backtrack(Cow::Borrowed(&[Expected::Let]))),
         };
-        let is_mut = match self.tokens.peek(0) {
+        let is_mut = match self.peek_token(0) {
             Some(Token { typ: TokenType::Mut, .. }) => {
-                drop(self.tokens.next());
+                drop(self.next_token());
                 true
             }
             _ => false
@@ -360,14 +370,14 @@ impl<'a, 'i, 'r> Parser<'a, 'i, 'r> {
     }
 
     fn try_parse_assign(&mut self, create_binding: CreateBinding, depth: usize) -> Result<&'a Expr<'a, 'i>, InternalError> {
-        trace!("{}try_parse_assign", "|".repeat(depth));
+        trace!("{}try_parse_assign: {}", "|".repeat(depth), self.peek_token(0).map(|t| t.to_string()).unwrap_or_else(|| "".to_string()));
         let mark = self.tokens.mark();
-        let (ident, ident_span) = match self.tokens.next() {
+        let (ident, ident_span) = match self.next_token() {
             Some(Token { span, typ: TokenType::Ident(ident)}) => (ident, span),
             _ => return Err(InternalError::Backtrack(Cow::Borrowed(&[Expected::Ident]))),
         };
         // TODO: Type
-        match self.tokens.next() {
+        match self.next_token() {
             Some(Token { span: _, typ: TokenType::Assign }) => (),
             _ => return Err(InternalError::Backtrack(Cow::Borrowed(&[Expected::Assign]))),
         };
@@ -398,14 +408,14 @@ impl<'a, 'i, 'r> Parser<'a, 'i, 'r> {
     }
 
     fn try_parse_immediate(&mut self, depth: usize) -> Result<&'a Expr<'a, 'i>, InternalError> {
-        trace!("{}try_parse_immediate", "|".repeat(depth));
-        match self.tokens.peek(0) {
+        trace!("{}try_parse_immediate: {}", "|".repeat(depth), self.peek_token(0).map(|t| t.to_string()).unwrap_or_else(|| "".to_string()));
+        match self.peek_token(0) {
             Some(Token { span, typ: TokenType::Integer(i, _radix) }) => {
-                drop(self.tokens.next());
+                drop(self.next_token());
                 Ok(self.arena.alloc(Expr::new(span, ExprType::Integer(i))))
             }
             Some(Token { span, typ: TokenType::Float(f, _radix) }) => {
-                drop(self.tokens.next());
+                drop(self.next_token());
                 Ok(self.arena.alloc(Expr::new(span, ExprType::Float(f))))
             }
             _ => Err(InternalError::Backtrack(Cow::Borrowed(&[Expected::Immediate]))),
@@ -413,14 +423,14 @@ impl<'a, 'i, 'r> Parser<'a, 'i, 'r> {
     }
 
     fn try_parse_math(&mut self, depth: usize) -> Result<&'a Expr<'a, 'i>, InternalError> {
-        trace!("{}try_parse_math", "|".repeat(depth));
-        match self.tokens.peek(0) {
+        trace!("{}try_parse_math: {}", "|".repeat(depth), self.peek_token(0).map(|t| t.to_string()).unwrap_or_else(|| "".to_string()));
+        match self.peek_token(0) {
             Some(Token { span, typ: TokenType::Plus })
             | Some(Token { span, typ: TokenType::Minus })
             | Some(Token { span, typ: TokenType::Star })
             | Some(Token { span, typ: TokenType::Slash }) => {
                 // consume the operator token
-                let op = self.tokens.next().unwrap();
+                let op = self.next_token().unwrap();
                 let a = self.parse_expr(span, depth+1)?;
                 let b = self.parse_expr(span, depth+1)?;
                 match op.typ {
@@ -436,14 +446,14 @@ impl<'a, 'i, 'r> Parser<'a, 'i, 'r> {
     }
 
     fn try_parse_fn_call(&mut self, depth: usize) -> Result<&'a Expr<'a, 'i>, InternalError> {
-        trace!("{}try_parse_fn_call", "|".repeat(depth));
+        trace!("{}try_parse_fn_call: {}", "|".repeat(depth), self.peek_token(0).map(|t| t.to_string()).unwrap_or_else(|| "".to_string()));
         let mark = self.tokens.mark();
 
-        let (ident, ident_span) = match self.tokens.next() {
+        let (ident, ident_span) = match self.next_token() {
             Some(Token { span, typ: TokenType::Ident(ident) }) => (ident, span),
             _ => return Err(InternalError::Backtrack(Cow::Borrowed(&[Expected::Ident]))),
         };
-        match self.tokens.next() {
+        match self.next_token() {
             Some(Token { typ: TokenType::OpenParen, .. }) => (),
             _ => return Err(InternalError::Backtrack(Cow::Borrowed(&[Expected::OpenParen]))),
         }
@@ -454,9 +464,9 @@ impl<'a, 'i, 'r> Parser<'a, 'i, 'r> {
         let mut args = Vec::new();
         let mut last_span = ident_span;
         let res = loop {
-            match self.tokens.peek(0) {
+            match self.peek_token(0) {
                 Some(Token { span, typ: TokenType::CloseParen }) => {
-                    drop(self.tokens.next());
+                    drop(self.next_token());
                     break self.arena.alloc(Expr::new(Span::new(span.file, ident_span.start, span.end), ExprType::FunctionCall((binding, ident_span), args)));
                 },
                 None => return Err(InternalError::Backtrack(Cow::Borrowed(&[Expected::Argument, Expected::CloseParen]))),
@@ -464,7 +474,7 @@ impl<'a, 'i, 'r> Parser<'a, 'i, 'r> {
             }
             let arg = self.parse_expr(last_span, depth+1)?;
             args.push(arg);
-            match self.tokens.next() {
+            match self.next_token() {
                 Some(Token { typ: TokenType::Comma, span }) => last_span = span,
                 Some(Token { span, typ: TokenType::CloseParen }) => {
                     break self.arena.alloc(Expr::new(Span::new(span.file, ident_span.start, span.end), ExprType::FunctionCall((binding, ident_span), args)));
@@ -525,18 +535,29 @@ impl<'a, 'i, 'r> Parser<'a, 'i, 'r> {
         d.emit()
     }
 
+    fn consume_comments(&mut self) {
+        match self.tokens.peek(0) {
+            Some(Token { typ: TokenType::LineComment(c), .. })
+            | Some(Token { typ: TokenType::BlockComment(c), .. }) => {
+                drop(self.tokens.next().unwrap());
+                trace!("dropped comment {}", c);
+            },
+            _ => (),
+        }
+    }
+
     /// Consume until the next end token (`;`, `}`) in the hope that that allows us to recover.
     fn consume_until_next_end_token(&mut self) -> Option<Span> {
-        let start_span = self.tokens.peek(0)?.span;
+        let start_span = self.peek_token(0)?.span;
         let mut last_end = start_span.end;
         loop {
-            match self.tokens.peek(0) {
+            match self.peek_token(0) {
                 Some(Token { span, typ: TokenType::Semicolon })
                 | Some(Token { span, typ: TokenType::CloseCurly }) => {
                     return Some(Span::new(start_span.file, start_span.start, span.end))
                 },
                 Some(Token { span, .. }) => {
-                    drop(self.tokens.next());
+                    drop(self.next_token());
                     last_end = span.end
                 },
                 None => return Some(Span::new(start_span.file, start_span.start, last_end)),
