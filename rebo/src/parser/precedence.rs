@@ -7,6 +7,15 @@ use super::{Expr, InternalError, Parser};
 use crate::parser::{Expected, ExprType};
 use crate::diagnostics::Span;
 
+// make trace! here log as if this still was the parser module
+macro_rules! module_path {
+    () => {{
+        let path = std::module_path!();
+        let end = path.rfind("::").unwrap();;
+        &path[..end]
+    }}
+}
+
 pub(super) trait Precedence: Sized + Copy {
     fn try_from_token(token: Token<'_>) -> Result<Self, InternalError>;
     fn precedence(self) -> u8;
@@ -66,6 +75,7 @@ impl<'a, 'i, 'r> Parser<'a, 'i, 'r> {
         let mut lhs = P::primitive_parse_fn()(self, depth+1)?;
         lhs = self.try_parse_precedence_inner::<P>(lhs, depth + 1)?;
         loop {
+            trace!("{} lhs = {}", "|".repeat(depth), lhs);
             lhs = match self.try_parse_precedence_inner::<P>(lhs, depth + 1) {
                 Ok(expr) => expr,
                 Err(_) => {
@@ -82,10 +92,11 @@ impl<'a, 'i, 'r> Parser<'a, 'i, 'r> {
             Some(token) => token,
             None => return Err(InternalError::Backtrack(P::expected())),
         };
-        drop(self.tokens.next());
         let op = P::try_from_token(next)?;
+        drop(self.tokens.next());
         let mut rhs = P::primitive_parse_fn()(self, depth+1)?;
         loop {
+            trace!("{} rhs = {}", "|".repeat(depth), rhs);
             let next = match self.tokens.peek(0) {
                 Some(token) => token,
                 None => return Ok(self.arena.alloc(Expr::new(Span::new(lhs.span.file, lhs.span.start, rhs.span.end), op.expr_type_constructor()(lhs, rhs)))),
@@ -94,7 +105,7 @@ impl<'a, 'i, 'r> Parser<'a, 'i, 'r> {
                 Ok(op) => op,
                 Err(_) => return Ok(self.arena.alloc(Expr::new(Span::new(lhs.span.file, lhs.span.start, rhs.span.end), op.expr_type_constructor()(lhs, rhs)))),
             };
-            if op2.precedence() <= op.precedence() {
+            if op2.precedence() < op.precedence() {
                 return Ok(self.arena.alloc(Expr::new(Span::new(lhs.span.file, lhs.span.start, rhs.span.end), op.expr_type_constructor()(lhs, rhs))));
             }
             rhs = match self.try_parse_precedence_inner::<P>(rhs, depth+1) {

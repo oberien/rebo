@@ -147,8 +147,19 @@ impl<'a, 'i, 'r> Parser<'a, 'i, 'r> {
         self.tokens.next()
     }
     fn peek_token(&mut self, index: usize) -> Option<Token<'i>> {
-        self.consume_comments();
-        self.tokens.peek(index)
+        let mut non_comments = 0;
+        for i in 0.. {
+            match self.tokens.peek(i)?.typ {
+                TokenType::BlockComment(_) | TokenType::LineComment(_) => (),
+                _ => {
+                    non_comments += 1;
+                    if non_comments - 1 == index {
+                        return self.tokens.peek(i);
+                    }
+                }
+            }
+        }
+        unreachable!()
     }
 
     pub fn parse(mut self) -> Result<Ast<'a, 'i>, Error> {
@@ -175,10 +186,11 @@ impl<'a, 'i, 'r> Parser<'a, 'i, 'r> {
 
     fn parse_expr(&mut self, last_span: Span, depth: usize) -> Result<&'a Expr<'a, 'i>, Error> {
         trace!("{}parse_expr: {}", "|".repeat(depth), self.peek_token(0).map(|t| t.to_string()).unwrap_or_else(|| "".to_string()));
+        let span = self.peek_token(0).map(|t| t.span).unwrap_or(Span::new(last_span.file, last_span.end, last_span.end));
         match self.try_parse_expr(depth+1) {
             Ok(expr) => Ok(expr),
             Err(InternalError::Backtrack(expected)) => {
-                self.diagnostic_expected(ErrorCode::InvalidExpression, Span::new(last_span.file, last_span.end, last_span.end), &expected);
+                self.diagnostic_expected(ErrorCode::InvalidExpression, Span::new(span.file, span.start, span.end), &expected);
                 Err(Error::Abort)
             },
             Err(InternalError::Error(e)) => Err(e),
