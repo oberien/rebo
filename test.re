@@ -12,4 +12,6 @@ c = c + {
     c + 42
 };
 print(c, 5, 7, 13);
-print()
+print();
+let unit = ();
+print(unit);

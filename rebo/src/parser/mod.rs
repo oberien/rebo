@@ -239,6 +239,17 @@ impl<'a, 'i, 'r> Parser<'a, 'i, 'r> {
             _ => return Err(InternalError::Backtrack(Cow::Borrowed(&[Expected::OpenParen]))),
         };
         drop(self.next_token());
+
+        // try parse unit
+        match self.peek_token(0) {
+            Some(Token { span, typ: TokenType::CloseParen }) => {
+                drop(self.next_token());
+                return Ok(self.arena.alloc(Expr::new(Span::new(start_span.file, start_span.start, span.end), ExprType::Unit)));
+            }
+            _ => (),
+        }
+
+        // try parse parenthesized
         let expr = self.try_parse_expr(depth+1)?;
         let span = match self.next_token() {
             Some(Token { span, typ: TokenType::CloseParen }) => span,
