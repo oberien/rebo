@@ -65,6 +65,7 @@ pub enum Value {
     Unit,
     Integer(i64),
     Float(f64),
+    Bool(bool),
     String(String),
     Function(FunctionImpl),
 }
@@ -93,6 +94,7 @@ impl From<&'_ Value> for Type {
             Value::Unit => Type::Unit,
             Value::Integer(_) => Type::Integer,
             Value::Float(_) => Type::Float,
+            Value::Bool(_) => Type::Bool,
             Value::String(_) => Type::String,
             Value::Function(_) => todo!(),
         }

@@ -48,6 +48,7 @@ impl Vm {
             Expr { span: _, typ: ExprType::Variable(binding) } => self.load_binding(binding),
             &Expr { span: _, typ: ExprType::Integer(i) } => Value::Integer(i),
             &Expr { span: _, typ: ExprType::Float(f) } => Value::Float(f),
+            &Expr { span: _, typ: ExprType::Bool(b) } => Value::Bool(b),
             Expr { span: _, typ: ExprType::String(s) } => Value::String(s.clone()),
             Expr { span: _, typ: ExprType::Assign((binding, _), expr) } => {
                 let value = self.eval_expr(expr);

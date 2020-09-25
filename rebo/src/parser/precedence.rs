@@ -11,7 +11,7 @@ use crate::diagnostics::Span;
 macro_rules! module_path {
     () => {{
         let path = std::module_path!();
-        let end = path.rfind("::").unwrap();;
+        let end = path.rfind("::").unwrap();
         &path[..end]
     }}
 }

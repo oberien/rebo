@@ -31,6 +31,7 @@ pub enum ExprType<'a, 'i> {
     Variable(Binding<'i>),
     Integer(i64),
     Float(f64),
+    Bool(bool),
     String(String),
     // let foo = bar
     Bind(Binding<'i>, &'a Expr<'a, 'i>),
@@ -59,6 +60,7 @@ impl<'a, 'i> fmt::Display for ExprType<'a, 'i> {
             ExprType::Variable(binding) => write!(f, "{}", binding.ident),
             ExprType::Integer(i) => write!(f, "{}", i),
             ExprType::Float(fl) => write!(f, "{:2.1}", fl),
+            ExprType::Bool(b) => write!(f, "{}", b),
             ExprType::String(s) => write!(f, "{:?}", s),
             ExprType::Bind(binding, expr) => {
                 write!(f, "let ")?;

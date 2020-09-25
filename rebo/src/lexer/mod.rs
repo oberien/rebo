@@ -60,6 +60,7 @@ fn lex_next<'i>(diagnostics: &Diagnostics<'_>, file: FileId, s: &'i str, index: 
     let functions = [
         try_lex_token,
         try_lex_number,
+        try_lex_bool,
         try_lex_ident,
     ];
 
@@ -152,6 +153,17 @@ fn try_lex_number<'i>(diagnostics: &Diagnostics<'_>, file: FileId, s: &'i str, m
                 .emit();
             Ok(MaybeToken::Diagnostic(number_end))
         }
+    }
+}
+
+fn try_lex_bool<'i>(diagnostics: &Diagnostics<'_>, file: FileId, s: &'i str, mut index: usize) -> Result<MaybeToken<'i>, Error> {
+    trace!("try_lex_bool: {}", index);
+    if s.starts_with("true") {
+        Ok(MaybeToken::Token(Token::new(Span::new(file, index, index+4), TokenType::Bool(true))))
+    } else if s.starts_with("false") {
+        Ok(MaybeToken::Token(Token::new(Span::new(file, index, index+5), TokenType::Bool(false))))
+    } else {
+        Ok(MaybeToken::Backtrack)
     }
 }
 

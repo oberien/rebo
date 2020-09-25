@@ -38,6 +38,7 @@ pub enum TokenType<'i> {
     DqString(String),
     Integer(i64, Radix),
     Float(f64, Radix),
+    Bool(bool),
     Let,
     Mut,
     // =
@@ -204,6 +205,7 @@ impl<'i> fmt::Display for TokenType<'i> {
             TokenType::DqString(s) => write!(f, "{:?} ", s),
             &TokenType::Integer(i, radix) => write!(f, "{} ", lexical::to_string_radix(i, radix.to_u8())),
             &TokenType::Float(fl, radix) => write!(f, "{} ", lexical::to_string_radix(fl, radix.to_u8())),
+            &TokenType::Bool(b) => write!(f, "{} ", b),
             TokenType::Let => write!(f, "let "),
             TokenType::Mut => write!(f, "mut "),
             TokenType::Assign => write!(f, "= "),

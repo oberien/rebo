@@ -20,6 +20,7 @@ fn print(_scopes: &mut Scopes, values: Vec<Value>) -> Value {
             Value::Unit => print!("{:<8?}", ()),
             Value::Integer(i) => print!("{:<8}", i),
             Value::Float(i) => print!("{:<8}", i),
+            Value::Bool(b) => print!("{:<8}", b),
             Value::String(s) => print!("{:<8?}", s),
             Value::Function(_f) => todo!("function print representation"),
         }

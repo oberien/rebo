@@ -38,6 +38,7 @@ pub enum Type {
     Unit,
     Integer,
     Float,
+    Bool,
     String,
     Function(Box<FunctionType>),
     Any,
@@ -55,6 +56,7 @@ impl PartialEq for Type {
             (Type::Unit, Type::Unit) => true,
             (Type::Integer, Type::Integer) => true,
             (Type::Float, Type::Float) => true,
+            (Type::Bool, Type::Bool) => true,
             (Type::String, Type::String) => true,
             (Type::Function(a), Type::Function(b)) => {
                 let FunctionType { args: args_a, ret: ret_a } = &**a;
@@ -71,6 +73,7 @@ impl fmt::Display for Type {
             Type::Unit => write!(f, "()"),
             Type::Integer => write!(f, "integer"),
             Type::Float => write!(f, "float"),
+            Type::Bool => write!(f, "bool"),
             Type::String => write!(f, "string"),
             Type::Function(fun) => {
                 let FunctionType { args, ret } = &**fun;

@@ -23,6 +23,7 @@ impl<'a, 'i> Checker<'a, 'i> {
             Variable(binding) => self.binding_types.get(binding).unwrap().clone().0,
             Integer(_) => Type::Integer,
             Float(_) => Type::Float,
+            Bool(_) => Type::Bool,
             String(_) => Type::String,
             Bind(binding, expr) | Assign((binding, _), expr) => {
                 self.get_type(expr);

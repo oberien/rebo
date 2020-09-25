@@ -57,6 +57,7 @@ impl<'a, 'i> ConstraintCreator<'a, 'i> {
             &Variable(binding) => TypeOrBinding::Binding(binding, expr.span),
             Integer(_) => TypeOrBinding::Type(Type::Integer, expr.span),
             Float(_) => TypeOrBinding::Type(Type::Float, expr.span),
+            Bool(_) => TypeOrBinding::Type(Type::Bool, expr.span),
             String(_) => TypeOrBinding::Type(Type::String, expr.span),
             Statement(inner) => {
                 self.get_type(inner);

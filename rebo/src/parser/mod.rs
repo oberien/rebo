@@ -441,30 +441,11 @@ impl<'a, 'i, 'r> Parser<'a, 'i, 'r> {
                 drop(self.next_token());
                 Ok(self.arena.alloc(Expr::new(span, ExprType::Float(f))))
             }
+            Some(Token { span, typ: TokenType::Bool(b) }) => {
+                drop(self.next_token());
+                Ok(self.arena.alloc(Expr::new(span, ExprType::Bool(b))))
+            }
             _ => Err(InternalError::Backtrack(Cow::Borrowed(&[Expected::Immediate]))),
-        }
-    }
-
-    fn try_parse_math(&mut self, depth: usize) -> Result<&'a Expr<'a, 'i>, InternalError> {
-        trace!("{}try_parse_math: {}", "|".repeat(depth), self.peek_token(0).map(|t| t.to_string()).unwrap_or_else(|| "".to_string()));
-        match self.peek_token(0) {
-            Some(Token { span, typ: TokenType::Plus })
-            | Some(Token { span, typ: TokenType::Minus })
-            | Some(Token { span, typ: TokenType::Star })
-            | Some(Token { span, typ: TokenType::Slash }) => {
-                // consume the operator token
-                let op = self.next_token().unwrap();
-                let a = self.parse_expr(span, depth+1)?;
-                let b = self.parse_expr(span, depth+1)?;
-                match op.typ {
-                    TokenType::Plus => Ok(self.arena.alloc(Expr::new(Span::new(span.file, span.start, b.span.end), ExprType::Add(a, b)))),
-                    TokenType::Minus => Ok(self.arena.alloc(Expr::new(Span::new(span.file, span.start, b.span.end), ExprType::Sub(a, b)))),
-                    TokenType::Star => Ok(self.arena.alloc(Expr::new(Span::new(span.file, span.start, b.span.end), ExprType::Mul(a, b)))),
-                    TokenType::Slash => Ok(self.arena.alloc(Expr::new(Span::new(span.file, span.start, b.span.end), ExprType::Div(a, b)))),
-                    _ => unreachable!(),
-                }
-            },
-            _ => Err(InternalError::Backtrack(Cow::Borrowed(&[Expected::MathOp]))),
         }
     }
 
