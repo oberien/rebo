@@ -139,5 +139,6 @@ impl IntoValue for () {
 
 impl_from_into!(i64, Integer);
 impl_from_into!(f64, Float);
+impl_from_into!(bool, Bool);
 impl_from_into!(String, String);
 // impl_from_into!(Function, Function);

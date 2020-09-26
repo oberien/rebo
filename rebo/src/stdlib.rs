@@ -12,6 +12,8 @@ pub fn add_to_root_scope(scope: &mut RootScope) {
         imp: FunctionImpl::Rust(print),
     });
     scope.add_function("add_one", add_one);
+    scope.add_function("assert", assert);
+    scope.add_function("panic", panic);
 }
 
 fn print(_scopes: &mut Scopes, values: Vec<Value>) -> Value {
@@ -32,4 +34,12 @@ fn print(_scopes: &mut Scopes, values: Vec<Value>) -> Value {
 #[rebo::function]
 fn add_one(a: i64) -> i64 {
     a + 1
+}
+#[rebo::function]
+fn assert(b: bool) {
+    assert!(b);
+}
+#[rebo::function]
+fn panic(msg: String) {
+    panic!("{}", msg);
 }

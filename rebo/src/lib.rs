@@ -20,20 +20,22 @@ mod scope;
 mod types;
 mod stdlib;
 mod util;
+#[cfg(test)]
+mod tests;
 
 pub use rebo_derive::function;
 use crate::typeck::{BindingTypes, Typechecker};
+use std::path::Path;
 
 const EXTERNAL_SOURCE: &str = "defined externally";
 
-pub fn do_stuff() {
+pub fn run<P: AsRef<Path>>(path: P, code: String) {
     let source_arena = Arena::new();
     let diagnostics = Diagnostics::new(&source_arena);
     // register file 0 for external sources
     diagnostics.add_file("external".to_string(), EXTERNAL_SOURCE.to_string());
 
-    let code = fs::read_to_string("test.re").unwrap();
-    let (file, code) = diagnostics.add_file("test.re".to_string(), code);
+    let (file, code) = diagnostics.add_file(path.as_ref().to_string_lossy().into(), code);
     let tokens = lexer::lex(&diagnostics, file, code).unwrap();
     println!("{}", tokens);
 

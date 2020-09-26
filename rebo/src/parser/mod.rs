@@ -354,7 +354,8 @@ impl<'a, 'i, 'r> Parser<'a, 'i, 'r> {
         match self.peek_token(0) {
             Some(Token { span, typ: TokenType::Exclamation }) => {
                 drop(self.next_token());
-                self.try_parse_expr(depth+1)
+                let expr = self.try_parse_expr(depth+1)?;
+                Ok(self.arena.alloc(Expr::new(span, ExprType::BoolNot(expr))))
             }
             _ => Err(InternalError::Backtrack(Cow::Borrowed(&[Expected::DqString]))),
         }
