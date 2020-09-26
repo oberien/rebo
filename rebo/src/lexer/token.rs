@@ -49,6 +49,11 @@ pub enum TokenType<'i> {
     Minus,
     Star,
     Slash,
+    Exclamation,
+    Amp,
+    DoubleAmp,
+    Pipe,
+    DoublePipe,
     OpenParen,
     CloseParen,
     OpenCurly,
@@ -92,7 +97,7 @@ impl<'i> Tokens<'i> {
     /// Marks the current position for automatic backtracking on drop. Call Mark::apply to prevent backtracking.
     pub fn mark(&self) -> Mark<'i> {
         let lookahead = self.inner.borrow().lookahead.last().cloned().unwrap_or_default();
-        trace!("marking at {:?}", lookahead);
+        // trace!("marking at {:?}", lookahead);
         self.inner.borrow_mut().lookahead.push(lookahead);
         Mark {
             tokens: Rc::clone(&self.inner),
@@ -102,7 +107,7 @@ impl<'i> Tokens<'i> {
 
     pub fn next(&mut self) -> Option<Token<'i>> {
         let res = self.inner.borrow_mut().next();
-        trace!("taking token {:?}", res);
+        // trace!("taking token {:?}", res);
         res
     }
 
@@ -155,14 +160,14 @@ impl Mark<'_> {
         let lookahead = tokens.lookahead.pop().unwrap();
         match tokens.lookahead.last_mut() {
             Some(l) => {
-                trace!("updating peek from {} to {}", l.peek, lookahead.peek);
+                // trace!("updating peek from {} to {}", l.peek, lookahead.peek);
                 l.peek = lookahead.peek;
-                trace!("updating consume from {} to {}", l.consume, lookahead.consume);
+                // trace!("updating consume from {} to {}", l.consume, lookahead.consume);
                 l.consume = lookahead.consume;
             },
             None => for _ in 0..lookahead.consume {
                 let token = tokens.tokens.pop_front();
-                trace!("consuming {:?}", token);
+                // trace!("consuming {:?}", token);
             }
         }
         self.done = true;
@@ -214,6 +219,11 @@ impl<'i> fmt::Display for TokenType<'i> {
             TokenType::Minus => write!(f, "- "),
             TokenType::Star => write!(f, "* "),
             TokenType::Slash => write!(f, "/ "),
+            TokenType::Exclamation => write!(f, "! "),
+            TokenType::Amp => write!(f, "& "),
+            TokenType::DoubleAmp => write!(f, "&& "),
+            TokenType::Pipe => write!(f, "| "),
+            TokenType::DoublePipe => write!(f, "|| "),
             TokenType::OpenParen => write!(f, "( "),
             TokenType::CloseParen => write!(f, ") "),
             TokenType::OpenCurly => write!(f, "{{ "),

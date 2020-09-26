@@ -41,6 +41,9 @@ pub enum ExprType<'a, 'i> {
     Sub(&'a Expr<'a, 'i>, &'a Expr<'a, 'i>),
     Mul(&'a Expr<'a, 'i>, &'a Expr<'a, 'i>),
     Div(&'a Expr<'a, 'i>, &'a Expr<'a, 'i>),
+    BoolAnd(&'a Expr<'a, 'i>, &'a Expr<'a, 'i>),
+    BoolOr(&'a Expr<'a, 'i>, &'a Expr<'a, 'i>),
+    BoolNot(&'a Expr<'a, 'i>),
     Statement(&'a Expr<'a, 'i>),
     Block(Vec<&'a Expr<'a, 'i>>),
     Parenthezised(&'a Expr<'a, 'i>),
@@ -74,6 +77,9 @@ impl<'a, 'i> fmt::Display for ExprType<'a, 'i> {
             ExprType::Sub(a, b) => write!(f, "{} - {}", a, b),
             ExprType::Mul(a, b) => write!(f, "{} * {}", a, b),
             ExprType::Div(a, b) => write!(f, "{} / {}", a, b),
+            ExprType::BoolAnd(a, b) => write!(f, "{} && {}", a, b),
+            ExprType::BoolOr(a, b) => write!(f, "{} || {}", a, b),
+            ExprType::BoolNot(b) => write!(f, "!{}", b),
             ExprType::Statement(expr) => write!(f, "{};", expr),
             ExprType::Block(exprs) => {
                 writeln!(f, "{{")?;

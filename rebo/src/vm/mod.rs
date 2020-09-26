@@ -62,6 +62,24 @@ impl Vm {
             Expr { span: _, typ: ExprType::Sub(a, b) } => math::<Sub>(self.eval_expr(a), self.eval_expr(b)),
             Expr { span: _, typ: ExprType::Mul(a, b) } => math::<Mul>(self.eval_expr(a), self.eval_expr(b)),
             Expr { span: _, typ: ExprType::Div(a, b) } => math::<Div>(self.eval_expr(a), self.eval_expr(b)),
+            Expr { span: _, typ: ExprType::BoolNot(b) } => {
+                match self.eval_expr(b) {
+                    Value::Bool(b) => Value::Bool(!b),
+                    _ => unreachable!("boolean NOT called with non-bool"),
+                }
+            }
+            Expr { span: _, typ: ExprType::BoolAnd(a, b) } => {
+                match (self.eval_expr(a), self.eval_expr(b)) {
+                    (Value::Bool(a), Value::Bool(b)) => Value::Bool(a && b),
+                    _ => unreachable!("boolean AND called with non-bool"),
+                }
+            }
+            Expr { span: _, typ: ExprType::BoolOr(a, b) } => {
+                match (self.eval_expr(a), self.eval_expr(b)) {
+                    (Value::Bool(a), Value::Bool(b)) => Value::Bool(a || b),
+                    _ => unreachable!("boolean OR called with non-bool"),
+                }
+            }
             Expr { span: _, typ: ExprType::Statement(expr) } => {
                 self.eval_expr(expr);
                 Value::Unit

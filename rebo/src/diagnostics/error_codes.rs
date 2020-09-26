@@ -19,6 +19,8 @@ pub enum ErrorCode {
     InvalidNumberOfArguments,
     UnclosedParen,
     UnclosedBlockComment,
+    InvalidBoolNotType,
+    InvalidBoolExprType,
 }
 use ErrorCode::*;
 
@@ -44,6 +46,8 @@ impl ErrorCode {
             InvalidNumberOfArguments => "0016",
             UnclosedParen => "0017",
             UnclosedBlockComment => "0018",
+            InvalidBoolNotType => "0019",
+            InvalidBoolExprType => "0020",
         }
     }
 
@@ -67,7 +71,9 @@ impl ErrorCode {
             UnclosedBlock => "unclosed block, missing `}`",
             InvalidNumberOfArguments => "invalid number of arguments",
             UnclosedParen => "unclosed parenthesis",
-            UnclosedBlockComment => "unclosed block coment",
+            UnclosedBlockComment => "unclosed block comment",
+            InvalidBoolNotType => "tried to apply boolean negation on a non-bool type",
+            InvalidBoolExprType => "tried to apply boolean binary operation to a non-bool type",
         }
     }
 }

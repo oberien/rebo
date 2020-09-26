@@ -1,3 +1,12 @@
+print(true);
+print(false);
+print(true && false);
+print(true && true);
+print(false && true);
+print(true || false);
+print(false || false || true);
+print(true || true && false);
+print((true || true) && false);
 print(1 + 2 * 3);
 print(1 * 2 + 3);
 print((1 + 2) * 3);

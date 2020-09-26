@@ -117,9 +117,18 @@ fn try_lex_token<'i>(diagnostics: &Diagnostics<'_>, file: FileId, s: &'i str, in
         }
         ',' => Ok(MaybeToken::Token(Token::new(span, TokenType::Comma))),
         '=' => match s[index+1..].chars().next() {
-                Some('=') => Ok(MaybeToken::Token(Token::new(Span::new(file, index, index + 2), TokenType::Equals))),
-                _ => Ok(MaybeToken::Token(Token::new(Span::new(file, index, index + 1), TokenType::Assign))),
-            }
+            Some('=') => Ok(MaybeToken::Token(Token::new(Span::new(file, index, index + 2), TokenType::Equals))),
+            _ => Ok(MaybeToken::Token(Token::new(Span::new(file, index, index + 1), TokenType::Assign))),
+        }
+        '&' => match s[index+1..].chars().next() {
+            Some('&') => Ok(MaybeToken::Token(Token::new(Span::new(file, index, index + 2), TokenType::DoubleAmp))),
+            _ => Ok(MaybeToken::Token(Token::new(Span::new(file, index, index + 1), TokenType::Amp))),
+        }
+        '|' => match s[index+1..].chars().next() {
+            Some('|') => Ok(MaybeToken::Token(Token::new(Span::new(file, index, index + 2), TokenType::DoublePipe))),
+            _ => Ok(MaybeToken::Token(Token::new(Span::new(file, index, index + 1), TokenType::Pipe))),
+        }
+        '!' => Ok(MaybeToken::Token(Token::new(span, TokenType::Exclamation))),
         '"' => Ok(MaybeToken::Token(lex_double_quoted_string(diagnostics, file, s, index)?)),
         _ => Ok(MaybeToken::Backtrack),
     }
@@ -158,9 +167,9 @@ fn try_lex_number<'i>(diagnostics: &Diagnostics<'_>, file: FileId, s: &'i str, m
 
 fn try_lex_bool<'i>(diagnostics: &Diagnostics<'_>, file: FileId, s: &'i str, mut index: usize) -> Result<MaybeToken<'i>, Error> {
     trace!("try_lex_bool: {}", index);
-    if s.starts_with("true") {
+    if s[index..].starts_with("true") {
         Ok(MaybeToken::Token(Token::new(Span::new(file, index, index+4), TokenType::Bool(true))))
-    } else if s.starts_with("false") {
+    } else if s[index..].starts_with("false") {
         Ok(MaybeToken::Token(Token::new(Span::new(file, index, index+5), TokenType::Bool(false))))
     } else {
         Ok(MaybeToken::Backtrack)

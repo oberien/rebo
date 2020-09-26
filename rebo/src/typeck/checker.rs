@@ -47,6 +47,36 @@ impl<'a, 'i> Checker<'a, 'i> {
                     },
                 }
             },
+            BoolAnd(a, b) | BoolOr(a, b) => {
+                let (a_typ, _) = self.get_type(a);
+                let (b_typ, _) = self.get_type(b);
+                for &(ref t, span) in &[(a_typ, a.span), (b_typ, b.span)] {
+                    match t {
+                        Type::Bool => (),
+                        t => {
+                            self.diagnostics.error(ErrorCode::InvalidBoolExprType)
+                                .with_info_label(expr.span, "in this boolean operation")
+                                .with_error_label(span, "this expression must have type `bool`")
+                                .with_info_label(span, format!("but it has type `{}`", t))
+                                .emit()
+                        }
+                    }
+                }
+                Type::Bool
+            }
+            BoolNot(inner) => {
+                match self.get_type(inner).0 {
+                    Type::Bool => (),
+                    t => {
+                        self.diagnostics.error(ErrorCode::InvalidBoolNotType)
+                            .with_error_label(inner.span, "this expression should have type `bool`")
+                            .with_info_label(Span::new(expr.span.file, expr.span.start, expr.span.start+1), "because the boolean not operator is applied to it")
+                            .with_info_label(inner.span, format!("but this expression has type `{}`", t))
+                            .emit();
+                    }
+                }
+                Type::Bool
+            }
             Statement(e) => {
                 self.get_type(e);
                 Type::Unit

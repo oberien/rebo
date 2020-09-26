@@ -68,6 +68,44 @@ impl Precedence for Math {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+pub enum BooleanExpr {
+    And,
+    Or,
+}
+
+impl Precedence for BooleanExpr {
+    fn try_from_token(token: Token<'_>) -> Result<Self, InternalError> {
+        match token.typ {
+            TokenType::DoubleAmp => Ok(BooleanExpr::And),
+            TokenType::DoublePipe => Ok(BooleanExpr::Or),
+            _ => Err(InternalError::Backtrack(Self::expected())),
+        }
+    }
+
+    fn precedence(self) -> u8 {
+        match self {
+            BooleanExpr::Or => 0,
+            BooleanExpr::And => 1,
+        }
+    }
+
+    fn expr_type_constructor<'a, 'i>(self) -> fn(&'a Expr<'a, 'i>, &'a Expr<'a, 'i>) -> ExprType<'a, 'i> {
+        match self {
+            BooleanExpr::And => ExprType::BoolAnd,
+            BooleanExpr::Or => ExprType::BoolOr,
+        }
+    }
+
+    fn expected() -> Cow<'static, [Expected]> {
+        Cow::Borrowed(&[Expected::BooleanExprOp])
+    }
+
+    fn primitive_parse_fn<'a, 'i, 'r>() -> fn(&mut Parser<'a, 'i, 'r>, usize) -> Result<&'a Expr<'a, 'i>, InternalError> {
+        Parser::try_parse_non_boolean_expr
+    }
+}
+
 impl<'a, 'i, 'r> Parser<'a, 'i, 'r> {
     pub(super) fn try_parse_precedence<P: Precedence>(&mut self, depth: usize) -> Result<&'a Expr<'a, 'i>, InternalError> {
         trace!("{}try_parse_precedence: {}", "|".repeat(depth), self.tokens.peek(0).map(|t| t.to_string()).unwrap_or_else(|| "".to_string()));

@@ -12,7 +12,7 @@ mod expr;
 mod precedence;
 
 pub use expr::{Binding, Expr, ExprType};
-use crate::parser::precedence::Math;
+use crate::parser::precedence::{Math, BooleanExpr};
 
 #[derive(Debug)]
 pub enum Error {
@@ -43,6 +43,8 @@ enum Expected {
     Immediate,
     /// + - * /
     MathOp,
+    /// || &&
+    BooleanExprOp,
     OpenParen,
     CloseParen,
     OpenCurly,
@@ -209,11 +211,11 @@ impl<'a, 'i, 'r> Parser<'a, 'i, 'r> {
         Err(InternalError::Backtrack(expected.into()))
     }
 
-    fn try_parse_non_math(&mut self, depth: usize) -> Result<&'a Expr<'a, 'i>, InternalError> {
-        trace!("{}try_parse_non_math: {}", "|".repeat(depth), self.peek_token(0).map(|t| t.to_string()).unwrap_or_else(|| "".to_string()));
+    fn try_parse_non_math_non_boolean_expr(&mut self, depth: usize) -> Result<&'a Expr<'a, 'i>, InternalError> {
         self.try_parse_multiple(&[
             Self::try_parse_parens,
             Self::try_parse_block,
+            Self::try_parse_not,
             Self::try_parse_bind,
             |this: &mut Parser<'a, 'i, 'r>, depth: usize| Self::try_parse_assign(this, CreateBinding::No, depth),
             Self::try_parse_string,
@@ -223,12 +225,28 @@ impl<'a, 'i, 'r> Parser<'a, 'i, 'r> {
         ], depth+1)
     }
 
+    fn try_parse_non_math(&mut self, depth: usize) -> Result<&'a Expr<'a, 'i>, InternalError> {
+        trace!("{}try_parse_non_math: {}", "|".repeat(depth), self.peek_token(0).map(|t| t.to_string()).unwrap_or_else(|| "".to_string()));
+        self.try_parse_multiple(&[
+            Self::try_parse_non_math_non_boolean_expr,
+            Self::try_parse_precedence::<BooleanExpr>,
+        ], depth+1)
+    }
+    fn try_parse_non_boolean_expr(&mut self, depth: usize) -> Result<&'a Expr<'a, 'i>, InternalError> {
+        trace!("{}try_parse_non_boolean_expr: {}", "|".repeat(depth), self.peek_token(0).map(|t| t.to_string()).unwrap_or_else(|| "".to_string()));
+        self.try_parse_multiple(&[
+            Self::try_parse_non_math_non_boolean_expr,
+            Self::try_parse_precedence::<Math>,
+        ], depth+1)
+    }
+
     fn try_parse_expr(&mut self, depth: usize) -> Result<&'a Expr<'a, 'i>, InternalError> {
         trace!("{}try_parse_expr: {}", "|".repeat(depth), self.peek_token(0).map(|t| t.to_string()).unwrap_or_else(|| "".to_string()));
         self.try_parse_multiple(&[
             // Self::try_parse_math,
             Self::try_parse_precedence::<Math>,
-            Self::try_parse_non_math,
+            Self::try_parse_precedence::<BooleanExpr>,
+            Self::try_parse_non_math_non_boolean_expr,
         ], depth+1)
     }
 
@@ -329,6 +347,17 @@ impl<'a, 'i, 'r> Parser<'a, 'i, 'r> {
         }
         self.pop_scope();
         exprs
+    }
+
+    fn try_parse_not(&mut self, depth: usize) -> Result<&'a Expr<'a, 'i>, InternalError> {
+        trace!("{}trace_parse_not: {}", "|".repeat(depth), self.peek_token(0).map(|t| t.to_string()).unwrap_or_else(|| "".to_string()));
+        match self.peek_token(0) {
+            Some(Token { span, typ: TokenType::Exclamation }) => {
+                drop(self.next_token());
+                self.try_parse_expr(depth+1)
+            }
+            _ => Err(InternalError::Backtrack(Cow::Borrowed(&[Expected::DqString]))),
+        }
     }
 
     fn try_parse_string(&mut self, depth: usize) -> Result<&'a Expr<'a, 'i>, InternalError> {
@@ -522,6 +551,7 @@ impl<'a, 'i, 'r> Parser<'a, 'i, 'r> {
                     Assign => "`=`",
                     Immediate => "integer or float",
                     MathOp => "`+`, `-`, `*`, `/`",
+                    BooleanExprOp => "`&&`, `||`",
                     OpenParen => "`(`",
                     CloseParen => "`)`",
                     OpenCurly => "`{`",

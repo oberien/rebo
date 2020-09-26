@@ -74,7 +74,7 @@ impl<'a, 'i> ConstraintCreator<'a, 'i> {
                 self.constraints.push(constraint);
                 TypeOrBinding::Type(Type::Unit, expr.span)
             },
-            Add(a, b) | Sub(a, b) | Mul(a, b) | Div(a, b) => {
+            &Add(a, b) | &Sub(a, b) | &Mul(a, b) | &Div(a, b) => {
                 let type_a = self.get_type(a);
                 let type_b = self.get_type(b);
                 match (type_a, type_b) {
@@ -100,6 +100,22 @@ impl<'a, 'i> ConstraintCreator<'a, 'i> {
                     (TypeOrBinding::RetOf(fun, _), TypeOrBinding::RetOf(_, _)) => TypeOrBinding::RetOf(fun, expr.span),
                 }
             },
+            &BoolAnd(a, b) | &BoolOr(a, b) => {
+                for e in &[a, b] {
+                    match self.get_type(e) {
+                        TypeOrBinding::Binding(binding, span) => self.constraints.push(Constraint::Type(binding, Type::Bool, span)),
+                        TypeOrBinding::Type(_, _) | TypeOrBinding::RetOf(_, _) => (),
+                    }
+                }
+                TypeOrBinding::Type(Type::Bool, expr.span)
+            }
+            &BoolNot(expr) => {
+                match self.get_type(expr) {
+                    TypeOrBinding::Binding(binding, span) => self.constraints.push(Constraint::Type(binding, Type::Bool, span)),
+                    TypeOrBinding::Type(_, _) | TypeOrBinding::RetOf(_, _) => (),
+                }
+                TypeOrBinding::Type(Type::Bool, expr.span)
+            }
             Block(exprs) => exprs.last().map(|expr| self.get_type(expr))
                 .unwrap_or(TypeOrBinding::Type(Type::Unit, expr.span)),
         }
