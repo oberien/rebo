@@ -70,6 +70,21 @@ pub enum Value {
     Function(FunctionImpl),
 }
 
+impl Value {
+    pub fn expect_bool(self, msg: &'static str) -> bool {
+        match self {
+            Value::Bool(b) => b,
+            _ => panic!(msg),
+        }
+    }
+    pub fn expect_string(self, msg: &'static str) -> String {
+        match self {
+            Value::String(s) => s,
+            _ => panic!(msg),
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct Function {
     pub typ: FunctionType,

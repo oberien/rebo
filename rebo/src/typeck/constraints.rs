@@ -82,7 +82,7 @@ impl<'a, 'i> ConstraintCreator<'a, 'i> {
                         (t @ Type::Integer, Type::Integer) | (t @ Type::Float, Type::Float) => {
                             TypeOrBinding::Type(t, expr.span)
                         },
-                        _ => TypeOrBinding::Type(Type::Any, expr.span),
+                        _ => TypeOrBinding::Type(Type::Bottom, expr.span),
                     },
                     (TypeOrBinding::Binding(binding, _binding_span), TypeOrBinding::Type(typ, _typ_span))
                     | (TypeOrBinding::Type(typ, _typ_span), TypeOrBinding::Binding(binding, _binding_span)) => {

@@ -43,7 +43,7 @@ impl<'a, 'i> Checker<'a, 'i> {
                             .with_note("math operations are only supported for integers with integers and floats with floats")
                             .with_note("help: try casting with `... as integer` or `... as float`")
                             .emit();
-                        Type::Any
+                        Type::Bottom
                     },
                 }
             },
@@ -51,15 +51,12 @@ impl<'a, 'i> Checker<'a, 'i> {
                 let (a_typ, _) = self.get_type(a);
                 let (b_typ, _) = self.get_type(b);
                 for &(ref t, span) in &[(a_typ, a.span), (b_typ, b.span)] {
-                    match t {
-                        Type::Bool => (),
-                        t => {
-                            self.diagnostics.error(ErrorCode::InvalidBoolExprType)
-                                .with_info_label(expr.span, "in this boolean operation")
-                                .with_error_label(span, "this expression must have type `bool`")
-                                .with_info_label(span, format!("but it has type `{}`", t))
-                                .emit()
-                        }
+                    if !t.is_unifyable_with(&Type::Bool) {
+                        self.diagnostics.error(ErrorCode::InvalidBoolExprType)
+                            .with_info_label(expr.span, "in this boolean operation")
+                            .with_error_label(span, "this expression must have type `bool`")
+                            .with_info_label(span, format!("but it has type `{}`", t))
+                            .emit()
                     }
                 }
                 Type::Bool
@@ -92,7 +89,7 @@ impl<'a, 'i> Checker<'a, 'i> {
                             .with_info_label(f_span, format!("`{}` is of type `{}`", fun.ident, t))
                             .with_info_label(fun.span, format!("`{}` defined here", fun.ident))
                             .emit();
-                        return (Type::Any, expr.span);
+                        return (Type::Bottom, expr.span);
                     },
                 };
                 // check argument length
@@ -114,7 +111,7 @@ impl<'a, 'i> Checker<'a, 'i> {
                 };
                 let arg_types = args.iter().map(|expr| (self.get_type(expr).0, expr.span));
                 for (expected, (actual, actual_span)) in expected_arg_types.zip(arg_types) {
-                    if *expected != actual {
+                    if !expected.is_unifyable_with(&actual) {
                         self.diagnostics.error(ErrorCode::InvalidArgumentType)
                             .with_error_label(actual_span, format!("expected type `{}`, got type `{}`", expected, actual))
                             .emit();

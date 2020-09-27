@@ -32,7 +32,7 @@ impl<'a, 'i> ConstraintSolver<'a, 'i> {
     }
     fn set_type(&mut self, binding: Binding<'i>, typ: Type, span: Span) {
         match self.binding_types.get(binding) {
-            Some((typ_before, span_before)) if *typ_before != typ => {
+            Some((typ_before, span_before)) if !(typ_before.is_unifyable_with(&typ)) => {
                 self.diagnostics.error(ErrorCode::TypeConflict)
                     .with_info_label(*span_before, format!("inferred type is `{}`", typ_before))
                     .with_error_label(span, format!("tried to assign type `{}`", typ))

@@ -13,7 +13,13 @@ pub fn add_to_root_scope(scope: &mut RootScope) {
     });
     scope.add_function("add_one", add_one);
     scope.add_function("assert", assert);
-    scope.add_function("panic", panic);
+    scope.add_function("panic", Function {
+        typ: FunctionType {
+            args: &[Type::String],
+            ret: Type::Bottom,
+        },
+        imp: FunctionImpl::Rust(panic),
+    });
 }
 
 fn print(_scopes: &mut Scopes, values: Vec<Value>) -> Value {
@@ -39,7 +45,6 @@ fn add_one(a: i64) -> i64 {
 fn assert(b: bool) {
     assert!(b);
 }
-#[rebo::function]
-fn panic(msg: String) {
-    panic!("{}", msg);
+fn panic(_scopes: &mut Scopes, mut values: Vec<Value>) -> Value {
+    panic!("{}", values.remove(0).expect_string("panic called with non-string"))
 }

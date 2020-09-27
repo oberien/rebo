@@ -41,7 +41,10 @@ pub enum Type {
     Bool,
     String,
     Function(Box<FunctionType>),
+    /// Top type
     Any,
+    /// Bottom type
+    Bottom,
     Varargs,
 }
 #[derive(Debug, Clone)]
@@ -49,10 +52,12 @@ pub struct FunctionType {
     pub args: &'static [Type],
     pub ret: Type,
 }
-impl PartialEq for Type {
-    fn eq(&self, other: &Self) -> bool {
+impl Type {
+    fn is_unifyable_with(&self, other: &Self) -> bool {
         match (self, other) {
-            (Type::Any, _) | (_, Type::Any) | (Type::Varargs, _) | (_, Type::Varargs) => true,
+            (Type::Any, _) | (_, Type::Any)
+            | (Type::Varargs, _) | (_, Type::Varargs)
+            | (Type::Bottom, _) | (_, Type::Bottom) => true,
             (Type::Unit, Type::Unit) => true,
             (Type::Integer, Type::Integer) => true,
             (Type::Float, Type::Float) => true,
@@ -61,7 +66,8 @@ impl PartialEq for Type {
             (Type::Function(a), Type::Function(b)) => {
                 let FunctionType { args: args_a, ret: ret_a } = &**a;
                 let FunctionType { args: args_b, ret: ret_b } = &**b;
-                args_a == args_b && ret_a == ret_b
+                args_a.into_iter().zip(args_b.into_iter()).all(|(a, b)| a.is_unifyable_with(b))
+                    && ret_a.is_unifyable_with(ret_b)
             },
             _ => false,
         }
@@ -85,6 +91,7 @@ impl fmt::Display for Type {
             },
             Type::Any => write!(f, "any"),
             Type::Varargs => write!(f, "varargs..."),
+            Type::Bottom => write!(f, "⊥"),
         }
     }
 }
