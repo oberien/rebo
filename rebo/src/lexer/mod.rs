@@ -1,7 +1,5 @@
 use std::collections::VecDeque;
 
-use itertools::Itertools;
-
 use crate::diagnostics::{Span, FileId, Diagnostics, ErrorCode};
 
 mod token;
@@ -165,7 +163,7 @@ fn try_lex_number<'i>(diagnostics: &Diagnostics<'_>, file: FileId, s: &'i str, m
     }
 }
 
-fn try_lex_bool<'i>(diagnostics: &Diagnostics<'_>, file: FileId, s: &'i str, mut index: usize) -> Result<MaybeToken<'i>, Error> {
+fn try_lex_bool<'i>(_diagnostics: &Diagnostics<'_>, file: FileId, s: &'i str, index: usize) -> Result<MaybeToken<'i>, Error> {
     trace!("try_lex_bool: {}", index);
     if s[index..].starts_with("true") {
         Ok(MaybeToken::Token(Token::new(Span::new(file, index, index+4), TokenType::Bool(true))))

@@ -1,8 +1,6 @@
 use std::borrow::Cow;
 
-use typed_arena::Arena;
-
-use crate::lexer::{Token, Tokens, TokenType};
+use crate::lexer::{Token, TokenType};
 use super::{Expr, InternalError, Parser};
 use crate::parser::{Expected, ExprType};
 use crate::diagnostics::Span;

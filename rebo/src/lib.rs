@@ -2,8 +2,6 @@
 extern crate log;
 extern crate self as rebo;
 
-use std::fs;
-
 use typed_arena::Arena;
 
 use crate::parser::{Parser, Ast};
@@ -48,7 +46,7 @@ pub fn run<P: AsRef<Path>>(path: P, code: String) {
     let parser = Parser::new(&arena, tokens, &diagnostics, &binding_id_mapping);
     let ast = parser.parse().unwrap();
     println!("{}", ast);
-    let Ast { exprs, bindings } = ast;
+    let Ast { exprs, bindings: _ } = ast;
     Typechecker::new(&diagnostics, &mut binding_types).typeck(&exprs);
 
     if diagnostics.error_printed() {

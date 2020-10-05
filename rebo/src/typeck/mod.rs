@@ -1,6 +1,4 @@
 use std::collections::HashMap;
-use std::fmt;
-use std::cmp::PartialEq;
 
 use crate::diagnostics::{Diagnostics, Span};
 use crate::parser::{Expr, Binding};
