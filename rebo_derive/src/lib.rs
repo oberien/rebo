@@ -53,19 +53,19 @@ pub fn function(_args: TokenStream, input: TokenStream) -> TokenStream {
     }
 
     let res = quote::quote! {
-        #vis #constness #asyncness #unsafety #abi fn #fn_ident #generics (scopes: &mut ::rebo::scope::Scopes, args: ::std::vec::Vec<::rebo::types::Value>) -> ::rebo::types::Value {
-            let (#(#input_pats,)*): (#(#input_types,)*) = ::rebo::types::FromValues::from_values(args.into_iter());
+        #vis #constness #asyncness #unsafety #abi fn #fn_ident #generics (scopes: &mut ::rebo::scope::Scopes, args: ::std::vec::Vec<::rebo::common::Value>) -> ::rebo::common::Value {
+            let (#(#input_pats,)*): (#(#input_types,)*) = ::rebo::common::FromValues::from_values(args.into_iter());
             let res: #output = #block;
-            ::rebo::types::IntoValue::into_value(res)
+            ::rebo::common::IntoValue::into_value(res)
         }
 
         #[allow(non_upper_case_globals)]
-        const #ident: ::rebo::types::Function = ::rebo::types::Function {
-            typ: ::rebo::typeck::FunctionType {
-                args: &[#(<#input_types as ::rebo::types::FromValue>::TYPE),*],
-                ret: <#output as ::rebo::types::FromValue>::TYPE,
+        const #ident: ::rebo::common::Function = ::rebo::common::Function {
+            typ: ::rebo::common::FunctionType {
+                args: &[#(::rebo::common::Type::Specific(<#input_types as ::rebo::common::FromValue>::TYPE)),*],
+                ret: ::rebo::common::Type::Specific(<#output as ::rebo::common::FromValue>::TYPE),
             },
-            imp: ::rebo::types::FunctionImpl::Rust(#fn_ident),
+            imp: ::rebo::common::FunctionImpl::Rust(#fn_ident),
         };
     }.into();
     // eprintln!("{}", res);

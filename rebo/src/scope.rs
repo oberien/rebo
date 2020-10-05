@@ -1,9 +1,9 @@
 use std::collections::HashMap;
 use std::fmt;
 
-use crate::types::{Value, Function};
+use crate::common::{Value, Function, SpecificType, Type};
 use std::sync::atomic::{AtomicU32, Ordering};
-use crate::typeck::{BindingTypes, Type};
+use crate::typeck::BindingTypes;
 use crate::parser::Binding;
 use crate::diagnostics::Span;
 
@@ -65,7 +65,7 @@ impl<'a, 'i> RootScope<'a, 'i> {
             rogue: false,
         };
         self.scope.create(binding_id, Value::Function(f.imp));
-        self.binding_types.insert(binding, Type::Function(Box::new(f.typ)), binding.span);
+        self.binding_types.insert(binding, Type::Specific(SpecificType::Function(Box::new(f.typ))), binding.span);
         self.binding_id_mapping.insert(name, binding_id);
     }
 }

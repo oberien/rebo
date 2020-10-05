@@ -1,9 +1,10 @@
 use std::collections::{HashMap, VecDeque};
 
 use crate::diagnostics::{Diagnostics, Span, ErrorCode};
-use crate::typeck::{BindingTypes, Type};
+use crate::typeck::BindingTypes;
 use crate::typeck::constraints::Constraint;
 use crate::parser::Binding;
+use crate::common::{SpecificType, Type};
 
 enum Dependency<'i> {
     Binding(Binding<'i>, Span),
@@ -69,7 +70,7 @@ impl<'a, 'i> ConstraintSolver<'a, 'i> {
         // check that everything could be inferred
         for (typ, span) in self.binding_types.types.values() {
             match typ {
-                Type::Any => self.diagnostics.error(ErrorCode::UnableToInferType)
+                Type::Top => self.diagnostics.error(ErrorCode::UnableToInferType)
                     .with_error_label(*span, "can't infer type for this binding")
                     .emit(),
                 _ => (),
@@ -97,7 +98,7 @@ impl<'a, 'i> ConstraintSolver<'a, 'i> {
             None => return,
         };
         let ret_type = match &typ {
-            Type::Function(f) => Some(f.ret.clone()),
+            Type::Specific(SpecificType::Function(f)) => Some(f.ret.clone()),
             _ => None,
         };
         for dep in deps {

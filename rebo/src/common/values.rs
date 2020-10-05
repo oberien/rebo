@@ -1,11 +1,11 @@
 use std::fmt;
 
 use crate::scope::Scopes;
-use crate::typeck::{Type, FunctionType};
+use crate::common::{SpecificType, FunctionType};
 
 pub trait FromValues {
     fn from_values(values: impl Iterator<Item = Value>) -> Self;
-    fn types() -> Vec<Type>;
+    fn types() -> Vec<SpecificType>;
 }
 
 impl<T: FromValue> FromValues for T {
@@ -13,7 +13,7 @@ impl<T: FromValue> FromValues for T {
         let val = values.next().unwrap();
         T::from_value(val)
     }
-    fn types() -> Vec<Type> {
+    fn types() -> Vec<SpecificType> {
         vec![T::TYPE]
     }
 }
@@ -25,7 +25,7 @@ macro_rules! impl_from_values {
             fn from_values(mut values: impl Iterator<Item = Value>) -> Self {
                 ($($name::from_value(values.next().unwrap()),)* $last::from_values(values),)
             }
-            fn types() -> Vec<Type> {
+            fn types() -> Vec<SpecificType> {
                 let mut res = vec![$($name::TYPE,)*];
                 res.extend($last::types());
                 res
@@ -51,12 +51,12 @@ impl_from_values!(A B C D E F G H I J K L M N);
 impl_from_values!(A B C D E F G H I J K L M N O);
 
 pub trait FromValue {
-    const TYPE: Type;
+    const TYPE: SpecificType;
     fn from_value(value: Value) -> Self;
 }
 
 pub trait IntoValue {
-    const TYPE: Type;
+    const TYPE: SpecificType;
     fn into_value(self) -> Value;
 }
 
@@ -103,14 +103,14 @@ impl fmt::Debug for FunctionImpl {
     }
 }
 
-impl From<&'_ Value> for Type {
+impl From<&'_ Value> for SpecificType {
     fn from(val: &Value) -> Self {
         match val {
-            Value::Unit => Type::Unit,
-            Value::Integer(_) => Type::Integer,
-            Value::Float(_) => Type::Float,
-            Value::Bool(_) => Type::Bool,
-            Value::String(_) => Type::String,
+            Value::Unit => SpecificType::Unit,
+            Value::Integer(_) => SpecificType::Integer,
+            Value::Float(_) => SpecificType::Float,
+            Value::Bool(_) => SpecificType::Bool,
+            Value::String(_) => SpecificType::String,
             Value::Function(_) => todo!(),
         }
     }
@@ -119,7 +119,7 @@ impl From<&'_ Value> for Type {
 macro_rules! impl_from_into {
     ($ty:ty, $name:ident) => {
         impl FromValue for $ty {
-            const TYPE: Type = Type::$name;
+            const TYPE: SpecificType = SpecificType::$name;
             fn from_value(value: Value) -> Self {
                 match value {
                     Value::$name(val) => val,
@@ -128,7 +128,7 @@ macro_rules! impl_from_into {
             }
         }
         impl IntoValue for $ty {
-            const TYPE: Type = Type::$name;
+            const TYPE: SpecificType = SpecificType::$name;
             fn into_value(self) -> Value {
                 Value::$name(self)
             }
@@ -137,7 +137,7 @@ macro_rules! impl_from_into {
 }
 
 impl FromValue for () {
-    const TYPE: Type = Type::Unit;
+    const TYPE: SpecificType = SpecificType::Unit;
     fn from_value(value: Value) -> Self {
         match value {
             Value::Unit => (),
@@ -146,7 +146,7 @@ impl FromValue for () {
     }
 }
 impl IntoValue for () {
-    const TYPE: Type = Type::Unit;
+    const TYPE: SpecificType = SpecificType::Unit;
     fn into_value(self) -> Value {
         Value::Unit
     }

@@ -1,6 +1,7 @@
 use crate::diagnostics::{Diagnostics, Span, ErrorCode};
-use crate::typeck::{BindingTypes, Type};
+use crate::typeck::BindingTypes;
 use crate::parser::{Expr, ExprType};
+use crate::common::{SpecificType, Type};
 
 pub struct Checker<'a, 'i> {
     diagnostics: &'i Diagnostics<'i>,
@@ -19,12 +20,12 @@ impl<'a, 'i> Checker<'a, 'i> {
     fn get_type(&self, expr: &Expr) -> (Type, Span) {
         use ExprType::*;
         let typ = match expr.typ {
-            Unit => Type::Unit,
+            Unit => Type::Specific(SpecificType::Unit),
             Variable(binding) => self.binding_types.get(binding).unwrap().clone().0,
-            Integer(_) => Type::Integer,
-            Float(_) => Type::Float,
-            Bool(_) => Type::Bool,
-            String(_) => Type::String,
+            Integer(_) => Type::Specific(SpecificType::Integer),
+            Float(_) => Type::Specific(SpecificType::Float),
+            Bool(_) => Type::Specific(SpecificType::Bool),
+            String(_) => Type::Specific(SpecificType::String),
             Bind(binding, expr) | Assign((binding, _), expr) => {
                 self.get_type(expr);
                 self.binding_types.get(binding).unwrap().clone().0
@@ -33,8 +34,8 @@ impl<'a, 'i> Checker<'a, 'i> {
                 let (a_typ, _) = self.get_type(a);
                 let (b_typ, _) = self.get_type(b);
                 match (&a_typ, &b_typ) {
-                    (Type::Integer, Type::Integer) => Type::Integer,
-                    (Type::Float, Type::Float) => Type::Float,
+                    (Type::Specific(SpecificType::Integer), Type::Specific(SpecificType::Integer)) => Type::Specific(SpecificType::Integer),
+                    (Type::Specific(SpecificType::Float), Type::Specific(SpecificType::Float)) => Type::Specific(SpecificType::Float),
                     _ => {
                         self.diagnostics.error(ErrorCode::IncompatibleMathTypes)
                             .with_error_label(expr.span, "in this math operation")
@@ -51,7 +52,7 @@ impl<'a, 'i> Checker<'a, 'i> {
                 let (a_typ, _) = self.get_type(a);
                 let (b_typ, _) = self.get_type(b);
                 for &(ref t, span) in &[(a_typ, a.span), (b_typ, b.span)] {
-                    if !t.is_unifyable_with(&Type::Bool) {
+                    if !t.is_unifyable_with(&Type::Specific(SpecificType::Bool)) {
                         self.diagnostics.error(ErrorCode::InvalidBoolExprType)
                             .with_info_label(expr.span, "in this boolean operation")
                             .with_error_label(span, "this expression must have type `bool`")
@@ -59,11 +60,11 @@ impl<'a, 'i> Checker<'a, 'i> {
                             .emit()
                     }
                 }
-                Type::Bool
+                Type::Specific(SpecificType::Bool)
             }
             BoolNot(inner) => {
                 match self.get_type(inner).0 {
-                    Type::Bool => (),
+                    Type::Specific(SpecificType::Bool) => (),
                     t => {
                         self.diagnostics.error(ErrorCode::InvalidBoolNotType)
                             .with_error_label(inner.span, "this expression should have type `bool`")
@@ -72,17 +73,17 @@ impl<'a, 'i> Checker<'a, 'i> {
                             .emit();
                     }
                 }
-                Type::Bool
+                Type::Specific(SpecificType::Bool)
             }
             Statement(e) => {
                 self.get_type(e);
-                Type::Unit
+                Type::Specific(SpecificType::Unit)
             },
             Parenthezised(e) => self.get_type(e).0,
             FunctionCall((fun, f_span), ref args) => {
                 // check that we are actually calling a function
                 let f = match self.binding_types.get(fun).unwrap() {
-                    (Type::Function(f), _) => f,
+                    (Type::Specific(SpecificType::Function(f)), _) => f,
                     (t, _) => {
                         self.diagnostics.error(ErrorCode::NotAFunction)
                             .with_error_label(expr.span, "in this function call")
@@ -120,7 +121,7 @@ impl<'a, 'i> Checker<'a, 'i> {
                 f.ret.clone()
             },
             Block(ref exprs) => {
-                let mut typ = Type::Unit;
+                let mut typ = Type::Specific(SpecificType::Unit);
                 for expr in exprs {
                     typ = self.get_type(expr).0;
                 }

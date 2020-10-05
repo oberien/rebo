@@ -1,8 +1,9 @@
 use std::fmt;
 
 use crate::parser::{Expr, ExprType, Binding};
-use crate::typeck::{Type, BindingTypes};
+use crate::typeck::BindingTypes;
 use crate::diagnostics::Span;
+use crate::common::{SpecificType, Type};
 
 #[derive(Debug)]
 pub enum Constraint<'i> {
@@ -53,15 +54,15 @@ impl<'a, 'i> ConstraintCreator<'a, 'i> {
     fn get_type(&mut self, expr: &Expr<'_, 'i>) -> TypeOrBinding<'i> {
         use ExprType::*;
         match &expr.typ {
-            Unit => TypeOrBinding::Type(Type::Unit, expr.span),
+            Unit => TypeOrBinding::Type(Type::Specific(SpecificType::Unit), expr.span),
             &Variable(binding) => TypeOrBinding::Binding(binding, expr.span),
-            Integer(_) => TypeOrBinding::Type(Type::Integer, expr.span),
-            Float(_) => TypeOrBinding::Type(Type::Float, expr.span),
-            Bool(_) => TypeOrBinding::Type(Type::Bool, expr.span),
-            String(_) => TypeOrBinding::Type(Type::String, expr.span),
+            Integer(_) => TypeOrBinding::Type(Type::Specific(SpecificType::Integer), expr.span),
+            Float(_) => TypeOrBinding::Type(Type::Specific(SpecificType::Float), expr.span),
+            Bool(_) => TypeOrBinding::Type(Type::Specific(SpecificType::Bool), expr.span),
+            String(_) => TypeOrBinding::Type(Type::Specific(SpecificType::String), expr.span),
             Statement(inner) => {
                 self.get_type(inner);
-                TypeOrBinding::Type(Type::Unit, expr.span)
+                TypeOrBinding::Type(Type::Specific(SpecificType::Unit), expr.span)
             },
             Parenthezised(inner) => self.get_type(inner),
             &FunctionCall((binding, _), _) => TypeOrBinding::RetOf(binding, expr.span),
@@ -72,14 +73,14 @@ impl<'a, 'i> ConstraintCreator<'a, 'i> {
                     TypeOrBinding::RetOf(ret, _) => Constraint::RetOf(binding, ret, expr.span),
                 };
                 self.constraints.push(constraint);
-                TypeOrBinding::Type(Type::Unit, expr.span)
+                TypeOrBinding::Type(Type::Specific(SpecificType::Unit), expr.span)
             },
             &Add(a, b) | &Sub(a, b) | &Mul(a, b) | &Div(a, b) => {
                 let type_a = self.get_type(a);
                 let type_b = self.get_type(b);
                 match (type_a, type_b) {
                     (TypeOrBinding::Type(typ_a, _span_a), TypeOrBinding::Type(typ_b, _span_b)) => match (typ_a, typ_b) {
-                        (t @ Type::Integer, Type::Integer) | (t @ Type::Float, Type::Float) => {
+                        (t @ Type::Specific(SpecificType::Integer), Type::Specific(SpecificType::Integer)) | (t @ Type::Specific(SpecificType::Float), Type::Specific(SpecificType::Float)) => {
                             TypeOrBinding::Type(t, expr.span)
                         },
                         _ => TypeOrBinding::Type(Type::Bottom, expr.span),
@@ -103,21 +104,21 @@ impl<'a, 'i> ConstraintCreator<'a, 'i> {
             &BoolAnd(a, b) | &BoolOr(a, b) => {
                 for e in &[a, b] {
                     match self.get_type(e) {
-                        TypeOrBinding::Binding(binding, span) => self.constraints.push(Constraint::Type(binding, Type::Bool, span)),
+                        TypeOrBinding::Binding(binding, span) => self.constraints.push(Constraint::Type(binding, Type::Specific(SpecificType::Bool), span)),
                         TypeOrBinding::Type(_, _) | TypeOrBinding::RetOf(_, _) => (),
                     }
                 }
-                TypeOrBinding::Type(Type::Bool, expr.span)
+                TypeOrBinding::Type(Type::Specific(SpecificType::Bool), expr.span)
             }
             &BoolNot(expr) => {
                 match self.get_type(expr) {
-                    TypeOrBinding::Binding(binding, span) => self.constraints.push(Constraint::Type(binding, Type::Bool, span)),
+                    TypeOrBinding::Binding(binding, span) => self.constraints.push(Constraint::Type(binding, Type::Specific(SpecificType::Bool), span)),
                     TypeOrBinding::Type(_, _) | TypeOrBinding::RetOf(_, _) => (),
                 }
-                TypeOrBinding::Type(Type::Bool, expr.span)
+                TypeOrBinding::Type(Type::Specific(SpecificType::Bool), expr.span)
             }
             Block(exprs) => exprs.last().map(|expr| self.get_type(expr))
-                .unwrap_or(TypeOrBinding::Type(Type::Unit, expr.span)),
+                .unwrap_or(TypeOrBinding::Type(Type::Specific(SpecificType::Unit), expr.span)),
         }
     }
 }

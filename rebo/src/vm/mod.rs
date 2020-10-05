@@ -1,5 +1,5 @@
 use crate::parser::{Expr, ExprType, Binding};
-use crate::types::{Value, FunctionImpl};
+use crate::common::{Value, FunctionImpl};
 use crate::scope::{Scopes, Scope};
 
 pub struct Vm {

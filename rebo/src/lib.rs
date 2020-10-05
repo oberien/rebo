@@ -17,9 +17,9 @@ mod parser;
 mod typeck;
 mod vm;
 mod scope;
-mod types;
 mod stdlib;
 mod util;
+mod common;
 #[cfg(test)]
 mod tests;
 
