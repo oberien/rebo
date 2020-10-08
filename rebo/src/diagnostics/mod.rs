@@ -1,11 +1,12 @@
 #![allow(dead_code)]
 use std::fmt;
 use std::cell::RefCell;
+use std::ops::Range;
 
-use codespan_reporting::files::SimpleFiles;
+use codespan_reporting::files::{SimpleFile, Files, Location};
 use codespan_reporting::diagnostic::{Severity, Diagnostic, Label, LabelStyle};
 use codespan_reporting::term::{self, Config, termcolor::{StandardStream, ColorChoice}};
-use typed_arena::Arena;
+use typed_arena::{ImmutableArena, Index};
 
 mod span;
 mod error_codes;
@@ -13,17 +14,71 @@ mod error_codes;
 pub use span::Span;
 pub use error_codes::ErrorCode;
 
-#[derive(Debug, Clone, Copy, Eq, PartialEq, Hash)]
-pub struct FileId(usize);
+// codespan_reporting::SimpleFiles requires `&mut self` when adding a file,
+// making it impossible to have an immutable interface to put a string in it
+// and return an immutable &str.
+// Thus, here we implement the same thing, but using an Arena instead of a Vec, to allow
+// an immutable interface.
+struct EvenSimplerFiles {
+    files: ImmutableArena<SimpleFile<String, String>>,
+}
+impl EvenSimplerFiles {
+    pub fn new() -> Self {
+        EvenSimplerFiles {
+            files: ImmutableArena::new(),
+        }
+    }
+    pub fn add(&self, name: String, source: String) -> Index {
+        self.files.alloc(SimpleFile::new(name, source))
+    }
+    pub fn get(&self, idx: Index) -> &SimpleFile<String, String> {
+        self.files.get(idx)
+    }
+}
+impl<'a> Files<'a> for EvenSimplerFiles {
+    type FileId = Index;
+    type Name = &'a str;
+    type Source = &'a str;
 
-pub struct Diagnostics<'i> {
-    source_arena: &'i Arena<String>,
-    files: RefCell<SimpleFiles<String, &'i str>>,
+    fn name(&'a self, id: Self::FileId) -> Option<Self::Name> {
+        Some(&self.files.get(id).name())
+    }
+
+    fn source(&'a self, id: Self::FileId) -> Option<Self::Source> {
+        Some(&self.files.get(id).source())
+    }
+
+    fn line_index(&'a self, id: Self::FileId, byte_index: usize) -> Option<usize> {
+        self.files.get(id).line_index((), byte_index)
+    }
+
+    fn line_number(&'a self, id: Self::FileId, line_index: usize) -> Option<usize> {
+        self.files.get(id).line_number((), line_index)
+    }
+
+    fn column_number(&'a self, id: Self::FileId, line_index: usize, byte_index: usize) -> Option<usize> {
+        self.files.get(id).column_number((), line_index, byte_index)
+    }
+
+    fn location(&'a self, id: Self::FileId, byte_index: usize) -> Option<Location> {
+        self.files.get(id).location((), byte_index)
+    }
+
+    fn line_range(&'a self, id: Self::FileId, line_index: usize) -> Option<Range<usize>> {
+        self.files.get(id).line_range((), line_index)
+    }
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Hash)]
+pub struct FileId(Index);
+
+pub struct Diagnostics {
+    files: EvenSimplerFiles,
     stderr: StandardStream,
     config: Config,
     error_printed: RefCell<bool>,
 }
-impl<'i> fmt::Debug for Diagnostics<'i> {
+impl fmt::Debug for Diagnostics {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.debug_struct("Diagnostics")
             .field("source_arena", &"&'i Arena<String>")
@@ -34,27 +89,27 @@ impl<'i> fmt::Debug for Diagnostics<'i> {
     }
 }
 
-impl<'i> Diagnostics<'i> {
-    pub fn new(source_arena: &'i Arena<String>) -> Diagnostics<'i> {
+impl Diagnostics {
+    pub fn new() -> Diagnostics {
         Diagnostics {
-            source_arena,
-            files: RefCell::new(SimpleFiles::new()),
+            files: EvenSimplerFiles::new(),
             stderr: StandardStream::stderr(ColorChoice::Auto),
             config: Config::default(),
             error_printed: RefCell::new(false),
         }
     }
 
-    pub fn add_file(&self, name: String, source: String) -> (FileId, &'i str) {
-        let source = self.source_arena.alloc(source);
-        (FileId(self.files.borrow_mut().add(name, source)), source)
+    pub fn add_file(&self, name: String, source: String) -> (FileId, &str) {
+        let idx = self.files.add(name, source);
+        let source = self.files.get(idx).source();
+        (FileId(idx), source)
     }
 
     pub fn error_printed(&self) -> bool {
         *self.error_printed.borrow()
     }
 
-    fn diagnostic(&self, severity: Severity, code: ErrorCode, message: String) -> DiagnosticBuilder<'i, '_> {
+    fn diagnostic(&self, severity: Severity, code: ErrorCode, message: String) -> DiagnosticBuilder<'_> {
         DiagnosticBuilder {
             files: &self.files,
             stderr: &self.stderr,
@@ -66,7 +121,7 @@ impl<'i> Diagnostics<'i> {
             notes: Vec::new(),
         }
     }
-    pub fn bug<S: Into<String>>(&self, code: ErrorCode, message: S) -> DiagnosticBuilder<'i, '_> {
+    pub fn bug<S: Into<String>>(&self, code: ErrorCode, message: S) -> DiagnosticBuilder<'_> {
         *self.error_printed.borrow_mut() = true;
         let mut diag =
             Some(self.diagnostic(Severity::Bug, code, message.into()).with_note("please report this"));
@@ -86,44 +141,44 @@ impl<'i> Diagnostics<'i> {
         diag.unwrap()
     }
 
-    pub fn error(&self, code: ErrorCode) -> DiagnosticBuilder<'i, '_> {
+    pub fn error(&self, code: ErrorCode) -> DiagnosticBuilder<'_> {
         *self.error_printed.borrow_mut() = true;
         self.diagnostic(Severity::Error, code, code.message().to_string())
     }
 
-    pub fn warning(&self, code: ErrorCode) -> DiagnosticBuilder<'i, '_> {
+    pub fn warning(&self, code: ErrorCode) -> DiagnosticBuilder<'_> {
         self.diagnostic(Severity::Warning, code, code.message().to_string())
     }
 
-    pub fn note(&self, code: ErrorCode) -> DiagnosticBuilder<'i, '_> {
+    pub fn note(&self, code: ErrorCode) -> DiagnosticBuilder<'_> {
         self.diagnostic(Severity::Note, code, code.message().to_string())
     }
 
-    pub fn help(&self, code: ErrorCode) -> DiagnosticBuilder<'i, '_> {
+    pub fn help(&self, code: ErrorCode) -> DiagnosticBuilder<'_> {
         self.diagnostic(Severity::Help, code, code.message().to_string())
     }
 }
 
 #[must_use = "call `emit` to emit the diagnostic"]
-pub struct DiagnosticBuilder<'i, 'd> {
-    files: &'d RefCell<SimpleFiles<String, &'i str>>,
+pub struct DiagnosticBuilder<'d> {
+    files: &'d EvenSimplerFiles,
     stderr: &'d StandardStream,
     config: &'d Config,
 
     severity: Severity,
     code: ErrorCode,
     message: String,
-    labels: Vec<Label<usize>>,
+    labels: Vec<Label<Index>>,
     notes: Vec<String>,
 }
 
-impl<'i, 'd> DiagnosticBuilder<'i, 'd> {
+impl<'d> DiagnosticBuilder<'d> {
     pub fn emit(self) {
         let Self { files, stderr, config, severity, message, code, labels, notes } = self;
         let diagnostic = Diagnostic { severity, message, code: Some(code.code_str().to_string()), labels, notes };
 
         let mut stderr = stderr.lock();
-        term::emit(&mut stderr, config, &*files.borrow(), &diagnostic)
+        term::emit(&mut stderr, config, files, &diagnostic)
             .expect("stderr is gone???");
         // writeln!(&mut stderr).expect("stderr is gone???");
     }

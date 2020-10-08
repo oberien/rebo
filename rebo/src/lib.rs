@@ -28,8 +28,7 @@ use std::path::Path;
 const EXTERNAL_SOURCE: &str = "defined externally";
 
 pub fn run<P: AsRef<Path>>(path: P, code: String) {
-    let source_arena = Arena::new();
-    let diagnostics = Diagnostics::new(&source_arena);
+    let diagnostics = Diagnostics::new();
     // register file 0 for external sources
     diagnostics.add_file("external".to_string(), EXTERNAL_SOURCE.to_string());
 

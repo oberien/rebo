@@ -25,7 +25,7 @@ pub enum MaybeToken<'i> {
     Diagnostic(usize),
 }
 
-pub fn lex<'i>(diagnostics: &Diagnostics<'_>, file: FileId, s: &'i str) -> Result<Tokens<'i>, Error> {
+pub fn lex<'i>(diagnostics: &Diagnostics, file: FileId, s: &'i str) -> Result<Tokens<'i>, Error> {
     trace!("lex");
     let mut index = 0;
     let mut res = VecDeque::new();
@@ -43,7 +43,7 @@ pub fn lex<'i>(diagnostics: &Diagnostics<'_>, file: FileId, s: &'i str) -> Resul
     }
 }
 
-fn lex_next<'i>(diagnostics: &Diagnostics<'_>, file: FileId, s: &'i str, index: usize) -> Result<Token<'i>, Error> {
+fn lex_next<'i>(diagnostics: &Diagnostics, file: FileId, s: &'i str, index: usize) -> Result<Token<'i>, Error> {
     trace!("lex_next: {}", index);
     // skip preceding whitespace
     let index = match skip_whitespace(s, index) {
@@ -89,7 +89,7 @@ fn skip_whitespace(s: &str, mut index: usize) -> Option<usize> {
     }
 }
 
-fn try_lex_token<'i>(diagnostics: &Diagnostics<'_>, file: FileId, s: &'i str, index: usize) -> Result<MaybeToken<'i>, Error> {
+fn try_lex_token<'i>(diagnostics: &Diagnostics, file: FileId, s: &'i str, index: usize) -> Result<MaybeToken<'i>, Error> {
     trace!("try_lex_token: {}", index);
     if s[index..].starts_with("let") {
         return Ok(MaybeToken::Token(Token::new(Span::new(file, index, index+3), TokenType::Let)));
@@ -132,7 +132,7 @@ fn try_lex_token<'i>(diagnostics: &Diagnostics<'_>, file: FileId, s: &'i str, in
     }
 }
 
-fn try_lex_number<'i>(diagnostics: &Diagnostics<'_>, file: FileId, s: &'i str, mut index: usize) -> Result<MaybeToken<'i>, Error> {
+fn try_lex_number<'i>(diagnostics: &Diagnostics, file: FileId, s: &'i str, mut index: usize) -> Result<MaybeToken<'i>, Error> {
     trace!("try_lex_number: {}", index);
     let start = index;
     let mut radix = Radix::Dec;
@@ -163,7 +163,7 @@ fn try_lex_number<'i>(diagnostics: &Diagnostics<'_>, file: FileId, s: &'i str, m
     }
 }
 
-fn try_lex_bool<'i>(_diagnostics: &Diagnostics<'_>, file: FileId, s: &'i str, index: usize) -> Result<MaybeToken<'i>, Error> {
+fn try_lex_bool<'i>(_diagnostics: &Diagnostics, file: FileId, s: &'i str, index: usize) -> Result<MaybeToken<'i>, Error> {
     trace!("try_lex_bool: {}", index);
     if s[index..].starts_with("true") {
         Ok(MaybeToken::Token(Token::new(Span::new(file, index, index+4), TokenType::Bool(true))))
@@ -174,7 +174,7 @@ fn try_lex_bool<'i>(_diagnostics: &Diagnostics<'_>, file: FileId, s: &'i str, in
     }
 }
 
-fn try_lex_ident<'i>(_diagnostics: &Diagnostics<'_>, file: FileId, s: &'i str, mut index: usize) -> Result<MaybeToken<'i>, Error> {
+fn try_lex_ident<'i>(_diagnostics: &Diagnostics, file: FileId, s: &'i str, mut index: usize) -> Result<MaybeToken<'i>, Error> {
     trace!("try_lex_ident: {}", index);
     let start = index;
     // first character
@@ -208,7 +208,7 @@ fn lex_line_comment<'i>(file: FileId, s: &'i str, index: usize) -> Token<'i> {
     }
     Token::new(Span::new(file, index, end), TokenType::LineComment(&s[index..end]))
 }
-fn lex_block_comment<'i>(diagnostics: &Diagnostics<'_>, file: FileId, s: &'i str, index: usize) -> Token<'i> {
+fn lex_block_comment<'i>(diagnostics: &Diagnostics, file: FileId, s: &'i str, index: usize) -> Token<'i> {
     trace!("lex_block_comment: {}", index);
     assert_eq!(s[index..].chars().next(), Some('/'));
     assert_eq!(s[index+1..].chars().next(), Some('*'));
@@ -243,7 +243,7 @@ fn lex_block_comment<'i>(diagnostics: &Diagnostics<'_>, file: FileId, s: &'i str
     }
 }
 
-fn lex_double_quoted_string<'i>(diagnostics: &Diagnostics<'_>, file: FileId, s: &'i str, mut index: usize) -> Result<Token<'i>, Error> {
+fn lex_double_quoted_string<'i>(diagnostics: &Diagnostics, file: FileId, s: &'i str, mut index: usize) -> Result<Token<'i>, Error> {
     trace!("lex_double_quoted_string: {}", index);
     assert_eq!(s[index..].chars().next(), Some('"'));
     let mut res = String::new();

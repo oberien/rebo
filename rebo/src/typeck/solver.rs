@@ -12,14 +12,14 @@ enum Dependency<'i> {
 }
 
 pub struct ConstraintSolver<'a, 'i> {
-    diagnostics: &'i Diagnostics<'i>,
+    diagnostics: &'i Diagnostics,
     binding_types: &'a mut BindingTypes<'i>,
     dependents: HashMap<Binding<'i>, Vec<Dependency<'i>>>,
     worklist: VecDeque<Binding<'i>>,
 }
 
 impl<'a, 'i> ConstraintSolver<'a, 'i> {
-    pub fn new(diagnostics: &'i Diagnostics<'i>, binding_types: &'a mut BindingTypes<'i>) -> Self {
+    pub fn new(diagnostics: &'i Diagnostics, binding_types: &'a mut BindingTypes<'i>) -> Self {
         ConstraintSolver {
             diagnostics,
             binding_types,

@@ -4,12 +4,12 @@ use crate::parser::{Expr, ExprType};
 use crate::common::{SpecificType, Type};
 
 pub struct Checker<'a, 'i> {
-    diagnostics: &'i Diagnostics<'i>,
+    diagnostics: &'i Diagnostics,
     binding_types: &'a BindingTypes<'i>,
 }
 
 impl<'a, 'i> Checker<'a, 'i> {
-    pub fn new(diagnostics: &'i Diagnostics<'i>, binding_types: &'a BindingTypes<'i>) -> Self {
+    pub fn new(diagnostics: &'i Diagnostics, binding_types: &'a BindingTypes<'i>) -> Self {
         Checker { diagnostics, binding_types }
     }
     pub fn check(&self, exprs: &[&Expr]) {

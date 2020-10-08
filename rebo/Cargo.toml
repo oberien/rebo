@@ -9,7 +9,8 @@ edition = "2018"
 [dependencies]
 thiserror = "1.0.20"
 lexical = { version = "5.2.0", features = ["radix"] }
-typed-arena = "2.0.1"
+#typed-arena = "2.0.1"
+typed-arena = { git = "https://github.com/oberien/rust-typed-arena#faff712" }
 log = "0.4.11"
 env_logger = "0.7.1"
 codespan-reporting = "0.9.5"

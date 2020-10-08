@@ -72,7 +72,7 @@ pub struct Parser<'a, 'i, 'r> {
     arena: &'a Arena<Expr<'a, 'i>>,
     /// tokens to be consumed
     tokens: Tokens<'i>,
-    diagnostics: &'i Diagnostics<'i>,
+    diagnostics: &'i Diagnostics,
     /// mapping of the identifiers of the root scope to their respective BindingId
     root_scope_binding_ids: &'r HashMap<&'static str, BindingId>,
     /// finished bindings that aren't live anymore
@@ -94,7 +94,7 @@ enum CreateBinding {
 
 /// All expression parsing function consume whitespace and comments before tokens, but not after.
 impl<'a, 'i, 'r> Parser<'a, 'i, 'r> {
-    pub fn new(arena: &'a Arena<Expr<'a, 'i>>, tokens: Tokens<'i>, diagnostics: &'i Diagnostics<'i>, root_scope_binding_ids: &'r HashMap<&'static str, BindingId>) -> Self {
+    pub fn new(arena: &'a Arena<Expr<'a, 'i>>, tokens: Tokens<'i>, diagnostics: &'i Diagnostics, root_scope_binding_ids: &'r HashMap<&'static str, BindingId>) -> Self {
         let mut parser = Parser {
             arena,
             tokens,
@@ -529,7 +529,7 @@ impl<'a, 'i, 'r> Parser<'a, 'i, 'r> {
             .map(|(_, &s)| s)
     }
 
-    fn diagnostic_unknown_identifier(&mut self, span: Span, ident: &'i str, f: impl for<'d> FnOnce(DiagnosticBuilder<'i, 'd>) -> DiagnosticBuilder<'i, 'd>) -> Binding<'i> {
+    fn diagnostic_unknown_identifier(&mut self, span: Span, ident: &'i str, f: impl for<'d> FnOnce(DiagnosticBuilder<'d>) -> DiagnosticBuilder<'d>) -> Binding<'i> {
         let mut d = self.diagnostics.error(ErrorCode::UnknownIdentifier)
             .with_error_label(span, format!("variable `{}` doesn't exist", ident));
         d = f(d);

@@ -1,5 +1,6 @@
 use crate::diagnostics::FileId;
 use crate::EXTERNAL_SOURCE;
+use typed_arena::Index;
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Hash)]
 pub struct Span {
@@ -14,7 +15,7 @@ impl Span {
     }
     pub fn external() -> Span {
         Span {
-            file: FileId(0),
+            file: FileId(Index::from_raw_parts(0, 0)),
             start: 0,
             end: EXTERNAL_SOURCE.len(),
         }

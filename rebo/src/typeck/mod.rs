@@ -33,12 +33,12 @@ impl<'i> BindingTypes<'i> {
 }
 
 pub struct Typechecker<'i> {
-    diagnostics: &'i Diagnostics<'i>,
+    diagnostics: &'i Diagnostics,
     binding_types: &'i mut BindingTypes<'i>,
 }
 
 impl<'i> Typechecker<'i> {
-    pub fn new(diagnostics: &'i Diagnostics<'i>, binding_types: &'i mut BindingTypes<'i>) -> Typechecker<'i> {
+    pub fn new(diagnostics: &'i Diagnostics, binding_types: &'i mut BindingTypes<'i>) -> Typechecker<'i> {
         Typechecker {
             diagnostics,
             binding_types,
