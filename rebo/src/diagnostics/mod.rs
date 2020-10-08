@@ -81,10 +81,7 @@ pub struct Diagnostics {
 impl fmt::Debug for Diagnostics {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.debug_struct("Diagnostics")
-            .field("source_arena", &"&'i Arena<String>")
-            .field("files", &"RefCell<SimpleFiles<String, &'i str>>")
-            .field("stderr", &"StandardStream")
-            .field("config", &self.config)
+            .field("...", &"...")
             .finish()
     }
 }
