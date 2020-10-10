@@ -3,7 +3,7 @@ use std::collections::VecDeque;
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use crate::diagnostics::Span;
+use diagnostic::Span;
 
 #[derive(Debug)]
 pub struct Tokens<'i> {

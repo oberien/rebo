@@ -3,9 +3,10 @@ use std::borrow::Cow;
 use std::collections::HashMap;
 
 use typed_arena::Arena;
+use diagnostic::{Span, Diagnostics, DiagnosticBuilder};
 
 use crate::lexer::{Tokens, Token, TokenType};
-use crate::diagnostics::{Span, Diagnostics, ErrorCode, DiagnosticBuilder};
+use crate::error_codes::ErrorCode;
 use crate::scope::BindingId;
 
 mod expr;
@@ -109,7 +110,7 @@ impl<'a, 'i, 'r> Parser<'a, 'i, 'r> {
                 id: binding_id,
                 ident,
                 mutable: false,
-                span: Span::external(),
+                span: crate::EXTERNAL_SPAN.lock().unwrap().unwrap(),
                 rogue: false,
             });
         }
@@ -529,7 +530,7 @@ impl<'a, 'i, 'r> Parser<'a, 'i, 'r> {
             .map(|(_, &s)| s)
     }
 
-    fn diagnostic_unknown_identifier(&mut self, span: Span, ident: &'i str, f: impl for<'d> FnOnce(DiagnosticBuilder<'d>) -> DiagnosticBuilder<'d>) -> Binding<'i> {
+    fn diagnostic_unknown_identifier(&mut self, span: Span, ident: &'i str, f: impl for<'d> FnOnce(DiagnosticBuilder<'d, ErrorCode>) -> DiagnosticBuilder<'d, ErrorCode>) -> Binding<'i> {
         let mut d = self.diagnostics.error(ErrorCode::UnknownIdentifier)
             .with_error_label(span, format!("variable `{}` doesn't exist", ident));
         d = f(d);

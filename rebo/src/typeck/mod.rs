@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
-use crate::diagnostics::{Diagnostics, Span};
+use diagnostic::{Diagnostics, Span};
+
 use crate::parser::{Expr, Binding};
 use crate::common::Type;
 

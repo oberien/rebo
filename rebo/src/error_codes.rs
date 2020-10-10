@@ -24,8 +24,8 @@ pub enum ErrorCode {
 }
 use ErrorCode::*;
 
-impl ErrorCode {
-    pub fn code_str(&self) -> &'static str {
+impl diagnostic::ErrorCode for ErrorCode {
+    fn code(&self) -> String {
         match self {
             InternalCompilerError => "0000",
             MissingSemicolon => "0001",
@@ -48,10 +48,10 @@ impl ErrorCode {
             UnclosedBlockComment => "0018",
             InvalidBoolNotType => "0019",
             InvalidBoolExprType => "0020",
-        }
+        }.to_string()
     }
 
-    pub fn message(&self) -> &'static str {
+    fn message(&self) -> String {
         match self {
             InternalCompilerError => "internal compiler error (please report this)",
             MissingSemicolon => "missing semicolon",
@@ -74,6 +74,6 @@ impl ErrorCode {
             UnclosedBlockComment => "unclosed block comment",
             InvalidBoolNotType => "tried to apply boolean negation on a non-bool type",
             InvalidBoolExprType => "tried to apply boolean binary operation to a non-bool type",
-        }
+        }.to_string()
     }
 }

@@ -1,6 +1,8 @@
 use std::collections::{HashMap, VecDeque};
 
-use crate::diagnostics::{Diagnostics, Span, ErrorCode};
+use diagnostic::{Diagnostics, Span};
+
+use crate::error_codes::ErrorCode;
 use crate::typeck::BindingTypes;
 use crate::typeck::constraints::Constraint;
 use crate::parser::Binding;

@@ -1,9 +1,10 @@
 use std::borrow::Cow;
 
+use diagnostic::Span;
+
 use crate::lexer::{Token, TokenType};
 use super::{Expr, InternalError, Parser};
 use crate::parser::{Expected, ExprType};
-use crate::diagnostics::Span;
 
 // make trace! here log as if this still was the parser module
 macro_rules! module_path {

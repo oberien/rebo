@@ -1,8 +1,8 @@
 use std::fmt::{self, Write};
 
 use itertools::Itertools;
+use diagnostic::Span;
 
-use crate::diagnostics::Span;
 use crate::scope::BindingId;
 use crate::util::PadFmt;
 

@@ -9,12 +9,10 @@ edition = "2018"
 [dependencies]
 thiserror = "1.0.20"
 lexical = { version = "5.2.0", features = ["radix"] }
-#typed-arena = "2.0.1"
-typed-arena = { git = "https://github.com/oberien/rust-typed-arena#faff712" }
+typed-arena = "2.0.1"
+diagnostic = { git = "https://github.com/oberien/diagnostic", rev = "3a1ce87" }
 log = "0.4.11"
 env_logger = "0.7.1"
-codespan-reporting = "0.9.5"
-backtrace = "0.3.50"
 rebo_derive = { path = "../rebo_derive" }
 lazy_static = "1.4.0"
 strsim = "0.10.0"

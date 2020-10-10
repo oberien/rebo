@@ -2,14 +2,16 @@
 extern crate log;
 extern crate self as rebo;
 
+use std::sync::Mutex;
+
 use typed_arena::Arena;
+use diagnostic::{Diagnostics, Span};
 
 use crate::parser::{Parser, Ast};
-use crate::diagnostics::Diagnostics;
 use crate::vm::Vm;
 use crate::scope::RootScope;
 
-mod diagnostics;
+mod error_codes;
 mod lexer;
 mod parser;
 mod typeck;
@@ -26,11 +28,17 @@ use crate::typeck::{BindingTypes, Typechecker};
 use std::path::Path;
 
 const EXTERNAL_SOURCE: &str = "defined externally";
+lazy_static::lazy_static! {
+    static ref EXTERNAL_SPAN: Mutex<Option<Span>> = Mutex::new(None);
+}
+
+
 
 pub fn run<P: AsRef<Path>>(path: P, code: String) {
     let diagnostics = Diagnostics::new();
     // register file 0 for external sources
-    diagnostics.add_file("external".to_string(), EXTERNAL_SOURCE.to_string());
+    let external = diagnostics.add_file("external".to_string(), EXTERNAL_SOURCE.to_string());
+    *EXTERNAL_SPAN.lock().unwrap() = Some(Span::new(external.0, 0, EXTERNAL_SOURCE.len()));
 
     let (file, code) = diagnostics.add_file(path.as_ref().to_string_lossy().into(), code);
     let tokens = lexer::lex(&diagnostics, file, code).unwrap();

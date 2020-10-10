@@ -78,6 +78,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "diagnostic"
+version = "0.1.0"
+source = "git+https://github.com/oberien/diagnostic?rev=3a1ce87#3a1ce87c8262bfaedcc0fd0c7f9f96c666548af3"
+dependencies = [
+ "backtrace",
+ "codespan-reporting",
+ "typed-arena 2.0.1 (git+https://github.com/oberien/rust-typed-arena#faff712)",
+]
+
+[[package]]
 name = "either"
 version = "1.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -246,8 +256,7 @@ dependencies = [
 name = "rebo"
 version = "0.1.0"
 dependencies = [
- "backtrace",
- "codespan-reporting",
+ "diagnostic",
  "env_logger",
  "itertools",
  "lazy_static",
@@ -256,7 +265,7 @@ dependencies = [
  "rebo_derive",
  "strsim",
  "thiserror",
- "typed-arena",
+ "typed-arena 2.0.1 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
@@ -363,6 +372,12 @@ dependencies = [
 name = "typed-arena"
 version = "2.0.1"
 source = "git+https://github.com/oberien/rust-typed-arena#faff712#faff712245a358bcbc950556db621c5295817ed5"
+
+[[package]]
+name = "typed-arena"
+version = "2.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0685c84d5d54d1c26f7d3eb96cd41550adb97baed141a761cf335d3d33bcd0ae"
 
 [[package]]
 name = "unicode-width"

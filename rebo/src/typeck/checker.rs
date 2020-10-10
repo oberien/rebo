@@ -1,4 +1,6 @@
-use crate::diagnostics::{Diagnostics, Span, ErrorCode};
+use diagnostic::{Diagnostics, Span};
+
+use crate::error_codes::ErrorCode;
 use crate::typeck::BindingTypes;
 use crate::parser::{Expr, ExprType};
 use crate::common::{SpecificType, Type};

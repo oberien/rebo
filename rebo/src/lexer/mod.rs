@@ -1,6 +1,7 @@
 use std::collections::VecDeque;
 
-use crate::diagnostics::{Span, FileId, Diagnostics, ErrorCode};
+use diagnostic::{Span, FileId, Diagnostics};
+use crate::error_codes::ErrorCode;
 
 mod token;
 

@@ -1,8 +1,9 @@
 use std::fmt;
 
+use diagnostic::Span;
+
 use crate::parser::{Expr, ExprType, Binding};
 use crate::typeck::BindingTypes;
-use crate::diagnostics::Span;
 use crate::common::{SpecificType, Type};
 
 #[derive(Debug)]

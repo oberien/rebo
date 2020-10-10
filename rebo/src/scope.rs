@@ -5,7 +5,6 @@ use crate::common::{Value, Function, SpecificType, Type};
 use std::sync::atomic::{AtomicU32, Ordering};
 use crate::typeck::BindingTypes;
 use crate::parser::Binding;
-use crate::diagnostics::Span;
 
 #[derive(Debug, Clone, Copy, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub struct BindingId(u32);
@@ -61,7 +60,7 @@ impl<'a, 'i> RootScope<'a, 'i> {
             id: binding_id,
             ident: name,
             mutable: false,
-            span: Span::external(),
+            span: crate::EXTERNAL_SPAN.lock().unwrap().unwrap(),
             rogue: false,
         };
         self.scope.create(binding_id, Value::Function(f.imp));
