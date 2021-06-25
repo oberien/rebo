@@ -1,24 +1,27 @@
 use crate::common::{Value, Function, FunctionImpl, FunctionType, SpecificType, Type};
-use crate::scope::{RootScope, Scopes};
+use crate::scope::{Scopes, Scope};
 use crate as rebo;
+use crate::parser::Binding;
 
-pub fn add_to_root_scope(scope: &mut RootScope) {
-    scope.add_function("print", Function {
+pub fn add_to_scope(scope: &mut Scope) -> Vec<(Binding<'static>, Type)> {
+    let mut bindings = Vec::new();
+    bindings.push(scope.add_external_function("print", Function {
         typ: FunctionType {
             args: &[Type::Varargs],
             ret: Type::Specific(SpecificType::Unit),
         },
         imp: FunctionImpl::Rust(print),
-    });
-    scope.add_function("add_one", add_one);
-    scope.add_function("assert", assert);
-    scope.add_function("panic", Function {
+    }));
+    bindings.push(scope.add_external_function("add_one", add_one));
+    bindings.push(scope.add_external_function("assert", assert));
+    bindings.push(scope.add_external_function("panic", Function {
         typ: FunctionType {
             args: &[Type::Specific(SpecificType::String)],
             ret: Type::Bottom,
         },
         imp: FunctionImpl::Rust(panic),
-    });
+    }));
+    bindings
 }
 
 fn print(_scopes: &mut Scopes, values: Vec<Value>) -> Value {

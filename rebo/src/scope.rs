@@ -5,6 +5,7 @@ use crate::common::{Value, Function, SpecificType, Type};
 use std::sync::atomic::{AtomicU32, Ordering};
 use crate::typeck::BindingTypes;
 use crate::parser::Binding;
+use diagnostic::Span;
 
 #[derive(Debug, Clone, Copy, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub struct BindingId(u32);
@@ -17,7 +18,7 @@ impl fmt::Display for BindingId {
 static NEXT_BINDING_ID: AtomicU32 = AtomicU32::new(0);
 
 impl BindingId {
-    pub fn new() -> BindingId {
+    pub fn unique() -> BindingId {
         let id = NEXT_BINDING_ID.fetch_add(1, Ordering::SeqCst);
         // why do I even have this check?!
         if id == u32::MAX {
@@ -31,44 +32,9 @@ pub struct Scopes {
     scopes: Vec<Scope>,
 }
 
-pub struct RootScope<'a, 'i> {
-    scope: Scope,
-    binding_types: &'a mut BindingTypes<'i>,
-    binding_id_mapping: HashMap<&'static str, BindingId>,
-}
-
 pub struct Scope {
     variables: HashMap<BindingId, Value>,
 }
-
-impl<'a, 'i> RootScope<'a, 'i> {
-    pub fn new(binding_types: &'a mut BindingTypes<'i>) -> Self {
-        RootScope {
-            scope: Scope::new(),
-            binding_types,
-            binding_id_mapping: HashMap::new(),
-        }
-    }
-
-    pub(crate) fn into_inner(self) -> (Scope, HashMap<&'static str, BindingId>) {
-        (self.scope, self.binding_id_mapping)
-    }
-
-    pub fn add_function(&mut self, name: &'static str, f: Function) {
-        let binding_id = BindingId::new();
-        let binding = Binding {
-            id: binding_id,
-            ident: name,
-            mutable: false,
-            span: crate::EXTERNAL_SPAN.lock().unwrap().unwrap(),
-            rogue: false,
-        };
-        self.scope.create(binding_id, Value::Function(f.imp));
-        self.binding_types.insert(binding, Type::Specific(SpecificType::Function(Box::new(f.typ))), binding.span);
-        self.binding_id_mapping.insert(name, binding_id);
-    }
-}
-
 
 impl Scopes {
     pub fn new() -> Self {
@@ -117,6 +83,20 @@ impl Scope {
         }
     }
 
+    pub fn add_external_function(&mut self, name: &'static str, f: Function) -> (Binding<'static>, Type) {
+        let binding_id = BindingId::unique();
+        let binding = Binding {
+            id: binding_id,
+            ident: name,
+            mutable: false,
+            span: crate::EXTERNAL_SPAN.lock().unwrap().unwrap(),
+            rogue: false,
+        };
+        self.create(binding_id, Value::Function(f.imp));
+        (binding, Type::Specific(SpecificType::Function(Box::new(f.typ))))
+    }
+
+    // runtime functions
     pub fn get(&self, binding_id: BindingId) -> Option<&Value> {
         self.variables.get(&binding_id)
     }

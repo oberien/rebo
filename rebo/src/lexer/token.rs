@@ -41,9 +41,9 @@ pub enum TokenType<'i> {
     Bool(bool),
     Let,
     Mut,
-    // =
+    /// =
     Assign,
-    // ==
+    /// ==
     Equals,
     Plus,
     Minus,

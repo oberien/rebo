@@ -9,7 +9,7 @@ use diagnostic::{Diagnostics, Span};
 
 use crate::parser::{Parser, Ast};
 use crate::vm::Vm;
-use crate::scope::RootScope;
+use crate::scope::Scope;
 
 mod error_codes;
 mod lexer;
@@ -34,34 +34,35 @@ lazy_static::lazy_static! {
 
 
 
-pub fn run<P: AsRef<Path>>(path: P, code: String) {
+pub fn run(filename: String, code: String) {
     let diagnostics = Diagnostics::new();
     // register file 0 for external sources
     let external = diagnostics.add_file("external".to_string(), EXTERNAL_SOURCE.to_string());
     *EXTERNAL_SPAN.lock().unwrap() = Some(Span::new(external.0, 0, EXTERNAL_SOURCE.len()));
 
-    let (file, code) = diagnostics.add_file(path.as_ref().to_string_lossy().into(), code);
-    let tokens = lexer::lex(&diagnostics, file, code).unwrap();
-    println!("{}", tokens);
+    let (file, code) = diagnostics.add_file(filename, code);
 
-    let mut binding_types = BindingTypes::new();
-    let mut root_scope = RootScope::new(&mut binding_types);
-    stdlib::add_to_root_scope(&mut root_scope);
-    let (root_scope, binding_id_mapping) = root_scope.into_inner();
+    // lex
+    let tokens = lexer::lex(&diagnostics, file, code).unwrap();
+    println!("TOKENS:\n{}\n", tokens);
+
+    let mut scope = Scope::new();
+    let binding_types = stdlib::add_to_scope(&mut scope);
+    let bindings = binding_types.iter().map(|(binding, _)| binding.clone());
 
     let arena = Arena::new();
-    let parser = Parser::new(&arena, tokens, &diagnostics, &binding_id_mapping);
+    let parser = Parser::new(&arena, tokens, &diagnostics, bindings);
     let ast = parser.parse().unwrap();
-    println!("{}", ast);
+    println!("AST:\n{}\n", ast);
     let Ast { exprs, bindings: _ } = ast;
-    Typechecker::new(&diagnostics, &mut binding_types).typeck(&exprs);
+    // Typechecker::new(&diagnostics, &mut binding_types).typeck(&exprs);
 
-    if diagnostics.error_printed() {
+    if diagnostics.errors_printed() > 0 {
         eprintln!("Aborted due to errors");
         return;
     }
 
-    let vm = Vm::new(root_scope);
+    let vm = Vm::new(scope);
     let result = vm.run(&exprs);
-    println!("{:?}", result);
+    println!("RESULT: {:?}", result);
 }

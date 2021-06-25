@@ -4,3 +4,8 @@ members = [
     "rebo",
     "rebo_derive",
 ]
+
+default-members = [
+    "rebo",
+    "rebo_derive",
+]

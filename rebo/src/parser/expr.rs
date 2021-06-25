@@ -28,25 +28,43 @@ pub struct Binding<'i> {
 #[derive(Debug)]
 pub enum ExprType<'a, 'i> {
     Unit,
+    /// foo
     Variable(Binding<'i>),
+    /// 0
     Integer(i64),
+    /// 0.
     Float(f64),
+    /// true
     Bool(bool),
+    /// "foo"
     String(String),
-    // let foo = bar
+    /// let ident = expr
     Bind(Binding<'i>, &'a Expr<'a, 'i>),
-    // foo = bar
+    /// ident = expr
     Assign((Binding<'i>, Span), &'a Expr<'a, 'i>),
+    /// expr + expr
     Add(&'a Expr<'a, 'i>, &'a Expr<'a, 'i>),
+    /// expr - expr
     Sub(&'a Expr<'a, 'i>, &'a Expr<'a, 'i>),
+    /// expr * expr
     Mul(&'a Expr<'a, 'i>, &'a Expr<'a, 'i>),
+    /// expr / expr
     Div(&'a Expr<'a, 'i>, &'a Expr<'a, 'i>),
+    /// expr && expr
     BoolAnd(&'a Expr<'a, 'i>, &'a Expr<'a, 'i>),
+    /// expr || bar
     BoolOr(&'a Expr<'a, 'i>, &'a Expr<'a, 'i>),
+    /// !expr
     BoolNot(&'a Expr<'a, 'i>),
+    /// expr == expr
+    Equals(&'a Expr<'a, 'i>, &'a Expr<'a, 'i>),
+    /// expr;
     Statement(&'a Expr<'a, 'i>),
+    /// { expr... }
     Block(Vec<&'a Expr<'a, 'i>>),
+    /// (expr)
     Parenthezised(&'a Expr<'a, 'i>),
+    /// ident(expr, expr, ...)
     FunctionCall((Binding<'i>, Span), Vec<&'a Expr<'a, 'i>>),
 }
 
@@ -73,6 +91,7 @@ impl<'a, 'i> fmt::Display for ExprType<'a, 'i> {
                 write!(f, "{} = {}", binding.ident, expr)
             }
             ExprType::Assign((binding, _), expr) => write!(f, "{} = {}", binding.ident, expr),
+            ExprType::Equals(left, right) => write!(f, "{} == {}", left, right),
             ExprType::Add(a, b) => write!(f, "{} + {}", a, b),
             ExprType::Sub(a, b) => write!(f, "{} - {}", a, b),
             ExprType::Mul(a, b) => write!(f, "{} * {}", a, b),

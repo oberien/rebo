@@ -76,6 +76,9 @@ impl<'a, 'i> ConstraintCreator<'a, 'i> {
                 self.constraints.push(constraint);
                 TypeOrBinding::Type(Type::Specific(SpecificType::Unit), expr.span)
             },
+            Equals(left, right) => {
+                unimplemented!()
+            }
             &Add(a, b) | &Sub(a, b) | &Mul(a, b) | &Div(a, b) => {
                 let type_a = self.get_type(a);
                 let type_b = self.get_type(b);

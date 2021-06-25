@@ -1,9 +1,5 @@
-print(1 + 2 * 3);
-print(1 * 2 + 3);
-print((1 + 2) * 3);
-print(1 + (2 * 3));
-print((1 * 2) + 3);
-print(1 * (2 + 3));
+print(1 + 2 * 3 == 7);
+print(1 + 2 * 3 * 4);
 let mut a = 1;
 let b = add_one;
 let mut c = b(a);

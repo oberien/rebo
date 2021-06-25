@@ -25,6 +25,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "appendlist"
+version = "1.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e149dc73cd30538307e7ffa2acd3d2221148eaeed4871f246657b1c3eaa1cbd2"
+
+[[package]]
 name = "arrayvec"
 version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -80,11 +86,11 @@ dependencies = [
 [[package]]
 name = "diagnostic"
 version = "0.1.0"
-source = "git+https://github.com/oberien/diagnostic?rev=3a1ce87#3a1ce87c8262bfaedcc0fd0c7f9f96c666548af3"
+source = "git+https://github.com/oberien/diagnostic?rev=8f08f52#8f08f52f1554c13fdd5e7bfd28fa0a0615cba349"
 dependencies = [
+ "appendlist",
  "backtrace",
  "codespan-reporting",
- "typed-arena 2.0.1 (git+https://github.com/oberien/rust-typed-arena#faff712)",
 ]
 
 [[package]]
@@ -265,7 +271,7 @@ dependencies = [
  "rebo_derive",
  "strsim",
  "thiserror",
- "typed-arena 2.0.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "typed-arena",
 ]
 
 [[package]]
@@ -367,11 +373,6 @@ checksum = "d40c6d1b69745a6ec6fb1ca717914848da4b44ae29d9b3080cbee91d72a69b14"
 dependencies = [
  "lazy_static",
 ]
-
-[[package]]
-name = "typed-arena"
-version = "2.0.1"
-source = "git+https://github.com/oberien/rust-typed-arena#faff712#faff712245a358bcbc950556db621c5295817ed5"
 
 [[package]]
 name = "typed-arena"

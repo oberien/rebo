@@ -59,6 +59,15 @@ impl Vm {
                 let value = self.eval_expr(expr, depth+1);
                 self.bind(binding, value, depth+1)
             },
+            Expr { span: _, typ: ExprType::Equals(left, right) } => match (self.eval_expr(left, depth+1), self.eval_expr(right, depth+1)) {
+                (Value::Unit, Value::Unit) => Value::Bool(true),
+                (Value::Integer(l), Value::Integer(r)) => Value::Bool(l == r),
+                (Value::Float(l), Value::Float(r)) => Value::Bool(l == r),
+                (Value::Bool(l), Value::Bool(r)) => Value::Bool(l == r),
+                (Value::String(l), Value::String(r)) => Value::Bool(l == r),
+                (Value::Function(FunctionImpl::Rust(l)), Value::Function(FunctionImpl::Rust(r))) => Value::Bool(l as usize == r as usize),
+                _ => unreachable!("can't compare different types"),
+            }
             Expr { span: _, typ: ExprType::Add(a, b) } => math::<Add>(self.eval_expr(a, depth+1), self.eval_expr(b, depth+1)),
             Expr { span: _, typ: ExprType::Sub(a, b) } => math::<Sub>(self.eval_expr(a, depth+1), self.eval_expr(b, depth+1)),
             Expr { span: _, typ: ExprType::Mul(a, b) } => math::<Mul>(self.eval_expr(a, depth+1), self.eval_expr(b, depth+1)),
