@@ -56,8 +56,22 @@ pub enum ExprType<'a, 'i> {
     BoolOr(&'a Expr<'a, 'i>, &'a Expr<'a, 'i>),
     /// !expr
     BoolNot(&'a Expr<'a, 'i>),
+    /// expr < expr
+    LessThan(&'a Expr<'a, 'i>, &'a Expr<'a, 'i>),
+    /// expr <= expr
+    LessEquals(&'a Expr<'a, 'i>, &'a Expr<'a, 'i>),
     /// expr == expr
     Equals(&'a Expr<'a, 'i>, &'a Expr<'a, 'i>),
+    /// expr != expr
+    NotEquals(&'a Expr<'a, 'i>, &'a Expr<'a, 'i>),
+    /// expr ~~ expr
+    FloatEquals(&'a Expr<'a, 'i>, &'a Expr<'a, 'i>),
+    /// expr !~ expr
+    FloatNotEquals(&'a Expr<'a, 'i>, &'a Expr<'a, 'i>),
+    /// expr >= expr
+    GreaterEquals(&'a Expr<'a, 'i>, &'a Expr<'a, 'i>),
+    /// expr > expr
+    GreaterThan(&'a Expr<'a, 'i>, &'a Expr<'a, 'i>),
     /// expr;
     Statement(&'a Expr<'a, 'i>),
     /// { expr... }
@@ -90,14 +104,21 @@ impl<'a, 'i> fmt::Display for ExprType<'a, 'i> {
                 }
                 write!(f, "{} = {}", binding.ident, expr)
             }
-            ExprType::Assign((binding, _), expr) => write!(f, "{} = {}", binding.ident, expr),
-            ExprType::Equals(left, right) => write!(f, "{} == {}", left, right),
-            ExprType::Add(a, b) => write!(f, "{} + {}", a, b),
-            ExprType::Sub(a, b) => write!(f, "{} - {}", a, b),
-            ExprType::Mul(a, b) => write!(f, "{} * {}", a, b),
-            ExprType::Div(a, b) => write!(f, "{} / {}", a, b),
-            ExprType::BoolAnd(a, b) => write!(f, "{} && {}", a, b),
-            ExprType::BoolOr(a, b) => write!(f, "{} || {}", a, b),
+            ExprType::Assign((binding, _), expr) => write!(f, "({} = {})", binding.ident, expr),
+            ExprType::LessThan(left, right) => write!(f, "({} < {})", left, right),
+            ExprType::LessEquals(left, right) => write!(f, "({} <= {})", left, right),
+            ExprType::Equals(left, right) => write!(f, "({} == {})", left, right),
+            ExprType::NotEquals(left, right) => write!(f, "({} != {})", left, right),
+            ExprType::FloatEquals(left, right) => write!(f, "({} ~~ {})", left, right),
+            ExprType::FloatNotEquals(left, right) => write!(f, "({} !~ {})", left, right),
+            ExprType::GreaterEquals(left, right) => write!(f, "({} >= {})", left, right),
+            ExprType::GreaterThan(left, right) => write!(f, "({} > {})", left, right),
+            ExprType::Add(a, b) => write!(f, "({} + {})", a, b),
+            ExprType::Sub(a, b) => write!(f, "({} - {})", a, b),
+            ExprType::Mul(a, b) => write!(f, "({} * {})", a, b),
+            ExprType::Div(a, b) => write!(f, "({} / {})", a, b),
+            ExprType::BoolAnd(a, b) => write!(f, "({} && {})", a, b),
+            ExprType::BoolOr(a, b) => write!(f, "({} || {})", a, b),
             ExprType::BoolNot(b) => write!(f, "!{}", b),
             ExprType::Statement(expr) => write!(f, "{};", expr),
             ExprType::Block(exprs) => {

@@ -95,9 +95,10 @@ enum CreateBinding {
 
 #[derive(Debug, PartialOrd, PartialEq)]
 enum ParseUntil {
+    None,
     Math,
-    BooleanExpr,
     Compare,
+    BooleanExpr,
     All,
 }
 
@@ -212,11 +213,11 @@ impl<'a, 'i> Parser<'a, 'i> {
     fn try_parse_until(&mut self, until: ParseUntil, cmp: fn(&ParseUntil, &ParseUntil) -> bool, depth: usize) -> Result<&'a Expr<'a, 'i>, InternalError> {
         let mut fns: Vec<fn(&mut Self, usize) -> Result<&'a Expr<'a, 'i>, InternalError>> = Vec::new();
         // add in reverse order
-        if cmp(&until, &ParseUntil::Compare) {
-            fns.push(Self::try_parse_equals);
-        }
         if cmp(&until, &ParseUntil::BooleanExpr) {
             fns.push(Self::try_parse_precedence::<BooleanExpr>);
+        }
+        if cmp(&until, &ParseUntil::Compare) {
+            fns.push(Self::try_parse_compare);
         }
         if cmp(&until, &ParseUntil::Math) {
             fns.push(Self::try_parse_precedence::<Math>);
@@ -274,6 +275,7 @@ impl<'a, 'i> Parser<'a, 'i> {
                 span
             },
         };
+        trace!("{} parens: ({})", "|".repeat(depth), expr);
         Ok(self.arena.alloc(Expr::new(Span::new(start_span.file, start_span.start, span.end), ExprType::Parenthezised(expr))))
     }
 
@@ -295,6 +297,7 @@ impl<'a, 'i> Parser<'a, 'i> {
                 span
             },
         };
+        trace!("{} block: {{ {} }}", "|".repeat(depth), body.iter().fold(String::new(), |s, e| s + &e.to_string()));
         Ok(self.arena.alloc(Expr::new(Span::new(start_span.file, start_span.start, span.end), ExprType::Block(body))))
     }
 
@@ -321,7 +324,7 @@ impl<'a, 'i> Parser<'a, 'i> {
                     return exprs;
                 }
             };
-            trace!("{}got expression {}", "|".repeat(depth), expr);
+            trace!("{} block got expression {}", "|".repeat(depth), expr);
 
             // handle missing semicolon
             match last {
@@ -347,7 +350,8 @@ impl<'a, 'i> Parser<'a, 'i> {
         match self.peek_token(0) {
             Some(Token { span, typ: TokenType::Exclamation }) => {
                 drop(self.next_token());
-                let expr = self.try_parse_until_including(ParseUntil::All, depth+1)?;
+                let expr = self.try_parse_until_including(ParseUntil::None, depth+1)?;
+                trace!("{} not: !{}", "|".repeat(depth), expr);
                 Ok(self.arena.alloc(Expr::new(span, ExprType::BoolNot(expr))))
             }
             _ => Err(InternalError::Backtrack(Cow::Borrowed(&[Expected::DqString]))),
@@ -359,6 +363,7 @@ impl<'a, 'i> Parser<'a, 'i> {
         match self.peek_token(0) {
             Some(Token { span, typ: TokenType::DqString(s) }) => {
                 drop(self.next_token());
+                trace!("{} string: {:?}", "|".repeat(depth), s);
                 Ok(self.arena.alloc(Expr::new(span, ExprType::String(s))))
             }
             _ => Err(InternalError::Backtrack(Cow::Borrowed(&[Expected::DqString]))),
@@ -374,6 +379,7 @@ impl<'a, 'i> Parser<'a, 'i> {
                     Some(binding) => binding,
                     None => self.diagnostic_unknown_identifier(span, ident, |d| d),
                 };
+                trace!("{} var: {}", "|".repeat(depth), binding.ident);
                 Ok(self.arena.alloc(Expr::new(span, ExprType::Variable(binding))))
             },
             _ => Err(InternalError::Backtrack(Cow::Borrowed(&[Expected::Ident]))),
@@ -412,6 +418,7 @@ impl<'a, 'i> Parser<'a, 'i> {
             e @ Err(InternalError::Error(_)) => return e,
         };
         mark.apply();
+        trace!("{} bind: {}", "|".repeat(depth), res);
         Ok(res)
     }
 
@@ -450,6 +457,7 @@ impl<'a, 'i> Parser<'a, 'i> {
             }
         };
 
+        trace!("{} assign: {} = {}", "|".repeat(depth), ident, expr);
         Ok(self.arena.alloc(Expr::new(Span::new(expr.span.file, ident_span.start, expr.span.end), ExprType::Assign((binding, ident_span), expr))))
     }
 
@@ -515,17 +523,26 @@ impl<'a, 'i> Parser<'a, 'i> {
         Ok(&*res)
     }
 
-    fn try_parse_equals(&mut self, depth: usize) -> Result<&'a Expr<'a, 'i>, InternalError> {
-        trace!("{}try_parse_equals: {}", "|".repeat(depth), self.peek_token(0).map(|t| t.to_string()).unwrap_or_else(|| "".to_string()));
+    fn try_parse_compare(&mut self, depth: usize) -> Result<&'a Expr<'a, 'i>, InternalError> {
+        trace!("{}try_parse_compare: {}", "|".repeat(depth), self.peek_token(0).map(|t| t.to_string()).unwrap_or_else(|| "".to_string()));
         let mark = self.tokens.mark();
         let left = self.try_parse_until_excluding(ParseUntil::Compare, depth+1)?;
-        match self.next_token() {
-            Some(Token { typ: TokenType::Equals, .. }) => (),
+        let op = match self.next_token() {
+            Some(Token { typ: TokenType::LessThan, .. }) => ExprType::LessThan,
+            Some(Token { typ: TokenType::LessEquals, .. }) => ExprType::LessEquals,
+            Some(Token { typ: TokenType::Equals, .. }) => ExprType::Equals,
+            Some(Token { typ: TokenType::NotEquals, .. }) => ExprType::NotEquals,
+            Some(Token { typ: TokenType::FloatEquals, .. }) => ExprType::FloatEquals,
+            Some(Token { typ: TokenType::FloatNotEquals, .. }) => ExprType::FloatNotEquals,
+            Some(Token { typ: TokenType::GreaterEquals, .. }) => ExprType::GreaterEquals,
+            Some(Token { typ: TokenType::GreaterThan, .. }) => ExprType::GreaterThan,
             _ => return Err(InternalError::Backtrack(Cow::Borrowed(&[Expected::Equals]))),
         };
-        let right = self.try_parse_until_including(ParseUntil::All, depth+1)?;
+        let right = self.try_parse_until_including(ParseUntil::Compare, depth+1)?;
         mark.apply();
-        Ok(self.arena.alloc(Expr::new(Span::new(left.span.file, left.span.start, right.span.end), ExprType::Equals(left, right))))
+        let res = self.arena.alloc(Expr::new(Span::new(left.span.file, left.span.start, right.span.end), op(left, right)));
+        trace!("{} compare: {} ", "|".repeat(depth), res);
+        Ok(res)
     }
 
     fn similar_ident(&self, ident: &'i str) -> Option<&'i str> {

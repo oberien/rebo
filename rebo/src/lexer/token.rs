@@ -43,8 +43,22 @@ pub enum TokenType<'i> {
     Mut,
     /// =
     Assign,
+    /// <
+    LessThan,
+    /// <=
+    LessEquals,
     /// ==
     Equals,
+    /// !=
+    NotEquals,
+    /// ~~
+    FloatEquals,
+    /// !~
+    FloatNotEquals,
+    /// >=
+    GreaterEquals,
+    /// >
+    GreaterThan,
     Plus,
     Minus,
     Star,
@@ -214,7 +228,14 @@ impl<'i> fmt::Display for TokenType<'i> {
             TokenType::Let => write!(f, "let "),
             TokenType::Mut => write!(f, "mut "),
             TokenType::Assign => write!(f, "= "),
+            TokenType::LessThan => write!(f, "< "),
+            TokenType::LessEquals => write!(f, "<= "),
             TokenType::Equals => write!(f, "== "),
+            TokenType::NotEquals => write!(f, "!= "),
+            TokenType::FloatEquals => write!(f, "~~ "),
+            TokenType::FloatNotEquals => write!(f, "!~ "),
+            TokenType::GreaterEquals => write!(f, ">= "),
+            TokenType::GreaterThan => write!(f, "> "),
             TokenType::Plus => write!(f, "+ "),
             TokenType::Minus => write!(f, "- "),
             TokenType::Star => write!(f, "* "),

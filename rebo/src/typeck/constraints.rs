@@ -76,9 +76,14 @@ impl<'a, 'i> ConstraintCreator<'a, 'i> {
                 self.constraints.push(constraint);
                 TypeOrBinding::Type(Type::Specific(SpecificType::Unit), expr.span)
             },
-            Equals(left, right) => {
-                unimplemented!()
-            }
+            LessThan(left, right) => todo!(),
+            LessEquals(left, right) => todo!(),
+            Equals(left, right) => todo!(),
+            NotEquals(left, right) => todo!(),
+            FloatEquals(left, right) => todo!(),
+            FloatNotEquals(left, right) => todo!(),
+            GreaterEquals(left, right) => todo!(),
+            GreaterThan(left, right) => todo!(),
             &Add(a, b) | &Sub(a, b) | &Mul(a, b) | &Div(a, b) => {
                 let type_a = self.get_type(a);
                 let type_b = self.get_type(b);

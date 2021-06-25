@@ -8,7 +8,7 @@ edition = "2018"
 
 [dependencies]
 thiserror = "1.0.20"
-lexical = { version = "5.2.0", features = ["radix"] }
+lexical = { version = "5.2.2", features = ["radix"] }
 typed-arena = "2.0.1"
 diagnostic = { git = "https://github.com/oberien/diagnostic", rev = "8f08f52" }
 log = "0.4.11"
@@ -17,3 +17,4 @@ rebo_derive = { path = "../rebo_derive" }
 lazy_static = "1.4.0"
 strsim = "0.10.0"
 itertools = "0.9.0"
+lexical-sort = "0.3.1"

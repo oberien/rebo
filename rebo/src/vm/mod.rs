@@ -1,3 +1,5 @@
+use std::cmp::Ordering;
+
 use crate::parser::{Expr, ExprType, Binding};
 use crate::common::{Value, FunctionImpl};
 use crate::scope::{Scopes, Scope};
@@ -59,15 +61,14 @@ impl Vm {
                 let value = self.eval_expr(expr, depth+1);
                 self.bind(binding, value, depth+1)
             },
-            Expr { span: _, typ: ExprType::Equals(left, right) } => match (self.eval_expr(left, depth+1), self.eval_expr(right, depth+1)) {
-                (Value::Unit, Value::Unit) => Value::Bool(true),
-                (Value::Integer(l), Value::Integer(r)) => Value::Bool(l == r),
-                (Value::Float(l), Value::Float(r)) => Value::Bool(l == r),
-                (Value::Bool(l), Value::Bool(r)) => Value::Bool(l == r),
-                (Value::String(l), Value::String(r)) => Value::Bool(l == r),
-                (Value::Function(FunctionImpl::Rust(l)), Value::Function(FunctionImpl::Rust(r))) => Value::Bool(l as usize == r as usize),
-                _ => unreachable!("can't compare different types"),
-            }
+            Expr { span: _, typ: ExprType::LessThan(a, b) } => cmp::<Lt>(self.eval_expr(a, depth+1), self.eval_expr(b, depth+1)),
+            Expr { span: _, typ: ExprType::LessEquals(a, b) } => cmp::<Le>(self.eval_expr(a, depth+1), self.eval_expr(b, depth+1)),
+            Expr { span: _, typ: ExprType::Equals(a, b) } => cmp::<Eq>(self.eval_expr(a, depth+1), self.eval_expr(b, depth+1)),
+            Expr { span: _, typ: ExprType::NotEquals(a, b) } => cmp::<Neq>(self.eval_expr(a, depth+1), self.eval_expr(b, depth+1)),
+            Expr { span: _, typ: ExprType::FloatEquals(a, b) } => cmp::<Feq>(self.eval_expr(a, depth+1), self.eval_expr(b, depth+1)),
+            Expr { span: _, typ: ExprType::FloatNotEquals(a, b) } => cmp::<Fneq>(self.eval_expr(a, depth+1), self.eval_expr(b, depth+1)),
+            Expr { span: _, typ: ExprType::GreaterEquals(a, b) } => cmp::<Ge>(self.eval_expr(a, depth+1), self.eval_expr(b, depth+1)),
+            Expr { span: _, typ: ExprType::GreaterThan(a, b) } => cmp::<Gt>(self.eval_expr(a, depth+1), self.eval_expr(b, depth+1)),
             Expr { span: _, typ: ExprType::Add(a, b) } => math::<Add>(self.eval_expr(a, depth+1), self.eval_expr(b, depth+1)),
             Expr { span: _, typ: ExprType::Sub(a, b) } => math::<Sub>(self.eval_expr(a, depth+1), self.eval_expr(b, depth+1)),
             Expr { span: _, typ: ExprType::Mul(a, b) } => math::<Mul>(self.eval_expr(a, depth+1), self.eval_expr(b, depth+1)),
@@ -153,6 +154,119 @@ fn math<O: MathOp>(a: Value, b: Value) -> Value {
     match (a, b) {
         (Value::Integer(a), Value::Integer(b)) => Value::Integer(O::integer(a, b)),
         (Value::Float(a), Value::Float(b)) => Value::Float(O::float(a, b)),
+        _ => todo!("error handling"),
+    }
+}
+
+trait CmpOp {
+    fn unit() -> bool;
+    fn integer(a: i64, b: i64) -> bool;
+    fn float(a: f64, b: f64) -> bool;
+    fn bool(a: bool, b: bool) -> bool;
+    fn string(a: &str, b: &str) -> bool;
+    fn str() -> &'static str;
+}
+
+enum Lt {}
+enum Le {}
+enum Eq {}
+enum Neq {}
+enum Feq {}
+enum Fneq {}
+enum Ge {}
+enum Gt {}
+
+impl CmpOp for Lt {
+    fn unit() -> bool { false }
+    fn integer(a: i64, b: i64) -> bool { a < b }
+    fn float(a: f64, b: f64) -> bool { a < b }
+    fn bool(a: bool, b: bool) -> bool { a < b }
+    fn string(a: &str, b: &str) -> bool { a < b }
+    fn str() -> &'static str { "<" }
+}
+impl CmpOp for Le {
+    fn unit() -> bool { true }
+    fn integer(a: i64, b: i64) -> bool { a <= b }
+    fn float(a: f64, b: f64) -> bool { a <= b }
+    fn bool(a: bool, b: bool) -> bool { a <= b }
+    fn string(a: &str, b: &str) -> bool { a <= b }
+    fn str() -> &'static str { "<=" }
+}
+impl CmpOp for Eq {
+    fn unit() -> bool { true }
+    fn integer(a: i64, b: i64) -> bool { a == b }
+    fn float(a: f64, b: f64) -> bool { todo!("error handling") }
+    fn bool(a: bool, b: bool) -> bool { a == b }
+    fn string(a: &str, b: &str) -> bool { a == b }
+    fn str() -> &'static str { "==" }
+}
+impl CmpOp for Neq {
+    fn unit() -> bool { false }
+    fn integer(a: i64, b: i64) -> bool { a != b }
+    fn float(a: f64, b: f64) -> bool { todo!("error handling") }
+    fn bool(a: bool, b: bool) -> bool { a != b }
+    fn string(a: &str, b: &str) -> bool { a != b }
+    fn str() -> &'static str { "!=" }
+}
+impl CmpOp for Feq {
+    fn unit() -> bool { todo!("error handling") }
+    fn integer(a: i64, b: i64) -> bool { todo!("error handling")}
+    fn float(a: f64, b: f64) -> bool {
+        // https://stackoverflow.com/a/4915891
+        let epsilon = 1e-10;
+        let abs_a = a.abs();
+        let abs_b = b.abs();
+        let diff = (a - b).abs();
+        if a == b { // shortcut, handles infinities
+            true
+        } else if a == 0. || b == 0. || diff < f64::MIN_POSITIVE {
+            // a or b is zero or both are extremely close to it
+            // relative error is less meaningful here
+            diff < (epsilon * f64::MIN_POSITIVE)
+        } else { // use relative error
+            diff / (abs_a + abs_b) < epsilon
+        }
+    }
+    fn bool(a: bool, b: bool) -> bool { todo!("error handling") }
+    fn string(a: &str, b: &str) -> bool {
+        let a = lexical_sort::iter::iterate_lexical(a);
+        let b = lexical_sort::iter::iterate_lexical(b);
+        a.zip(b).all(|(a, b)| a == b)
+    }
+    fn str() -> &'static str { "~~" }
+}
+impl CmpOp for Fneq {
+    fn unit() -> bool { todo!("error handling") }
+    fn integer(a: i64, b: i64) -> bool { todo!("error handling")}
+    fn float(a: f64, b: f64) -> bool { !Feq::float(a, b) }
+    fn bool(a: bool, b: bool) -> bool { todo!("error handling") }
+    fn string(a: &str, b: &str) -> bool { !Feq::string(a, b) }
+    fn str() -> &'static str { "!~" }
+}
+impl CmpOp for Ge {
+    fn unit() -> bool { true }
+    fn integer(a: i64, b: i64) -> bool { a >= b }
+    fn float(a: f64, b: f64) -> bool { a >= b }
+    fn bool(a: bool, b: bool) -> bool { a >= b }
+    fn string(a: &str, b: &str) -> bool { a >= b }
+    fn str() -> &'static str { ">=" }
+}
+impl CmpOp for Gt {
+    fn unit() -> bool { false }
+    fn integer(a: i64, b: i64) -> bool { a > b }
+    fn float(a: f64, b: f64) -> bool { a > b }
+    fn bool(a: bool, b: bool) -> bool { a > b }
+    fn string(a: &str, b: &str) -> bool { a > b }
+    fn str() -> &'static str { ">" }
+}
+fn cmp<O: CmpOp>(a: Value, b: Value) -> Value {
+    trace!("math: {:?} {} {:?}", a, O::str(), b);
+    match (a, b) {
+        (Value::Unit, Value::Unit) => Value::Bool(O::unit()),
+        (Value::Integer(a), Value::Integer(b)) => Value::Bool(O::integer(a, b)),
+        (Value::Float(a), Value::Float(b)) => Value::Bool(O::float(a, b)),
+        (Value::Bool(a), Value::Bool(b)) => Value::Bool(O::bool(a, b)),
+        (Value::String(a), Value::String(b)) => Value::Bool(O::string(&a, &b)),
         _ => todo!("error handling"),
     }
 }

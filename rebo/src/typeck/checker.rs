@@ -32,7 +32,8 @@ impl<'a, 'i> Checker<'a, 'i> {
                 self.get_type(expr);
                 self.binding_types.get(binding).unwrap().clone().0
             },
-            Equals(..) => Type::Specific(SpecificType::Bool),
+            LessThan(..) | LessEquals(..) | Equals(..) | NotEquals(..) | FloatEquals(..)
+            | FloatNotEquals(..) | GreaterEquals(..) | GreaterThan(..)  => Type::Specific(SpecificType::Bool),
             Add(a, b) | Sub(a, b) | Mul(a, b) | Div(a, b) => {
                 let (a_typ, _) = self.get_type(a);
                 let (b_typ, _) = self.get_type(b);
