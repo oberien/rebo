@@ -1,4 +1,7 @@
 use std::fmt;
+use crate::parser::Binding;
+use std::collections::HashMap;
+use itertools::Either;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Type {
@@ -25,24 +28,44 @@ pub struct FunctionType {
     pub ret: Type,
 }
 
+/// Info needed before parsing / before typechecking
+pub struct PreTypeInfo<'i> {
+    /// bindings of the root scope / stdlib and function definitions of the first parser pass
+    pub bindings: HashMap<Binding<'i>, SpecificType>,
+}
+
 impl Type {
-    pub fn is_unifyable_with(&self, other: &Self) -> bool {
+    pub fn is_specific(&self) -> bool {
+        match self {
+            Type::Specific(_) => true,
+            _ => false,
+        }
+    }
+    pub fn try_unify(&self, other: &Self) -> Result<Either<Type, Type>, ()> {
         match (self, other) {
-            (Type::Top, _) | (_, Type::Top) => true,
-            (Type::Bottom, _) | (_, Type::Bottom) => true,
-            (Type::Varargs, _) | (_, Type::Varargs) => true,
-            (Type::Specific(SpecificType::Unit), Type::Specific(SpecificType::Unit)) => true,
-            (Type::Specific(SpecificType::Integer), Type::Specific(SpecificType::Integer)) => true,
-            (Type::Specific(SpecificType::Float), Type::Specific(SpecificType::Float)) => true,
-            (Type::Specific(SpecificType::Bool), Type::Specific(SpecificType::Bool)) => true,
-            (Type::Specific(SpecificType::String), Type::Specific(SpecificType::String)) => true,
+            (t, Type::Top) => Ok(Either::Left(t.clone())),
+            (Type::Top, t) => Ok(Either::Right(t.clone())),
+            (Type::Bottom, _) => Ok(Either::Left(Type::Bottom)),
+            (_, Type::Bottom) => Ok(Either::Right(Type::Bottom)),
+            (t, Type::Varargs) => Ok(Either::Left(t.clone())),
+            (Type::Varargs, t) => Ok(Either::Right(t.clone())),
+            (t @ Type::Specific(SpecificType::Unit), Type::Specific(SpecificType::Unit)) => Ok(Either::Left(t.clone())),
+            (t @ Type::Specific(SpecificType::Integer), Type::Specific(SpecificType::Integer)) => Ok(Either::Left(t.clone())),
+            (t @ Type::Specific(SpecificType::Float), Type::Specific(SpecificType::Float)) => Ok(Either::Left(t.clone())),
+            (t @ Type::Specific(SpecificType::Bool), Type::Specific(SpecificType::Bool)) => Ok(Either::Left(t.clone())),
+            (t @ Type::Specific(SpecificType::String), Type::Specific(SpecificType::String)) => Ok(Either::Left(t.clone())),
             (Type::Specific(SpecificType::Function(a)), Type::Specific(SpecificType::Function(b))) => {
                 let FunctionType { args: args_a, ret: ret_a } = &**a;
                 let FunctionType { args: args_b, ret: ret_b } = &**b;
-                args_a.into_iter().zip(args_b.into_iter()).all(|(a, b)| a.is_unifyable_with(b))
-                    && ret_a.is_unifyable_with(ret_b)
+                let same_args = args_a.into_iter().zip(args_b.into_iter()).all(|(a, b)| a.try_unify(b).is_ok());
+                let same_ret = ret_a.try_unify(ret_b).is_ok();
+                if same_args && same_ret {
+                    Ok(Either::Left(Type::Specific(SpecificType::Function(a.clone()))))
+                } else {
+                    Err(())
+                }
             },
-            _ => false,
+            _ => Err(()),
         }
     }
 }

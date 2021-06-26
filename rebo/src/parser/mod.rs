@@ -14,6 +14,7 @@ mod precedence;
 
 pub use expr::{Binding, Expr, ExprType};
 use crate::parser::precedence::{Math, BooleanExpr};
+use crate::common::PreTypeInfo;
 
 #[derive(Debug)]
 pub enum Error {
@@ -104,7 +105,7 @@ enum ParseUntil {
 
 /// All expression parsing function consume whitespace and comments before tokens, but not after.
 impl<'a, 'i> Parser<'a, 'i> {
-    pub fn new(arena: &'a Arena<Expr<'a, 'i>>, tokens: Tokens<'i>, diagnostics: &'i Diagnostics, existing_bindings: impl IntoIterator<Item = Binding<'static>>) -> Self {
+    pub fn new(arena: &'a Arena<Expr<'a, 'i>>, tokens: Tokens<'i>, diagnostics: &'i Diagnostics, pre_info: &mut PreTypeInfo<'i>) -> Self {
         let mut parser = Parser {
             arena,
             tokens,
@@ -113,7 +114,7 @@ impl<'a, 'i> Parser<'a, 'i> {
             scopes: vec![Scope { idents: HashMap::new() }],
         };
         // make existing bindings known to parser
-        for binding in existing_bindings {
+        for &binding in pre_info.bindings.keys() {
             parser.scopes.last_mut().unwrap().idents.insert(binding.ident, binding);
         }
         parser

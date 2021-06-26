@@ -1,119 +1,69 @@
-use std::collections::{HashMap, VecDeque};
+use std::collections::{HashMap, BTreeMap, VecDeque};
 
 use diagnostic::{Diagnostics, Span};
 
 use crate::error_codes::ErrorCode;
-use crate::typeck::BindingTypes;
-use crate::typeck::constraints::Constraint;
+use crate::typeck::{TypeVar, Constraint};
 use crate::parser::Binding;
 use crate::common::{SpecificType, Type};
+use itertools::{Itertools, Either};
 
-enum Dependency<'i> {
-    Binding(Binding<'i>, Span),
-    RetOf(Binding<'i>, Span),
-}
-
-pub struct ConstraintSolver<'a, 'i> {
+pub struct ConstraintSolver<'i> {
     diagnostics: &'i Diagnostics,
-    binding_types: &'a mut BindingTypes<'i>,
-    dependents: HashMap<Binding<'i>, Vec<Dependency<'i>>>,
-    worklist: VecDeque<Binding<'i>>,
+    dependents: HashMap<TypeVar, Vec<TypeVar>>,
+    worklist: VecDeque<(TypeVar, Type)>,
 }
 
-impl<'a, 'i> ConstraintSolver<'a, 'i> {
-    pub fn new(diagnostics: &'i Diagnostics, binding_types: &'a mut BindingTypes<'i>) -> Self {
+impl<'i> ConstraintSolver<'i> {
+    pub fn new(diagnostics: &'i Diagnostics) -> Self {
         ConstraintSolver {
             diagnostics,
-            binding_types,
             dependents: HashMap::new(),
             worklist: VecDeque::new(),
         }
     }
 
-    fn add_dependent(&mut self, binding: Binding<'i>, dependency: Dependency<'i>) {
-        self.dependents.entry(binding).or_default().push(dependency)
-    }
-    fn set_type(&mut self, binding: Binding<'i>, typ: Type, span: Span) {
-        match self.binding_types.get(binding) {
-            Some((typ_before, span_before)) if !(typ_before.is_unifyable_with(&typ)) => {
-                self.diagnostics.error(ErrorCode::TypeConflict)
-                    .with_info_label(*span_before, format!("inferred type is `{}`", typ_before))
-                    .with_error_label(span, format!("tried to assign type `{}`", typ))
-                    .emit()
-            },
-            Some(_) => (),
-            None => self.binding_types.insert(binding, typ, span),
-        }
-    }
-
-    pub fn solve(mut self, constraints: Vec<Constraint<'i>>) {
-        for binding in self.binding_types.types.keys().copied() {
-            self.worklist.push_back(binding);
-        }
+    pub fn solve(mut self, constraints: Vec<Constraint>) -> BTreeMap<TypeVar, Type> {
         for constraint in constraints {
             match constraint {
-                Constraint::Type(binding, typ, span) => {
-                    self.worklist.push_back(binding);
-                    self.set_type(binding, typ, span);
+                Constraint::Type(var, typ) => self.worklist.push_back((var, typ)),
+                Constraint::Eq(a, b) => {
+                    self.dependents.entry(a).or_default().push(b);
+                    self.dependents.entry(b).or_default().push(a);
                 },
-                Constraint::Eq(a, b, span) => {
-                    self.add_dependent(a, Dependency::Binding(b, span));
-                    self.add_dependent(b, Dependency::Binding(a, span));
-                },
-                Constraint::RetOf(a, fun, span) => {
-                    self.add_dependent(fun, Dependency::RetOf(a, span));
+            }
+        }
+
+        let mut solved: BTreeMap<_, Type> = BTreeMap::new();
+
+        while let Some((var, typ)) = self.worklist.pop_front() {
+            match solved.get(&var) {
+                Some(typ_before) => match typ_before.try_unify(&typ) {
+                    Ok(Either::Left(_)) => (),
+                    Ok(Either::Right(t)) => { solved.insert(var, t.clone()); },
+                    Err(()) => self.diagnostics.error(ErrorCode::TypeConflict)
+                        .with_info_label(var.span, format!("inferred type is `{}`", typ_before))
+                        .with_error_label(var.span, format!("tried to assign type `{}`", typ))
+                        .emit(),
+                }
+                _ => { solved.insert(var, typ.clone()); },
+            }
+
+            if typ.is_specific() {
+                for dependent in self.dependents.remove(&var).into_iter().flatten() {
+                    self.worklist.push_back((dependent, typ.clone()));
                 }
             }
         }
 
-        while let Some(workitem) = self.worklist.pop_front() {
-            self.apply_backwards(workitem);
-        }
-        // check that everything could be inferred
-        for (typ, span) in self.binding_types.types.values() {
-            match typ {
-                Type::Top => self.diagnostics.error(ErrorCode::UnableToInferType)
-                    .with_error_label(*span, "can't infer type for this binding")
-                    .emit(),
-                _ => (),
-            }
-        }
         // check that no dependents are left
         for (binding, deps) in self.dependents {
             let mut diag = self.diagnostics.error(ErrorCode::UnableToInferType)
                 .with_error_label(binding.span, "can't infer type for this binding");
-            for dep in deps {
-                let span = match dep {
-                    Dependency::Binding(_, span) => span,
-                    Dependency::RetOf(_, span) => span,
-                };
-                diag = diag.with_info_label(span, "cause: can't infer type for this expression");
+            for var in deps {
+                diag = diag.with_info_label(var.span, "cause: can't infer type for this expression");
             }
         }
-    }
-
-    /// Applies a known type to all of its dependents
-    fn apply_backwards(&mut self, binding: Binding<'i>) {
-        let (typ, _typ_span) = self.binding_types.get(binding).unwrap().clone();
-        let deps = match self.dependents.remove(&binding) {
-            Some(deps) => deps,
-            None => return,
-        };
-        let ret_type = match &typ {
-            Type::Specific(SpecificType::Function(f)) => Some(f.ret.clone()),
-            _ => None,
-        };
-        for dep in deps {
-            match dep {
-                Dependency::Binding(b, span) => {
-                    self.worklist.push_back(b);
-                    self.set_type(b, typ.clone(), span);
-                },
-                Dependency::RetOf(b, span) => {
-                    self.worklist.push_back(b);
-                    self.set_type(b, ret_type.clone().unwrap(), span);
-                },
-            }
-        }
+        solved
     }
 }

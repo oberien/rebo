@@ -1,8 +1,9 @@
+print(1 + 0.5);
+print("a" + "b");
 print(1 + 2 * 3 == 7);
 print(1 + 2 * 3 * 4);
 let mut a = 1;
-let b = add_one;
-let mut c = b(a);
+let mut c = add_one(a);
 c = c + {
     let c = 1337;
     c + 42

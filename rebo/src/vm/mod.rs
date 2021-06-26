@@ -195,7 +195,7 @@ impl CmpOp for Le {
 impl CmpOp for Eq {
     fn unit() -> bool { true }
     fn integer(a: i64, b: i64) -> bool { a == b }
-    fn float(a: f64, b: f64) -> bool { todo!("error handling") }
+    fn float(_: f64, _: f64) -> bool { unreachable!("can't float == float") }
     fn bool(a: bool, b: bool) -> bool { a == b }
     fn string(a: &str, b: &str) -> bool { a == b }
     fn str() -> &'static str { "==" }
@@ -203,14 +203,14 @@ impl CmpOp for Eq {
 impl CmpOp for Neq {
     fn unit() -> bool { false }
     fn integer(a: i64, b: i64) -> bool { a != b }
-    fn float(a: f64, b: f64) -> bool { todo!("error handling") }
+    fn float(_: f64, _: f64) -> bool { unreachable!("can't float != float") }
     fn bool(a: bool, b: bool) -> bool { a != b }
     fn string(a: &str, b: &str) -> bool { a != b }
     fn str() -> &'static str { "!=" }
 }
 impl CmpOp for Feq {
-    fn unit() -> bool { todo!("error handling") }
-    fn integer(a: i64, b: i64) -> bool { todo!("error handling")}
+    fn unit() -> bool { unreachable!("can't () ~~ ()") }
+    fn integer(a: i64, b: i64) -> bool { unreachable!("can't int ~~ int") }
     fn float(a: f64, b: f64) -> bool {
         // https://stackoverflow.com/a/4915891
         let epsilon = 1e-10;
@@ -227,7 +227,7 @@ impl CmpOp for Feq {
             diff / (abs_a + abs_b) < epsilon
         }
     }
-    fn bool(a: bool, b: bool) -> bool { todo!("error handling") }
+    fn bool(a: bool, b: bool) -> bool { unreachable!("can't bool ~~ bool") }
     fn string(a: &str, b: &str) -> bool {
         let a = lexical_sort::iter::iterate_lexical(a);
         let b = lexical_sort::iter::iterate_lexical(b);
@@ -236,10 +236,10 @@ impl CmpOp for Feq {
     fn str() -> &'static str { "~~" }
 }
 impl CmpOp for Fneq {
-    fn unit() -> bool { todo!("error handling") }
-    fn integer(a: i64, b: i64) -> bool { todo!("error handling")}
+    fn unit() -> bool { unreachable!("can't () !~ ()") }
+    fn integer(a: i64, b: i64) -> bool { unreachable!("can't int !~ int") }
     fn float(a: f64, b: f64) -> bool { !Feq::float(a, b) }
-    fn bool(a: bool, b: bool) -> bool { todo!("error handling") }
+    fn bool(a: bool, b: bool) -> bool { unreachable!("can't bool !~ bool") }
     fn string(a: &str, b: &str) -> bool { !Feq::string(a, b) }
     fn str() -> &'static str { "!~" }
 }

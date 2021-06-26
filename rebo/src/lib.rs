@@ -24,15 +24,13 @@ mod common;
 mod tests;
 
 pub use rebo_derive::function;
-use crate::typeck::{BindingTypes, Typechecker};
+use crate::typeck::Typechecker;
 use std::path::Path;
 
 const EXTERNAL_SOURCE: &str = "defined externally";
 lazy_static::lazy_static! {
     static ref EXTERNAL_SPAN: Mutex<Option<Span>> = Mutex::new(None);
 }
-
-
 
 pub fn run(filename: String, code: String) {
     let diagnostics = Diagnostics::new();
@@ -47,15 +45,14 @@ pub fn run(filename: String, code: String) {
     println!("TOKENS:\n{}\n", tokens);
 
     let mut scope = Scope::new();
-    let binding_types = stdlib::add_to_scope(&mut scope);
-    let bindings = binding_types.iter().map(|(binding, _)| binding.clone());
+    let mut pre_info = stdlib::add_to_scope(&mut scope);
 
     let arena = Arena::new();
-    let parser = Parser::new(&arena, tokens, &diagnostics, bindings);
+    let parser = Parser::new(&arena, tokens, &diagnostics, &mut pre_info);
     let ast = parser.parse().unwrap();
     println!("AST:\n{}\n", ast);
     let Ast { exprs, bindings: _ } = ast;
-    // Typechecker::new(&diagnostics, &mut binding_types).typeck(&exprs);
+    Typechecker::new(&diagnostics, &mut pre_info).typeck(&exprs);
 
     if diagnostics.errors_printed() > 0 {
         eprintln!("Aborted due to errors");

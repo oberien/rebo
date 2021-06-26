@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use diagnostic::{Diagnostics, Span};
 
 use crate::parser::{Expr, Binding};
-use crate::common::Type;
+use crate::common::{Type, SpecificType, PreTypeInfo};
 
 mod constraints;
 mod solver;
@@ -13,50 +13,61 @@ use constraints::ConstraintCreator;
 use solver::ConstraintSolver;
 use checker::Checker;
 
-#[derive(Debug, Clone)]
-pub struct BindingTypes<'i> {
-    pub types: HashMap<Binding<'i>, (Type, Span)>,
+/// A type variable.
+///
+/// `a + b` has 3 TypeVars: `a`, `b` and `a + b`.
+/// The source-code span is uniquely identifying a TypeVar.
+/// For variables, the binding-span (i.e. creation span) is used.
+#[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
+pub struct TypeVar {
+    span: Span,
+}
+impl TypeVar {
+    pub fn new(span: Span) -> TypeVar {
+        TypeVar { span }
+    }
 }
 
-impl<'i> BindingTypes<'i> {
-    pub fn new() -> BindingTypes<'i> {
-        BindingTypes {
-            types: HashMap::new(),
-        }
-    }
-
-    pub fn get(&self, binding: Binding<'i>) -> Option<&(Type, Span)> {
-        self.types.get(&binding)
-    }
-    pub fn insert(&mut self, binding: Binding<'i>, typ: Type, span: Span) {
-        self.types.insert(binding, (typ, span));
-    }
+pub enum Constraint {
+    Type(TypeVar, Type),
+    Eq(TypeVar, TypeVar),
 }
 
 pub struct Typechecker<'i> {
     diagnostics: &'i Diagnostics,
-    binding_types: &'i mut BindingTypes<'i>,
+    pre_info: &'i mut PreTypeInfo<'i>,
 }
 
 impl<'i> Typechecker<'i> {
-    pub fn new(diagnostics: &'i Diagnostics, binding_types: &'i mut BindingTypes<'i>) -> Typechecker<'i> {
+    pub fn new(diagnostics: &'i Diagnostics, pre_info: &'i mut PreTypeInfo<'i>) -> Typechecker<'i> {
         Typechecker {
             diagnostics,
-            binding_types,
+            pre_info,
         }
     }
 
     // Step 1: Create constraint set and collect function types
     // Step 2: Solve constraint set and print unification errors
-    // Step 3: Check math operations and function calls, printing type errors
+    // Step 3: Check resolved types
     pub fn typeck(&mut self, exprs: &Vec<&Expr<'_, 'i>>) {
-        let cc = ConstraintCreator::new(self.binding_types);
-        let constraints = cc.get_constraints(exprs);
-        trace!("got constraints: {:#?}", constraints.iter().map(ToString::to_string).collect::<Vec<_>>());
-        let cs = ConstraintSolver::new(&self.diagnostics, self.binding_types);
-        cs.solve(constraints);
-        let c = Checker::new(&self.diagnostics, self.binding_types);
-        c.check(exprs);
+        let cc = ConstraintCreator::new(self.pre_info);
+        let (constraints, restrictions) = cc.get_constraints(exprs);
+        let stringified = constraints.iter()
+            .map(|c| match c {
+                Constraint::Type(var, typ) => format!("`{}` = {}", self.diagnostics.resolve_span(var.span), typ),
+                Constraint::Eq(a, b) => format!("`{}` = `{}`", self.diagnostics.resolve_span(a.span), self.diagnostics.resolve_span(b.span)),
+            }).collect::<Vec<_>>();
+        trace!("got constraints: {:#?}", stringified);
+
+        let cs = ConstraintSolver::new(&self.diagnostics);
+        let solved = cs.solve(constraints);
+        let stringified = solved.iter()
+            .map(|(var, typ)| format!("`{}`: {}", self.diagnostics.resolve_span(var.span), typ))
+            .collect::<Vec<_>>();
+        trace!("got solve: {:#?}", stringified);
+
+        let c = Checker::new(&self.diagnostics, solved, restrictions);
+        c.check();
     }
 }
 

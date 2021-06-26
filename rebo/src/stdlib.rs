@@ -1,27 +1,30 @@
-use crate::common::{Value, Function, FunctionImpl, FunctionType, SpecificType, Type};
+use std::collections::HashMap;
+use crate::common::{Value, Function, FunctionImpl, FunctionType, SpecificType, Type, PreTypeInfo};
 use crate::scope::{Scopes, Scope};
 use crate as rebo;
 use crate::parser::Binding;
 
-pub fn add_to_scope(scope: &mut Scope) -> Vec<(Binding<'static>, Type)> {
-    let mut bindings = Vec::new();
-    bindings.push(scope.add_external_function("print", Function {
+pub fn add_to_scope(scope: &mut Scope) -> PreTypeInfo<'static> {
+    let mut bindings = HashMap::new();
+    bindings.extend([scope.add_external_function("print", Function {
         typ: FunctionType {
             args: &[Type::Varargs],
             ret: Type::Specific(SpecificType::Unit),
         },
         imp: FunctionImpl::Rust(print),
-    }));
-    bindings.push(scope.add_external_function("add_one", add_one));
-    bindings.push(scope.add_external_function("assert", assert));
-    bindings.push(scope.add_external_function("panic", Function {
+    })]);
+    bindings.extend([scope.add_external_function("add_one", add_one)]);
+    bindings.extend([scope.add_external_function("assert", assert)]);
+    bindings.extend([scope.add_external_function("panic", Function {
         typ: FunctionType {
             args: &[Type::Specific(SpecificType::String)],
             ret: Type::Bottom,
         },
         imp: FunctionImpl::Rust(panic),
-    }));
-    bindings
+    })]);
+    PreTypeInfo {
+        bindings,
+    }
 }
 
 fn print(_scopes: &mut Scopes, values: Vec<Value>) -> Value {

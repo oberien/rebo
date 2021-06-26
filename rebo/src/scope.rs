@@ -3,7 +3,6 @@ use std::fmt;
 
 use crate::common::{Value, Function, SpecificType, Type};
 use std::sync::atomic::{AtomicU32, Ordering};
-use crate::typeck::BindingTypes;
 use crate::parser::Binding;
 use diagnostic::Span;
 
@@ -83,7 +82,7 @@ impl Scope {
         }
     }
 
-    pub fn add_external_function(&mut self, name: &'static str, f: Function) -> (Binding<'static>, Type) {
+    pub fn add_external_function(&mut self, name: &'static str, f: Function) -> (Binding<'static>, SpecificType) {
         let binding_id = BindingId::unique();
         let binding = Binding {
             id: binding_id,
@@ -93,7 +92,7 @@ impl Scope {
             rogue: false,
         };
         self.create(binding_id, Value::Function(f.imp));
-        (binding, Type::Specific(SpecificType::Function(Box::new(f.typ))))
+        (binding, SpecificType::Function(Box::new(f.typ)))
     }
 
     // runtime functions
