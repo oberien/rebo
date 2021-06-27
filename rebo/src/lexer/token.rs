@@ -34,13 +34,22 @@ pub struct Token<'i> {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum TokenType<'i> {
+    // primitives
     Ident(&'i str),
     DqString(String),
     Integer(i64, Radix),
     Float(f64, Radix),
     Bool(bool),
+    // keywords
     Let,
     Mut,
+    Fn,
+    // types
+    StringType,
+    IntType,
+    FloatType,
+    BoolType,
+    // symbols
     /// =
     Assign,
     /// <
@@ -59,21 +68,40 @@ pub enum TokenType<'i> {
     GreaterEquals,
     /// >
     GreaterThan,
+    /// +
     Plus,
+    /// -
     Minus,
+    /// *
     Star,
+    /// /
     Slash,
+    /// !
     Exclamation,
+    /// &
     Amp,
+    /// &&
     DoubleAmp,
+    /// |
     Pipe,
+    /// ||
     DoublePipe,
+    /// (
     OpenParen,
+    /// )
     CloseParen,
+    /// {
     OpenCurly,
+    /// }
     CloseCurly,
+    /// ,
     Comma,
+    /// ;
     Semicolon,
+    /// :
+    Colon,
+    /// ->
+    Arrow,
     /// Line Comment including starting `//` and ending newline
     LineComment(&'i str),
     /// Block Comment including starting `/*` and ending `*/`
@@ -227,6 +255,11 @@ impl<'i> fmt::Display for TokenType<'i> {
             &TokenType::Bool(b) => write!(f, "{} ", b),
             TokenType::Let => write!(f, "let "),
             TokenType::Mut => write!(f, "mut "),
+            TokenType::Fn => write!(f, "fn "),
+            TokenType::StringType => write!(f, "string "),
+            TokenType::IntType => write!(f, "int "),
+            TokenType::FloatType => write!(f, "float "),
+            TokenType::BoolType => write!(f, "bool "),
             TokenType::Assign => write!(f, "= "),
             TokenType::LessThan => write!(f, "< "),
             TokenType::LessEquals => write!(f, "<= "),
@@ -251,6 +284,8 @@ impl<'i> fmt::Display for TokenType<'i> {
             TokenType::CloseCurly => write!(f, "}} "),
             TokenType::Comma => write!(f, ", "),
             TokenType::Semicolon => writeln!(f, ";"),
+            TokenType::Colon => write!(f, ": "),
+            TokenType::Arrow => write!(f, "-> "),
             TokenType::LineComment(c) => write!(f, "{}", c),
             TokenType::BlockComment(c) => write!(f, "{}", c),
             TokenType::Eof => Ok(()),

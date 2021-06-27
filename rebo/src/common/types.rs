@@ -1,7 +1,10 @@
 use std::fmt;
-use crate::parser::Binding;
+use crate::parser::{Binding, Expr};
 use std::collections::HashMap;
 use itertools::Either;
+use std::borrow::Cow;
+use crate::scope::{BindingId, Scope};
+use indexmap::map::IndexMap;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Type {
@@ -24,14 +27,26 @@ pub enum SpecificType {
 }
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct FunctionType {
-    pub args: &'static [Type],
+    pub args: Cow<'static, [Type]>,
     pub ret: Type,
 }
 
 /// Info needed before parsing / before typechecking
-pub struct PreTypeInfo<'i> {
-    /// bindings of the root scope / stdlib and function definitions of the first parser pass
-    pub bindings: HashMap<Binding<'i>, SpecificType>,
+pub struct PreTypeInfo<'a, 'i> {
+    /// types of bindings of the root scope / stdlib and function definitions of the first parser pass
+    pub bindings: IndexMap<Binding<'i>, SpecificType>,
+    /// functions found in the code
+    pub rebo_functions: HashMap<BindingId, &'a Vec<&'a Expr<'a, 'i>>>,
+    pub root_scope: Scope,
+}
+impl<'a, 'i> PreTypeInfo<'a, 'i> {
+    pub fn new() -> Self {
+        PreTypeInfo {
+            bindings: IndexMap::new(),
+            rebo_functions: HashMap::new(),
+            root_scope: Scope::new(),
+        }
+    }
 }
 
 impl Type {
@@ -71,14 +86,14 @@ impl fmt::Display for SpecificType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             SpecificType::Unit => write!(f, "()"),
-            SpecificType::Integer => write!(f, "integer"),
+            SpecificType::Integer => write!(f, "int"),
             SpecificType::Float => write!(f, "float"),
             SpecificType::Bool => write!(f, "bool"),
             SpecificType::String => write!(f, "string"),
             SpecificType::Function(fun) => {
                 let FunctionType { args, ret } = &**fun;
                 write!(f, "fn(")?;
-                for arg in *args {
+                for arg in &**args {
                     write!(f, "{}, ", arg)?;
                 }
                 write!(f, ") -> {}", ret)

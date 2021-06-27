@@ -3,7 +3,7 @@ use std::borrow::Cow;
 use std::collections::HashMap;
 
 use typed_arena::Arena;
-use diagnostic::{Span, Diagnostics, DiagnosticBuilder};
+use diagnostic::{Span, Diagnostics, DiagnosticBuilder, FileId};
 
 use crate::lexer::{Tokens, Token, TokenType};
 use crate::error_codes::ErrorCode;
@@ -14,7 +14,7 @@ mod precedence;
 
 pub use expr::{Binding, Expr, ExprType};
 use crate::parser::precedence::{Math, BooleanExpr};
-use crate::common::PreTypeInfo;
+use crate::common::{PreTypeInfo, SpecificType, FunctionType, Type, Value, FunctionImpl};
 
 #[derive(Debug)]
 pub enum Error {
@@ -39,6 +39,8 @@ enum Expected {
     DqString,
     Ident,
     Let,
+    Fn,
+    Type,
     /// =
     Assign,
     /// ===
@@ -54,6 +56,7 @@ enum Expected {
     OpenCurly,
     Argument,
     Comma,
+    Colon,
 }
 
 #[derive(Debug)]
@@ -71,7 +74,7 @@ impl<'a, 'i> fmt::Display for Ast<'a, 'i> {
     }
 }
 
-pub struct Parser<'a, 'i> {
+pub struct Parser<'a, 'b, 'i> {
     /// arena to allocate expressions into
     arena: &'a Arena<Expr<'a, 'i>>,
     /// tokens to be consumed
@@ -79,6 +82,10 @@ pub struct Parser<'a, 'i> {
     diagnostics: &'i Diagnostics,
     /// finished bindings that aren't live anymore
     bindings: Vec<Binding<'i>>,
+    /// pre-info to add first-pass definitions to
+    pre_info: &'b mut PreTypeInfo<'a, 'i>,
+    /// already parsed expressions in the first-pass, to be consumed by the second pass
+    pre_parsed: HashMap<(FileId, usize), &'a Expr<'a, 'i>>,
     /// stack of scopes with bindings that are still live
     scopes: Vec<Scope<'i>>,
 }
@@ -104,20 +111,57 @@ enum ParseUntil {
 }
 
 /// All expression parsing function consume whitespace and comments before tokens, but not after.
-impl<'a, 'i> Parser<'a, 'i> {
-    pub fn new(arena: &'a Arena<Expr<'a, 'i>>, tokens: Tokens<'i>, diagnostics: &'i Diagnostics, pre_info: &mut PreTypeInfo<'i>) -> Self {
+impl<'a, 'b, 'i> Parser<'a, 'b, 'i> {
+    pub fn new(arena: &'a Arena<Expr<'a, 'i>>, tokens: Tokens<'i>, diagnostics: &'i Diagnostics, pre_info: &'b mut PreTypeInfo<'a, 'i>) -> Self {
         let mut parser = Parser {
             arena,
             tokens,
             diagnostics,
             bindings: Vec::new(),
+            pre_info,
+            pre_parsed: HashMap::new(),
             scopes: vec![Scope { idents: HashMap::new() }],
         };
+        parser.first_pass();
         // make existing bindings known to parser
-        for &binding in pre_info.bindings.keys() {
-            parser.scopes.last_mut().unwrap().idents.insert(binding.ident, binding);
+        for &binding in parser.pre_info.bindings.keys() {
+            if let Some(old) = parser.scopes.last_mut().unwrap().idents.insert(binding.ident, binding) {
+                let mut spans = [old.span, binding.span];
+                spans.sort();
+                parser.diagnostics.error(ErrorCode::DuplicateGlobal)
+                    .with_info_label(spans[0], "first defined here")
+                    .with_error_label(spans[1], "also defined here")
+                    .emit();
+            }
         }
         parser
+    }
+
+    /// Parse function, struct and enum definitions
+    fn first_pass(&mut self) {
+        trace!("first_pass");
+        let mark = self.tokens.mark();
+        while self.tokens.peek(0).is_some() {
+            match self.try_parse_fn_def(0) {
+                Ok(expr) => match expr {
+                    Expr { span, typ: ExprType::FunctionDefinition(fn_binding, args, ret_type, body) } => {
+                        let typ = SpecificType::Function(Box::new(FunctionType {
+                            args: args.iter().map(|(_binding, typ)| Type::Specific(typ.clone())).collect(),
+                            ret: Type::Specific(ret_type.clone()),
+                        }));
+                        self.pre_info.bindings.insert(*fn_binding, typ);
+                        self.pre_info.rebo_functions.insert(fn_binding.id, body);
+                        let arg_binding_ids = args.iter().map(|(binding, _typ)| binding.id).collect();
+                        self.pre_info.root_scope.create(fn_binding.id, Value::Function(FunctionImpl::Rebo(fn_binding.id, arg_binding_ids)));
+                        self.pre_parsed.insert((span.file, span.start), expr);
+                    }
+                    _ => unreachable!("try_parse_fn_def didn't return FunctionDefinition but {:?}", expr),
+                }
+                _ => drop(self.tokens.next()),
+            }
+        }
+        // reset token lookahead
+        drop(mark);
     }
 
     fn add_binding(&mut self, ident: &'i str, mutable: bool, span: Span) -> Binding<'i> {
@@ -172,6 +216,8 @@ impl<'a, 'i> Parser<'a, 'i> {
         trace!("parse");
         // file scope
         let body = self.parse_block_body(0);
+        // make sure everything parsed during first-pass was consumed and used by the second pass
+        assert!(self.pre_parsed.is_empty());
         Ok(Ast {
             exprs: body,
             bindings: self.bindings,
@@ -212,8 +258,22 @@ impl<'a, 'i> Parser<'a, 'i> {
     }
 
     fn try_parse_until(&mut self, until: ParseUntil, cmp: fn(&ParseUntil, &ParseUntil) -> bool, depth: usize) -> Result<&'a Expr<'a, 'i>, InternalError> {
-        type ParseFn<'a, 'i> = fn(&mut Parser<'a, 'i>, usize) -> Result<&'a Expr<'a, 'i>, InternalError>;
-        let mut fns: Vec<ParseFn<'a, 'i>> = Vec::new();
+        if let Some(Token { span, typ: _ }) = self.peek_token(0) {
+            if let Some(expr) = self.pre_parsed.remove(&(span.file, span.start)) {
+                // consume tokens already parsed in first-pass
+                while let Some(Token { span, typ: _ }) = self.peek_token(0) {
+                    if span.start < expr.span.end {
+                        self.next_token();
+                    } else {
+                        break;
+                    }
+                }
+                return Ok(expr);
+            }
+        }
+
+        type ParseFn<'a, 'b, 'i> = fn(&mut Parser<'a, 'b, 'i>, usize) -> Result<&'a Expr<'a, 'i>, InternalError>;
+        let mut fns: Vec<ParseFn<'a, 'b, 'i>> = Vec::new();
         // add in reverse order
         if cmp(&until, &ParseUntil::BooleanExpr) {
             fns.push(Self::try_parse_precedence::<BooleanExpr>);
@@ -226,10 +286,10 @@ impl<'a, 'i> Parser<'a, 'i> {
         }
         fns.extend(&[
             Self::try_parse_parens,
-            Self::try_parse_block,
+            Self::try_parse_block_expr,
             Self::try_parse_not,
             Self::try_parse_bind,
-            |this: &mut Parser<'a, 'i>, depth: usize| Self::try_parse_assign(this, CreateBinding::No, depth),
+            |this: &mut Parser<'a, 'b, 'i>, depth: usize| Self::try_parse_assign(this, CreateBinding::No, depth),
             Self::try_parse_fn_call,
             Self::try_parse_string,
             Self::try_parse_immediate,
@@ -278,14 +338,19 @@ impl<'a, 'i> Parser<'a, 'i> {
         Ok(self.arena.alloc(Expr::new(Span::new(start_span.file, start_span.start, span.end), ExprType::Parenthezised(expr))))
     }
 
-    fn try_parse_block(&mut self, depth: usize) -> Result<&'a Expr<'a, 'i>, InternalError> {
+    fn try_parse_block_expr(&mut self, depth: usize) -> Result<&'a Expr<'a, 'i>, InternalError> {
+        let (body, span) = self.try_parse_block(depth)?;
+        Ok(self.arena.alloc(Expr::new(span, ExprType::Block(body))))
+    }
+
+    fn try_parse_block(&mut self, depth: usize) -> Result<(Vec<&'a Expr<'a, 'i>>, Span), InternalError> {
         trace!("{}try_parse_block: {}", "|".repeat(depth), self.peek_token(0).map(|t| t.to_string()).unwrap_or_else(|| "".to_string()));
         let start_span = match self.peek_token(0) {
             Some(Token { span, typ: TokenType::OpenCurly }) => span,
             _ => return Err(InternalError::Backtrack(Cow::Borrowed(&[Expected::OpenCurly])))
         };
         drop(self.next_token());
-        let body = self.parse_block_body(depth+1);
+        let body = self.parse_block_body(depth + 1);
         let span = match self.next_token() {
             Some(Token { span, typ: TokenType::CloseCurly }) => span,
             _ => {
@@ -297,7 +362,7 @@ impl<'a, 'i> Parser<'a, 'i> {
             },
         };
         trace!("{} block: {{ {} }}", "|".repeat(depth), body.iter().fold(String::new(), |s, e| s + &e.to_string()));
-        Ok(self.arena.alloc(Expr::new(Span::new(start_span.file, start_span.start, span.end), ExprType::Block(body))))
+        Ok((body, Span::new(start_span.file, start_span.start, span.end)))
     }
 
     fn parse_block_body(&mut self, depth: usize) -> Vec<&'a Expr<'a, 'i>> {
@@ -334,6 +399,7 @@ impl<'a, 'i> Parser<'a, 'i> {
             }
             match expr.typ {
                 ExprType::Statement(_) => last = Last::Terminated,
+                ExprType::FunctionDefinition(..) => last = Last::Terminated,
                 _ => last = Last::Unterminated(expr.span),
             }
 
@@ -522,6 +588,110 @@ impl<'a, 'i> Parser<'a, 'i> {
         Ok(&*res)
     }
 
+    fn try_parse_fn_def(&mut self, depth: usize) -> Result<&'a Expr<'a, 'i>, InternalError> {
+        trace!("{}try_parse_fn_def: {}", "|".repeat(depth), self.peek_token(0).map(|t| t.to_string()).unwrap_or_else(|| "".to_string()));
+        let mark = self.tokens.mark();
+        let (fn_binding, args, ret_type, signature_span) = self.try_parse_fn_header(depth+1)?;
+        self.push_scope();
+        for (arg, _typ) in &args {
+            self.scopes.last_mut().unwrap().idents.insert(arg.ident, *arg);
+        }
+        let (stmts, span) = self.try_parse_block(depth+1)?;
+        self.pop_scope();
+        mark.apply();
+        let span = Span::new(span.file, signature_span.start, span.end);
+        Ok(self.arena.alloc(Expr::new(span, ExprType::FunctionDefinition(fn_binding, args, ret_type, stmts))))
+    }
+
+    /// parse the function signature `fn name(args...) -> ret` without the function body
+    fn try_parse_fn_header(&mut self, depth: usize) -> Result<(Binding<'i>, Vec<(Binding<'i>, SpecificType)>, SpecificType, Span), InternalError> {
+        let mark = self.tokens.mark();
+        let fn_span = match self.next_token() {
+            Some(Token { span, typ: TokenType::Fn }) => span,
+            _ => return Err(InternalError::Backtrack(Cow::Borrowed(&[Expected::Fn])))
+        };
+        let (ident, span) = match self.next_token() {
+            Some(Token { span, typ: TokenType::Ident(ident) }) => (ident, span),
+            _ => return Err(InternalError::Backtrack(Cow::Borrowed(&[Expected::Ident]))),
+        };
+        let _open_paren_span = match self.next_token() {
+            Some(Token { span, typ: TokenType::OpenParen }) => span,
+            _ => return Err(InternalError::Backtrack(Cow::Borrowed(&[Expected::OpenParen]))),
+        };
+        let mut args = Vec::new();
+        let close_paren_span = loop {
+            if let Some(Token { span, typ: TokenType::CloseParen }) = self.peek_token(0) {
+                drop(self.next_token());
+                break span;
+            }
+            let mutable = match self.peek_token(0) {
+                Some(Token { span, typ: TokenType::Mut }) => {
+                    drop(self.next_token());
+                    Some(span)
+                },
+                _ => None,
+            };
+            let (ident, ident_span) = match self.next_token() {
+                Some(Token { span, typ: TokenType::Ident(ident) }) => (ident, span),
+                _ => return Err(InternalError::Backtrack(Cow::Borrowed(&[Expected::Ident]))),
+            };
+            let _colon_span = match self.next_token() {
+                Some(Token { span, typ: TokenType::Colon }) => span,
+                _ => return Err(InternalError::Backtrack(Cow::Borrowed(&[Expected::Colon])))
+            };
+            let (typ, _typ_span) = self.try_parse_type(depth+1)?;
+            let binding = Binding {
+                id: BindingId::unique(),
+                ident,
+                mutable: mutable.is_some(),
+                span: ident_span,
+                rogue: false,
+            };
+            args.push((binding, typ));
+            match self.next_token() {
+                Some(Token { span: _, typ: TokenType::Comma }) => (),
+                Some(Token { span, typ: TokenType::CloseParen }) => break span,
+                _ => return Err(InternalError::Backtrack(Cow::Borrowed(&[Expected::Comma, Expected::CloseParen]))),
+            }
+        };
+        let (ret_type, ret_type_span) = match self.peek_token(0) {
+            Some(Token { span: _, typ: TokenType::Arrow }) => {
+                drop(self.next_token());
+                match self.try_parse_type(depth+1) {
+                    Ok((typ, span)) => (typ, span),
+                    Err(InternalError::Backtrack(_)) => (SpecificType::Unit, Span::new(close_paren_span.file, close_paren_span.end, close_paren_span.end)),
+                    Err(InternalError::Error(e)) => return Err(InternalError::Error(e)),
+                }
+            }
+            _ => (SpecificType::Unit, Span::new(close_paren_span.file, close_paren_span.end, close_paren_span.end)),
+        };
+        mark.apply();
+        let binding = Binding {
+            id: BindingId::unique(),
+            ident,
+            mutable: false,
+            span,
+            rogue: false,
+        };
+        Ok((binding, args, ret_type, Span::new(fn_span.file, fn_span.start, ret_type_span.end)))
+    }
+
+    fn try_parse_type(&mut self, depth: usize) -> Result<(SpecificType, Span), InternalError> {
+        trace!("{}try_parse_type: {}", "|".repeat(depth), self.peek_token(0).map(|t| t.to_string()).unwrap_or_else(|| "".to_string()));
+        match self.next_token() {
+            Some(Token { span: open_span, typ: TokenType::OpenParen }) => match self.next_token() {
+                Some(Token { span: close_span, typ: TokenType::CloseParen }) => return Ok((SpecificType::Unit, Span::new(open_span.file, open_span.start, close_span.end))),
+                _ => ()
+            }
+            Some(Token { span, typ: TokenType::StringType }) => return Ok((SpecificType::String, span)),
+            Some(Token { span, typ: TokenType::IntType }) => return Ok((SpecificType::Integer, span)),
+            Some(Token { span, typ: TokenType::FloatType }) => return Ok((SpecificType::Float, span)),
+            Some(Token { span, typ: TokenType::BoolType }) => return Ok((SpecificType::Bool, span)),
+            _ => (),
+        }
+        Err(InternalError::Backtrack(Cow::Borrowed(&[Expected::Type])))
+    }
+
     fn try_parse_compare(&mut self, depth: usize) -> Result<&'a Expr<'a, 'i>, InternalError> {
         trace!("{}try_parse_compare: {}", "|".repeat(depth), self.peek_token(0).map(|t| t.to_string()).unwrap_or_else(|| "".to_string()));
         let mark = self.tokens.mark();
@@ -573,6 +743,8 @@ impl<'a, 'i> Parser<'a, 'i> {
                     DqString => "double-quoted string",
                     Ident => "identifier",
                     Let => "`let`",
+                    Fn => "`fn`",
+                    Type => "type",
                     Assign => "`=`",
                     Equals => "`==`",
                     Immediate => "integer or float",
@@ -583,6 +755,7 @@ impl<'a, 'i> Parser<'a, 'i> {
                     OpenCurly => "`{`",
                     Argument => "function argument",
                     Comma => "`,`",
+                    Colon => "`:`",
                 }
             }).collect();
         let joined = expected.join(", ");

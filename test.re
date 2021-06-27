@@ -1,5 +1,9 @@
-print(1 + 0.5);
-print("a" + "b");
+fn foo(mut x: int, mut y: int) -> int {
+    x = x + 10;
+    y = y + 20;
+    x + y
+}
+print(foo(10, 20));
 print(1 + 2 * 3 == 7);
 print(1 + 2 * 3 * 4);
 let mut a = 1;

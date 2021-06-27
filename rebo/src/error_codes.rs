@@ -12,11 +12,13 @@ pub enum ErrorCode {
     IncompleteLetBinding,
     TypeConflict,
     UnableToInferType,
-    // NotAFunction,
+    NotAFunction,
     UnclosedBlock,
-    // InvalidNumberOfArguments,
+    InvalidNumberOfArguments,
     UnclosedParen,
     UnclosedBlockComment,
+    EmptyFunctionBody,
+    DuplicateGlobal,
 }
 use ErrorCode::*;
 
@@ -35,11 +37,13 @@ impl diagnostic::ErrorCode for ErrorCode {
             IncompleteLetBinding => "0009",
             TypeConflict => "0011",
             UnableToInferType => "0012",
-            // NotAFunction => "0014",
+            NotAFunction => "0014",
             UnclosedBlock => "0015",
-            // InvalidNumberOfArguments => "0016",
+            InvalidNumberOfArguments => "0016",
             UnclosedParen => "0017",
             UnclosedBlockComment => "0018",
+            EmptyFunctionBody => "0019",
+            DuplicateGlobal => "0020",
         }.to_string()
     }
 
@@ -57,11 +61,13 @@ impl diagnostic::ErrorCode for ErrorCode {
             IncompleteLetBinding => "incomplete let binding",
             TypeConflict => "type conflict",
             UnableToInferType => "unable to infer type",
-            // NotAFunction => "tried to call a non-function",
+            NotAFunction => "tried to call a non-function",
             UnclosedBlock => "unclosed block, missing `}`",
-            // InvalidNumberOfArguments => "invalid number of arguments",
+            InvalidNumberOfArguments => "invalid number of arguments",
             UnclosedParen => "unclosed parenthesis",
             UnclosedBlockComment => "unclosed block comment",
+            EmptyFunctionBody => "empty function body",
+            DuplicateGlobal => "conflicting duplicate global definition",
         }.to_string()
     }
 }

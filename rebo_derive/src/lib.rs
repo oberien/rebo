@@ -27,6 +27,9 @@ pub fn function(_args: TokenStream, input: TokenStream) -> TokenStream {
 
     let fn_ident = format!("{}_fn", ident);
     let fn_ident = Ident::new(&fn_ident, ident.span());
+    // https://github.com/rust-lang/rust/issues/86672
+    let workaround_ident = format!("{}_workaround_issue_86672", ident);
+    let workaround_ident = Ident::new(&workaround_ident, ident.span());
     let mut input_pats = Vec::new();
     let mut input_types = Vec::new();
 
@@ -60,9 +63,11 @@ pub fn function(_args: TokenStream, input: TokenStream) -> TokenStream {
         }
 
         #[allow(non_upper_case_globals)]
+        const #workaround_ident: &'static [::rebo::common::Type] = &[#(::rebo::common::Type::Specific(<#input_types as ::rebo::common::FromValue>::TYPE)),*];
+        #[allow(non_upper_case_globals)]
         const #ident: ::rebo::common::Function = ::rebo::common::Function {
             typ: ::rebo::common::FunctionType {
-                args: &[#(::rebo::common::Type::Specific(<#input_types as ::rebo::common::FromValue>::TYPE)),*],
+                args: ::std::borrow::Cow::Borrowed(#workaround_ident),
                 ret: ::rebo::common::Type::Specific(<#output as ::rebo::common::FromValue>::TYPE),
             },
             imp: ::rebo::common::FunctionImpl::Rust(#fn_ident),

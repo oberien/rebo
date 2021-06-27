@@ -1,29 +1,25 @@
-use std::collections::HashMap;
 use crate::common::{Value, Function, FunctionImpl, FunctionType, SpecificType, Type, PreTypeInfo};
-use crate::scope::{Scopes, Scope};
+use crate::scope::Scopes;
 use crate as rebo;
+use std::borrow::Cow;
 
-pub fn add_to_scope(scope: &mut Scope) -> PreTypeInfo<'static> {
-    let mut bindings = HashMap::new();
-    bindings.extend([scope.add_external_function("print", Function {
+pub fn add_to_scope(pre_info: &mut PreTypeInfo<'_, '_>) {
+    pre_info.bindings.extend([pre_info.root_scope.add_external_function("print", Function {
         typ: FunctionType {
-            args: &[Type::Varargs],
+            args: Cow::Borrowed(&[Type::Varargs]),
             ret: Type::Specific(SpecificType::Unit),
         },
         imp: FunctionImpl::Rust(print),
     })]);
-    bindings.extend([scope.add_external_function("add_one", add_one)]);
-    bindings.extend([scope.add_external_function("assert", assert)]);
-    bindings.extend([scope.add_external_function("panic", Function {
+    pre_info.bindings.extend([pre_info.root_scope.add_external_function("add_one", add_one)]);
+    pre_info.bindings.extend([pre_info.root_scope.add_external_function("assert", assert)]);
+    pre_info.bindings.extend([pre_info.root_scope.add_external_function("panic", Function {
         typ: FunctionType {
-            args: &[Type::Specific(SpecificType::String)],
+            args: Cow::Borrowed(&[Type::Specific(SpecificType::String)]),
             ret: Type::Bottom,
         },
         imp: FunctionImpl::Rust(panic),
     })]);
-    PreTypeInfo {
-        bindings,
-    }
 }
 
 fn print(_scopes: &mut Scopes, values: Vec<Value>) -> Value {
@@ -45,6 +41,7 @@ fn print(_scopes: &mut Scopes, values: Vec<Value>) -> Value {
 fn add_one(a: i64) -> i64 {
     a + 1
 }
+
 #[rebo::function]
 fn assert(b: bool) {
     assert!(b);

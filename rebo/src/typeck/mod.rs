@@ -31,13 +31,13 @@ pub enum Constraint {
     Eq(TypeVar, TypeVar),
 }
 
-pub struct Typechecker<'i> {
-    diagnostics: &'i Diagnostics,
-    pre_info: &'i mut PreTypeInfo<'i>,
+pub struct Typechecker<'a, 'b, 'i> {
+    diagnostics: &'b Diagnostics,
+    pre_info: &'b mut PreTypeInfo<'a, 'i>,
 }
 
-impl<'i> Typechecker<'i> {
-    pub fn new(diagnostics: &'i Diagnostics, pre_info: &'i mut PreTypeInfo<'i>) -> Typechecker<'i> {
+impl<'a, 'b, 'i> Typechecker<'a, 'b, 'i> {
+    pub fn new(diagnostics: &'b Diagnostics, pre_info: &'b mut PreTypeInfo<'a, 'i>) -> Typechecker<'a, 'b, 'i> {
         Typechecker {
             diagnostics,
             pre_info,
@@ -47,8 +47,8 @@ impl<'i> Typechecker<'i> {
     // Step 1: Create constraint set and collect function types
     // Step 2: Solve constraint set and print unification errors
     // Step 3: Check resolved types
-    pub fn typeck(&mut self, exprs: &[&Expr<'_, 'i>]) {
-        let cc = ConstraintCreator::new(self.pre_info);
+    pub fn typeck(&mut self, exprs: &[&Expr<'a, 'i>]) {
+        let cc = ConstraintCreator::new(self.diagnostics, self.pre_info);
         let (constraints, restrictions) = cc.get_constraints(exprs);
         let stringified = constraints.iter()
             .map(|c| match c {

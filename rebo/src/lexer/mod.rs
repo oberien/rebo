@@ -98,6 +98,21 @@ fn try_lex_token<'i>(diagnostics: &Diagnostics, file: FileId, s: &'i str, index:
     if s[index..].starts_with("mut") {
         return Ok(MaybeToken::Token(Token::new(Span::new(file, index, index+3), TokenType::Mut)));
     }
+    if s[index..].starts_with("fn") {
+        return Ok(MaybeToken::Token(Token::new(Span::new(file, index, index+2), TokenType::Fn)));
+    }
+    if s[index..].starts_with("string") {
+        return Ok(MaybeToken::Token(Token::new(Span::new(file, index, index+6), TokenType::StringType)));
+    }
+    if s[index..].starts_with("int") {
+        return Ok(MaybeToken::Token(Token::new(Span::new(file, index, index+3), TokenType::IntType)));
+    }
+    if s[index..].starts_with("float") {
+        return Ok(MaybeToken::Token(Token::new(Span::new(file, index, index+5), TokenType::FloatType)));
+    }
+    if s[index..].starts_with("bool") {
+        return Ok(MaybeToken::Token(Token::new(Span::new(file, index, index+4), TokenType::BoolType)));
+    }
     let char = s[index..].chars().next().unwrap();
     let span = Span::new(file, index, index + char.len_utf8());
     let char2 = s[index+char.len_utf8()..].chars().next();
@@ -108,8 +123,12 @@ fn try_lex_token<'i>(diagnostics: &Diagnostics, file: FileId, s: &'i str, index:
         '{' => Ok(MaybeToken::Token(Token::new(span, TokenType::OpenCurly))),
         '}' => Ok(MaybeToken::Token(Token::new(span, TokenType::CloseCurly))),
         ';' => Ok(MaybeToken::Token(Token::new(span, TokenType::Semicolon))),
+        ':' => Ok(MaybeToken::Token(Token::new(span, TokenType::Colon))),
         '+' => Ok(MaybeToken::Token(Token::new(span, TokenType::Plus))),
-        '-' => Ok(MaybeToken::Token(Token::new(span, TokenType::Minus))),
+        '-' => match char2 {
+            Some('>') => Ok(MaybeToken::Token(Token::new(span2, TokenType::Arrow))),
+            _ => Ok(MaybeToken::Token(Token::new(span, TokenType::Minus))),
+        }
         '*' => Ok(MaybeToken::Token(Token::new(span, TokenType::Star))),
         '/' => match char2 {
             Some('/') => Ok(MaybeToken::Token(lex_line_comment(diagnostics, file, s, index))),

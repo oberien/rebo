@@ -1,17 +1,21 @@
 use crate::parser::{Expr, ExprType, Binding};
-use crate::common::{Value, FunctionImpl};
-use crate::scope::{Scopes, Scope};
+use crate::common::{Value, FunctionImpl, PreTypeInfo};
+use crate::scope::{Scopes, BindingId, Scope};
+use std::collections::HashMap;
 
-pub struct Vm {
+pub struct Vm<'a, 'i> {
     scopes: Scopes,
+    rebo_functions: HashMap<BindingId, &'a Vec<&'a Expr<'a, 'i>>>,
 }
 
-impl Vm {
-    pub fn new(root_scope: Scope) -> Self {
+impl<'a, 'i> Vm<'a, 'i> {
+    pub fn new(pre_info: PreTypeInfo<'a, 'i>) -> Self {
+        let PreTypeInfo { bindings: _, rebo_functions, root_scope } = pre_info;
         let mut scopes = Scopes::new();
         scopes.push_scope(root_scope);
         Vm {
             scopes,
+            rebo_functions,
         }
     }
 
@@ -100,6 +104,8 @@ impl Vm {
                 val
             }
             Expr { span: _, typ: ExprType::FunctionCall((binding, _), args) } => self.call_function(binding, args, depth+1),
+            // ignore function definitions as we have those handled already
+            Expr { span: _, typ: ExprType::FunctionDefinition(..) } => Value::Unit,
         }
     }
 
@@ -109,6 +115,21 @@ impl Vm {
         match self.load_binding(&binding, depth+1) {
             Value::Function(imp) => match imp {
                 FunctionImpl::Rust(f) => f(&mut self.scopes, args),
+                FunctionImpl::Rebo(binding_id, arg_binding_ids) => {
+                    let mut scope = Scope::new();
+                    for (id, val) in arg_binding_ids.into_iter().zip(args) {
+                        scope.create(id, val);
+                    }
+                    self.scopes.push_scope(scope);
+
+                    let mut last = None;
+                    for expr in self.rebo_functions[&binding_id] {
+                        last = Some(self.eval_expr(expr, depth+1));
+                    }
+
+                    self.scopes.pop_scope();
+                    last.unwrap_or(Value::Unit)
+                }
             },
             _ => unreachable!("call_function called with a binding that isn't a function"),
         }

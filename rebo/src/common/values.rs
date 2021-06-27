@@ -1,7 +1,8 @@
 use std::fmt;
 
-use crate::scope::Scopes;
+use crate::scope::{Scopes, BindingId};
 use crate::common::{SpecificType, FunctionType};
+use itertools::Itertools;
 
 pub trait FromValues {
     fn from_values(values: impl Iterator<Item = Value>) -> Self;
@@ -94,11 +95,13 @@ pub struct Function {
 #[derive(Clone)]
 pub enum FunctionImpl {
     Rust(fn(&mut Scopes, Vec<Value>) -> Value),
+    Rebo(BindingId, Vec<BindingId>),
 }
 impl fmt::Debug for FunctionImpl {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             FunctionImpl::Rust(_) => write!(f, "FunctionImpl::Rust(_)"),
+            FunctionImpl::Rebo(id, arg_ids) => write!(f, "FunctionImpl::Rebo({}({}))", id, arg_ids.iter().join(", ")),
         }
     }
 }

@@ -5,6 +5,7 @@ use diagnostic::Span;
 
 use crate::scope::BindingId;
 use crate::util::PadFmt;
+use crate::common::SpecificType;
 
 #[derive(Debug)]
 pub struct Expr<'a, 'i> {
@@ -80,6 +81,8 @@ pub enum ExprType<'a, 'i> {
     Parenthezised(&'a Expr<'a, 'i>),
     /// ident(expr, expr, ...)
     FunctionCall((Binding<'i>, Span), Vec<&'a Expr<'a, 'i>>),
+    /// ident(ident: typ, ident: typ, ...) -> typ { expr... }
+    FunctionDefinition(Binding<'i>, Vec<(Binding<'i>, SpecificType)>, SpecificType, Vec<&'a Expr<'a, 'i>>),
 }
 
 impl<'a, 'i> fmt::Display for Expr<'a, 'i> {
@@ -132,6 +135,16 @@ impl<'a, 'i> fmt::Display for ExprType<'a, 'i> {
             ExprType::Parenthezised(expr) => write!(f, "({})", expr),
             ExprType::FunctionCall((binding, _), exprs) => {
                 write!(f, "{}({})", binding.ident, exprs.iter().join(", "))
+            }
+            ExprType::FunctionDefinition(name, args, ret_type, body) => {
+                let args = args.iter()
+                    .map(|(arg, typ)| format!("{}{}: {}", if arg.mutable { "mut "} else { "" }, arg.ident, typ)).join(", ");
+                writeln!(f, "fn {}({}) -> {} {{", name.ident, args, ret_type)?;
+                let mut padded = PadFmt::new(&mut *f);
+                for expr in body {
+                    writeln!(&mut padded, "{}", expr)?;
+                }
+                write!(f, "}}")
             }
         }
     }

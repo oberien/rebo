@@ -9,7 +9,6 @@ use diagnostic::{Diagnostics, Span};
 
 use crate::parser::{Parser, Ast};
 use crate::vm::Vm;
-use crate::scope::Scope;
 
 mod error_codes;
 mod lexer;
@@ -25,6 +24,7 @@ mod tests;
 
 pub use rebo_derive::function;
 use crate::typeck::Typechecker;
+use crate::common::PreTypeInfo;
 
 const EXTERNAL_SOURCE: &str = "defined externally";
 lazy_static::lazy_static! {
@@ -41,15 +41,15 @@ pub fn run(filename: String, code: String) {
 
     // lex
     let tokens = lexer::lex(&diagnostics, file, code).unwrap();
-    println!("TOKENS:\n{}\n", tokens);
+    info!("TOKENS:\n{}\n", tokens);
 
-    let mut scope = Scope::new();
-    let mut pre_info = stdlib::add_to_scope(&mut scope);
+    let mut pre_info = PreTypeInfo::new();
+    stdlib::add_to_scope(&mut pre_info);
 
     let arena = Arena::new();
     let parser = Parser::new(&arena, tokens, &diagnostics, &mut pre_info);
     let ast = parser.parse().unwrap();
-    println!("AST:\n{}\n", ast);
+    info!("AST:\n{}\n", ast);
     let Ast { exprs, bindings: _ } = ast;
     Typechecker::new(&diagnostics, &mut pre_info).typeck(&exprs);
 
@@ -58,7 +58,7 @@ pub fn run(filename: String, code: String) {
         return;
     }
 
-    let vm = Vm::new(scope);
+    let vm = Vm::new(pre_info);
     let result = vm.run(&exprs);
     println!("RESULT: {:?}", result);
 }
