@@ -61,7 +61,7 @@ impl Scopes {
     }
     pub fn assign(&mut self, binding_id: BindingId, value: Value) {
         let val = self.get_mut(binding_id)
-            .expect(&format!("binding_id {:?} doesn't exist but was assigned to", binding_id));
+            .unwrap_or_else(|| panic!("binding_id {:?} doesn't exist but was assigned to", binding_id));
         *val = value;
     }
     pub fn get(&self, binding_id: BindingId) -> Option<&Value> {

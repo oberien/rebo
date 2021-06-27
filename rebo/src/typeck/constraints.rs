@@ -19,7 +19,7 @@ impl<'i> ConstraintCreator<'i> {
     }
     /// Iterate over the AST, adding function type signatures to the binding types and returning
     /// a set of type inference constraints.
-    pub fn get_constraints(mut self, exprs: &Vec<&Expr<'_, 'i>>) -> (Vec<Constraint>, Vec<(TypeVar, Vec<SpecificType>)>) {
+    pub fn get_constraints(mut self, exprs: &[&Expr<'_, 'i>]) -> (Vec<Constraint>, Vec<(TypeVar, Vec<SpecificType>)>) {
         for expr in exprs {
             let val_type_var = self.get_type(expr);
             self.constraints.push(Constraint::Type(val_type_var, Type::Top));

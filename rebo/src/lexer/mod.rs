@@ -112,7 +112,7 @@ fn try_lex_token<'i>(diagnostics: &Diagnostics, file: FileId, s: &'i str, index:
         '-' => Ok(MaybeToken::Token(Token::new(span, TokenType::Minus))),
         '*' => Ok(MaybeToken::Token(Token::new(span, TokenType::Star))),
         '/' => match char2 {
-            Some('/') => Ok(MaybeToken::Token(lex_line_comment(file, s, index))),
+            Some('/') => Ok(MaybeToken::Token(lex_line_comment(diagnostics, file, s, index))),
             Some('*') => Ok(MaybeToken::Token(lex_block_comment(diagnostics, file, s, index))),
             _ => Ok(MaybeToken::Token(Token::new(span, TokenType::Slash))),
         }
@@ -210,7 +210,7 @@ fn try_lex_ident<'i>(_diagnostics: &Diagnostics, file: FileId, s: &'i str, mut i
     }
 }
 
-fn lex_line_comment<'i>(file: FileId, s: &'i str, index: usize) -> Token<'i> {
+fn lex_line_comment<'i>(_diagnostics: &Diagnostics, file: FileId, s: &'i str, index: usize) -> Token<'i> {
     trace!("lex_line_comment: {}", index);
     assert_eq!(s[index..].chars().next(), Some('/'));
     assert_eq!(s[index+1..].chars().next(), Some('/'));

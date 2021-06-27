@@ -36,10 +36,7 @@ pub struct PreTypeInfo<'i> {
 
 impl Type {
     pub fn is_specific(&self) -> bool {
-        match self {
-            Type::Specific(_) => true,
-            _ => false,
-        }
+        matches!(self, Type::Specific(_))
     }
     pub fn try_unify(&self, other: &Self) -> Result<Either<Type, Type>, ()> {
         match (self, other) {
@@ -57,7 +54,7 @@ impl Type {
             (Type::Specific(SpecificType::Function(a)), Type::Specific(SpecificType::Function(b))) => {
                 let FunctionType { args: args_a, ret: ret_a } = &**a;
                 let FunctionType { args: args_b, ret: ret_b } = &**b;
-                let same_args = args_a.into_iter().zip(args_b.into_iter()).all(|(a, b)| a.try_unify(b).is_ok());
+                let same_args = args_a.iter().zip(args_b.iter()).all(|(a, b)| a.try_unify(b).is_ok());
                 let same_ret = ret_a.try_unify(ret_b).is_ok();
                 if same_args && same_ret {
                     Ok(Either::Left(Type::Specific(SpecificType::Function(a.clone()))))

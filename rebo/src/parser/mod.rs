@@ -129,7 +129,7 @@ impl<'a, 'i> Parser<'a, 'i> {
     fn add_binding_internal(&mut self, ident: &'i str, mutable: bool, span: Span, rogue: bool) -> Binding<'i> {
         let id = BindingId::unique();
         let binding = Binding { id, ident, mutable, span, rogue };
-        self.scopes.last_mut().unwrap().idents.insert(ident, binding.clone());
+        self.scopes.last_mut().unwrap().idents.insert(ident, binding);
         binding
     }
     fn get_binding(&mut self, ident: &'i str) -> Option<Binding<'i>> {
@@ -192,7 +192,7 @@ impl<'a, 'i> Parser<'a, 'i> {
 
     fn parse_expr(&mut self, last_span: Span, depth: usize) -> Result<&'a Expr<'a, 'i>, Error> {
         trace!("{}parse_expr: {}", "|".repeat(depth), self.peek_token(0).map(|t| t.to_string()).unwrap_or_else(|| "".to_string()));
-        let span = self.peek_token(0).map(|t| t.span).unwrap_or(Span::new(last_span.file, last_span.end, last_span.end));
+        let span = self.peek_token(0).map(|t| t.span).unwrap_or_else(|| Span::new(last_span.file, last_span.end, last_span.end));
         match self.try_parse_until_including(ParseUntil::All, depth+1) {
             Ok(expr) => Ok(expr),
             Err(InternalError::Backtrack(expected)) => {
@@ -212,7 +212,8 @@ impl<'a, 'i> Parser<'a, 'i> {
     }
 
     fn try_parse_until(&mut self, until: ParseUntil, cmp: fn(&ParseUntil, &ParseUntil) -> bool, depth: usize) -> Result<&'a Expr<'a, 'i>, InternalError> {
-        let mut fns: Vec<fn(&mut Self, usize) -> Result<&'a Expr<'a, 'i>, InternalError>> = Vec::new();
+        type ParseFn<'a, 'i> = fn(&mut Parser<'a, 'i>, usize) -> Result<&'a Expr<'a, 'i>, InternalError>;
+        let mut fns: Vec<ParseFn<'a, 'i>> = Vec::new();
         // add in reverse order
         if cmp(&until, &ParseUntil::BooleanExpr) {
             fns.push(Self::try_parse_precedence::<BooleanExpr>);
@@ -239,7 +240,7 @@ impl<'a, 'i> Parser<'a, 'i> {
         for f in fns {
             match f(self, depth+1) {
                 Ok(expr) => return Ok(expr),
-                Err(InternalError::Backtrack(expect)) => expected.extend(expect.into_iter().copied()),
+                Err(InternalError::Backtrack(expect)) => expected.extend(expect.iter().copied()),
                 e @ Err(InternalError::Error(_)) => return e,
             }
         }
@@ -255,12 +256,9 @@ impl<'a, 'i> Parser<'a, 'i> {
         drop(self.next_token());
 
         // try parse unit
-        match self.peek_token(0) {
-            Some(Token { span, typ: TokenType::CloseParen }) => {
-                drop(self.next_token());
-                return Ok(self.arena.alloc(Expr::new(Span::new(start_span.file, start_span.start, span.end), ExprType::Unit)));
-            }
-            _ => (),
+        if let Some(Token { span, typ: TokenType::CloseParen }) = self.peek_token(0) {
+            drop(self.next_token());
+            return Ok(self.arena.alloc(Expr::new(Span::new(start_span.file, start_span.start, span.end), ExprType::Unit)));
         }
 
         // try parse parenthesized
@@ -404,7 +402,7 @@ impl<'a, 'i> Parser<'a, 'i> {
         let res = match self.try_parse_assign(CreateBinding::Yes(is_mut), depth+1) {
             Ok(Expr { span, typ: ExprType::Assign((binding, _ident_span), expr) }) => {
                 let span = Span::new(span.file, let_span.start, span.end);
-                &*self.arena.alloc(Expr::new(span, ExprType::Bind(binding.clone(), expr)))
+                &*self.arena.alloc(Expr::new(span, ExprType::Bind(*binding, expr)))
             }
             Ok(_) => unreachable!("try_parse_assign should only return ExprType::Assign"),
             Err(InternalError::Backtrack(expected)) => {
@@ -568,7 +566,7 @@ impl<'a, 'i> Parser<'a, 'i> {
     }
 
     fn diagnostic_expected(&self, code: ErrorCode, span: Span, expected: &[Expected]) {
-        let expected: Vec<_> = expected.into_iter()
+        let expected: Vec<_> = expected.iter()
             .map(|&expected| {
                 use Expected::*;
                 match expected {

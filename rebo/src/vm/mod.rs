@@ -15,13 +15,13 @@ impl Vm {
         }
     }
 
-    pub fn run(mut self, ast: &Vec<&Expr>) -> Value {
+    pub fn run(mut self, ast: &[&Expr]) -> Value {
         trace!("run");
         let mut value = None;
         for expr in ast {
             value = Some(self.eval_expr(expr, 1));
         }
-        return value.unwrap_or(Value::Unit);
+        value.unwrap_or(Value::Unit)
     }
 
 
@@ -103,7 +103,7 @@ impl Vm {
         }
     }
 
-    fn call_function(&mut self, binding: &Binding, args: &Vec<&Expr>, depth: usize) -> Value {
+    fn call_function(&mut self, binding: &Binding, args: &[&Expr], depth: usize) -> Value {
         trace!("{}call_function: {}({:?})", "|".repeat(depth), binding.ident, args);
         let args = args.iter().map(|expr| self.eval_expr(expr, depth+1)).collect();
         match self.load_binding(&binding, depth+1) {
@@ -178,6 +178,7 @@ impl CmpOp for Lt {
     fn unit() -> bool { false }
     fn integer(a: i64, b: i64) -> bool { a < b }
     fn float(a: f64, b: f64) -> bool { a < b }
+    #[allow(clippy::bool_comparison)]
     fn bool(a: bool, b: bool) -> bool { a < b }
     fn string(a: &str, b: &str) -> bool { a < b }
     fn str() -> &'static str { "<" }
@@ -215,6 +216,7 @@ impl CmpOp for Feq {
         let abs_a = a.abs();
         let abs_b = b.abs();
         let diff = (a - b).abs();
+        #[allow(clippy::float_cmp)]
         if a == b { // shortcut, handles infinities
             true
         } else if a == 0. || b == 0. || diff < f64::MIN_POSITIVE {
@@ -253,6 +255,7 @@ impl CmpOp for Gt {
     fn unit() -> bool { false }
     fn integer(a: i64, b: i64) -> bool { a > b }
     fn float(a: f64, b: f64) -> bool { a > b }
+    #[allow(clippy::bool_comparison)]
     fn bool(a: bool, b: bool) -> bool { a > b }
     fn string(a: &str, b: &str) -> bool { a > b }
     fn str() -> &'static str { ">" }

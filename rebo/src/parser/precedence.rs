@@ -20,7 +20,7 @@ pub(super) trait Precedence: Sized + Copy {
     fn precedence(self) -> u8;
     fn expr_type_constructor<'a, 'i>(self) -> fn(&'a Expr<'a, 'i>, &'a Expr<'a, 'i>) -> ExprType<'a, 'i>;
     fn expected() -> Cow<'static, [Expected]>;
-    fn primitive_parse_fn<'a, 'i, 'r>() -> fn(&mut Parser<'a, 'i>, usize) -> Result<&'a Expr<'a, 'i>, InternalError>;
+    fn primitive_parse_fn<'a, 'i>() -> fn(&mut Parser<'a, 'i>, usize) -> Result<&'a Expr<'a, 'i>, InternalError>;
 }
 
 #[derive(Debug, Clone, Copy)]

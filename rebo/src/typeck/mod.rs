@@ -47,7 +47,7 @@ impl<'i> Typechecker<'i> {
     // Step 1: Create constraint set and collect function types
     // Step 2: Solve constraint set and print unification errors
     // Step 3: Check resolved types
-    pub fn typeck(&mut self, exprs: &Vec<&Expr<'_, 'i>>) {
+    pub fn typeck(&mut self, exprs: &[&Expr<'_, 'i>]) {
         let cc = ConstraintCreator::new(self.pre_info);
         let (constraints, restrictions) = cc.get_constraints(exprs);
         let stringified = constraints.iter()
