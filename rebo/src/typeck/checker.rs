@@ -1,8 +1,6 @@
-use diagnostic::{Diagnostics, Span};
-
+use diagnostic::Diagnostics;
 use crate::error_codes::ErrorCode;
 use crate::typeck::TypeVar;
-use crate::parser::{Expr, ExprType};
 use crate::common::{SpecificType, Type};
 use std::collections::BTreeMap;
 use itertools::Itertools;

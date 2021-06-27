@@ -1,8 +1,4 @@
-use std::fmt;
-
-use diagnostic::Span;
-
-use crate::parser::{Expr, ExprType, Binding};
+use crate::parser::{Expr, ExprType};
 use crate::typeck::{Constraint, TypeVar};
 use crate::common::{SpecificType, Type, PreTypeInfo};
 use itertools::Either;

@@ -1,10 +1,8 @@
 use std::collections::HashMap;
 use std::fmt;
-
-use crate::common::{Value, Function, SpecificType, Type};
+use crate::common::{Value, Function, SpecificType};
 use std::sync::atomic::{AtomicU32, Ordering};
 use crate::parser::Binding;
-use diagnostic::Span;
 
 #[derive(Debug, Clone, Copy, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub struct BindingId(u32);
@@ -45,12 +43,15 @@ impl Scopes {
     pub fn push_scope(&mut self, scope: Scope) {
         self.scopes.push(scope);
     }
+    #[allow(dead_code)]
     pub fn pop_scope(&mut self) {
         self.scopes.pop().unwrap();
     }
+    #[allow(dead_code)]
     pub fn scopes(&self) -> &[Scope] {
         &self.scopes
     }
+    #[allow(dead_code)]
     pub fn scopes_mut(&mut self) -> &mut [Scope] {
         &mut self.scopes
     }

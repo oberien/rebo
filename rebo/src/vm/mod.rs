@@ -1,5 +1,3 @@
-use std::cmp::Ordering;
-
 use crate::parser::{Expr, ExprType, Binding};
 use crate::common::{Value, FunctionImpl};
 use crate::scope::{Scopes, Scope};
@@ -210,7 +208,7 @@ impl CmpOp for Neq {
 }
 impl CmpOp for Feq {
     fn unit() -> bool { unreachable!("can't () ~~ ()") }
-    fn integer(a: i64, b: i64) -> bool { unreachable!("can't int ~~ int") }
+    fn integer(_: i64, _: i64) -> bool { unreachable!("can't int ~~ int") }
     fn float(a: f64, b: f64) -> bool {
         // https://stackoverflow.com/a/4915891
         let epsilon = 1e-10;
@@ -227,7 +225,7 @@ impl CmpOp for Feq {
             diff / (abs_a + abs_b) < epsilon
         }
     }
-    fn bool(a: bool, b: bool) -> bool { unreachable!("can't bool ~~ bool") }
+    fn bool(_: bool, _: bool) -> bool { unreachable!("can't bool ~~ bool") }
     fn string(a: &str, b: &str) -> bool {
         let a = lexical_sort::iter::iterate_lexical(a);
         let b = lexical_sort::iter::iterate_lexical(b);
@@ -237,9 +235,9 @@ impl CmpOp for Feq {
 }
 impl CmpOp for Fneq {
     fn unit() -> bool { unreachable!("can't () !~ ()") }
-    fn integer(a: i64, b: i64) -> bool { unreachable!("can't int !~ int") }
+    fn integer(_: i64, _: i64) -> bool { unreachable!("can't int !~ int") }
     fn float(a: f64, b: f64) -> bool { !Feq::float(a, b) }
-    fn bool(a: bool, b: bool) -> bool { unreachable!("can't bool !~ bool") }
+    fn bool(_: bool, _: bool) -> bool { unreachable!("can't bool !~ bool") }
     fn string(a: &str, b: &str) -> bool { !Feq::string(a, b) }
     fn str() -> &'static str { "!~" }
 }

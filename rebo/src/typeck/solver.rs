@@ -1,12 +1,11 @@
 use std::collections::{HashMap, BTreeMap, VecDeque};
 
-use diagnostic::{Diagnostics, Span};
+use diagnostic::Diagnostics;
 
 use crate::error_codes::ErrorCode;
 use crate::typeck::{TypeVar, Constraint};
-use crate::parser::Binding;
-use crate::common::{SpecificType, Type};
-use itertools::{Itertools, Either};
+use crate::common::Type;
+use itertools::Either;
 
 pub struct ConstraintSolver<'i> {
     diagnostics: &'i Diagnostics,

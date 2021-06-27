@@ -2,7 +2,6 @@ use std::collections::HashMap;
 use crate::common::{Value, Function, FunctionImpl, FunctionType, SpecificType, Type, PreTypeInfo};
 use crate::scope::{Scopes, Scope};
 use crate as rebo;
-use crate::parser::Binding;
 
 pub fn add_to_scope(scope: &mut Scope) -> PreTypeInfo<'static> {
     let mut bindings = HashMap::new();

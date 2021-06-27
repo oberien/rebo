@@ -1,6 +1,6 @@
 #[derive(Debug, Clone, Copy)]
 pub enum ErrorCode {
-    InternalCompilerError,
+    // InternalCompilerError,
     MissingSemicolon,
     UnterminatedString,
     UnexpectedEof,
@@ -10,24 +10,20 @@ pub enum ErrorCode {
     ImmutableAssign,
     InvalidLetBinding,
     IncompleteLetBinding,
-    IncompatibleMathTypes,
     TypeConflict,
     UnableToInferType,
-    InvalidArgumentType,
-    NotAFunction,
+    // NotAFunction,
     UnclosedBlock,
-    InvalidNumberOfArguments,
+    // InvalidNumberOfArguments,
     UnclosedParen,
     UnclosedBlockComment,
-    InvalidBoolNotType,
-    InvalidBoolExprType,
 }
 use ErrorCode::*;
 
 impl diagnostic::ErrorCode for ErrorCode {
     fn code(&self) -> String {
         match self {
-            InternalCompilerError => "0000",
+            // InternalCompilerError => "0000",
             MissingSemicolon => "0001",
             UnterminatedString => "0002",
             UnexpectedEof => "0003",
@@ -37,23 +33,19 @@ impl diagnostic::ErrorCode for ErrorCode {
             ImmutableAssign => "0007",
             InvalidLetBinding => "0008",
             IncompleteLetBinding => "0009",
-            IncompatibleMathTypes => "0010",
             TypeConflict => "0011",
             UnableToInferType => "0012",
-            InvalidArgumentType => "0013",
-            NotAFunction => "0014",
+            // NotAFunction => "0014",
             UnclosedBlock => "0015",
-            InvalidNumberOfArguments => "0016",
+            // InvalidNumberOfArguments => "0016",
             UnclosedParen => "0017",
             UnclosedBlockComment => "0018",
-            InvalidBoolNotType => "0019",
-            InvalidBoolExprType => "0020",
         }.to_string()
     }
 
     fn message(&self) -> String {
         match self {
-            InternalCompilerError => "internal compiler error (please report this)",
+            // InternalCompilerError => "internal compiler error (please report this)",
             MissingSemicolon => "missing semicolon",
             UnterminatedString => "unterminated double quote string",
             UnexpectedEof => "unexpected end of file",
@@ -63,17 +55,13 @@ impl diagnostic::ErrorCode for ErrorCode {
             ImmutableAssign => "assignment to immutable variable",
             InvalidLetBinding => "invalid let binding",
             IncompleteLetBinding => "incomplete let binding",
-            IncompatibleMathTypes => "incompatible types for math operation",
             TypeConflict => "type conflict",
             UnableToInferType => "unable to infer type",
-            InvalidArgumentType => "invalid argument type",
-            NotAFunction => "tried to call a non-function",
+            // NotAFunction => "tried to call a non-function",
             UnclosedBlock => "unclosed block, missing `}`",
-            InvalidNumberOfArguments => "invalid number of arguments",
+            // InvalidNumberOfArguments => "invalid number of arguments",
             UnclosedParen => "unclosed parenthesis",
             UnclosedBlockComment => "unclosed block comment",
-            InvalidBoolNotType => "tried to apply boolean negation on a non-bool type",
-            InvalidBoolExprType => "tried to apply boolean binary operation to a non-bool type",
         }.to_string()
     }
 }

@@ -1,9 +1,7 @@
-use std::collections::HashMap;
-
 use diagnostic::{Diagnostics, Span};
 
-use crate::parser::{Expr, Binding};
-use crate::common::{Type, SpecificType, PreTypeInfo};
+use crate::parser::Expr;
+use crate::common::{Type, PreTypeInfo};
 
 mod constraints;
 mod solver;

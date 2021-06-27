@@ -25,7 +25,6 @@ mod tests;
 
 pub use rebo_derive::function;
 use crate::typeck::Typechecker;
-use std::path::Path;
 
 const EXTERNAL_SOURCE: &str = "defined externally";
 lazy_static::lazy_static! {
