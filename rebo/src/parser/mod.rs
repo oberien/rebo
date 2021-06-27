@@ -15,6 +15,7 @@ mod precedence;
 pub use expr::{Binding, Expr, ExprType};
 use crate::parser::precedence::{Math, BooleanExpr};
 use crate::common::{PreTypeInfo, SpecificType, FunctionType, Type, Value, FunctionImpl};
+use indexmap::map::IndexMap;
 
 #[derive(Debug)]
 pub enum Error {
@@ -91,7 +92,7 @@ pub struct Parser<'a, 'b, 'i> {
 }
 
 struct Scope<'i> {
-    idents: HashMap<&'i str, Binding<'i>>
+    idents: IndexMap<&'i str, Binding<'i>>
 }
 
 /// used for the binding parser when calling the assign parser
@@ -120,7 +121,7 @@ impl<'a, 'b, 'i> Parser<'a, 'b, 'i> {
             bindings: Vec::new(),
             pre_info,
             pre_parsed: HashMap::new(),
-            scopes: vec![Scope { idents: HashMap::new() }],
+            scopes: vec![Scope { idents: IndexMap::new() }],
         };
         parser.first_pass();
         // make existing bindings known to parser
@@ -183,7 +184,7 @@ impl<'a, 'b, 'i> Parser<'a, 'b, 'i> {
             .next()
     }
     fn push_scope(&mut self) {
-        self.scopes.push(Scope { idents: HashMap::new() });
+        self.scopes.push(Scope { idents: IndexMap::new() });
     }
     fn pop_scope(&mut self) {
         let scope = self.scopes.pop().unwrap();
