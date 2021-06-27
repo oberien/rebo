@@ -54,8 +54,8 @@ impl Type {
             (Type::Specific(SpecificType::Function(a)), Type::Specific(SpecificType::Function(b))) => {
                 let FunctionType { args: args_a, ret: ret_a } = &**a;
                 let FunctionType { args: args_b, ret: ret_b } = &**b;
-                let same_args = args_a.iter().zip(args_b.iter()).all(|(a, b)| a.try_unify(b).is_ok());
-                let same_ret = ret_a.try_unify(ret_b).is_ok();
+                let same_args = args_a.iter().zip(args_b.iter()).all(|(a, b)| a == b);
+                let same_ret = ret_a == ret_b;
                 if same_args && same_ret {
                     Ok(Either::Left(Type::Specific(SpecificType::Function(a.clone()))))
                 } else {
