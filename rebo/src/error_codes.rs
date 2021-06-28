@@ -19,6 +19,7 @@ pub enum ErrorCode {
     UnclosedBlockComment,
     EmptyFunctionBody,
     DuplicateGlobal,
+    InvalidFunctionArgument,
 }
 use ErrorCode::*;
 
@@ -44,6 +45,7 @@ impl diagnostic::ErrorCode for ErrorCode {
             UnclosedBlockComment => "0018",
             EmptyFunctionBody => "0019",
             DuplicateGlobal => "0020",
+            InvalidFunctionArgument => "0021",
         }.to_string()
     }
 
@@ -68,6 +70,7 @@ impl diagnostic::ErrorCode for ErrorCode {
             UnclosedBlockComment => "unclosed block comment",
             EmptyFunctionBody => "empty function body",
             DuplicateGlobal => "conflicting duplicate global definition",
+            InvalidFunctionArgument => "invalid function argument",
         }.to_string()
     }
 }

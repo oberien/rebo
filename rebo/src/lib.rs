@@ -31,7 +31,13 @@ lazy_static::lazy_static! {
     static ref EXTERNAL_SPAN: Mutex<Option<Span>> = Mutex::new(None);
 }
 
-pub fn run(filename: String, code: String) {
+#[derive(Debug, PartialEq, Eq)]
+pub enum ReturnValue {
+    Ok,
+    Diagnostics(u32),
+}
+
+pub fn run(filename: String, code: String) -> ReturnValue {
     let diagnostics = Diagnostics::new();
     // register file 0 for external sources
     let external = diagnostics.add_file("external".to_string(), EXTERNAL_SOURCE.to_string());
@@ -55,10 +61,11 @@ pub fn run(filename: String, code: String) {
 
     if diagnostics.errors_printed() > 0 {
         eprintln!("Aborted due to errors");
-        return;
+        return ReturnValue::Diagnostics(diagnostics.errors_printed());
     }
 
     let vm = Vm::new(pre_info);
     let result = vm.run(&exprs);
     println!("RESULT: {:?}", result);
+    ReturnValue::Ok
 }

@@ -19,9 +19,10 @@ impl<'i> Checker<'i> {
         for (var, restrictions) in self.restrictions {
             let solved = &self.solved[&var];
             if !restrictions.iter().any(|r| solved.try_unify(&Type::Specific(r.clone())).is_ok()) {
+                let one_of = if restrictions.len() == 1 { "" } else { "one of " };
                 self.diagnostics.error(ErrorCode::TypeConflict)
                     .with_error_label(var.span, format!("inferred type is {}", solved))
-                    .with_info_label(var.span, format!("but expected one of {}", restrictions.iter().join(", ")))
+                    .with_info_label(var.span, format!("but expected {}`{}`", one_of, restrictions.iter().join("`, `")))
                     .emit();
             }
         }

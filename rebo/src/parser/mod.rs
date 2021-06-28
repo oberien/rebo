@@ -218,7 +218,7 @@ impl<'a, 'b, 'i> Parser<'a, 'b, 'i> {
         // file scope
         let body = self.parse_block_body(0);
         // make sure everything parsed during first-pass was consumed and used by the second pass
-        assert!(self.pre_parsed.is_empty());
+        assert!(self.pre_parsed.is_empty(), "{:?}", self.pre_parsed);
         Ok(Ast {
             exprs: body,
             bindings: self.bindings,
@@ -385,7 +385,7 @@ impl<'a, 'b, 'i> Parser<'a, 'b, 'i> {
                 Err(_) => {
                     trace!("{}    got error, recovering with {} exprs", "|".repeat(depth), exprs.len());
                     // recover
-                    self.consume_until_next_end_token();
+                    self.consume_until(&[TokenType::Semicolon, TokenType::CloseCurly]);
                     return exprs;
                 }
             };
@@ -473,9 +473,9 @@ impl<'a, 'b, 'i> Parser<'a, 'b, 'i> {
             }
             Ok(_) => unreachable!("try_parse_assign should only return ExprType::Assign"),
             Err(InternalError::Backtrack(expected)) => {
-                match self.consume_until_next_end_token() {
-                    Some(span) => self.diagnostic_expected(ErrorCode::InvalidLetBinding, Span::new(let_span.file, let_span.start, span.end), &expected),
-                    None => self.diagnostic_expected(ErrorCode::IncompleteLetBinding, let_span, &expected),
+                match self.consume_until(&[TokenType::Semicolon, TokenType::CloseCurly]) {
+                    Consumed::Found(span, _typ) => self.diagnostic_expected(ErrorCode::InvalidLetBinding, Span::new(let_span.file, let_span.start, span.end), &expected),
+                    Consumed::InstantEof | Consumed::Eof(_) => self.diagnostic_expected(ErrorCode::IncompleteLetBinding, let_span, &expected),
                 }
                 // recover with new rogue binding
                 let rogue_binding = self.add_rogue_binding("rogue_binding", is_mut, let_span);
@@ -555,36 +555,51 @@ impl<'a, 'b, 'i> Parser<'a, 'b, 'i> {
             _ => return Err(InternalError::Backtrack(Cow::Borrowed(&[Expected::Ident]))),
         };
         trace!("{} name: {}", "|".repeat(depth), ident);
-        match self.next_token() {
-            Some(Token { typ: TokenType::OpenParen, .. }) => (),
+        let open_paren_span = match self.next_token() {
+            Some(Token { typ: TokenType::OpenParen, span }) => span,
             _ => return Err(InternalError::Backtrack(Cow::Borrowed(&[Expected::OpenParen]))),
-        }
+        };
         let binding = match self.get_binding(ident) {
             Some(binding) => binding,
             None => self.diagnostic_unknown_identifier(ident_span, ident, |d| d),
         };
         let mut args = Vec::new();
-        let mut last_span = ident_span;
-        let res = loop {
+        let call_span = loop {
             match self.peek_token(0) {
                 Some(Token { span, typ: TokenType::CloseParen }) => {
                     drop(self.next_token());
-                    break self.arena.alloc(Expr::new(Span::new(span.file, ident_span.start, span.end), ExprType::FunctionCall((binding, ident_span), args)));
+                    break span
                 },
                 None => return Err(InternalError::Backtrack(Cow::Borrowed(&[Expected::Argument, Expected::CloseParen]))),
                 _ => (),
             }
-            let arg = self.parse_expr(last_span, depth+1)?;
+            let arg = self.try_parse_until_including(ParseUntil::All, depth+1)?;
             trace!("{} arg{}: {}", "|".repeat(depth), args.len(), arg);
             args.push(arg);
-            match self.next_token() {
-                Some(Token { typ: TokenType::Comma, span }) => last_span = span,
+            match self.peek_token(0) {
+                Some(Token { typ: TokenType::Comma, span: _ }) => drop(self.next_token()),
                 Some(Token { span, typ: TokenType::CloseParen }) => {
-                    break self.arena.alloc(Expr::new(Span::new(span.file, ident_span.start, span.end), ExprType::FunctionCall((binding, ident_span), args)));
+                    drop(self.next_token());
+                    break span
                 },
-                _ => return Err(InternalError::Backtrack(Cow::Borrowed(&[Expected::Comma, Expected::CloseParen]))),
+                _ => {
+                    match self.consume_until(&[TokenType::Comma, TokenType::CloseParen]) {
+                        Consumed::Found(span, _) => {
+                            self.diagnostics.error(ErrorCode::InvalidFunctionArgument)
+                                .with_error_label(Span::new(span.file, arg.span.start, span.end-1), "can't parse this argument as expression")
+                                .with_note("arguments must be separated with commas")
+                                .emit();
+                            // consume the comma or closeparen
+                            drop(self.next_token());
+                            break span
+                        }
+                        Consumed::Eof(span) => break span,
+                        Consumed::InstantEof => break open_paren_span,
+                    }
+                },
             }
         };
+        let res = self.arena.alloc(Expr::new(Span::new(call_span.file, ident_span.start, call_span.end), ExprType::FunctionCall((binding, ident_span), args)));
         mark.apply();
         Ok(&*res)
     }
@@ -780,22 +795,47 @@ impl<'a, 'b, 'i> Parser<'a, 'b, 'i> {
         }
     }
 
-    /// Consume until the next end token (`;`, `}`) in the hope that that allows us to recover.
-    fn consume_until_next_end_token(&mut self) -> Option<Span> {
-        let start_span = self.peek_token(0)?.span;
+    /// Consume until excluding the next instance of one of the passed tokens
+    fn consume_until(&mut self, until: &[TokenType]) -> Consumed<'_> {
+        let start_span = match self.peek_token(0) {
+            Some(token) => token.span,
+            None => return Consumed::InstantEof,
+        };
+        let mut paren_depth = 0;
+        let mut curly_depth = 0;
         let mut last_end = start_span.end;
         loop {
             match self.peek_token(0) {
-                Some(Token { span, typ: TokenType::Semicolon })
-                | Some(Token { span, typ: TokenType::CloseCurly }) => {
-                    return Some(Span::new(start_span.file, start_span.start, span.end))
+                Some(Token { span, typ }) if until.contains(&typ) && paren_depth == 0 && curly_depth == 0 => {
+                    return Consumed::Found(Span::new(start_span.file, start_span.start, span.end), typ)
                 },
-                Some(Token { span, .. }) => {
-                    drop(self.next_token());
-                    last_end = span.end
+                Some(Token { typ: TokenType::OpenParen, span }) => {
+                    last_end = span.end;
+                    paren_depth += 1
                 },
-                None => return Some(Span::new(start_span.file, start_span.start, last_end)),
+                Some(Token { typ: TokenType::CloseParen, span }) => {
+                    last_end = span.end;
+                    paren_depth -= 1
+                },
+                Some(Token { typ: TokenType::OpenCurly, span }) => {
+                    last_end = span.end;
+                    curly_depth += 1
+                },
+                Some(Token { typ: TokenType::CloseCurly, span }) => {
+                    last_end = span.end;
+                    curly_depth -= 1
+                },
+                Some(Token { typ: _, span }) => last_end = span.end,
+                None => return Consumed::Eof(Span::new(start_span.file, start_span.start, last_end)),
             }
+            drop(self.next_token());
         }
     }
+}
+
+
+enum Consumed<'i> {
+    InstantEof,
+    Found(Span, TokenType<'i>),
+    Eof(Span),
 }
