@@ -1,5 +1,5 @@
 use std::fmt;
-use crate::parser::{Binding, Expr};
+use crate::parser::{Binding, ExprType, ExprBlock};
 use std::collections::HashMap;
 use itertools::Either;
 use std::borrow::Cow;
@@ -30,13 +30,24 @@ pub struct FunctionType {
     pub args: Cow<'static, [Type]>,
     pub ret: Type,
 }
+impl From<&ExprType> for SpecificType {
+    fn from(typ: &ExprType) -> Self {
+        match typ {
+            ExprType::String(_) => SpecificType::String,
+            ExprType::Int(_) => SpecificType::Integer,
+            ExprType::Float(_) => SpecificType::Float,
+            ExprType::Bool(_) => SpecificType::Bool,
+            ExprType::Unit(_, _) => SpecificType::Unit,
+        }
+    }
+}
 
 /// Info needed before parsing / before typechecking
 pub struct PreTypeInfo<'a, 'i> {
     /// types of bindings of the root scope / stdlib and function definitions of the first parser pass
     pub bindings: IndexMap<Binding<'i>, SpecificType>,
     /// functions found in the code
-    pub rebo_functions: HashMap<BindingId, &'a Vec<&'a Expr<'a, 'i>>>,
+    pub rebo_functions: HashMap<BindingId, &'a ExprBlock<'a, 'i>>,
     pub root_scope: Scope,
 }
 impl<'a, 'i> PreTypeInfo<'a, 'i> {

@@ -3,6 +3,7 @@ use std::fmt;
 use crate::common::{Value, Function, SpecificType};
 use std::sync::atomic::{AtomicU32, Ordering};
 use crate::parser::Binding;
+use crate::lexer::TokenIdent;
 
 #[derive(Debug, Clone, Copy, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub struct BindingId(u32);
@@ -87,9 +88,11 @@ impl Scope {
         let binding_id = BindingId::unique();
         let binding = Binding {
             id: binding_id,
-            ident: name,
-            mutable: false,
-            span: crate::EXTERNAL_SPAN.lock().unwrap().unwrap(),
+            ident: TokenIdent {
+                span: crate::EXTERNAL_SPAN.lock().unwrap().unwrap(),
+                ident: name,
+            },
+            mutable: None,
             rogue: false,
         };
         self.create(binding_id, Value::Function(f.imp));

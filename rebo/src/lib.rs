@@ -25,6 +25,7 @@ mod tests;
 pub use rebo_derive::function;
 use crate::typeck::Typechecker;
 use crate::common::PreTypeInfo;
+use std::time::Instant;
 
 const EXTERNAL_SOURCE: &str = "defined externally";
 lazy_static::lazy_static! {
@@ -46,26 +47,35 @@ pub fn run(filename: String, code: String) -> ReturnValue {
     let (file, code) = diagnostics.add_file(filename, code);
 
     // lex
+    let time = Instant::now();
     let tokens = lexer::lex(&diagnostics, file, code).unwrap();
+    info!("Lexing took {:4.2}s", time.elapsed().as_secs_f32());
     info!("TOKENS:\n{}\n", tokens);
 
     let mut pre_info = PreTypeInfo::new();
     stdlib::add_to_scope(&mut pre_info);
 
+    let time = Instant::now();
     let arena = Arena::new();
     let parser = Parser::new(&arena, tokens, &diagnostics, &mut pre_info);
-    let ast = parser.parse().unwrap();
+    let ast = parser.parse_ast().unwrap();
+    info!("Parsing took {:4.2}s", time.elapsed().as_secs_f32());
     info!("AST:\n{}\n", ast);
     let Ast { exprs, bindings: _ } = ast;
+
+    let time = Instant::now();
     Typechecker::new(&diagnostics, &mut pre_info).typeck(&exprs);
+    info!("Typechecking took {:4.2}s", time.elapsed().as_secs_f32());
 
     if diagnostics.errors_printed() > 0 {
         eprintln!("Aborted due to errors");
         return ReturnValue::Diagnostics(diagnostics.errors_printed());
     }
 
+    let time = Instant::now();
     let vm = Vm::new(pre_info);
     let result = vm.run(&exprs);
+    info!("Execution took {:4.2}s", time.elapsed().as_secs_f32());
     println!("RESULT: {:?}", result);
     ReturnValue::Ok
 }

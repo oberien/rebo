@@ -5,17 +5,19 @@ use std::collections::HashMap;
 use typed_arena::Arena;
 use diagnostic::{Span, Diagnostics, DiagnosticBuilder, FileId};
 
-use crate::lexer::{Tokens, Token, TokenType};
+use crate::lexer::{Tokens, Token, TokenType, TokenMut, TokenIdent, TokenOpenCurly, TokenCloseCurly, TokenCloseParen, TokenOpenParen, TokenLineComment, TokenBlockComment};
 use crate::error_codes::ErrorCode;
 use crate::scope::BindingId;
 
 mod expr;
 mod precedence;
+mod parse;
 
-pub use expr::{Binding, Expr, ExprType};
-use crate::parser::precedence::{Math, BooleanExpr};
+pub use expr::*;
+pub use parse::{Parse, Spanned, Separated};
 use crate::common::{PreTypeInfo, SpecificType, FunctionType, Type, Value, FunctionImpl};
 use indexmap::map::IndexMap;
+use itertools::Itertools;
 
 #[derive(Debug)]
 pub enum Error {
@@ -23,41 +25,40 @@ pub enum Error {
     Abort,
 }
 #[derive(Debug)]
-enum InternalError {
+pub enum InternalError {
     /// We can't recover, return error to caller
     Error(Error),
-    /// This function doesn't handle the tokens in the token stream. Everything was backtracked,
+    /// This function doesn't handle the tokens in the token stream. Everything was rolled back,
     /// the next function should be checked.
-    Backtrack(Cow<'static, [Expected]>),
+    Backtrack(Span, Cow<'static, [Expected]>),
 }
 impl From<Error> for InternalError {
     fn from(e: Error) -> Self {
         InternalError::Error(e)
     }
 }
-#[derive(Debug, Clone, Copy)]
-enum Expected {
-    DqString,
-    Ident,
-    Let,
-    Fn,
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Ord, PartialOrd)]
+pub enum Expected {
+    Token(TokenType),
     Type,
-    /// =
-    Assign,
-    /// ===
-    Equals,
-    /// Int / Float
-    Immediate,
-    /// + - * /
-    MathOp,
-    /// || &&
-    BooleanExprOp,
-    OpenParen,
-    CloseParen,
-    OpenCurly,
-    Argument,
-    Comma,
-    Colon,
+}
+impl Expected {
+    const MATH_OP: &'static [Expected] = &[
+        Expected::Token(TokenType::Plus),
+        Expected::Token(TokenType::Minus),
+        Expected::Token(TokenType::Star),
+        Expected::Token(TokenType::Slash),
+    ];
+    const COMPARE_OP: &'static [Expected] = &[
+        Expected::Token(TokenType::LessThan),
+        Expected::Token(TokenType::LessEquals),
+        Expected::Token(TokenType::Equals),
+        Expected::Token(TokenType::NotEquals),
+        Expected::Token(TokenType::FuzzyEquals),
+        Expected::Token(TokenType::FuzzyNotEquals),
+        Expected::Token(TokenType::GreaterEquals),
+        Expected::Token(TokenType::GreaterThan),
+    ];
 }
 
 #[derive(Debug)]
@@ -95,22 +96,6 @@ struct Scope<'i> {
     idents: IndexMap<&'i str, Binding<'i>>
 }
 
-/// used for the binding parser when calling the assign parser
-enum CreateBinding {
-    /// mutable
-    Yes(bool),
-    No,
-}
-
-#[derive(Debug, PartialOrd, PartialEq)]
-enum ParseUntil {
-    None,
-    Math,
-    Compare,
-    BooleanExpr,
-    All,
-}
-
 /// All expression parsing function consume whitespace and comments before tokens, but not after.
 impl<'a, 'b, 'i> Parser<'a, 'b, 'i> {
     pub fn new(arena: &'a Arena<Expr<'a, 'i>>, tokens: Tokens<'i>, diagnostics: &'i Diagnostics, pre_info: &'b mut PreTypeInfo<'a, 'i>) -> Self {
@@ -126,8 +111,8 @@ impl<'a, 'b, 'i> Parser<'a, 'b, 'i> {
         parser.first_pass();
         // make existing bindings known to parser
         for &binding in parser.pre_info.bindings.keys() {
-            if let Some(old) = parser.scopes.last_mut().unwrap().idents.insert(binding.ident, binding) {
-                let mut spans = [old.span, binding.span];
+            if let Some(old) = parser.scopes.last_mut().unwrap().idents.insert(binding.ident.ident, binding) {
+                let mut spans = [old.span(), binding.span()];
                 spans.sort();
                 parser.diagnostics.error(ErrorCode::DuplicateGlobal)
                     .with_info_label(spans[0], "first defined here")
@@ -141,40 +126,67 @@ impl<'a, 'b, 'i> Parser<'a, 'b, 'i> {
     /// Parse function, struct and enum definitions
     fn first_pass(&mut self) {
         trace!("first_pass");
+        // create rogue scopes
+        let old_scopes = ::std::mem::replace(&mut self.scopes, vec![Scope { idents: IndexMap::new() }]);
         let mark = self.tokens.mark();
         while self.tokens.peek(0).is_some() {
-            match self.try_parse_fn_def(0) {
-                Ok(expr) => match expr {
-                    Expr { span, typ: ExprType::FunctionDefinition(fn_binding, args, ret_type, body) } => {
-                        let typ = SpecificType::Function(Box::new(FunctionType {
-                            args: args.iter().map(|(_binding, typ)| Type::Specific(typ.clone())).collect(),
-                            ret: Type::Specific(ret_type.clone()),
-                        }));
-                        self.pre_info.bindings.insert(*fn_binding, typ);
-                        self.pre_info.rebo_functions.insert(fn_binding.id, body);
-                        let arg_binding_ids = args.iter().map(|(binding, _typ)| binding.id).collect();
-                        self.pre_info.root_scope.create(fn_binding.id, Value::Function(FunctionImpl::Rebo(fn_binding.id, arg_binding_ids)));
-                        self.pre_parsed.insert((span.file, span.start), expr);
-                    }
-                    _ => unreachable!("try_parse_fn_def didn't return FunctionDefinition but {:?}", expr),
+            match ExprFunctionDefinition::parse(self) {
+                Ok(fun) => {
+                    let fun_expr = &*self.arena.alloc(Expr::FunctionDefinition(fun));
+                    let fun = match fun_expr {
+                        Expr::FunctionDefinition(fun) => fun,
+                        _ => unreachable!("we just inserted you"),
+                    };
+                    let typ = SpecificType::Function(Box::new(FunctionType {
+                        args: fun.args.iter().map(|pattern| Type::Specific(SpecificType::from(&pattern.typ))).collect(),
+                        ret: Type::Specific(fun.ret_type.as_ref().map(|(_, typ)| SpecificType::from(typ)).unwrap_or(SpecificType::Unit)),
+                    }));
+                    self.pre_info.bindings.insert(fun.binding, typ);
+                    self.pre_info.rebo_functions.insert(fun.binding.id, &fun.body);
+                    let arg_binding_ids = fun.args.iter().map(|ExprPatternTyped { pattern: ExprPatternUntyped { binding }, .. }| binding.id).collect();
+                    self.pre_info.root_scope.create(fun.binding.id, Value::Function(FunctionImpl::Rebo(fun.binding.id, arg_binding_ids)));
+                    self.pre_parsed.insert((fun.fn_token.span.file, fun.fn_token.span.start), fun_expr);
                 }
                 _ => drop(self.tokens.next()),
             }
         }
         // reset token lookahead
         drop(mark);
+        self.scopes = old_scopes;
     }
 
-    fn add_binding(&mut self, ident: &'i str, mutable: bool, span: Span) -> Binding<'i> {
-        self.add_binding_internal(ident, mutable, span, false)
+    pub fn parse_ast(mut self) -> Result<Ast<'a, 'i>, Error> {
+        trace!("parse_ast");
+        // file scope
+        let body: BlockBody = match self.parse() {
+            Ok(body) => body,
+            Err(InternalError::Backtrack(span, expected)) => {
+                self.diagnostic_expected(ErrorCode::InvalidExpression, span, &expected);
+                return Err(Error::Abort)
+            },
+            Err(InternalError::Error(e)) => return Err(e),
+        };
+        // make sure everything parsed during first-pass was consumed and used by the second pass
+        assert!(self.pre_parsed.is_empty(), "not everything from first-pass was consumed: {:?}", self.pre_parsed);
+        assert!(self.tokens.peek(0).is_none() || matches!(self.tokens.peek(0), Some(Token::Eof(_))), "not all tokens were consumed: {}", self.tokens.iter().map(|t| format!("    {:?}", t)).join("\n"));
+        Ok(Ast {
+            exprs: body.exprs,
+            bindings: self.bindings,
+        })
     }
-    fn add_rogue_binding(&mut self, ident: &'i str, mutable: bool, span: Span) -> Binding<'i> {
-        self.add_binding_internal(ident, mutable, span, true)
+
+
+    fn add_binding(&mut self, ident: TokenIdent<'i>, mutable: Option<TokenMut>) -> Binding<'i> {
+        self.add_binding_internal(ident, mutable, false)
     }
-    fn add_binding_internal(&mut self, ident: &'i str, mutable: bool, span: Span, rogue: bool) -> Binding<'i> {
+    fn add_rogue_binding(&mut self, ident: TokenIdent<'i>, mutable: Option<TokenMut>) -> Binding<'i> {
+        self.add_binding_internal(ident, mutable, true)
+    }
+    fn add_binding_internal(&mut self, ident: TokenIdent<'i>, mutable: Option<TokenMut>, rogue: bool) -> Binding<'i> {
         let id = BindingId::unique();
-        let binding = Binding { id, ident, mutable, span, rogue };
-        self.scopes.last_mut().unwrap().idents.insert(ident, binding);
+        let name = ident.ident;
+        let binding = Binding { id, ident, mutable, rogue };
+        self.scopes.last_mut().unwrap().idents.insert(name, binding);
         binding
     }
     fn get_binding(&mut self, ident: &'i str) -> Option<Binding<'i>> {
@@ -183,8 +195,9 @@ impl<'a, 'b, 'i> Parser<'a, 'b, 'i> {
             .cloned()
             .next()
     }
-    fn push_scope(&mut self) {
+    fn push_scope(&mut self) -> &mut Scope<'i> {
         self.scopes.push(Scope { idents: IndexMap::new() });
+        self.scopes.last_mut().unwrap()
     }
     fn pop_scope(&mut self) {
         let scope = self.scopes.pop().unwrap();
@@ -200,8 +213,8 @@ impl<'a, 'b, 'i> Parser<'a, 'b, 'i> {
     fn peek_token(&mut self, index: usize) -> Option<Token<'i>> {
         let mut non_comments = 0;
         for i in 0.. {
-            match self.tokens.peek(i)?.typ {
-                TokenType::BlockComment(_) | TokenType::LineComment(_) => (),
+            match self.tokens.peek(i)? {
+                Token::BlockComment(_) | Token::LineComment(_) => (),
                 _ => {
                     non_comments += 1;
                     if non_comments - 1 == index {
@@ -213,521 +226,8 @@ impl<'a, 'b, 'i> Parser<'a, 'b, 'i> {
         unreachable!()
     }
 
-    pub fn parse(mut self) -> Result<Ast<'a, 'i>, Error> {
-        trace!("parse");
-        // file scope
-        let body = self.parse_block_body(0);
-        // make sure everything parsed during first-pass was consumed and used by the second pass
-        assert!(self.pre_parsed.is_empty(), "{:?}", self.pre_parsed);
-        Ok(Ast {
-            exprs: body,
-            bindings: self.bindings,
-        })
-    }
-
-    fn parse_expr_or_stmt(&mut self, last_span: Span, depth: usize) -> Result<&'a Expr<'a, 'i>, Error> {
-        trace!("{}parse_expr_or_stmt: {}", "|".repeat(depth), self.peek_token(0).map(|t| t.to_string()).unwrap_or_else(|| "".to_string()));
-        let expr = self.parse_expr(last_span, depth+1)?;
-        match self.peek_token(0) {
-            Some(Token { span, typ: TokenType::Semicolon }) => {
-                drop(self.next_token());
-                Ok(self.arena.alloc(Expr::new(Span::new(span.file, expr.span.start, span.end), ExprType::Statement(expr))))
-            }
-            _ => Ok(expr)
-        }
-    }
-
-    fn parse_expr(&mut self, last_span: Span, depth: usize) -> Result<&'a Expr<'a, 'i>, Error> {
-        trace!("{}parse_expr: {}", "|".repeat(depth), self.peek_token(0).map(|t| t.to_string()).unwrap_or_else(|| "".to_string()));
-        let span = self.peek_token(0).map(|t| t.span).unwrap_or_else(|| Span::new(last_span.file, last_span.end, last_span.end));
-        match self.try_parse_until_including(ParseUntil::All, depth+1) {
-            Ok(expr) => Ok(expr),
-            Err(InternalError::Backtrack(expected)) => {
-                self.diagnostic_expected(ErrorCode::InvalidExpression, Span::new(span.file, span.start, span.end), &expected);
-                Err(Error::Abort)
-            },
-            Err(InternalError::Error(e)) => Err(e),
-        }
-    }
-    fn try_parse_until_including(&mut self, until: ParseUntil, depth: usize) -> Result<&'a Expr<'a, 'i>, InternalError> {
-        trace!("{}try_parse_until_including {:?}: {}", "|".repeat(depth), until, self.peek_token(0).map(|t| t.to_string()).unwrap_or_else(|| "".to_string()));
-        self.try_parse_until(until, PartialOrd::ge, depth)
-    }
-    fn try_parse_until_excluding(&mut self, until: ParseUntil, depth: usize) -> Result<&'a Expr<'a, 'i>, InternalError> {
-        trace!("{}try_parse_until_excluding {:?}: {}", "|".repeat(depth), until, self.peek_token(0).map(|t| t.to_string()).unwrap_or_else(|| "".to_string()));
-        self.try_parse_until(until, PartialOrd::gt, depth)
-    }
-
-    fn try_parse_until(&mut self, until: ParseUntil, cmp: fn(&ParseUntil, &ParseUntil) -> bool, depth: usize) -> Result<&'a Expr<'a, 'i>, InternalError> {
-        if let Some(Token { span, typ: _ }) = self.peek_token(0) {
-            if let Some(expr) = self.pre_parsed.remove(&(span.file, span.start)) {
-                // consume tokens already parsed in first-pass
-                while let Some(Token { span, typ: _ }) = self.peek_token(0) {
-                    if span.start < expr.span.end {
-                        self.next_token();
-                    } else {
-                        break;
-                    }
-                }
-                return Ok(expr);
-            }
-        }
-
-        type ParseFn<'a, 'b, 'i> = fn(&mut Parser<'a, 'b, 'i>, usize) -> Result<&'a Expr<'a, 'i>, InternalError>;
-        let mut fns: Vec<ParseFn<'a, 'b, 'i>> = Vec::new();
-        // add in reverse order
-        if cmp(&until, &ParseUntil::BooleanExpr) {
-            fns.push(Self::try_parse_precedence::<BooleanExpr>);
-        }
-        if cmp(&until, &ParseUntil::Compare) {
-            fns.push(Self::try_parse_compare);
-        }
-        if cmp(&until, &ParseUntil::Math) {
-            fns.push(Self::try_parse_precedence::<Math>);
-        }
-        fns.extend(&[
-            Self::try_parse_parens,
-            Self::try_parse_block_expr,
-            Self::try_parse_not,
-            Self::try_parse_bind,
-            |this: &mut Parser<'a, 'b, 'i>, depth: usize| Self::try_parse_assign(this, CreateBinding::No, depth),
-            Self::try_parse_fn_call,
-            Self::try_parse_string,
-            Self::try_parse_immediate,
-            Self::try_parse_variable,
-        ]);
-
-        let mut expected = Vec::new();
-        for f in fns {
-            match f(self, depth+1) {
-                Ok(expr) => return Ok(expr),
-                Err(InternalError::Backtrack(expect)) => expected.extend(expect.iter().copied()),
-                e @ Err(InternalError::Error(_)) => return e,
-            }
-        }
-        Err(InternalError::Backtrack(expected.into()))
-    }
-
-    fn try_parse_parens(&mut self, depth: usize) -> Result<&'a Expr<'a, 'i>, InternalError> {
-        trace!("{}try_parse_parens: {}", "|".repeat(depth), self.peek_token(0).map(|t| t.to_string()).unwrap_or_else(|| "".to_string()));
-        let start_span = match self.peek_token(0) {
-            Some(Token { span, typ: TokenType::OpenParen }) => span,
-            _ => return Err(InternalError::Backtrack(Cow::Borrowed(&[Expected::OpenParen]))),
-        };
-        drop(self.next_token());
-
-        // try parse unit
-        if let Some(Token { span, typ: TokenType::CloseParen }) = self.peek_token(0) {
-            drop(self.next_token());
-            return Ok(self.arena.alloc(Expr::new(Span::new(start_span.file, start_span.start, span.end), ExprType::Unit)));
-        }
-
-        // try parse parenthesized
-        let expr = self.try_parse_until_including(ParseUntil::All, depth+1)?;
-        let span = match self.next_token() {
-            Some(Token { span, typ: TokenType::CloseParen }) => span,
-            _ => {
-                let span = Span::new(start_span.file, start_span.start, expr.span.end);
-                self.diagnostics.error(ErrorCode::UnclosedParen)
-                    .with_error_label(span, "unclosed parenthesis")
-                    .with_info_label(Span::new(expr.span.file, expr.span.end, expr.span.end), "try inserting a `)` here")
-                    .emit();
-                span
-            },
-        };
-        trace!("{} parens: ({})", "|".repeat(depth), expr);
-        Ok(self.arena.alloc(Expr::new(Span::new(start_span.file, start_span.start, span.end), ExprType::Parenthezised(expr))))
-    }
-
-    fn try_parse_block_expr(&mut self, depth: usize) -> Result<&'a Expr<'a, 'i>, InternalError> {
-        let (body, span) = self.try_parse_block(depth)?;
-        Ok(self.arena.alloc(Expr::new(span, ExprType::Block(body))))
-    }
-
-    fn try_parse_block(&mut self, depth: usize) -> Result<(Vec<&'a Expr<'a, 'i>>, Span), InternalError> {
-        trace!("{}try_parse_block: {}", "|".repeat(depth), self.peek_token(0).map(|t| t.to_string()).unwrap_or_else(|| "".to_string()));
-        let start_span = match self.peek_token(0) {
-            Some(Token { span, typ: TokenType::OpenCurly }) => span,
-            _ => return Err(InternalError::Backtrack(Cow::Borrowed(&[Expected::OpenCurly])))
-        };
-        drop(self.next_token());
-        let body = self.parse_block_body(depth + 1);
-        let span = match self.next_token() {
-            Some(Token { span, typ: TokenType::CloseCurly }) => span,
-            _ => {
-                let span = Span::new(start_span.file, start_span.start, body.last().map(|e| e.span.end).unwrap_or(start_span.start));
-                self.diagnostics.error(ErrorCode::UnclosedBlock)
-                    .with_error_label(span, "unclosed block")
-                    .emit();
-                span
-            },
-        };
-        trace!("{} block: {{ {} }}", "|".repeat(depth), body.iter().fold(String::new(), |s, e| s + &e.to_string()));
-        Ok((body, Span::new(start_span.file, start_span.start, span.end)))
-    }
-
-    fn parse_block_body(&mut self, depth: usize) -> Vec<&'a Expr<'a, 'i>> {
-        trace!("{}parse_block_body: {}", "|".repeat(depth), self.peek_token(0).map(|t| t.to_string()).unwrap_or_else(|| "".to_string()));
-        enum Last {
-            Terminated,
-            Unterminated(Span),
-        }
-
-        self.push_scope();
-        let mut exprs = Vec::new();
-        let mut last = Last::Terminated;
-        let mut last_span = self.peek_token(0).unwrap().span;
-
-        while !self.tokens.is_empty() && self.peek_token(0).unwrap().typ != TokenType::Eof && self.peek_token(0).unwrap().typ != TokenType::CloseCurly {
-            let span = self.peek_token(0).unwrap().span;
-            let expr = match self.parse_expr_or_stmt(last_span, depth+1) {
-                Ok(expr) => expr,
-                Err(_) => {
-                    trace!("{}    got error, recovering with {} exprs", "|".repeat(depth), exprs.len());
-                    // recover
-                    self.consume_until(&[TokenType::Semicolon, TokenType::CloseCurly]);
-                    return exprs;
-                }
-            };
-            trace!("{} block got expression {}", "|".repeat(depth), expr);
-
-            // handle missing semicolon
-            match last {
-                Last::Terminated => (),
-                Last::Unterminated(span) => self.diagnostics.error(ErrorCode::MissingSemicolon)
-                    .with_info_label(Span::new(span.file, span.end, span.end), "try adding a semicolon here")
-                    .emit(),
-            }
-            match expr.typ {
-                ExprType::Statement(_) => last = Last::Terminated,
-                ExprType::FunctionDefinition(..) => last = Last::Terminated,
-                _ => last = Last::Unterminated(expr.span),
-            }
-
-            exprs.push(expr);
-            last_span = span;
-        }
-        self.pop_scope();
-        exprs
-    }
-
-    fn try_parse_not(&mut self, depth: usize) -> Result<&'a Expr<'a, 'i>, InternalError> {
-        trace!("{}trace_parse_not: {}", "|".repeat(depth), self.peek_token(0).map(|t| t.to_string()).unwrap_or_else(|| "".to_string()));
-        match self.peek_token(0) {
-            Some(Token { span, typ: TokenType::Exclamation }) => {
-                drop(self.next_token());
-                let expr = self.try_parse_until_including(ParseUntil::None, depth+1)?;
-                trace!("{} not: !{}", "|".repeat(depth), expr);
-                Ok(self.arena.alloc(Expr::new(span, ExprType::BoolNot(expr))))
-            }
-            _ => Err(InternalError::Backtrack(Cow::Borrowed(&[Expected::DqString]))),
-        }
-    }
-
-    fn try_parse_string(&mut self, depth: usize) -> Result<&'a Expr<'a, 'i>, InternalError> {
-        trace!("{}trace_parse_string: {}", "|".repeat(depth), self.peek_token(0).map(|t| t.to_string()).unwrap_or_else(|| "".to_string()));
-        match self.peek_token(0) {
-            Some(Token { span, typ: TokenType::DqString(s) }) => {
-                drop(self.next_token());
-                trace!("{} string: {:?}", "|".repeat(depth), s);
-                Ok(self.arena.alloc(Expr::new(span, ExprType::String(s))))
-            }
-            _ => Err(InternalError::Backtrack(Cow::Borrowed(&[Expected::DqString]))),
-        }
-    }
-
-    fn try_parse_variable(&mut self, depth: usize) -> Result<&'a Expr<'a, 'i>, InternalError> {
-        trace!("{}try_parse_variable: {}", "|".repeat(depth), self.peek_token(0).map(|t| t.to_string()).unwrap_or_else(|| "".to_string()));
-        match self.peek_token(0) {
-            Some(Token { span, typ: TokenType::Ident(ident) }) => {
-                drop(self.next_token());
-                let binding = match self.get_binding(ident) {
-                    Some(binding) => binding,
-                    None => self.diagnostic_unknown_identifier(span, ident, |d| d),
-                };
-                trace!("{} var: {}", "|".repeat(depth), binding.ident);
-                Ok(self.arena.alloc(Expr::new(span, ExprType::Variable(binding))))
-            },
-            _ => Err(InternalError::Backtrack(Cow::Borrowed(&[Expected::Ident]))),
-        }
-    }
-
-    fn try_parse_bind(&mut self, depth: usize) -> Result<&'a Expr<'a, 'i>, InternalError> {
-        trace!("{}try_parse_bind: {}", "|".repeat(depth), self.peek_token(0).map(|t| t.to_string()).unwrap_or_else(|| "".to_string()));
-        let mark = self.tokens.mark();
-        let let_span = match self.next_token() {
-            Some(Token { span, typ: TokenType::Let }) => span,
-            _ => return Err(InternalError::Backtrack(Cow::Borrowed(&[Expected::Let]))),
-        };
-        let is_mut = match self.peek_token(0) {
-            Some(Token { typ: TokenType::Mut, .. }) => {
-                drop(self.next_token());
-                true
-            }
-            _ => false
-        };
-        let res = match self.try_parse_assign(CreateBinding::Yes(is_mut), depth+1) {
-            Ok(Expr { span, typ: ExprType::Assign((binding, _ident_span), expr) }) => {
-                let span = Span::new(span.file, let_span.start, span.end);
-                &*self.arena.alloc(Expr::new(span, ExprType::Bind(*binding, expr)))
-            }
-            Ok(_) => unreachable!("try_parse_assign should only return ExprType::Assign"),
-            Err(InternalError::Backtrack(expected)) => {
-                match self.consume_until(&[TokenType::Semicolon, TokenType::CloseCurly]) {
-                    Consumed::Found(span, _typ) => self.diagnostic_expected(ErrorCode::InvalidLetBinding, Span::new(let_span.file, let_span.start, span.end), &expected),
-                    Consumed::InstantEof | Consumed::Eof(_) => self.diagnostic_expected(ErrorCode::IncompleteLetBinding, let_span, &expected),
-                }
-                // recover with new rogue binding
-                let rogue_binding = self.add_rogue_binding("rogue_binding", is_mut, let_span);
-                self.arena.alloc(Expr::new(let_span, ExprType::Bind(rogue_binding, self.arena.alloc(Expr::new(let_span, ExprType::Unit)))))
-            },
-            e @ Err(InternalError::Error(_)) => return e,
-        };
-        mark.apply();
-        trace!("{} bind: {}", "|".repeat(depth), res);
-        Ok(res)
-    }
-
-    fn try_parse_assign(&mut self, create_binding: CreateBinding, depth: usize) -> Result<&'a Expr<'a, 'i>, InternalError> {
-        trace!("{}try_parse_assign: {}", "|".repeat(depth), self.peek_token(0).map(|t| t.to_string()).unwrap_or_else(|| "".to_string()));
-        let mark = self.tokens.mark();
-        let (ident, ident_span) = match self.next_token() {
-            Some(Token { span, typ: TokenType::Ident(ident)}) => (ident, span),
-            _ => return Err(InternalError::Backtrack(Cow::Borrowed(&[Expected::Ident]))),
-        };
-        // TODO: Type
-        match self.next_token() {
-            Some(Token { span: _, typ: TokenType::Assign }) => (),
-            _ => return Err(InternalError::Backtrack(Cow::Borrowed(&[Expected::Assign]))),
-        };
-        let expr = self.try_parse_until_including(ParseUntil::All, depth+1)?;
-        mark.apply();
-
-        let binding = match create_binding {
-            CreateBinding::Yes(mutable) => self.add_binding(ident, mutable, ident_span),
-            CreateBinding::No => {
-                let binding = match self.get_binding(ident) {
-                    Some(binding) => binding,
-                    None => self.diagnostic_unknown_identifier(ident_span, ident, |d| d.with_info_label(ident_span, format!("use `let {} = ...` to create a new binding", ident))),
-                };
-
-                // check mutability
-                if !binding.mutable {
-                    self.diagnostics.error(ErrorCode::ImmutableAssign)
-                        .with_error_label(ident_span, format!("variable `{}` is assigned to even though it's not declared as mutable", ident))
-                        .with_info_label(binding.span, format!("`{}` previously defined here", binding.ident))
-                        .with_info_label(binding.span, format!("help: try using `let mut {} = ...` here", binding.ident))
-                        .emit();
-                }
-                binding
-            }
-        };
-
-        trace!("{} assign: {} = {}", "|".repeat(depth), ident, expr);
-        Ok(self.arena.alloc(Expr::new(Span::new(expr.span.file, ident_span.start, expr.span.end), ExprType::Assign((binding, ident_span), expr))))
-    }
-
-    fn try_parse_immediate(&mut self, depth: usize) -> Result<&'a Expr<'a, 'i>, InternalError> {
-        trace!("{}try_parse_immediate: {}", "|".repeat(depth), self.peek_token(0).map(|t| t.to_string()).unwrap_or_else(|| "".to_string()));
-        match self.peek_token(0) {
-            Some(Token { span, typ: TokenType::Integer(i, _radix) }) => {
-                drop(self.next_token());
-                Ok(self.arena.alloc(Expr::new(span, ExprType::Integer(i))))
-            }
-            Some(Token { span, typ: TokenType::Float(f, _radix) }) => {
-                drop(self.next_token());
-                Ok(self.arena.alloc(Expr::new(span, ExprType::Float(f))))
-            }
-            Some(Token { span, typ: TokenType::Bool(b) }) => {
-                drop(self.next_token());
-                Ok(self.arena.alloc(Expr::new(span, ExprType::Bool(b))))
-            }
-            _ => Err(InternalError::Backtrack(Cow::Borrowed(&[Expected::Immediate]))),
-        }
-    }
-
-    fn try_parse_fn_call(&mut self, depth: usize) -> Result<&'a Expr<'a, 'i>, InternalError> {
-        trace!("{}try_parse_fn_call: {}", "|".repeat(depth), self.peek_token(0).map(|t| t.to_string()).unwrap_or_else(|| "".to_string()));
-        let mark = self.tokens.mark();
-
-        let (ident, ident_span) = match self.next_token() {
-            Some(Token { span, typ: TokenType::Ident(ident) }) => (ident, span),
-            _ => return Err(InternalError::Backtrack(Cow::Borrowed(&[Expected::Ident]))),
-        };
-        trace!("{} name: {}", "|".repeat(depth), ident);
-        let open_paren_span = match self.next_token() {
-            Some(Token { typ: TokenType::OpenParen, span }) => span,
-            _ => return Err(InternalError::Backtrack(Cow::Borrowed(&[Expected::OpenParen]))),
-        };
-        let binding = match self.get_binding(ident) {
-            Some(binding) => binding,
-            None => self.diagnostic_unknown_identifier(ident_span, ident, |d| d),
-        };
-        let mut args = Vec::new();
-        let call_span = loop {
-            match self.peek_token(0) {
-                Some(Token { span, typ: TokenType::CloseParen }) => {
-                    drop(self.next_token());
-                    break span
-                },
-                None => return Err(InternalError::Backtrack(Cow::Borrowed(&[Expected::Argument, Expected::CloseParen]))),
-                _ => (),
-            }
-            let arg = self.try_parse_until_including(ParseUntil::All, depth+1)?;
-            trace!("{} arg{}: {}", "|".repeat(depth), args.len(), arg);
-            args.push(arg);
-            match self.peek_token(0) {
-                Some(Token { typ: TokenType::Comma, span: _ }) => drop(self.next_token()),
-                Some(Token { span, typ: TokenType::CloseParen }) => {
-                    drop(self.next_token());
-                    break span
-                },
-                _ => {
-                    match self.consume_until(&[TokenType::Comma, TokenType::CloseParen]) {
-                        Consumed::Found(span, _) => {
-                            self.diagnostics.error(ErrorCode::InvalidFunctionArgument)
-                                .with_error_label(Span::new(span.file, arg.span.start, span.end-1), "can't parse this argument as expression")
-                                .with_note("arguments must be separated with commas")
-                                .emit();
-                            // consume the comma or closeparen
-                            drop(self.next_token());
-                            break span
-                        }
-                        Consumed::Eof(span) => break span,
-                        Consumed::InstantEof => break open_paren_span,
-                    }
-                },
-            }
-        };
-        let res = self.arena.alloc(Expr::new(Span::new(call_span.file, ident_span.start, call_span.end), ExprType::FunctionCall((binding, ident_span), args)));
-        mark.apply();
-        Ok(&*res)
-    }
-
-    fn try_parse_fn_def(&mut self, depth: usize) -> Result<&'a Expr<'a, 'i>, InternalError> {
-        trace!("{}try_parse_fn_def: {}", "|".repeat(depth), self.peek_token(0).map(|t| t.to_string()).unwrap_or_else(|| "".to_string()));
-        let mark = self.tokens.mark();
-        let (fn_binding, args, ret_type, signature_span) = self.try_parse_fn_header(depth+1)?;
-        self.push_scope();
-        for (arg, _typ) in &args {
-            self.scopes.last_mut().unwrap().idents.insert(arg.ident, *arg);
-        }
-        let (stmts, span) = self.try_parse_block(depth+1)?;
-        self.pop_scope();
-        mark.apply();
-        let span = Span::new(span.file, signature_span.start, span.end);
-        Ok(self.arena.alloc(Expr::new(span, ExprType::FunctionDefinition(fn_binding, args, ret_type, stmts))))
-    }
-
-    /// parse the function signature `fn name(args...) -> ret` without the function body
-    fn try_parse_fn_header(&mut self, depth: usize) -> Result<(Binding<'i>, Vec<(Binding<'i>, SpecificType)>, SpecificType, Span), InternalError> {
-        let mark = self.tokens.mark();
-        let fn_span = match self.next_token() {
-            Some(Token { span, typ: TokenType::Fn }) => span,
-            _ => return Err(InternalError::Backtrack(Cow::Borrowed(&[Expected::Fn])))
-        };
-        let (ident, span) = match self.next_token() {
-            Some(Token { span, typ: TokenType::Ident(ident) }) => (ident, span),
-            _ => return Err(InternalError::Backtrack(Cow::Borrowed(&[Expected::Ident]))),
-        };
-        let _open_paren_span = match self.next_token() {
-            Some(Token { span, typ: TokenType::OpenParen }) => span,
-            _ => return Err(InternalError::Backtrack(Cow::Borrowed(&[Expected::OpenParen]))),
-        };
-        let mut args = Vec::new();
-        let close_paren_span = loop {
-            if let Some(Token { span, typ: TokenType::CloseParen }) = self.peek_token(0) {
-                drop(self.next_token());
-                break span;
-            }
-            let mutable = match self.peek_token(0) {
-                Some(Token { span, typ: TokenType::Mut }) => {
-                    drop(self.next_token());
-                    Some(span)
-                },
-                _ => None,
-            };
-            let (ident, ident_span) = match self.next_token() {
-                Some(Token { span, typ: TokenType::Ident(ident) }) => (ident, span),
-                _ => return Err(InternalError::Backtrack(Cow::Borrowed(&[Expected::Ident]))),
-            };
-            let _colon_span = match self.next_token() {
-                Some(Token { span, typ: TokenType::Colon }) => span,
-                _ => return Err(InternalError::Backtrack(Cow::Borrowed(&[Expected::Colon])))
-            };
-            let (typ, _typ_span) = self.try_parse_type(depth+1)?;
-            let binding = Binding {
-                id: BindingId::unique(),
-                ident,
-                mutable: mutable.is_some(),
-                span: ident_span,
-                rogue: false,
-            };
-            args.push((binding, typ));
-            match self.next_token() {
-                Some(Token { span: _, typ: TokenType::Comma }) => (),
-                Some(Token { span, typ: TokenType::CloseParen }) => break span,
-                _ => return Err(InternalError::Backtrack(Cow::Borrowed(&[Expected::Comma, Expected::CloseParen]))),
-            }
-        };
-        let (ret_type, ret_type_span) = match self.peek_token(0) {
-            Some(Token { span: _, typ: TokenType::Arrow }) => {
-                drop(self.next_token());
-                match self.try_parse_type(depth+1) {
-                    Ok((typ, span)) => (typ, span),
-                    Err(InternalError::Backtrack(_)) => (SpecificType::Unit, Span::new(close_paren_span.file, close_paren_span.end, close_paren_span.end)),
-                    Err(InternalError::Error(e)) => return Err(InternalError::Error(e)),
-                }
-            }
-            _ => (SpecificType::Unit, Span::new(close_paren_span.file, close_paren_span.end, close_paren_span.end)),
-        };
-        mark.apply();
-        let binding = Binding {
-            id: BindingId::unique(),
-            ident,
-            mutable: false,
-            span,
-            rogue: false,
-        };
-        Ok((binding, args, ret_type, Span::new(fn_span.file, fn_span.start, ret_type_span.end)))
-    }
-
-    fn try_parse_type(&mut self, depth: usize) -> Result<(SpecificType, Span), InternalError> {
-        trace!("{}try_parse_type: {}", "|".repeat(depth), self.peek_token(0).map(|t| t.to_string()).unwrap_or_else(|| "".to_string()));
-        match self.next_token() {
-            Some(Token { span: open_span, typ: TokenType::OpenParen }) => match self.next_token() {
-                Some(Token { span: close_span, typ: TokenType::CloseParen }) => return Ok((SpecificType::Unit, Span::new(open_span.file, open_span.start, close_span.end))),
-                _ => ()
-            }
-            Some(Token { span, typ: TokenType::StringType }) => return Ok((SpecificType::String, span)),
-            Some(Token { span, typ: TokenType::IntType }) => return Ok((SpecificType::Integer, span)),
-            Some(Token { span, typ: TokenType::FloatType }) => return Ok((SpecificType::Float, span)),
-            Some(Token { span, typ: TokenType::BoolType }) => return Ok((SpecificType::Bool, span)),
-            _ => (),
-        }
-        Err(InternalError::Backtrack(Cow::Borrowed(&[Expected::Type])))
-    }
-
-    fn try_parse_compare(&mut self, depth: usize) -> Result<&'a Expr<'a, 'i>, InternalError> {
-        trace!("{}try_parse_compare: {}", "|".repeat(depth), self.peek_token(0).map(|t| t.to_string()).unwrap_or_else(|| "".to_string()));
-        let mark = self.tokens.mark();
-        let left = self.try_parse_until_excluding(ParseUntil::Compare, depth+1)?;
-        let op = match self.next_token() {
-            Some(Token { typ: TokenType::LessThan, .. }) => ExprType::LessThan,
-            Some(Token { typ: TokenType::LessEquals, .. }) => ExprType::LessEquals,
-            Some(Token { typ: TokenType::Equals, .. }) => ExprType::Equals,
-            Some(Token { typ: TokenType::NotEquals, .. }) => ExprType::NotEquals,
-            Some(Token { typ: TokenType::FloatEquals, .. }) => ExprType::FloatEquals,
-            Some(Token { typ: TokenType::FloatNotEquals, .. }) => ExprType::FloatNotEquals,
-            Some(Token { typ: TokenType::GreaterEquals, .. }) => ExprType::GreaterEquals,
-            Some(Token { typ: TokenType::GreaterThan, .. }) => ExprType::GreaterThan,
-            _ => return Err(InternalError::Backtrack(Cow::Borrowed(&[Expected::Equals]))),
-        };
-        let right = self.try_parse_until_including(ParseUntil::Compare, depth+1)?;
-        mark.apply();
-        let res = self.arena.alloc(Expr::new(Span::new(left.span.file, left.span.start, right.span.end), op(left, right)));
-        trace!("{} compare: {} ", "|".repeat(depth), res);
-        Ok(res)
+    pub(in crate::parser) fn parse<T: Parse<'a, 'i>>(&mut self) -> Result<T, InternalError> {
+        T::parse(self)
     }
 
     fn similar_ident(&self, ident: &'i str) -> Option<&'i str> {
@@ -739,39 +239,24 @@ impl<'a, 'b, 'i> Parser<'a, 'b, 'i> {
             .map(|(_, &s)| s)
     }
 
-    fn diagnostic_unknown_identifier(&mut self, span: Span, ident: &'i str, f: impl for<'d> FnOnce(DiagnosticBuilder<'d, ErrorCode>) -> DiagnosticBuilder<'d, ErrorCode>) -> Binding<'i> {
+    fn diagnostic_unknown_identifier(&mut self, ident: TokenIdent<'i>, f: impl for<'d> FnOnce(DiagnosticBuilder<'d, ErrorCode>) -> DiagnosticBuilder<'d, ErrorCode>) -> Binding<'i> {
         let mut d = self.diagnostics.error(ErrorCode::UnknownIdentifier)
-            .with_error_label(span, format!("variable `{}` doesn't exist", ident));
+            .with_error_label(ident.span, format!("variable `{}` doesn't exist", ident.ident));
         d = f(d);
-        if let Some(similar) = self.similar_ident(ident) {
-            d = d.with_info_label(span, format!("did you mean the similarly named variable `{}`", similar));
+        if let Some(similar) = self.similar_ident(ident.ident) {
+            d = d.with_info_label(ident.span, format!("did you mean the similarly named variable `{}`", similar));
         }
         d.emit();
         // introduce rogue variable
-        self.add_rogue_binding(ident, true, span)
+        self.add_rogue_binding(ident, Some(TokenMut { span: ident.span }))
     }
 
     fn diagnostic_expected(&self, code: ErrorCode, span: Span, expected: &[Expected]) {
         let expected: Vec<_> = expected.iter()
             .map(|&expected| {
-                use Expected::*;
                 match expected {
-                    DqString => "double-quoted string",
-                    Ident => "identifier",
-                    Let => "`let`",
-                    Fn => "`fn`",
-                    Type => "type",
-                    Assign => "`=`",
-                    Equals => "`==`",
-                    Immediate => "integer or float",
-                    MathOp => "`+`, `-`, `*`, `/`",
-                    BooleanExprOp => "`&&`, `||`",
-                    OpenParen => "`(`",
-                    CloseParen => "`)`",
-                    OpenCurly => "`{`",
-                    Argument => "function argument",
-                    Comma => "`,`",
-                    Colon => "`:`",
+                    Expected::Type => "a type",
+                    Expected::Token(token) => token.as_str(),
                 }
             }).collect();
         let joined = expected.join(", ");
@@ -786,19 +271,19 @@ impl<'a, 'b, 'i> Parser<'a, 'b, 'i> {
 
     fn consume_comments(&mut self) {
         match self.tokens.peek(0) {
-            Some(Token { typ: TokenType::LineComment(c), .. })
-            | Some(Token { typ: TokenType::BlockComment(c), .. }) => {
+            Some(Token::LineComment(TokenLineComment { comment, .. }))
+            | Some(Token::BlockComment(TokenBlockComment { comment, .. })) => {
                 drop(self.tokens.next().unwrap());
-                trace!("dropped comment {}", c);
+                trace!("dropped comment {}", comment);
             },
             _ => (),
         }
     }
 
     /// Consume until excluding the next instance of one of the passed tokens
-    fn consume_until(&mut self, until: &[TokenType]) -> Consumed<'_> {
+    fn consume_until(&mut self, until: &[TokenType]) -> Consumed<'i> {
         let start_span = match self.peek_token(0) {
-            Some(token) => token.span,
+            Some(token) => token.span(),
             None => return Consumed::InstantEof,
         };
         let mut paren_depth = 0;
@@ -806,26 +291,26 @@ impl<'a, 'b, 'i> Parser<'a, 'b, 'i> {
         let mut last_end = start_span.end;
         loop {
             match self.peek_token(0) {
-                Some(Token { span, typ }) if until.contains(&typ) && paren_depth == 0 && curly_depth == 0 => {
-                    return Consumed::Found(Span::new(start_span.file, start_span.start, span.end), typ)
+                Some(token) if until.contains(&token.typ()) && paren_depth == 0 && curly_depth == 0 => {
+                    return Consumed::Found(Span::new(start_span.file, start_span.start, token.span().end), token)
                 },
-                Some(Token { typ: TokenType::OpenParen, span }) => {
+                Some(Token::OpenParen(TokenOpenParen { span })) => {
                     last_end = span.end;
                     paren_depth += 1
                 },
-                Some(Token { typ: TokenType::CloseParen, span }) => {
+                Some(Token::CloseParen(TokenCloseParen { span })) => {
                     last_end = span.end;
                     paren_depth -= 1
                 },
-                Some(Token { typ: TokenType::OpenCurly, span }) => {
+                Some(Token::OpenCurly(TokenOpenCurly { span })) => {
                     last_end = span.end;
                     curly_depth += 1
                 },
-                Some(Token { typ: TokenType::CloseCurly, span }) => {
+                Some(Token::CloseCurly(TokenCloseCurly { span })) => {
                     last_end = span.end;
                     curly_depth -= 1
                 },
-                Some(Token { typ: _, span }) => last_end = span.end,
+                Some(token) => last_end = token.span().end,
                 None => return Consumed::Eof(Span::new(start_span.file, start_span.start, last_end)),
             }
             drop(self.next_token());
@@ -836,6 +321,6 @@ impl<'a, 'b, 'i> Parser<'a, 'b, 'i> {
 
 enum Consumed<'i> {
     InstantEof,
-    Found(Span, TokenType<'i>),
+    Found(Span, Token<'i>),
     Eof(Span),
 }

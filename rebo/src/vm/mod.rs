@@ -1,11 +1,12 @@
-use crate::parser::{Expr, ExprType, Binding};
+use crate::parser::{Expr, Binding, ExprVariable, ExprInteger, ExprFloat, ExprBool, ExprString, ExprAssign, ExprBind, ExprPattern, ExprPatternTyped, ExprPatternUntyped, ExprLessThan, ExprLessEquals, ExprEquals, ExprNotEquals, ExprFuzzyEquals, ExprFuzzyNotEquals, ExprGreaterEquals, ExprGreaterThan, ExprAdd, ExprSub, ExprMul, ExprDiv, ExprBoolNot, ExprBoolAnd, ExprBoolOr, ExprParenthesized, ExprBlock, ExprFunctionCall, Separated, ExprFunctionDefinition, BlockBody};
 use crate::common::{Value, FunctionImpl, PreTypeInfo};
 use crate::scope::{Scopes, BindingId, Scope};
 use std::collections::HashMap;
+use crate::lexer::{TokenInteger, TokenFloat, TokenBool, TokenDqString, TokenComma};
 
 pub struct Vm<'a, 'i> {
     scopes: Scopes,
-    rebo_functions: HashMap<BindingId, &'a Vec<&'a Expr<'a, 'i>>>,
+    rebo_functions: HashMap<BindingId, &'a ExprBlock<'a, 'i>>,
 }
 
 impl<'a, 'i> Vm<'a, 'i> {
@@ -30,18 +31,18 @@ impl<'a, 'i> Vm<'a, 'i> {
 
 
     fn load_binding(&self, binding: &Binding, depth: usize) -> Value {
-        trace!("{}load_binding: {}", "|".repeat(depth), binding.ident);
+        trace!("{}load_binding: {}", "|".repeat(depth), binding.ident.ident);
         self.scopes.get(binding.id).unwrap().clone()
     }
 
     fn bind(&mut self, binding: &Binding, value: Value, depth: usize) -> Value {
-        trace!("{}bind {} = {:?}", "|".repeat(depth), binding.ident, value);
+        trace!("{}bind {} = {:?}", "|".repeat(depth), binding.ident.ident, value);
         self.scopes.create(binding.id, value);
         Value::Unit
     }
 
     fn assign(&mut self, binding: &Binding, value: Value, depth: usize) -> Value {
-        trace!("{}assign {} = {:?}", "|".repeat(depth), binding.ident, value);
+        trace!("{}assign {} = {:?}", "|".repeat(depth), binding.ident.ident, value);
         self.scopes.assign(binding.id, value);
         Value::Unit
     }
@@ -49,68 +50,69 @@ impl<'a, 'i> Vm<'a, 'i> {
     fn eval_expr(&mut self, expr: &Expr, depth: usize) -> Value {
         trace!("{}eval_expr: {}", "|".repeat(depth), expr);
         match expr {
-            Expr { span: _, typ: ExprType::Unit } => Value::Unit,
-            Expr { span: _, typ: ExprType::Variable(binding) } => self.load_binding(binding, depth+1),
-            &Expr { span: _, typ: ExprType::Integer(i) } => Value::Integer(i),
-            &Expr { span: _, typ: ExprType::Float(f) } => Value::Float(f),
-            &Expr { span: _, typ: ExprType::Bool(b) } => Value::Bool(b),
-            Expr { span: _, typ: ExprType::String(s) } => Value::String(s.clone()),
-            Expr { span: _, typ: ExprType::Assign((binding, _), expr) } => {
+            Expr::Unit(_) => Value::Unit,
+            Expr::Variable(ExprVariable { binding, .. }) => self.load_binding(binding, depth+1),
+            Expr::Integer(ExprInteger { int: TokenInteger { value, .. } }) => Value::Integer(*value),
+            Expr::Float(ExprFloat { float: TokenFloat { value, .. }}) => Value::Float(*value),
+            Expr::Bool(ExprBool { b: TokenBool { value, .. } }) => Value::Bool(*value),
+            Expr::String(ExprString { string: TokenDqString { string, .. } }) => Value::String(string.clone()),
+            Expr::Assign(ExprAssign { variable: ExprVariable { binding, .. }, expr, .. }) => {
                 let value = self.eval_expr(expr, depth+1);
                 self.assign(binding, value, depth+1)
             },
-            Expr { span: _, typ: ExprType::Bind(binding, expr)} => {
+            Expr::Bind(ExprBind { pattern: ExprPattern::Typed(ExprPatternTyped { pattern: ExprPatternUntyped { binding }, .. }), expr, .. })
+            | Expr::Bind(ExprBind { pattern: ExprPattern::Untyped(ExprPatternUntyped { binding }), expr, .. }) => {
                 let value = self.eval_expr(expr, depth+1);
                 self.bind(binding, value, depth+1)
             },
-            Expr { span: _, typ: ExprType::LessThan(a, b) } => cmp::<Lt>(self.eval_expr(a, depth+1), self.eval_expr(b, depth+1)),
-            Expr { span: _, typ: ExprType::LessEquals(a, b) } => cmp::<Le>(self.eval_expr(a, depth+1), self.eval_expr(b, depth+1)),
-            Expr { span: _, typ: ExprType::Equals(a, b) } => cmp::<Eq>(self.eval_expr(a, depth+1), self.eval_expr(b, depth+1)),
-            Expr { span: _, typ: ExprType::NotEquals(a, b) } => cmp::<Neq>(self.eval_expr(a, depth+1), self.eval_expr(b, depth+1)),
-            Expr { span: _, typ: ExprType::FloatEquals(a, b) } => cmp::<Feq>(self.eval_expr(a, depth+1), self.eval_expr(b, depth+1)),
-            Expr { span: _, typ: ExprType::FloatNotEquals(a, b) } => cmp::<Fneq>(self.eval_expr(a, depth+1), self.eval_expr(b, depth+1)),
-            Expr { span: _, typ: ExprType::GreaterEquals(a, b) } => cmp::<Ge>(self.eval_expr(a, depth+1), self.eval_expr(b, depth+1)),
-            Expr { span: _, typ: ExprType::GreaterThan(a, b) } => cmp::<Gt>(self.eval_expr(a, depth+1), self.eval_expr(b, depth+1)),
-            Expr { span: _, typ: ExprType::Add(a, b) } => math::<Add>(self.eval_expr(a, depth+1), self.eval_expr(b, depth+1)),
-            Expr { span: _, typ: ExprType::Sub(a, b) } => math::<Sub>(self.eval_expr(a, depth+1), self.eval_expr(b, depth+1)),
-            Expr { span: _, typ: ExprType::Mul(a, b) } => math::<Mul>(self.eval_expr(a, depth+1), self.eval_expr(b, depth+1)),
-            Expr { span: _, typ: ExprType::Div(a, b) } => math::<Div>(self.eval_expr(a, depth+1), self.eval_expr(b, depth+1)),
-            Expr { span: _, typ: ExprType::BoolNot(b) } => {
-                match self.eval_expr(b, depth+1) {
-                    Value::Bool(b) => Value::Bool(!b),
+            Expr::LessThan(ExprLessThan { a, b, .. }) => cmp::<Lt>(self.eval_expr(a, depth+1), self.eval_expr(b, depth+1)),
+            Expr::LessEquals(ExprLessEquals { a, b, .. }) => cmp::<Le>(self.eval_expr(a, depth+1), self.eval_expr(b, depth+1)),
+            Expr::Equals(ExprEquals { a, b, .. }) => cmp::<Eq>(self.eval_expr(a, depth+1), self.eval_expr(b, depth+1)),
+            Expr::NotEquals(ExprNotEquals { a, b, .. }) => cmp::<Neq>(self.eval_expr(a, depth+1), self.eval_expr(b, depth+1)),
+            Expr::FuzzyEquals(ExprFuzzyEquals { a, b, .. }) => cmp::<Feq>(self.eval_expr(a, depth+1), self.eval_expr(b, depth+1)),
+            Expr::FuzzyNotEquals(ExprFuzzyNotEquals { a, b, .. }) => cmp::<Fneq>(self.eval_expr(a, depth+1), self.eval_expr(b, depth+1)),
+            Expr::GreaterEquals(ExprGreaterEquals { a, b, .. }) => cmp::<Ge>(self.eval_expr(a, depth+1), self.eval_expr(b, depth+1)),
+            Expr::GreaterThan(ExprGreaterThan { a, b, .. }) => cmp::<Gt>(self.eval_expr(a, depth+1), self.eval_expr(b, depth+1)),
+            Expr::Add(ExprAdd { a, b, .. }) => math::<Add>(self.eval_expr(a, depth+1), self.eval_expr(b, depth+1)),
+            Expr::Sub(ExprSub { a, b, .. }) => math::<Sub>(self.eval_expr(a, depth+1), self.eval_expr(b, depth+1)),
+            Expr::Mul(ExprMul { a, b, .. }) => math::<Mul>(self.eval_expr(a, depth+1), self.eval_expr(b, depth+1)),
+            Expr::Div(ExprDiv { a, b, .. }) => math::<Div>(self.eval_expr(a, depth+1), self.eval_expr(b, depth+1)),
+            Expr::BoolNot(ExprBoolNot { expr, .. }) => {
+                match self.eval_expr(expr, depth+1) {
+                    Value::Bool(expr) => Value::Bool(!expr),
                     _ => unreachable!("boolean NOT called with non-bool"),
                 }
             }
-            Expr { span: _, typ: ExprType::BoolAnd(a, b) } => {
+            Expr::BoolAnd(ExprBoolAnd { a, b, .. }) => {
                 let res = self.eval_expr(a, depth+1).expect_bool("boolean AND called with non-bool")
                     && self.eval_expr(b, depth+1).expect_bool("boolean AND called with non-bool");
                 Value::Bool(res)
             }
-            Expr { span: _, typ: ExprType::BoolOr(a, b) } => {
+            Expr::BoolOr(ExprBoolOr { a, b, .. }) => {
                 let res = self.eval_expr(a, depth+1).expect_bool("boolean OR called with non-bool")
                     || self.eval_expr(b, depth+1).expect_bool("boolean OR called with non-bool");
                 Value::Bool(res)
             }
-            Expr { span: _, typ: ExprType::Statement(expr) } => {
-                self.eval_expr(expr, depth+1);
-                Value::Unit
-            }
-            Expr { span: _, typ: ExprType::Parenthezised(expr) } => self.eval_expr(expr, depth+1),
-            Expr { span: _, typ: ExprType::Block(exprs) } => {
+            Expr::Parenthesized(ExprParenthesized { expr, .. }) => self.eval_expr(expr, depth+1),
+            Expr::Block(ExprBlock { body: BlockBody { exprs, terminated }, .. }) => {
                 let mut val = Value::Unit;
                 for expr in exprs {
                     val = self.eval_expr(expr, depth+1);
                 }
-                val
+                if *terminated {
+                    Value::Unit
+                } else {
+                    val
+                }
             }
-            Expr { span: _, typ: ExprType::FunctionCall((binding, _), args) } => self.call_function(binding, args, depth+1),
+            Expr::FunctionCall(ExprFunctionCall { variable: ExprVariable { binding, .. }, args, .. }) => self.call_function(binding, args, depth+1),
             // ignore function definitions as we have those handled already
-            Expr { span: _, typ: ExprType::FunctionDefinition(..) } => Value::Unit,
+            Expr::FunctionDefinition(ExprFunctionDefinition { .. }) => Value::Unit,
         }
     }
 
-    fn call_function(&mut self, binding: &Binding, args: &[&Expr], depth: usize) -> Value {
-        trace!("{}call_function: {}({:?})", "|".repeat(depth), binding.ident, args);
+    fn call_function(&mut self, binding: &Binding, args: &Separated<&Expr<'_, '_>, TokenComma>, depth: usize) -> Value {
+        trace!("{}call_function: {}({:?})", "|".repeat(depth), binding.ident.ident, args);
         let args = args.iter().map(|expr| self.eval_expr(expr, depth+1)).collect();
         match self.load_binding(&binding, depth+1) {
             Value::Function(imp) => match imp {
@@ -123,7 +125,7 @@ impl<'a, 'i> Vm<'a, 'i> {
                     self.scopes.push_scope(scope);
 
                     let mut last = None;
-                    for expr in self.rebo_functions[&binding_id] {
+                    for expr in &self.rebo_functions[&binding_id].body.exprs {
                         last = Some(self.eval_expr(expr, depth+1));
                     }
 

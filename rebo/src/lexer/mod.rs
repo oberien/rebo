@@ -5,7 +5,7 @@ use crate::error_codes::ErrorCode;
 
 mod token;
 
-pub use token::{Tokens, Token, TokenType, Radix};
+pub use token::*;
 
 #[derive(Debug)]
 pub enum Error {
@@ -32,12 +32,12 @@ pub fn lex<'i>(diagnostics: &Diagnostics, file: FileId, s: &'i str) -> Result<To
     let mut res = VecDeque::new();
     loop {
         match lex_next(diagnostics, file, s, index)? {
-            token @ Token { typ: TokenType::Eof, .. } => {
+            token @ Token::Eof(_) => {
                 res.push_back(token);
-                return Ok(Tokens::new(res))
+                return Ok(Tokens::new(file, res))
             }
             token => {
-                index = token.span.end;
+                index = token.span().end;
                 res.push_back(token);
             }
         }
@@ -49,11 +49,11 @@ fn lex_next<'i>(diagnostics: &Diagnostics, file: FileId, s: &'i str, index: usiz
     // skip preceding whitespace
     let index = match skip_whitespace(s, index) {
         Some(index) => index,
-        None => return Ok(Token::new(Span::new(file, index, index), TokenType::Eof)),
+        None => return Ok(Token::Eof(TokenEof { span: Span::new(file, index, index) })),
     };
 
     if s[index..].is_empty() {
-        return Ok(Token::new(Span::new(file, index, index), TokenType::Eof));
+        return Ok(Token::Eof(TokenEof { span: Span::new(file, index, index) }));
     }
 
     let functions = [
@@ -66,7 +66,7 @@ fn lex_next<'i>(diagnostics: &Diagnostics, file: FileId, s: &'i str, index: usiz
     for f in &functions {
         match f(diagnostics, file, s, index)? {
             MaybeToken::Token(token) => {
-                trace!("lexed {:?} as {:?}", &s[token.span.start..token.span.end], token.typ);
+                trace!("lexed {:?} as {:?}", &s[token.span().start..token.span().end], token);
                 return Ok(token)
             },
             MaybeToken::Backtrack => continue,
@@ -93,77 +93,77 @@ fn skip_whitespace(s: &str, mut index: usize) -> Option<usize> {
 fn try_lex_token<'i>(diagnostics: &Diagnostics, file: FileId, s: &'i str, index: usize) -> Result<MaybeToken<'i>, Error> {
     trace!("try_lex_token: {}", index);
     if s[index..].starts_with("let") {
-        return Ok(MaybeToken::Token(Token::new(Span::new(file, index, index+3), TokenType::Let)));
+        return Ok(MaybeToken::Token(Token::Let(TokenLet { span: Span::new(file, index, index+3) })));
     }
     if s[index..].starts_with("mut") {
-        return Ok(MaybeToken::Token(Token::new(Span::new(file, index, index+3), TokenType::Mut)));
+        return Ok(MaybeToken::Token(Token::Mut(TokenMut { span: Span::new(file, index, index+3) })));
     }
     if s[index..].starts_with("fn") {
-        return Ok(MaybeToken::Token(Token::new(Span::new(file, index, index+2), TokenType::Fn)));
+        return Ok(MaybeToken::Token(Token::Fn(TokenFn { span: Span::new(file, index, index+2) })));
     }
     if s[index..].starts_with("string") {
-        return Ok(MaybeToken::Token(Token::new(Span::new(file, index, index+6), TokenType::StringType)));
+        return Ok(MaybeToken::Token(Token::StringType(TokenStringType { span: Span::new(file, index, index+6) })));
     }
     if s[index..].starts_with("int") {
-        return Ok(MaybeToken::Token(Token::new(Span::new(file, index, index+3), TokenType::IntType)));
+        return Ok(MaybeToken::Token(Token::IntType(TokenIntType { span: Span::new(file, index, index+3) })));
     }
     if s[index..].starts_with("float") {
-        return Ok(MaybeToken::Token(Token::new(Span::new(file, index, index+5), TokenType::FloatType)));
+        return Ok(MaybeToken::Token(Token::FloatType(TokenFloatType { span: Span::new(file, index, index+5) })));
     }
     if s[index..].starts_with("bool") {
-        return Ok(MaybeToken::Token(Token::new(Span::new(file, index, index+4), TokenType::BoolType)));
+        return Ok(MaybeToken::Token(Token::BoolType(TokenBoolType { span: Span::new(file, index, index+4) })));
     }
     let char = s[index..].chars().next().unwrap();
     let span = Span::new(file, index, index + char.len_utf8());
     let char2 = s[index+char.len_utf8()..].chars().next();
     let span2 = Span::new(file, index, index + char.len_utf8() + char2.map(|c| c.len_utf8()).unwrap_or_default());
     match char {
-        '(' => Ok(MaybeToken::Token(Token::new(span, TokenType::OpenParen))),
-        ')' => Ok(MaybeToken::Token(Token::new(span, TokenType::CloseParen))),
-        '{' => Ok(MaybeToken::Token(Token::new(span, TokenType::OpenCurly))),
-        '}' => Ok(MaybeToken::Token(Token::new(span, TokenType::CloseCurly))),
-        ';' => Ok(MaybeToken::Token(Token::new(span, TokenType::Semicolon))),
-        ':' => Ok(MaybeToken::Token(Token::new(span, TokenType::Colon))),
-        '+' => Ok(MaybeToken::Token(Token::new(span, TokenType::Plus))),
+        '(' => Ok(MaybeToken::Token(Token::OpenParen(TokenOpenParen { span }))),
+        ')' => Ok(MaybeToken::Token(Token::CloseParen(TokenCloseParen { span }))),
+        '{' => Ok(MaybeToken::Token(Token::OpenCurly(TokenOpenCurly { span }))),
+        '}' => Ok(MaybeToken::Token(Token::CloseCurly(TokenCloseCurly { span }))),
+        ';' => Ok(MaybeToken::Token(Token::Semicolon(TokenSemicolon { span }))),
+        ':' => Ok(MaybeToken::Token(Token::Colon(TokenColon { span }))),
+        '+' => Ok(MaybeToken::Token(Token::Plus(TokenPlus { span }))),
         '-' => match char2 {
-            Some('>') => Ok(MaybeToken::Token(Token::new(span2, TokenType::Arrow))),
-            _ => Ok(MaybeToken::Token(Token::new(span, TokenType::Minus))),
+            Some('>') => Ok(MaybeToken::Token(Token::Arrow(TokenArrow { span: span2 }))),
+            _ => Ok(MaybeToken::Token(Token::Minus(TokenMinus { span }))),
         }
-        '*' => Ok(MaybeToken::Token(Token::new(span, TokenType::Star))),
+        '*' => Ok(MaybeToken::Token(Token::Star(TokenStar { span }))),
         '/' => match char2 {
             Some('/') => Ok(MaybeToken::Token(lex_line_comment(diagnostics, file, s, index))),
             Some('*') => Ok(MaybeToken::Token(lex_block_comment(diagnostics, file, s, index))),
-            _ => Ok(MaybeToken::Token(Token::new(span, TokenType::Slash))),
+            _ => Ok(MaybeToken::Token(Token::Slash(TokenSlash { span }))),
         }
-        ',' => Ok(MaybeToken::Token(Token::new(span, TokenType::Comma))),
+        ',' => Ok(MaybeToken::Token(Token::Comma(TokenComma { span }))),
         '=' => match char2 {
-            Some('=') => Ok(MaybeToken::Token(Token::new(span2, TokenType::Equals))),
-            _ => Ok(MaybeToken::Token(Token::new(span, TokenType::Assign))),
+            Some('=') => Ok(MaybeToken::Token(Token::Equals(TokenEquals { span: span2 }))),
+            _ => Ok(MaybeToken::Token(Token::Assign(TokenAssign { span }))),
         }
         '~' => match char2 {
-            Some('~') => Ok(MaybeToken::Token(Token::new(span2, TokenType::FloatEquals))),
+            Some('~') => Ok(MaybeToken::Token(Token::FuzzyEquals(TokenFuzzyEquals { span: span2 }))),
             _ => Ok(MaybeToken::Backtrack),
         }
         '>' => match char2 {
-            Some('=') => Ok(MaybeToken::Token(Token::new(span2, TokenType::GreaterEquals))),
-            _ => Ok(MaybeToken::Token(Token::new(span, TokenType::GreaterThan))),
+            Some('=') => Ok(MaybeToken::Token(Token::GreaterEquals(TokenGreaterEquals { span: span2 }))),
+            _ => Ok(MaybeToken::Token(Token::GreaterThan(TokenGreaterThan { span }))),
         }
         '<' => match char2 {
-            Some('=') => Ok(MaybeToken::Token(Token::new(span2, TokenType::LessEquals))),
-            _ => Ok(MaybeToken::Token(Token::new(span, TokenType::LessThan))),
+            Some('=') => Ok(MaybeToken::Token(Token::LessEquals(TokenLessEquals { span: span2 }))),
+            _ => Ok(MaybeToken::Token(Token::LessThan(TokenLessThan { span }))),
         }
         '!' => match char2 {
-            Some('=') => Ok(MaybeToken::Token(Token::new(span2, TokenType::NotEquals))),
-            Some('~') => Ok(MaybeToken::Token(Token::new(span2, TokenType::FloatNotEquals))),
-            _ => Ok(MaybeToken::Token(Token::new(span, TokenType::Exclamation))),
+            Some('=') => Ok(MaybeToken::Token(Token::NotEquals(TokenNotEquals { span: span2 }))),
+            Some('~') => Ok(MaybeToken::Token(Token::FuzzyNotEquals(TokenFuzzyNotEquals { span: span2 }))),
+            _ => Ok(MaybeToken::Token(Token::Bang(TokenBang { span }))),
         }
         '&' => match char2 {
-            Some('&') => Ok(MaybeToken::Token(Token::new(span2, TokenType::DoubleAmp))),
-            _ => Ok(MaybeToken::Token(Token::new(span, TokenType::Amp))),
+            Some('&') => Ok(MaybeToken::Token(Token::DoubleAmp(TokenDoubleAmp { span: span2 }))),
+            _ => Ok(MaybeToken::Token(Token::Amp(TokenAmp { span }))),
         }
         '|' => match char2 {
-            Some('|') => Ok(MaybeToken::Token(Token::new(span2, TokenType::DoublePipe))),
-            _ => Ok(MaybeToken::Token(Token::new(span, TokenType::Pipe))),
+            Some('|') => Ok(MaybeToken::Token(Token::DoublePipe(TokenDoublePipe { span: span2 }))),
+            _ => Ok(MaybeToken::Token(Token::Pipe(TokenPipe { span }))),
         }
         '"' => Ok(MaybeToken::Token(lex_double_quoted_string(diagnostics, file, s, index)?)),
         _ => Ok(MaybeToken::Backtrack),
@@ -189,8 +189,16 @@ fn try_lex_number<'i>(diagnostics: &Diagnostics, file: FileId, s: &'i str, mut i
     let float = lexical::parse_radix::<f64, _>(&s[index..number_end], radix.to_u8());
 
     match (int, float) {
-        (Ok(i), _) => Ok(MaybeToken::Token(Token::new(Span::new(file, start, number_end), TokenType::Integer(i, radix)))),
-        (_, Ok(f)) => Ok(MaybeToken::Token(Token::new(Span::new(file, start, number_end), TokenType::Float(f, radix)))),
+        (Ok(i), _) => Ok(MaybeToken::Token(Token::Integer(TokenInteger {
+            span: Span::new(file, start, number_end),
+            value: i,
+            radix,
+        }))),
+        (_, Ok(f)) => Ok(MaybeToken::Token(Token::Float(TokenFloat {
+            span: Span::new(file, start, number_end),
+            value: f,
+            radix,
+        }))),
         (Err(e), _) if e.index == 0 && radix == Radix::Dec => Ok(MaybeToken::Backtrack),
         (Err(e), _) => {
             diagnostics.error(ErrorCode::InvalidNumber)
@@ -204,9 +212,15 @@ fn try_lex_number<'i>(diagnostics: &Diagnostics, file: FileId, s: &'i str, mut i
 fn try_lex_bool<'i>(_diagnostics: &Diagnostics, file: FileId, s: &'i str, index: usize) -> Result<MaybeToken<'i>, Error> {
     trace!("try_lex_bool: {}", index);
     if s[index..].starts_with("true") {
-        Ok(MaybeToken::Token(Token::new(Span::new(file, index, index+4), TokenType::Bool(true))))
+        Ok(MaybeToken::Token(Token::Bool(TokenBool {
+            span: Span::new(file, index, index + 4),
+            value: true,
+        })))
     } else if s[index..].starts_with("false") {
-        Ok(MaybeToken::Token(Token::new(Span::new(file, index, index+5), TokenType::Bool(false))))
+        Ok(MaybeToken::Token(Token::Bool(TokenBool {
+            span: Span::new(file, index, index + 5),
+            value: false,
+        })))
     } else {
         Ok(MaybeToken::Backtrack)
     }
@@ -223,8 +237,11 @@ fn try_lex_ident<'i>(_diagnostics: &Diagnostics, file: FileId, s: &'i str, mut i
     }
     loop {
         match s[index..].chars().next() {
-            Some('a'..='z') | Some('A'..='Z') | Some('_') | Some('0'..='9') => index += 1,
-            Some(_) | None => return Ok(MaybeToken::Token(Token::new(Span::new(file, start, index), TokenType::Ident(&s[start..index])))),
+            Some('a'..='z' | 'A'..='Z' | '_' | '0'..='9') => index += 1,
+            Some(_) | None => return Ok(MaybeToken::Token(Token::Ident(TokenIdent {
+                span: Span::new(file, start, index),
+                ident: &s[start..index]
+            }))),
         }
     }
 }
@@ -244,7 +261,10 @@ fn lex_line_comment<'i>(_diagnostics: &Diagnostics, file: FileId, s: &'i str, in
             None => break,
         }
     }
-    Token::new(Span::new(file, index, end), TokenType::LineComment(&s[index..end]))
+    Token::LineComment(TokenLineComment {
+        span: Span::new(file, index, end),
+        comment: &s[index..end],
+    })
 }
 fn lex_block_comment<'i>(diagnostics: &Diagnostics, file: FileId, s: &'i str, index: usize) -> Token<'i> {
     trace!("lex_block_comment: {}", index);
@@ -255,7 +275,10 @@ fn lex_block_comment<'i>(diagnostics: &Diagnostics, file: FileId, s: &'i str, in
             .with_info_label(Span::new(file, start, end), "")
             .with_info_label(Span::new(file, end, end), "try inserting `*/` here")
             .emit();
-        Token::new(Span::new(file, start, end), TokenType::BlockComment(&s[start..end]))
+        Token::BlockComment(TokenBlockComment {
+            span: Span::new(file, start, end),
+            comment: &s[start..end],
+        })
     };
     let mut end = index + 2;
     let mut depth = 0;
@@ -272,7 +295,10 @@ fn lex_block_comment<'i>(diagnostics: &Diagnostics, file: FileId, s: &'i str, in
         match (c1, c2) {
             ('*', '/') if depth == 0 => {
                 end += c2.len_utf8();
-                return Token::new(Span::new(file, index, end), TokenType::BlockComment(&s[index..end]))
+                return Token::BlockComment(TokenBlockComment {
+                    span: Span::new(file, index, end),
+                    comment: &s[index..end],
+                });
             },
             ('*', '/') => depth -= 1,
             ('/', '*') => depth += 1,
@@ -289,7 +315,10 @@ fn lex_double_quoted_string<'i>(diagnostics: &Diagnostics, file: FileId, s: &'i 
     index += 1;
     loop {
         if let Some('"') = s[index..].chars().next() {
-            return Ok(Token::new(Span::new(file, start, index + 1), TokenType::DqString(res)));
+            return Ok(Token::DqString(TokenDqString {
+                span: Span::new(file, start, index + 1),
+                string: res,
+            }));
         }
         match lex_string_char(s, index, false) {
             None => {

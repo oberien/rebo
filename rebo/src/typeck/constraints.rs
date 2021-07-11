@@ -1,8 +1,8 @@
-use crate::parser::{Expr, ExprType};
+use crate::parser::{Expr, Spanned, ExprBind, ExprAssign, ExprPattern, ExprPatternUntyped, ExprPatternTyped, ExprVariable, ExprAdd, ExprSub, ExprMul, ExprDiv, ExprBoolAnd, ExprBoolOr, ExprBoolNot, ExprLessThan, ExprGreaterEquals, ExprLessEquals, ExprGreaterThan, ExprEquals, ExprNotEquals, ExprFuzzyEquals, ExprFuzzyNotEquals, ExprBlock, ExprParenthesized, ExprFunctionCall, ExprFunctionDefinition, BlockBody};
 use crate::typeck::{Constraint, TypeVar};
 use crate::common::{SpecificType, Type, PreTypeInfo};
 use itertools::Either;
-use diagnostic::Diagnostics;
+use diagnostic::{Diagnostics, Span};
 use crate::error_codes::ErrorCode;
 
 pub struct ConstraintCreator<'a, 'i> {
@@ -32,14 +32,14 @@ impl<'a, 'i> ConstraintCreator<'a, 'i> {
     }
     #[must_use]
     fn get_type(&mut self, expr_outer: &Expr<'a, 'i>) -> TypeVar {
-        use ExprType::*;
-        let type_var = TypeVar::new(expr_outer.span);
-        match &expr_outer.typ {
-            Unit => {
+        use Expr::*;
+        let type_var = TypeVar::new(expr_outer.span());
+        match expr_outer {
+            Unit(..) => {
                 self.constraints.push(Constraint::Type(type_var, Type::Specific(SpecificType::Unit)));
                 self.restrictions.push((type_var, vec![SpecificType::Unit]));
             },
-            Variable(binding) => return TypeVar::new(binding.span),
+            Variable(variable) => return TypeVar::new(variable.span()),
             Integer(_) => {
                 self.constraints.push(Constraint::Type(type_var, Type::Specific(SpecificType::Integer)));
                 self.restrictions.push((type_var, vec![SpecificType::Integer]));
@@ -56,18 +56,32 @@ impl<'a, 'i> ConstraintCreator<'a, 'i> {
                 self.constraints.push(Constraint::Type(type_var, Type::Specific(SpecificType::String)));
                 self.restrictions.push((type_var, vec![SpecificType::String]));
             },
-            &Bind(binding, expr)
-            | &Assign((binding, _), expr) => {
-                let left = TypeVar::new(binding.span);
+            Bind(ExprBind { pattern, expr, .. }) => {
+                let left = match pattern {
+                    ExprPattern::Untyped(ExprPatternUntyped { binding }) => TypeVar::new(binding.span()),
+                    ExprPattern::Typed(ExprPatternTyped { pattern: ExprPatternUntyped { binding }, typ, .. }) => {
+                        let left = TypeVar::new(binding.span());
+                        self.constraints.push(Constraint::Type(left, Type::Specific(typ.into())));
+                        self.restrictions.push((type_var, vec![typ.into()]));
+                        left
+                    }
+                };
+                let right = self.get_type(expr);
+                self.constraints.push(Constraint::Eq(left, right));
+                self.constraints.push(Constraint::Type(type_var, Type::Specific(SpecificType::Unit)));
+                self.restrictions.push((type_var, vec![SpecificType::Unit]));
+            }
+            Assign(ExprAssign { variable: ExprVariable { binding, .. }, expr, .. }) => {
+                let left = TypeVar::new(binding.span());
                 let right = self.get_type(expr);
                 self.constraints.push(Constraint::Eq(left, right));
                 self.constraints.push(Constraint::Type(type_var, Type::Specific(SpecificType::Unit)));
                 self.restrictions.push((type_var, vec![SpecificType::Unit]));
             },
-            &Add(a, b)
-            | &Sub(a, b)
-            | &Mul(a, b)
-            | &Div(a, b) => {
+            Add(ExprAdd { a, b, .. })
+            | Sub(ExprSub { a, b, .. })
+            | Mul(ExprMul { a, b, .. })
+            | Div(ExprDiv { a, b, .. }) => {
                 let left = self.get_type(a);
                 let right = self.get_type(b);
                 self.constraints.push(Constraint::Eq(type_var, left));
@@ -76,8 +90,8 @@ impl<'a, 'i> ConstraintCreator<'a, 'i> {
                 self.restrictions.push((right, vec![SpecificType::Integer, SpecificType::Float]));
                 self.restrictions.push((type_var, vec![SpecificType::Integer, SpecificType::Float]));
             },
-            &BoolAnd(a, b)
-            | &BoolOr(a, b) => {
+            BoolAnd(ExprBoolAnd { a, b, .. })
+            | BoolOr(ExprBoolOr { a, b, .. }) => {
                 let left = self.get_type(a);
                 let right = self.get_type(b);
                 self.constraints.push(Constraint::Type(left, Type::Specific(SpecificType::Bool)));
@@ -87,17 +101,17 @@ impl<'a, 'i> ConstraintCreator<'a, 'i> {
                 self.restrictions.push((right, vec![SpecificType::Bool]));
                 self.restrictions.push((type_var, vec![SpecificType::Bool]));
             }
-            &BoolNot(expr) => {
+            BoolNot(ExprBoolNot { expr, .. }) => {
                 let val_type_var = self.get_type(expr);
                 self.constraints.push(Constraint::Type(val_type_var, Type::Specific(SpecificType::Bool)));
                 self.constraints.push(Constraint::Type(type_var, Type::Specific(SpecificType::Bool)));
                 self.restrictions.push((val_type_var, vec![SpecificType::Bool]));
                 self.restrictions.push((type_var, vec![SpecificType::Bool]));
             }
-            LessThan(a, b)
-            | LessEquals(a, b)
-            | GreaterEquals(a, b)
-            | GreaterThan(a, b) => {
+            LessThan(ExprLessThan { a, b, .. })
+            | LessEquals(ExprLessEquals { a, b, .. })
+            | GreaterEquals(ExprGreaterEquals { a, b, .. })
+            | GreaterThan(ExprGreaterThan { a, b, .. }) => {
                 let left = self.get_type(a);
                 let right = self.get_type(b);
                 self.constraints.push(Constraint::Eq(left, right));
@@ -106,8 +120,8 @@ impl<'a, 'i> ConstraintCreator<'a, 'i> {
                 self.restrictions.push((right, vec![SpecificType::Unit, SpecificType::Integer, SpecificType::Float, SpecificType::Bool, SpecificType::String]));
                 self.restrictions.push((type_var, vec![SpecificType::Bool]));
             },
-            Equals(a, b)
-            | NotEquals(a, b) => {
+            Equals(ExprEquals { a, b, .. })
+            | NotEquals(ExprNotEquals { a, b, .. }) => {
                 let left = self.get_type(a);
                 let right = self.get_type(b);
                 self.constraints.push(Constraint::Eq(left, right));
@@ -116,8 +130,8 @@ impl<'a, 'i> ConstraintCreator<'a, 'i> {
                 self.restrictions.push((right, vec![SpecificType::Unit, SpecificType::Integer, SpecificType::Bool, SpecificType::String]));
                 self.restrictions.push((type_var, vec![SpecificType::Bool]));
             },
-            FloatEquals(a, b)
-            | FloatNotEquals(a, b) => {
+            FuzzyEquals(ExprFuzzyEquals { a, b, .. })
+            | FuzzyNotEquals(ExprFuzzyNotEquals { a, b, .. }) => {
                 let left = self.get_type(a);
                 let right = self.get_type(b);
                 self.constraints.push(Constraint::Eq(left, right));
@@ -126,36 +140,34 @@ impl<'a, 'i> ConstraintCreator<'a, 'i> {
                 self.restrictions.push((right, vec![SpecificType::Float, SpecificType::String]));
                 self.restrictions.push((type_var, vec![SpecificType::Bool]));
             }
-            Statement(expr) => {
-                let val_type_var = self.get_type(expr);
-                self.constraints.push(Constraint::Type(val_type_var, Type::Top));
-                self.constraints.push(Constraint::Type(type_var, Type::Specific(SpecificType::Unit)));
-                self.restrictions.push((type_var, vec![SpecificType::Unit]));
-            },
-            Block(exprs) => {
+            Block(ExprBlock { body: BlockBody { exprs, terminated }, .. }) => {
                 let mut last = None;
                 for expr in exprs {
                     last = Some(self.get_type(expr));
                 }
-                if let Some(last) = last {
-                    self.constraints.push(Constraint::Eq(type_var, last));
-                } else {
-                    self.constraints.push(Constraint::Type(type_var, Type::Specific(SpecificType::Unit)));
-                    self.restrictions.push((type_var, vec![SpecificType::Unit]));
+                match (terminated, last) {
+                    (false, Some(last_type_var)) => {
+                        self.constraints.push(Constraint::Eq(type_var, last_type_var));
+                    },
+                    (true, _) | (false, None) => {
+                        self.constraints.push(Constraint::Type(type_var, Type::Specific(SpecificType::Unit)));
+                        self.restrictions.push((type_var, vec![SpecificType::Unit]));
+                    }
                 }
             },
-            Parenthezised(expr) => {
+            Parenthesized(ExprParenthesized { expr, .. }) => {
                 let val_type_var = self.get_type(expr);
                 self.constraints.push(Constraint::Eq(type_var, val_type_var));
             },
-            FunctionCall((binding, span), args) => {
+            FunctionCall(ExprFunctionCall { variable, args, open, close }) => {
+                let args_span = args.span().unwrap_or_else(|| Span::new(open.span.file, open.span.start, close.span.end));
                 let passed_arg_type_vars: Vec<_> = args.iter().map(|expr| self.get_type(expr)).collect();
-                let fun = match &self.pre_info.bindings.get(binding) {
+                let fun = match &self.pre_info.bindings.get(&variable.binding) {
                     Some(SpecificType::Function(f)) => f,
                     _ => {
                         self.diagnostics.error(ErrorCode::NotAFunction)
-                            .with_error_label(*span, "this is not a function")
-                            .with_info_label(binding.span, "defined here")
+                            .with_error_label(variable.span(), "this is not a function")
+                            .with_info_label(variable.binding.span(), "defined here")
                             .emit();
                         return type_var;
                     },
@@ -174,8 +186,8 @@ impl<'a, 'i> ConstraintCreator<'a, 'i> {
                     let expected_str = if varargs { "at least " } else { "" };
                     let expected = if varargs { fun.args.len() - 1 } else { fun.args.len() };
                     self.diagnostics.error(ErrorCode::InvalidNumberOfArguments)
-                        .with_error_label(*span, format!("found {} arguments", args.len()))
-                        .with_info_label(binding.span, format!("expected {}{} arguments", expected_str, expected))
+                        .with_error_label(args_span, format!("found {} arguments", args.len()))
+                        .with_info_label(variable.binding.span(), format!("expected {}{} arguments", expected_str, expected))
                         .emit();
                 }
 
@@ -191,21 +203,27 @@ impl<'a, 'i> ConstraintCreator<'a, 'i> {
                     }
                 }
             },
-            FunctionDefinition(fn_binding, _args, ret_type, body) => {
-                if body.is_empty() && *ret_type != SpecificType::Unit {
+            FunctionDefinition(ExprFunctionDefinition { binding, ret_type, body: ExprBlock { body: BlockBody { exprs, terminated }, .. }, .. }) => {
+                let ret_type = match ret_type {
+                    Some((_arrow, typ)) => SpecificType::from(typ),
+                    None => SpecificType::Unit,
+                };
+                if exprs.is_empty() && ret_type != SpecificType::Unit {
                     self.diagnostics.error(ErrorCode::EmptyFunctionBody)
-                        .with_error_label(fn_binding.span, format!("this function returns {} but has an empty body", ret_type))
+                        .with_error_label(binding.span(), format!("this function returns {} but has an empty body", ret_type))
                         .emit();
                 }
                 let mut last = None;
-                for expr in body {
+                for expr in exprs {
                     last = Some(self.get_type(expr));
                 }
-                if let Some(last) = last {
-                    self.constraints.push(Constraint::Type(last, Type::Specific(ret_type.clone())));
+                match (terminated, last) {
+                    (false, Some(last)) => self.constraints.push(Constraint::Type(last, Type::Specific(ret_type.clone()))),
+                    (false, None) | (true, _) => {
+                        self.constraints.push(Constraint::Type(type_var, Type::Specific(SpecificType::Unit)));
+                        self.restrictions.push((type_var, vec![SpecificType::Unit]));
+                    }
                 }
-                self.constraints.push(Constraint::Type(type_var, Type::Specific(SpecificType::Unit)));
-                self.restrictions.push((type_var, vec![SpecificType::Unit]));
             }
         }
         type_var
