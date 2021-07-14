@@ -3,28 +3,43 @@ use std::fmt::{self, Display, Formatter};
 use crate::lexer::*;
 use diagnostic::Span;
 use std::marker::PhantomData;
+use crate::common::Depth;
+use regex::Regex;
+
+// make trace! here log as if this still was the parser module
+macro_rules! module_path {
+    () => {{
+        let path = std::module_path!();
+        let end = path.rfind("::").unwrap();
+        &path[..end]
+    }}
+}
 
 pub trait Parse<'a, 'i>: Sized {
-    fn parse(parser: &mut Parser<'a, '_, 'i>) -> Result<Self, InternalError> {
+    fn parse(parser: &mut Parser<'a, '_, 'i>, depth: Depth) -> Result<Self, InternalError> {
+        lazy_static::lazy_static! {
+            static ref REGEX: Regex = Regex::new(r#"\w*::[a-zA-Z0-9_:]*::"#).unwrap();
+        }
+        trace!("{} {}::parse        ({:?})", depth, REGEX.replace_all(::std::any::type_name::<Self>(), ""), parser.peek_token(0));
         let mark = parser.tokens.mark();
-        let res = Self::parse_marked(parser)?;
+        let res = Self::parse_marked(parser, depth)?;
         mark.apply();
         Ok(res)
     }
-    fn parse_marked(parser: &mut Parser<'a, '_, 'i>) -> Result<Self, InternalError>;
+    fn parse_marked(parser: &mut Parser<'a, '_, 'i>, depth: Depth) -> Result<Self, InternalError>;
 }
 impl<'a, 'i, T: Parse<'a, 'i>> Parse<'a, 'i> for Option<T> {
-    fn parse_marked(parser: &mut Parser<'a, '_, 'i>) -> Result<Self, InternalError> {
-        match parser.parse() {
+    fn parse_marked(parser: &mut Parser<'a, '_, 'i>, depth: Depth) -> Result<Self, InternalError> {
+        match parser.parse(depth.last()) {
             Ok(t) => Ok(Some(t)),
             Err(_) => Ok(None),
         }
     }
 }
 impl<'a, 'i, T: Parse<'a, 'i>> Parse<'a, 'i> for Vec<T> {
-    fn parse_marked(parser: &mut Parser<'a, '_, 'i>) -> Result<Self, InternalError> {
+    fn parse_marked(parser: &mut Parser<'a, '_, 'i>, depth: Depth) -> Result<Self, InternalError> {
         let mut vec = Vec::new();
-        while let Ok(t) = parser.parse() {
+        while let Ok(t) = parser.parse(depth.next()) {
             vec.push(t);
         }
         Ok(vec)
@@ -48,10 +63,10 @@ pub struct Separated<'a, 'i, T: 'a, D: 'a> {
 }
 
 impl<'a, 'i, T: Parse<'a, 'i>, D: Parse<'a, 'i>> Parse<'a, 'i> for Separated<'a, 'i, T, D> {
-    fn parse_marked(parser: &mut Parser<'a, '_, 'i>) -> Result<Self, InternalError> {
+    fn parse_marked(parser: &mut Parser<'a, '_, 'i>, depth: Depth) -> Result<Self, InternalError> {
         Ok(Separated {
-            inner: parser.parse()?,
-            last: parser.parse()?,
+            inner: parser.parse(depth.next())?,
+            last: parser.parse(depth.last())?,
             marker: PhantomData,
         })
     }
@@ -115,10 +130,10 @@ impl<'a, 'i, T: Display, D: Display> Display for Separated<'a, 'i, T, D> {
 }
 
 macro_rules! impl_for_tuples {
-    ($($name:ident),*) => {
-        impl<'a, 'i, $($name: Parse<'a, 'i>),*> Parse<'a, 'i> for ($($name,)*) {
-            fn parse_marked(parser: &mut Parser<'a, '_, 'i>) -> Result<Self, InternalError> {
-                Ok(($($name::parse(parser)?,)*))
+    ($last:ident $(,$name:ident)*) => {
+        impl<'a, 'i, $($name: Parse<'a, 'i>,)* $last: Parse<'a, 'i>> Parse<'a, 'i> for ($($name,)* $last,) {
+            fn parse_marked(parser: &mut Parser<'a, '_, 'i>, depth: Depth) -> Result<Self, InternalError> {
+                Ok(($($name::parse(parser, depth.next())?,)* $last::parse(parser, depth.last())?,))
             }
         }
     }
@@ -135,7 +150,7 @@ macro_rules! impl_for_tokens {
     ($($name:ident$(<$lt:lifetime>)?, $tokenname:ident;)+) => {
         $(
             impl<'a, 'i> crate::parser::Parse<'a, 'i> for $tokenname $(<$lt>)? {
-                fn parse_marked(parser: &mut crate::parser::Parser<'a, '_, 'i>) -> Result<Self, crate::parser::InternalError> {
+                fn parse_marked(parser: &mut crate::parser::Parser<'a, '_, 'i>, _depth: Depth) -> Result<Self, crate::parser::InternalError> {
                     match parser.peek_token(0) {
                         Some(crate::lexer::Token::$name(t)) => {
                             drop(parser.next_token());

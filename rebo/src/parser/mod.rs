@@ -15,7 +15,7 @@ mod parse;
 
 pub use expr::*;
 pub use parse::{Parse, Spanned, Separated};
-use crate::common::{PreTypeInfo, SpecificType, FunctionType, Type, Value, FunctionImpl};
+use crate::common::{PreTypeInfo, SpecificType, FunctionType, Type, Value, FunctionImpl, Depth};
 use indexmap::map::IndexMap;
 use itertools::Itertools;
 
@@ -90,6 +90,7 @@ pub struct Parser<'a, 'b, 'i> {
     pre_parsed: HashMap<(FileId, usize), &'a Expr<'a, 'i>>,
     /// stack of scopes with bindings that are still live
     scopes: Vec<Scope<'i>>,
+    memoization: IndexMap<(FileId, usize), (&'a Expr<'a, 'i>, ParseUntil)>
 }
 
 struct Scope<'i> {
@@ -107,6 +108,7 @@ impl<'a, 'b, 'i> Parser<'a, 'b, 'i> {
             pre_info,
             pre_parsed: HashMap::new(),
             scopes: vec![Scope { idents: IndexMap::new() }],
+            memoization: IndexMap::new(),
         };
         parser.first_pass();
         // make existing bindings known to parser
@@ -130,7 +132,7 @@ impl<'a, 'b, 'i> Parser<'a, 'b, 'i> {
         let old_scopes = ::std::mem::replace(&mut self.scopes, vec![Scope { idents: IndexMap::new() }]);
         let mark = self.tokens.mark();
         while self.tokens.peek(0).is_some() {
-            match ExprFunctionDefinition::parse(self) {
+            match ExprFunctionDefinition::parse(self, Depth::start()) {
                 Ok(fun) => {
                     let fun_expr = &*self.arena.alloc(Expr::FunctionDefinition(fun));
                     let fun = match fun_expr {
@@ -158,7 +160,7 @@ impl<'a, 'b, 'i> Parser<'a, 'b, 'i> {
     pub fn parse_ast(mut self) -> Result<Ast<'a, 'i>, Error> {
         trace!("parse_ast");
         // file scope
-        let body: BlockBody = match self.parse() {
+        let body: BlockBody = match self.parse(Depth::start()) {
             Ok(body) => body,
             Err(InternalError::Backtrack(span, expected)) => {
                 self.diagnostic_expected(ErrorCode::InvalidExpression, span, &expected);
@@ -226,8 +228,8 @@ impl<'a, 'b, 'i> Parser<'a, 'b, 'i> {
         unreachable!()
     }
 
-    pub(in crate::parser) fn parse<T: Parse<'a, 'i>>(&mut self) -> Result<T, InternalError> {
-        T::parse(self)
+    pub(in crate::parser) fn parse<T: Parse<'a, 'i>>(&mut self, depth: Depth) -> Result<T, InternalError> {
+        T::parse(self, depth)
     }
 
     fn similar_ident(&self, ident: &'i str) -> Option<&'i str> {
@@ -271,10 +273,9 @@ impl<'a, 'b, 'i> Parser<'a, 'b, 'i> {
 
     fn consume_comments(&mut self) {
         match self.tokens.peek(0) {
-            Some(Token::LineComment(TokenLineComment { comment, .. }))
-            | Some(Token::BlockComment(TokenBlockComment { comment, .. })) => {
+            Some(Token::LineComment(TokenLineComment { .. }))
+            | Some(Token::BlockComment(TokenBlockComment { .. })) => {
                 drop(self.tokens.next().unwrap());
-                trace!("dropped comment {}", comment);
             },
             _ => (),
         }

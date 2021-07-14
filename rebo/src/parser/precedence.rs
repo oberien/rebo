@@ -4,9 +4,9 @@ use crate::lexer::Token;
 use super::{Expr, InternalError, Parser};
 use crate::parser::{Expected};
 use crate::parser::expr::{ExprBoolAnd, ExprBoolOr, ExprAdd, ExprSub, ExprMul, ExprDiv, ParseUntil};
+use crate::common::Depth;
 
 // make trace! here log as if this still was the parser module
-#[allow(unused_macros)]
 macro_rules! module_path {
     () => {{
         let path = std::module_path!();
@@ -20,7 +20,7 @@ pub(super) trait Precedence: Sized + Copy {
     fn precedence(self) -> u8;
     fn expr_type_constructor<'a, 'i>(self) -> fn(&'a Expr<'a, 'i>, Token<'i>, &'a Expr<'a, 'i>) -> Expr<'a, 'i>;
     fn expected() -> Cow<'static, [Expected]>;
-    fn primitive_parse_fn<'a, 'b, 'i>() -> fn(&mut Parser<'a, 'b, 'i>) -> Result<&'a Expr<'a, 'i>, InternalError>;
+    fn primitive_parse_fn<'a, 'b, 'i>() -> fn(&mut Parser<'a, 'b, 'i>, Depth) -> Result<&'a Expr<'a, 'i>, InternalError>;
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -62,8 +62,8 @@ impl Precedence for Math {
         Cow::Borrowed(Expected::COMPARE_OP)
     }
 
-    fn primitive_parse_fn<'a, 'b, 'i>() -> fn(&mut Parser<'a, 'b, 'i>) -> Result<&'a Expr<'a, 'i>, InternalError> {
-        |parser| Expr::try_parse_until_excluding(parser, ParseUntil::Math)
+    fn primitive_parse_fn<'a, 'b, 'i>() -> fn(&mut Parser<'a, 'b, 'i>, Depth) -> Result<&'a Expr<'a, 'i>, InternalError> {
+        |parser, depth| Expr::try_parse_until_excluding(parser, ParseUntil::Math, depth)
     }
 }
 
@@ -100,36 +100,40 @@ impl Precedence for BooleanExpr {
         Cow::Borrowed(Expected::MATH_OP)
     }
 
-    fn primitive_parse_fn<'a, 'b, 'i>() -> fn(&mut Parser<'a, 'b, 'i>) -> Result<&'a Expr<'a, 'i>, InternalError> {
-        |parser| Expr::try_parse_until_excluding(parser, ParseUntil::BooleanExpr)
+    fn primitive_parse_fn<'a, 'b, 'i>() -> fn(&mut Parser<'a, 'b, 'i>, Depth) -> Result<&'a Expr<'a, 'i>, InternalError> {
+        |parser, depth| Expr::try_parse_until_excluding(parser, ParseUntil::BooleanExpr, depth)
     }
 }
 
 impl<'a, 'i> Expr<'a, 'i> {
-    pub(super) fn try_parse_precedence<P: Precedence>(parser: &mut Parser<'a, '_, 'i>) -> Result<&'a Expr<'a, 'i>, InternalError> {
+    pub(super) fn try_parse_precedence<P: Precedence>(parser: &mut Parser<'a, '_, 'i>, depth: Depth) -> Result<&'a Expr<'a, 'i>, InternalError> {
+        trace!("{} Expr::try_parse_precedence {}        ({:?})", depth, ::std::any::type_name::<P>(), parser.peek_token(0));
         let mark = parser.tokens.mark();
-        let mut lhs = P::primitive_parse_fn()(parser)?;
-        lhs = Expr::try_parse_precedence_inner::<P>(parser, lhs)?;
+        let mut lhs = P::primitive_parse_fn()(parser, depth.next())?;
+        lhs = Expr::try_parse_precedence_inner::<P>(parser, lhs, depth.next())?;
         loop {
-            lhs = match Self::try_parse_precedence_inner::<P>(parser, lhs) {
+            trace!("{}    lhs: {}", depth, lhs);
+            lhs = match Self::try_parse_precedence_inner::<P>(parser, lhs, depth.next()) {
                 Ok(expr) => expr,
                 Err(_) => {
                     mark.apply();
+                    trace!("{}    returning {}", depth, lhs);
                     return Ok(lhs)
                 }
             }
         }
     }
 
-    fn try_parse_precedence_inner<P: Precedence>(parser: &mut Parser<'a, '_, 'i>, lhs: &'a Expr<'a, 'i>) -> Result<&'a Expr<'a, 'i>, InternalError> {
+    fn try_parse_precedence_inner<P: Precedence>(parser: &mut Parser<'a, '_, 'i>, lhs: &'a Expr<'a, 'i>, depth: Depth) -> Result<&'a Expr<'a, 'i>, InternalError> {
         let op_token = match parser.tokens.peek(0) {
             Some(token) => token,
             None => return Err(InternalError::Backtrack(parser.tokens.last_span(), P::expected())),
         };
         let op = P::try_from_token(op_token.clone())?;
         drop(parser.tokens.next());
-        let mut rhs = P::primitive_parse_fn()(parser)?;
+        let mut rhs = P::primitive_parse_fn()(parser, depth.next())?;
         loop {
+            trace!("{}    rhs: {}", depth, rhs);
             let next = match parser.tokens.peek(0) {
                 Some(token) => token,
                 None => return Ok(parser.arena.alloc(op.expr_type_constructor()(lhs, op_token, rhs))),
@@ -141,7 +145,7 @@ impl<'a, 'i> Expr<'a, 'i> {
             if op2.precedence() < op.precedence() {
                 return Ok(parser.arena.alloc(op.expr_type_constructor()(lhs, op_token, rhs)));
             }
-            rhs = match Self::try_parse_precedence_inner::<P>(parser, rhs) {
+            rhs = match Self::try_parse_precedence_inner::<P>(parser, rhs, depth.next()) {
                 Ok(rhs) => rhs,
                 Err(_) => return Ok(parser.arena.alloc(op.expr_type_constructor()(lhs, op_token, rhs))),
             }
