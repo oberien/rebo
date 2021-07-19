@@ -128,3 +128,51 @@ fn function_diagnostics() {
         bar(5);
     "#.to_string()), ReturnValue::Diagnostics(8));
 }
+#[test]
+fn struct_definitions() {
+    let _ = env_logger::builder().is_test(true).try_init();
+    assert_eq!(rebo::run("test".to_string(), r#"
+        // struct definition
+        struct Foo {
+            foo: int,
+        }
+
+        // creation
+        let foo = Foo { foo: 1337 };
+
+        // field usage
+        assert(foo.foo == 1337);
+
+        // impl block
+        impl Foo {
+            fn new(foo: int) -> Foo {
+                Foo { foo: foo }
+            }
+            fn foo(self) -> int {
+                self.foo
+            }
+            fn bar(self) -> int {
+                self.foo
+            }
+        }
+
+        // method call
+        let foo = Foo::new(42);
+        assert(foo.foo == 42);
+        assert(foo.foo() == 42);
+        assert(foo.bar() == 42);
+        assert(Foo::foo(foo) == 42);
+        assert(Foo::bar(foo) == 42);
+    "#.to_string()), ReturnValue::Ok);
+}
+
+#[test]
+fn struct_diagnostics() {
+    let _ = env_logger::builder().is_test(true).try_init();
+    assert_eq!(rebo::run("test".to_string(), r#"
+        // recursive struct definition
+        struct Bar {
+            bar: Bar,
+        }
+    "#.to_string()), ReturnValue::Diagnostics(1));
+}

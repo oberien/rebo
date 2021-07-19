@@ -15,7 +15,7 @@ mod parse;
 
 pub use expr::*;
 pub use parse::{Parse, Spanned, Separated};
-use crate::common::{PreTypeInfo, SpecificType, FunctionType, Type, Value, FunctionImpl, Depth};
+use crate::common::{PreTypeInfo, SpecificType, FunctionType, Type, Value, FunctionImpl, Depth, StructType};
 use indexmap::map::IndexMap;
 use itertools::Itertools;
 
@@ -132,25 +132,40 @@ impl<'a, 'b, 'i> Parser<'a, 'b, 'i> {
         let old_scopes = ::std::mem::replace(&mut self.scopes, vec![Scope { idents: IndexMap::new() }]);
         let mark = self.tokens.mark();
         while self.tokens.peek(0).is_some() {
-            match ExprFunctionDefinition::parse(self, Depth::start()) {
-                Ok(fun) => {
-                    let fun_expr = &*self.arena.alloc(Expr::FunctionDefinition(fun));
-                    let fun = match fun_expr {
-                        Expr::FunctionDefinition(fun) => fun,
-                        _ => unreachable!("we just inserted you"),
-                    };
-                    let typ = SpecificType::Function(Box::new(FunctionType {
-                        args: fun.args.iter().map(|pattern| Type::Specific(SpecificType::from(&pattern.typ))).collect(),
-                        ret: Type::Specific(fun.ret_type.as_ref().map(|(_, typ)| SpecificType::from(typ)).unwrap_or(SpecificType::Unit)),
-                    }));
-                    self.pre_info.bindings.insert(fun.binding, typ);
-                    self.pre_info.rebo_functions.insert(fun.binding.id, &fun.body);
-                    let arg_binding_ids = fun.args.iter().map(|ExprPatternTyped { pattern: ExprPatternUntyped { binding }, .. }| binding.id).collect();
-                    self.pre_info.root_scope.create(fun.binding.id, Value::Function(FunctionImpl::Rebo(fun.binding.id, arg_binding_ids)));
-                    self.pre_parsed.insert((fun.fn_token.span.file, fun.fn_token.span.start), fun_expr);
-                }
-                _ => drop(self.tokens.next()),
+            // test for function definition
+            if let Ok(fun) = ExprFunctionDefinition::parse_reset(self, Depth::start()) {
+                let fun_expr = &*self.arena.alloc(Expr::FunctionDefinition(fun));
+                let fun = match fun_expr {
+                    Expr::FunctionDefinition(fun) => fun,
+                    _ => unreachable!("we just inserted you"),
+                };
+                let typ = SpecificType::Function(Box::new(FunctionType {
+                    args: fun.args.iter().map(|pattern| Type::Specific(SpecificType::from_expr_type(self.pre_info, &pattern.typ))).collect(),
+                    ret: Type::Specific(fun.ret_type.as_ref().map(|(_, typ)| SpecificType::from_expr_type(self.pre_info, typ)).unwrap_or(SpecificType::Unit)),
+                }));
+                self.pre_info.bindings.insert(fun.binding, typ);
+                self.pre_info.rebo_functions.insert(fun.binding.id, &fun.body);
+                let arg_binding_ids = fun.args.iter().map(|ExprPatternTyped { pattern: ExprPatternUntyped { binding }, .. }| binding.id).collect();
+                self.pre_info.root_scope.create(fun.binding.id, Value::Function(FunctionImpl::Rebo(fun.binding.id, arg_binding_ids)));
+                self.pre_parsed.insert((fun.fn_token.span.file, fun.fn_token.span.start), fun_expr);
             }
+            // test for struct definition
+            if let Ok(struct_def) = ExprStructDefinition::parse_reset(self, Depth::start()) {
+                let struct_expr = &*self.arena.alloc(Expr::StructDefinition(struct_def));
+                let struct_def = match struct_expr {
+                    Expr::StructDefinition(struct_def) => struct_def,
+                    _ => unreachable!("we just created you"),
+                };
+                let typ = StructType {
+                    name: struct_def.name.ident.to_string(),
+                    fields: struct_def.fields.iter()
+                        .map(|(name, _, typ)| (name.ident.to_string(), SpecificType::from_expr_type(self.pre_info, typ)))
+                        .collect(),
+                };
+                self.pre_info.structs.insert(struct_def.name.ident, typ);
+                self.pre_parsed.insert((struct_def.span().file, struct_def.span().start), struct_expr);
+            }
+            drop(self.tokens.next())
         }
         // reset token lookahead
         drop(mark);
@@ -170,7 +185,7 @@ impl<'a, 'b, 'i> Parser<'a, 'b, 'i> {
         };
         // make sure everything parsed during first-pass was consumed and used by the second pass
         assert!(self.pre_parsed.is_empty(), "not everything from first-pass was consumed: {:?}", self.pre_parsed);
-        assert!(self.tokens.peek(0).is_none() || matches!(self.tokens.peek(0), Some(Token::Eof(_))), "not all tokens were consumed: {}", self.tokens.iter().map(|t| format!("    {:?}", t)).join("\n"));
+        assert!(self.peek_token(0).is_none() || matches!(self.peek_token(0), Some(Token::Eof(_))), "not all tokens were consumed: {}", self.tokens.iter().map(|t| format!("    {:?}", t)).join("\n"));
         Ok(Ast {
             exprs: body.exprs,
             bindings: self.bindings,

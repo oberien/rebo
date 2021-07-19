@@ -1,4 +1,4 @@
-use crate::parser::{Expr, Binding, ExprVariable, ExprInteger, ExprFloat, ExprBool, ExprString, ExprAssign, ExprBind, ExprPattern, ExprPatternTyped, ExprPatternUntyped, ExprLessThan, ExprLessEquals, ExprEquals, ExprNotEquals, ExprFuzzyEquals, ExprFuzzyNotEquals, ExprGreaterEquals, ExprGreaterThan, ExprAdd, ExprSub, ExprMul, ExprDiv, ExprBoolNot, ExprBoolAnd, ExprBoolOr, ExprParenthesized, ExprBlock, ExprFunctionCall, Separated, ExprFunctionDefinition, BlockBody};
+use crate::parser::{Expr, Binding, ExprVariable, ExprInteger, ExprFloat, ExprBool, ExprString, ExprAssign, ExprBind, ExprPattern, ExprPatternTyped, ExprPatternUntyped, ExprLessThan, ExprLessEquals, ExprEquals, ExprNotEquals, ExprFuzzyEquals, ExprFuzzyNotEquals, ExprGreaterEquals, ExprGreaterThan, ExprAdd, ExprSub, ExprMul, ExprDiv, ExprBoolNot, ExprBoolAnd, ExprBoolOr, ExprParenthesized, ExprBlock, ExprFunctionCall, Separated, ExprFunctionDefinition, BlockBody, ExprStructDefinition};
 use crate::common::{Value, FunctionImpl, PreTypeInfo, Depth};
 use crate::scope::{Scopes, BindingId, Scope};
 use std::collections::HashMap;
@@ -11,7 +11,7 @@ pub struct Vm<'a, 'i> {
 
 impl<'a, 'i> Vm<'a, 'i> {
     pub fn new(pre_info: PreTypeInfo<'a, 'i>) -> Self {
-        let PreTypeInfo { bindings: _, rebo_functions, root_scope } = pre_info;
+        let PreTypeInfo { bindings: _, rebo_functions, structs, root_scope } = pre_info;
         let mut scopes = Scopes::new();
         scopes.push_scope(root_scope);
         Vm {
@@ -108,6 +108,7 @@ impl<'a, 'i> Vm<'a, 'i> {
             Expr::FunctionCall(ExprFunctionCall { variable: ExprVariable { binding, .. }, args, .. }) => self.call_function(binding, args, depth.last()),
             // ignore function definitions as we have those handled already
             Expr::FunctionDefinition(ExprFunctionDefinition { .. }) => Value::Unit,
+            Expr::StructDefinition(ExprStructDefinition { .. }) => Value::Unit,
         }
     }
 

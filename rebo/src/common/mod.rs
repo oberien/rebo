@@ -2,7 +2,7 @@ mod values;
 mod types;
 
 pub use values::{Value, Function, FunctionImpl, IntoValue, FromValues, FromValue};
-pub use types::{Type, SpecificType, FunctionType, PreTypeInfo};
+pub use types::{Type, SpecificType, FunctionType, PreTypeInfo, StructType};
 use std::fmt::{self, Display, Formatter};
 
 pub struct Depth {

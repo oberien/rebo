@@ -61,8 +61,8 @@ impl<'a, 'i> ConstraintCreator<'a, 'i> {
                     ExprPattern::Untyped(ExprPatternUntyped { binding }) => TypeVar::new(binding.span()),
                     ExprPattern::Typed(ExprPatternTyped { pattern: ExprPatternUntyped { binding }, typ, .. }) => {
                         let left = TypeVar::new(binding.span());
-                        self.constraints.push(Constraint::Type(left, Type::Specific(typ.into())));
-                        self.restrictions.push((type_var, vec![typ.into()]));
+                        self.constraints.push(Constraint::Type(left, Type::Specific(SpecificType::from_expr_type(self.pre_info, typ))));
+                        self.restrictions.push((type_var, vec![SpecificType::from_expr_type(self.pre_info, typ)]));
                         left
                     }
                 };
@@ -205,7 +205,7 @@ impl<'a, 'i> ConstraintCreator<'a, 'i> {
             },
             FunctionDefinition(ExprFunctionDefinition { binding, ret_type, body: ExprBlock { body: BlockBody { exprs, terminated }, .. }, .. }) => {
                 let ret_type = match ret_type {
-                    Some((_arrow, typ)) => SpecificType::from(typ),
+                    Some((_arrow, typ)) => SpecificType::from_expr_type(self.pre_info, typ),
                     None => SpecificType::Unit,
                 };
                 if exprs.is_empty() && ret_type != SpecificType::Unit {
@@ -225,6 +225,10 @@ impl<'a, 'i> ConstraintCreator<'a, 'i> {
                     }
                 }
             }
+            StructDefinition(_) => {
+                self.constraints.push(Constraint::Type(type_var, Type::Specific(SpecificType::Unit)));
+                self.restrictions.push((type_var, vec![SpecificType::Unit]));
+            },
         }
         type_var
     }

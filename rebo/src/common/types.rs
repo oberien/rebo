@@ -24,20 +24,27 @@ pub enum SpecificType {
     Bool,
     String,
     Function(Box<FunctionType>),
+    Struct(StructType),
 }
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct FunctionType {
     pub args: Cow<'static, [Type]>,
     pub ret: Type,
 }
-impl From<&ExprType> for SpecificType {
-    fn from(typ: &ExprType) -> Self {
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct StructType {
+    pub name: String,
+    pub fields: Vec<(String, SpecificType)>,
+}
+impl SpecificType {
+    pub fn from_expr_type(pre_info: &PreTypeInfo, typ: &ExprType) -> Self {
         match typ {
             ExprType::String(_) => SpecificType::String,
             ExprType::Int(_) => SpecificType::Integer,
             ExprType::Float(_) => SpecificType::Float,
             ExprType::Bool(_) => SpecificType::Bool,
             ExprType::Unit(_, _) => SpecificType::Unit,
+            ExprType::Struct(s) => SpecificType::Struct(pre_info.structs[s.ident].clone()),
         }
     }
 }
@@ -48,6 +55,8 @@ pub struct PreTypeInfo<'a, 'i> {
     pub bindings: IndexMap<Binding<'i>, SpecificType>,
     /// functions found in the code
     pub rebo_functions: HashMap<BindingId, &'a ExprBlock<'a, 'i>>,
+    /// struct definitions found in the code
+    pub structs: HashMap<&'i str, StructType>,
     pub root_scope: Scope,
 }
 impl<'a, 'i> PreTypeInfo<'a, 'i> {
@@ -55,6 +64,7 @@ impl<'a, 'i> PreTypeInfo<'a, 'i> {
         PreTypeInfo {
             bindings: IndexMap::new(),
             rebo_functions: HashMap::new(),
+            structs: HashMap::new(),
             root_scope: Scope::new(),
         }
     }
@@ -109,6 +119,7 @@ impl fmt::Display for SpecificType {
                 }
                 write!(f, ") -> {}", ret)
             },
+            SpecificType::Struct(StructType { name, .. }) => write!(f, "{}", name),
         }
     }
 }

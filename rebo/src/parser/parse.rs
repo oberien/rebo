@@ -26,6 +26,13 @@ pub trait Parse<'a, 'i>: Sized {
         mark.apply();
         Ok(res)
     }
+    /// Parse the element, resetting the tokens to the previous state even on success
+    fn parse_reset(parser: &mut Parser<'a, '_, 'i>, depth: Depth) -> Result<Self, InternalError> {
+        let mark = parser.tokens.mark();
+        let res = Self::parse(parser, depth);
+        drop(mark);
+        res
+    }
     fn parse_marked(parser: &mut Parser<'a, '_, 'i>, depth: Depth) -> Result<Self, InternalError>;
 }
 impl<'a, 'i, T: Parse<'a, 'i>> Parse<'a, 'i> for Option<T> {
@@ -218,4 +225,5 @@ impl_for_tokens! {
     LineComment<'i>, TokenLineComment;
     BlockComment<'i>, TokenBlockComment;
     Eof, TokenEof;
+    Struct, TokenStruct;
 }

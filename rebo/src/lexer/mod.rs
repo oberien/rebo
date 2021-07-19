@@ -101,6 +101,9 @@ fn try_lex_token<'i>(diagnostics: &Diagnostics, file: FileId, s: &'i str, index:
     if s[index..].starts_with("fn") {
         return Ok(MaybeToken::Token(Token::Fn(TokenFn { span: Span::new(file, index, index+2) })));
     }
+    if s[index..].starts_with("struct") {
+        return Ok(MaybeToken::Token(Token::Struct(TokenStruct { span: Span::new(file, index, index+6) })));
+    }
     if s[index..].starts_with("string") {
         return Ok(MaybeToken::Token(Token::StringType(TokenStringType { span: Span::new(file, index, index+6) })));
     }
