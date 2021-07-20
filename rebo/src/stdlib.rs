@@ -1,9 +1,9 @@
-use crate::common::{Value, Function, FunctionImpl, FunctionType, SpecificType, Type, PreTypeInfo};
+use crate::common::{Value, Function, FunctionImpl, FunctionType, SpecificType, Type, PreInfo};
 use crate::scope::Scopes;
 use crate as rebo;
 use std::borrow::Cow;
 
-pub fn add_to_scope(pre_info: &mut PreTypeInfo<'_, '_>) {
+pub fn add_to_scope(pre_info: &mut PreInfo<'_, '_>) {
     pre_info.bindings.extend([pre_info.root_scope.add_external_function("print", Function {
         typ: FunctionType {
             args: Cow::Borrowed(&[Type::Varargs]),

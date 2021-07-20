@@ -1,7 +1,7 @@
 use diagnostic::{Diagnostics, Span};
 
 use crate::parser::Expr;
-use crate::common::{Type, PreTypeInfo};
+use crate::common::{Type, PreInfo};
 
 mod constraints;
 mod solver;
@@ -33,11 +33,11 @@ pub enum Constraint {
 
 pub struct Typechecker<'a, 'b, 'i> {
     diagnostics: &'b Diagnostics,
-    pre_info: &'b mut PreTypeInfo<'a, 'i>,
+    pre_info: &'b mut PreInfo<'a, 'i>,
 }
 
 impl<'a, 'b, 'i> Typechecker<'a, 'b, 'i> {
-    pub fn new(diagnostics: &'b Diagnostics, pre_info: &'b mut PreTypeInfo<'a, 'i>) -> Typechecker<'a, 'b, 'i> {
+    pub fn new(diagnostics: &'b Diagnostics, pre_info: &'b mut PreInfo<'a, 'i>) -> Typechecker<'a, 'b, 'i> {
         Typechecker {
             diagnostics,
             pre_info,

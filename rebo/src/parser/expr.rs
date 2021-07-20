@@ -294,7 +294,9 @@ impl<'a, 'i> Parse<'a, 'i> for ExprType<'i> {
                     Cow::Borrowed(&[Expected::Token(TokenType::CloseParen)])
                 )),
             }
-            Some(Token::Ident(i)) if parser.pre_info.structs.contains_key(i.ident) => ExprType::Struct(i),
+            // defer struct type resolution until the typechecker
+            // otherwise using struct B as field struct A won't work if B is defined after A
+            Some(Token::Ident(i)) => ExprType::Struct(i),
             _ => return Err(InternalError::Backtrack(
                 parser.tokens.next_span(),
                 Cow::Borrowed(&[Expected::Type])

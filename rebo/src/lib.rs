@@ -24,7 +24,7 @@ mod tests;
 
 pub use rebo_derive::function;
 use crate::typeck::Typechecker;
-use crate::common::PreTypeInfo;
+use crate::common::PreInfo;
 use std::time::Instant;
 
 const EXTERNAL_SOURCE: &str = "defined externally";
@@ -52,7 +52,7 @@ pub fn run(filename: String, code: String) -> ReturnValue {
     info!("Lexing took {:4.2}s", time.elapsed().as_secs_f32());
     info!("TOKENS:\n{}\n", tokens);
 
-    let mut pre_info = PreTypeInfo::new();
+    let mut pre_info = PreInfo::new();
     stdlib::add_to_scope(&mut pre_info);
 
     let time = Instant::now();

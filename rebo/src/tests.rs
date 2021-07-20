@@ -129,16 +129,36 @@ fn function_diagnostics() {
     "#.to_string()), ReturnValue::Diagnostics(8));
 }
 #[test]
+fn pre_parsed() {
+    let _ = env_logger::builder().is_test(true).try_init();
+    assert_eq!(rebo::run("test".to_string(), r#"
+        2 + fn foo() {} && true
+    "#.to_string()), ReturnValue::Diagnostics(6));
+}
+#[test]
 fn struct_definitions() {
     let _ = env_logger::builder().is_test(true).try_init();
     assert_eq!(rebo::run("test".to_string(), r#"
         // struct definition
+        struct Empty {}
         struct Foo {
             foo: int,
         }
+        struct Bar {
+            foo: Foo,
+            bar: bool,
+        }
 
         // creation
+        let empty = Empty {};
+        let empty2 = Empty {  };
+        assert(empty == empty2);
         let foo = Foo { foo: 1337 };
+        let foo2 = Foo { foo: 1337, };
+        assert(foo == foo2);
+        let bar = Bar { foo: foo, bar: true };
+        let bar2 = Bar { foo: foo2, bar: false };
+        assert(foo != bar);
 
         // field usage
         assert(foo.foo == 1337);
@@ -171,8 +191,26 @@ fn struct_diagnostics() {
     let _ = env_logger::builder().is_test(true).try_init();
     assert_eq!(rebo::run("test".to_string(), r#"
         // recursive struct definition
-        struct Bar {
-            bar: Bar,
+        struct Foo {
+            foo: Foo,
         }
-    "#.to_string()), ReturnValue::Diagnostics(1));
+
+        // mutual recursive struct definition
+        struct Foo2 {
+            foo: Foo3,
+        }
+        struct Foo3 {
+            foo: Foo2,
+        }
+
+        // duplicate struct name
+        struct Foo {}
+
+        // compare of different struct types
+        struct Bar {}
+        struct Baz {}
+        let bar = Bar {};
+        let baz = Baz {};
+        Bar == baz;
+    "#.to_string()), ReturnValue::Diagnostics(4));
 }

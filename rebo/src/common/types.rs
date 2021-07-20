@@ -1,10 +1,7 @@
 use std::fmt;
-use crate::parser::{Binding, ExprType, ExprBlock};
-use std::collections::HashMap;
+use crate::parser::ExprType;
 use itertools::Either;
 use std::borrow::Cow;
-use crate::scope::{BindingId, Scope};
-use indexmap::map::IndexMap;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Type {
@@ -24,7 +21,8 @@ pub enum SpecificType {
     Bool,
     String,
     Function(Box<FunctionType>),
-    Struct(StructType),
+    /// struct name
+    Struct(String),
 }
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct FunctionType {
@@ -36,36 +34,15 @@ pub struct StructType {
     pub name: String,
     pub fields: Vec<(String, SpecificType)>,
 }
-impl SpecificType {
-    pub fn from_expr_type(pre_info: &PreTypeInfo, typ: &ExprType) -> Self {
+impl From<&ExprType<'_>> for SpecificType {
+    fn from(typ: &ExprType) -> Self {
         match typ {
             ExprType::String(_) => SpecificType::String,
             ExprType::Int(_) => SpecificType::Integer,
             ExprType::Float(_) => SpecificType::Float,
             ExprType::Bool(_) => SpecificType::Bool,
             ExprType::Unit(_, _) => SpecificType::Unit,
-            ExprType::Struct(s) => SpecificType::Struct(pre_info.structs[s.ident].clone()),
-        }
-    }
-}
-
-/// Info needed before parsing / before typechecking
-pub struct PreTypeInfo<'a, 'i> {
-    /// types of bindings of the root scope / stdlib and function definitions of the first parser pass
-    pub bindings: IndexMap<Binding<'i>, SpecificType>,
-    /// functions found in the code
-    pub rebo_functions: HashMap<BindingId, &'a ExprBlock<'a, 'i>>,
-    /// struct definitions found in the code
-    pub structs: HashMap<&'i str, StructType>,
-    pub root_scope: Scope,
-}
-impl<'a, 'i> PreTypeInfo<'a, 'i> {
-    pub fn new() -> Self {
-        PreTypeInfo {
-            bindings: IndexMap::new(),
-            rebo_functions: HashMap::new(),
-            structs: HashMap::new(),
-            root_scope: Scope::new(),
+            ExprType::Struct(s) => SpecificType::Struct(s.ident.to_string()),
         }
     }
 }
@@ -119,7 +96,7 @@ impl fmt::Display for SpecificType {
                 }
                 write!(f, ") -> {}", ret)
             },
-            SpecificType::Struct(StructType { name, .. }) => write!(f, "{}", name),
+            SpecificType::Struct(name) => write!(f, "{}", name),
         }
     }
 }

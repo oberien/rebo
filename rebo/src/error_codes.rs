@@ -20,6 +20,8 @@ pub enum ErrorCode {
     EmptyFunctionBody,
     DuplicateGlobal,
     // InvalidFunctionArgument,
+    TypeNotFound,
+    RecursiveStruct,
 }
 use ErrorCode::*;
 
@@ -46,6 +48,8 @@ impl diagnostic::ErrorCode for ErrorCode {
             EmptyFunctionBody => "0019",
             DuplicateGlobal => "0020",
             // InvalidFunctionArgument => "0021",
+            TypeNotFound => "0022",
+            RecursiveStruct => "0023",
         }.to_string()
     }
 
@@ -71,6 +75,8 @@ impl diagnostic::ErrorCode for ErrorCode {
             EmptyFunctionBody => "empty function body",
             DuplicateGlobal => "conflicting duplicate global definition",
             // InvalidFunctionArgument => "invalid function argument",
+            TypeNotFound => "type not found",
+            RecursiveStruct => "recursive struct",
         }.to_string()
     }
 }

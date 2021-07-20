@@ -1,17 +1,17 @@
 use crate::parser::{Expr, Binding, ExprVariable, ExprInteger, ExprFloat, ExprBool, ExprString, ExprAssign, ExprBind, ExprPattern, ExprPatternTyped, ExprPatternUntyped, ExprLessThan, ExprLessEquals, ExprEquals, ExprNotEquals, ExprFuzzyEquals, ExprFuzzyNotEquals, ExprGreaterEquals, ExprGreaterThan, ExprAdd, ExprSub, ExprMul, ExprDiv, ExprBoolNot, ExprBoolAnd, ExprBoolOr, ExprParenthesized, ExprBlock, ExprFunctionCall, Separated, ExprFunctionDefinition, BlockBody, ExprStructDefinition};
-use crate::common::{Value, FunctionImpl, PreTypeInfo, Depth};
+use crate::common::{Value, FunctionImpl, PreInfo, Depth};
 use crate::scope::{Scopes, BindingId, Scope};
-use std::collections::HashMap;
 use crate::lexer::{TokenInteger, TokenFloat, TokenBool, TokenDqString, TokenComma};
+use indexmap::map::IndexMap;
 
 pub struct Vm<'a, 'i> {
     scopes: Scopes,
-    rebo_functions: HashMap<BindingId, &'a ExprBlock<'a, 'i>>,
+    rebo_functions: IndexMap<BindingId, &'a ExprBlock<'a, 'i>>,
 }
 
 impl<'a, 'i> Vm<'a, 'i> {
-    pub fn new(pre_info: PreTypeInfo<'a, 'i>) -> Self {
-        let PreTypeInfo { bindings: _, rebo_functions, structs, root_scope } = pre_info;
+    pub fn new(pre_info: PreInfo<'a, 'i>) -> Self {
+        let PreInfo { bindings: _, rebo_functions, structs, root_scope } = pre_info;
         let mut scopes = Scopes::new();
         scopes.push_scope(root_scope);
         Vm {

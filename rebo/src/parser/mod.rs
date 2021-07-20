@@ -15,7 +15,7 @@ mod parse;
 
 pub use expr::*;
 pub use parse::{Parse, Spanned, Separated};
-use crate::common::{PreTypeInfo, SpecificType, FunctionType, Type, Value, FunctionImpl, Depth, StructType};
+use crate::common::{PreInfo, SpecificType, FunctionType, Type, Value, FunctionImpl, Depth, StructType};
 use indexmap::map::IndexMap;
 use itertools::Itertools;
 
@@ -85,7 +85,7 @@ pub struct Parser<'a, 'b, 'i> {
     /// finished bindings that aren't live anymore
     bindings: Vec<Binding<'i>>,
     /// pre-info to add first-pass definitions to
-    pre_info: &'b mut PreTypeInfo<'a, 'i>,
+    pre_info: &'b mut PreInfo<'a, 'i>,
     /// already parsed expressions in the first-pass, to be consumed by the second pass
     pre_parsed: HashMap<(FileId, usize), &'a Expr<'a, 'i>>,
     /// stack of scopes with bindings that are still live
@@ -99,7 +99,7 @@ struct Scope<'i> {
 
 /// All expression parsing function consume whitespace and comments before tokens, but not after.
 impl<'a, 'b, 'i> Parser<'a, 'b, 'i> {
-    pub fn new(arena: &'a Arena<Expr<'a, 'i>>, tokens: Tokens<'i>, diagnostics: &'i Diagnostics, pre_info: &'b mut PreTypeInfo<'a, 'i>) -> Self {
+    pub fn new(arena: &'a Arena<Expr<'a, 'i>>, tokens: Tokens<'i>, diagnostics: &'i Diagnostics, pre_info: &'b mut PreInfo<'a, 'i>) -> Self {
         let mut parser = Parser {
             arena,
             tokens,
@@ -140,9 +140,10 @@ impl<'a, 'b, 'i> Parser<'a, 'b, 'i> {
                     _ => unreachable!("we just inserted you"),
                 };
                 let typ = SpecificType::Function(Box::new(FunctionType {
-                    args: fun.args.iter().map(|pattern| Type::Specific(SpecificType::from_expr_type(self.pre_info, &pattern.typ))).collect(),
-                    ret: Type::Specific(fun.ret_type.as_ref().map(|(_, typ)| SpecificType::from_expr_type(self.pre_info, typ)).unwrap_or(SpecificType::Unit)),
+                    args: fun.args.iter().map(|pattern| Type::Specific(SpecificType::from(&pattern.typ))).collect(),
+                    ret: Type::Specific(fun.ret_type.as_ref().map(|(_, typ)| SpecificType::from(typ)).unwrap_or(SpecificType::Unit)),
                 }));
+                trace!("{} found {}", Depth::start(), fun);
                 self.pre_info.bindings.insert(fun.binding, typ);
                 self.pre_info.rebo_functions.insert(fun.binding.id, &fun.body);
                 let arg_binding_ids = fun.args.iter().map(|ExprPatternTyped { pattern: ExprPatternUntyped { binding }, .. }| binding.id).collect();
@@ -159,10 +160,18 @@ impl<'a, 'b, 'i> Parser<'a, 'b, 'i> {
                 let typ = StructType {
                     name: struct_def.name.ident.to_string(),
                     fields: struct_def.fields.iter()
-                        .map(|(name, _, typ)| (name.ident.to_string(), SpecificType::from_expr_type(self.pre_info, typ)))
+                        .map(|(name, _, typ)| (name.ident.to_string(), SpecificType::from(typ)))
                         .collect(),
                 };
-                self.pre_info.structs.insert(struct_def.name.ident, typ);
+                trace!("{} found {}", Depth::start(), struct_def);
+                if let Some((_old_typ, old_span)) = self.pre_info.structs.insert(struct_def.name.ident, (typ, struct_def.name.span())) {
+                    let mut spans = [old_span, struct_def.name.span()];
+                    spans.sort();
+                    self.diagnostics.error(ErrorCode::DuplicateGlobal)
+                        .with_info_label(spans[0], "first defined here")
+                        .with_error_label(spans[1], "also defined here")
+                        .emit();
+                }
                 self.pre_parsed.insert((struct_def.span().file, struct_def.span().start), struct_expr);
             }
             drop(self.tokens.next())
@@ -248,12 +257,7 @@ impl<'a, 'b, 'i> Parser<'a, 'b, 'i> {
     }
 
     fn similar_ident(&self, ident: &'i str) -> Option<&'i str> {
-        self.scopes.iter()
-            .flat_map(|scope| scope.idents.keys())
-            .map(|s| (strsim::levenshtein(ident, s), s))
-            // .filter(|&(dist, _)| dist <= 3)
-            .min_by_key(|&(dist, _)| dist)
-            .map(|(_, &s)| s)
+        crate::util::similar_name(ident, self.scopes.iter().flat_map(|scope| scope.idents.keys()).copied())
     }
 
     fn diagnostic_unknown_identifier(&mut self, ident: TokenIdent<'i>, f: impl for<'d> FnOnce(DiagnosticBuilder<'d, ErrorCode>) -> DiagnosticBuilder<'d, ErrorCode>) -> Binding<'i> {
@@ -261,7 +265,7 @@ impl<'a, 'b, 'i> Parser<'a, 'b, 'i> {
             .with_error_label(ident.span, format!("variable `{}` doesn't exist", ident.ident));
         d = f(d);
         if let Some(similar) = self.similar_ident(ident.ident) {
-            d = d.with_info_label(ident.span, format!("did you mean the similarly named variable `{}`", similar));
+            d = d.with_info_label(ident.span, format!("did you mean `{}`", similar));
         }
         d.emit();
         // introduce rogue variable

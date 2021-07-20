@@ -1,19 +1,20 @@
-use crate::parser::{Expr, Spanned, ExprBind, ExprAssign, ExprPattern, ExprPatternUntyped, ExprPatternTyped, ExprVariable, ExprAdd, ExprSub, ExprMul, ExprDiv, ExprBoolAnd, ExprBoolOr, ExprBoolNot, ExprLessThan, ExprGreaterEquals, ExprLessEquals, ExprGreaterThan, ExprEquals, ExprNotEquals, ExprFuzzyEquals, ExprFuzzyNotEquals, ExprBlock, ExprParenthesized, ExprFunctionCall, ExprFunctionDefinition, BlockBody};
+use crate::parser::{Expr, Spanned, ExprBind, ExprAssign, ExprPattern, ExprPatternUntyped, ExprPatternTyped, ExprVariable, ExprAdd, ExprSub, ExprMul, ExprDiv, ExprBoolAnd, ExprBoolOr, ExprBoolNot, ExprLessThan, ExprGreaterEquals, ExprLessEquals, ExprGreaterThan, ExprEquals, ExprNotEquals, ExprFuzzyEquals, ExprFuzzyNotEquals, ExprBlock, ExprParenthesized, ExprFunctionCall, ExprFunctionDefinition, BlockBody, ExprStructDefinition, ExprType, ExprStructFields};
 use crate::typeck::{Constraint, TypeVar};
-use crate::common::{SpecificType, Type, PreTypeInfo};
-use itertools::Either;
+use crate::common::{SpecificType, Type, PreInfo};
+use itertools::{Either, Itertools};
 use diagnostic::{Diagnostics, Span};
 use crate::error_codes::ErrorCode;
+use crate::lexer::TokenIdent;
 
 pub struct ConstraintCreator<'a, 'i> {
     diagnostics: &'a Diagnostics,
-    pre_info: &'a PreTypeInfo<'a, 'i>,
+    pre_info: &'a PreInfo<'a, 'i>,
     constraints: Vec<Constraint>,
     restrictions: Vec<(TypeVar, Vec<SpecificType>)>,
 }
 
 impl<'a, 'i> ConstraintCreator<'a, 'i> {
-    pub fn new(diagnostics: &'a Diagnostics, pre_info: &'a PreTypeInfo<'a, 'i>) -> ConstraintCreator<'a, 'i> {
+    pub fn new(diagnostics: &'a Diagnostics, pre_info: &'a PreInfo<'a, 'i>) -> ConstraintCreator<'a, 'i> {
         ConstraintCreator {
             diagnostics,
             pre_info,
@@ -61,8 +62,8 @@ impl<'a, 'i> ConstraintCreator<'a, 'i> {
                     ExprPattern::Untyped(ExprPatternUntyped { binding }) => TypeVar::new(binding.span()),
                     ExprPattern::Typed(ExprPatternTyped { pattern: ExprPatternUntyped { binding }, typ, .. }) => {
                         let left = TypeVar::new(binding.span());
-                        self.constraints.push(Constraint::Type(left, Type::Specific(SpecificType::from_expr_type(self.pre_info, typ))));
-                        self.restrictions.push((type_var, vec![SpecificType::from_expr_type(self.pre_info, typ)]));
+                        self.constraints.push(Constraint::Type(left, Type::Specific(SpecificType::from(typ))));
+                        self.restrictions.push((type_var, vec![SpecificType::from(typ)]));
                         left
                     }
                 };
@@ -205,7 +206,7 @@ impl<'a, 'i> ConstraintCreator<'a, 'i> {
             },
             FunctionDefinition(ExprFunctionDefinition { binding, ret_type, body: ExprBlock { body: BlockBody { exprs, terminated }, .. }, .. }) => {
                 let ret_type = match ret_type {
-                    Some((_arrow, typ)) => SpecificType::from_expr_type(self.pre_info, typ),
+                    Some((_arrow, typ)) => SpecificType::from(typ),
                     None => SpecificType::Unit,
                 };
                 if exprs.is_empty() && ret_type != SpecificType::Unit {
@@ -225,11 +226,64 @@ impl<'a, 'i> ConstraintCreator<'a, 'i> {
                     }
                 }
             }
-            StructDefinition(_) => {
+            StructDefinition(ExprStructDefinition { name, fields, .. }) => {
+                self.check_struct_fields(name, fields);
                 self.constraints.push(Constraint::Type(type_var, Type::Specific(SpecificType::Unit)));
                 self.restrictions.push((type_var, vec![SpecificType::Unit]));
             },
         }
         type_var
+    }
+
+    fn check_struct_fields(&self, name: &TokenIdent, fields: &ExprStructFields) {
+        // check existence of field types
+        for (field, _colon, typ) in fields {
+            match typ {
+                ExprType::String(_) => (),
+                ExprType::Int(_) => (),
+                ExprType::Float(_) => (),
+                ExprType::Bool(_) => (),
+                ExprType::Unit(_, _) => (),
+                ExprType::Struct(s) => if self.pre_info.structs.get(s.ident).is_none() {
+                    let mut diag = self.diagnostics.error(ErrorCode::TypeNotFound)
+                        .with_error_label(typ.span(), "can't find type");
+                    if let Some(similar) = crate::util::similar_name(s.ident, self.pre_info.structs.keys().copied()) {
+                        diag = diag.with_info_label(typ.span(), format!("did you mean `{}`", similar));
+                    }
+                    diag.emit()
+                }
+            }
+            // check for (mutual) recursion
+            let specific_typ = SpecificType::from(typ);
+            self.check_struct_recursion(name, &specific_typ, vec![field.ident]);
+        }
+    }
+    fn check_struct_recursion(&self, outer_name: &TokenIdent, field_typ: &SpecificType, field_stack: Vec<&str>) {
+        let inner_name = match field_typ {
+            SpecificType::String => return,
+            SpecificType::Integer => return,
+            SpecificType::Float => return,
+            SpecificType::Bool => return,
+            SpecificType::Unit => return,
+            SpecificType::Function(..) => return,
+            SpecificType::Struct(s) => s,
+        };
+        if outer_name.ident == inner_name {
+            let path = field_stack.iter().join(".");
+            self.diagnostics.error(ErrorCode::RecursiveStruct)
+                .with_error_label(outer_name.span, format!("this struct is recursive via `{}.{}`", outer_name.ident, path))
+                .with_note("recursive structs can never be initialized")
+                .emit();
+            return
+        }
+        let typ = match self.pre_info.structs.get(&**inner_name) {
+            Some((typ, _span)) => typ,
+            None => return,
+        };
+        for (field, typ) in &typ.fields {
+            let mut stack = field_stack.clone();
+            stack.push(field);
+            self.check_struct_recursion(outer_name, typ, stack);
+        }
     }
 }
