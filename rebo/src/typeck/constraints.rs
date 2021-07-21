@@ -1,4 +1,4 @@
-use crate::parser::{Expr, Spanned, ExprBind, ExprAssign, ExprPattern, ExprPatternUntyped, ExprPatternTyped, ExprVariable, ExprAdd, ExprSub, ExprMul, ExprDiv, ExprBoolAnd, ExprBoolOr, ExprBoolNot, ExprLessThan, ExprGreaterEquals, ExprLessEquals, ExprGreaterThan, ExprEquals, ExprNotEquals, ExprFuzzyEquals, ExprFuzzyNotEquals, ExprBlock, ExprParenthesized, ExprFunctionCall, ExprFunctionDefinition, BlockBody, ExprStructDefinition, ExprType, ExprStructFields};
+use crate::parser::{Expr, Spanned, ExprBind, ExprAssign, ExprPattern, ExprPatternUntyped, ExprPatternTyped, ExprVariable, ExprAdd, ExprSub, ExprMul, ExprDiv, ExprBoolAnd, ExprBoolOr, ExprBoolNot, ExprLessThan, ExprGreaterEquals, ExprLessEquals, ExprGreaterThan, ExprEquals, ExprNotEquals, ExprFuzzyEquals, ExprFuzzyNotEquals, ExprBlock, ExprParenthesized, ExprFunctionCall, ExprFunctionDefinition, BlockBody, ExprStructDefinition, ExprType, ExprStructDefFields, ExprStructInitialization};
 use crate::typeck::{Constraint, TypeVar};
 use crate::common::{SpecificType, Type, PreInfo};
 use itertools::{Either, Itertools};
@@ -231,11 +231,31 @@ impl<'a, 'i> ConstraintCreator<'a, 'i> {
                 self.constraints.push(Constraint::Type(type_var, Type::Specific(SpecificType::Unit)));
                 self.restrictions.push((type_var, vec![SpecificType::Unit]));
             },
+            StructInitialization(ExprStructInitialization { name, fields, .. }) => {
+                self.constraints.push(Constraint::Type(type_var, Type::Specific(SpecificType::Struct(name.ident.to_string()))));
+                self.restrictions.push((type_var, vec![SpecificType::Struct(name.ident.to_string())]));
+                let typ = match self.pre_info.structs.get(name.ident) {
+                    Some((typ, _span)) => typ,
+                    None => return type_var,
+                };
+                for (field, _colon, expr) in fields {
+                    let field_typ_var = self.get_type(expr);
+                    let expected_typ = typ.fields.iter().filter(|(name, _typ)| name == field.ident)
+                        .map(|(_name, typ)| typ)
+                        .next();
+                    let expected_typ = match expected_typ {
+                        Some(typ) => typ,
+                        None => continue,
+                    };
+                    self.constraints.push(Constraint::Type(field_typ_var, Type::Specific(expected_typ.clone())));
+                    self.restrictions.push((field_typ_var, vec![expected_typ.clone()]))
+                }
+            }
         }
         type_var
     }
 
-    fn check_struct_fields(&self, name: &TokenIdent, fields: &ExprStructFields) {
+    fn check_struct_fields(&self, name: &TokenIdent, fields: &ExprStructDefFields) {
         // check existence of field types
         for (field, _colon, typ) in fields {
             match typ {

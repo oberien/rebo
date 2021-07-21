@@ -1,8 +1,9 @@
-use crate::parser::{Expr, Binding, ExprVariable, ExprInteger, ExprFloat, ExprBool, ExprString, ExprAssign, ExprBind, ExprPattern, ExprPatternTyped, ExprPatternUntyped, ExprLessThan, ExprLessEquals, ExprEquals, ExprNotEquals, ExprFuzzyEquals, ExprFuzzyNotEquals, ExprGreaterEquals, ExprGreaterThan, ExprAdd, ExprSub, ExprMul, ExprDiv, ExprBoolNot, ExprBoolAnd, ExprBoolOr, ExprParenthesized, ExprBlock, ExprFunctionCall, Separated, ExprFunctionDefinition, BlockBody, ExprStructDefinition};
-use crate::common::{Value, FunctionImpl, PreInfo, Depth};
+use crate::parser::{Expr, Binding, ExprVariable, ExprInteger, ExprFloat, ExprBool, ExprString, ExprAssign, ExprBind, ExprPattern, ExprPatternTyped, ExprPatternUntyped, ExprLessThan, ExprLessEquals, ExprEquals, ExprNotEquals, ExprFuzzyEquals, ExprFuzzyNotEquals, ExprGreaterEquals, ExprGreaterThan, ExprAdd, ExprSub, ExprMul, ExprDiv, ExprBoolNot, ExprBoolAnd, ExprBoolOr, ExprParenthesized, ExprBlock, ExprFunctionCall, Separated, ExprFunctionDefinition, BlockBody, ExprStructDefinition, ExprStructInitialization};
+use crate::common::{Value, FunctionImpl, PreInfo, Depth, Struct};
 use crate::scope::{Scopes, BindingId, Scope};
 use crate::lexer::{TokenInteger, TokenFloat, TokenBool, TokenDqString, TokenComma};
 use indexmap::map::IndexMap;
+use std::sync::Arc;
 
 pub struct Vm<'a, 'i> {
     scopes: Scopes,
@@ -109,6 +110,16 @@ impl<'a, 'i> Vm<'a, 'i> {
             // ignore function definitions as we have those handled already
             Expr::FunctionDefinition(ExprFunctionDefinition { .. }) => Value::Unit,
             Expr::StructDefinition(ExprStructDefinition { .. }) => Value::Unit,
+            Expr::StructInitialization(ExprStructInitialization { name, fields, .. }) => {
+                let mut field_values = Vec::new();
+                for (field, _colon, expr) in fields {
+                    field_values.push((field.ident.to_string(), self.eval_expr(expr, depth.next())));
+                }
+                Value::Struct(Arc::new(Struct {
+                    name: name.ident.to_string(),
+                    fields: field_values,
+                }))
+            }
         }
     }
 

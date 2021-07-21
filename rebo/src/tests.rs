@@ -149,7 +149,7 @@ fn struct_definitions() {
             bar: bool,
         }
 
-        // creation
+        // initialization
         let empty = Empty {};
         let empty2 = Empty {  };
         assert(empty == empty2);
@@ -158,7 +158,9 @@ fn struct_definitions() {
         assert(foo == foo2);
         let bar = Bar { foo: foo, bar: true };
         let bar2 = Bar { foo: foo2, bar: false };
-        assert(foo != bar);
+        let bar3 = Bar { foo: Foo { foo: 1337 }, bar: false };
+        assert(bar != bar2);
+        assert!(bar2 == bar3);
 
         // field usage
         assert(foo.foo == 1337);
@@ -190,6 +192,8 @@ fn struct_definitions() {
 fn struct_diagnostics() {
     let _ = env_logger::builder().is_test(true).try_init();
     assert_eq!(rebo::run("test".to_string(), r#"
+        // duplicate struct name
+        struct Foo {}
         // recursive struct definition
         struct Foo {
             foo: Foo,
@@ -203,14 +207,24 @@ fn struct_diagnostics() {
             foo: Foo2,
         }
 
-        // duplicate struct name
-        struct Foo {}
+        struct Bar {
+            i: int,
+        }
 
-        // compare of different struct types
-        struct Bar {}
+        // missing struct field
+        Bar {};
+
+        // unknown struct field
+        Bar {
+            i: 1337,
+            uiae: 42,
+        };
+
+        // compare between different struct types
         struct Baz {}
-        let bar = Bar {};
+        struct Qux {}
         let baz = Baz {};
-        Bar == baz;
-    "#.to_string()), ReturnValue::Diagnostics(4));
+        let qux = Qux {};
+        baz == qux;
+    "#.to_string()), ReturnValue::Diagnostics(7));
 }

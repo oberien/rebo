@@ -39,9 +39,9 @@ impl<T: fmt::Write> fmt::Write for PadFmt<T> {
     }
 }
 
-pub fn similar_name<'i>(ident: &str, others: impl IntoIterator<Item = &'i str>) -> Option<&'i str> {
+pub fn similar_name<'i, T: AsRef<str> + 'i + ?Sized>(ident: &str, others: impl IntoIterator<Item = &'i T>) -> Option<&'i str> {
     others.into_iter()
-        .map(|s| (strsim::levenshtein(ident, s), s))
+        .map(|s| (strsim::levenshtein(ident, s.as_ref()), s.as_ref()))
         // .filter(|&(dist, _)| dist <= 3)
         .min_by_key(|&(dist, _)| dist)
         .map(|(_, s)| s)

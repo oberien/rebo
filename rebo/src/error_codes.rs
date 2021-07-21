@@ -22,6 +22,9 @@ pub enum ErrorCode {
     // InvalidFunctionArgument,
     TypeNotFound,
     RecursiveStruct,
+    UnknownStruct,
+    UnknownField,
+    MissingField,
 }
 use ErrorCode::*;
 
@@ -50,6 +53,9 @@ impl diagnostic::ErrorCode for ErrorCode {
             // InvalidFunctionArgument => "0021",
             TypeNotFound => "0022",
             RecursiveStruct => "0023",
+            UnknownStruct => "0024",
+            UnknownField => "0025",
+            MissingField => "0026",
         }.to_string()
     }
 
@@ -77,6 +83,9 @@ impl diagnostic::ErrorCode for ErrorCode {
             // InvalidFunctionArgument => "invalid function argument",
             TypeNotFound => "type not found",
             RecursiveStruct => "recursive struct",
+            UnknownStruct => "unknown struct",
+            UnknownField => "unknown struct field",
+            MissingField => "missing struct field",
         }.to_string()
     }
 }

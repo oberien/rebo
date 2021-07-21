@@ -75,6 +75,9 @@ impl Type {
                     Err(())
                 }
             },
+            (Type::Specific(SpecificType::Struct(a)), Type::Specific(SpecificType::Struct(b))) if a == b => {
+                Ok(Either::Left(Type::Specific(SpecificType::Struct(a.clone()))))
+            }
             _ => Err(()),
         }
     }

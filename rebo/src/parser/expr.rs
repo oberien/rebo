@@ -10,10 +10,10 @@ use crate::error_codes::ErrorCode;
 use std::borrow::Cow;
 use crate::parser::parse::{Separated, Spanned};
 use crate::parser::precedence::{BooleanExpr, Math};
-use std::collections::HashSet;
 use diagnostic::Span;
 use itertools::Itertools;
 use crate::common::Depth;
+use indexmap::set::IndexSet;
 
 // make trace! here log as if this still was the parser module
 macro_rules! module_path {
@@ -128,6 +128,8 @@ pub enum Expr<'a, 'i> {
     FunctionDefinition(ExprFunctionDefinition<'a, 'i>),
     /// struct ident { ident: typ, ident: typ, ... }
     StructDefinition(ExprStructDefinition<'a, 'i>),
+    /// ident { ident: expr, ident: expr, ... }
+    StructInitialization(ExprStructInitialization<'a, 'i>),
 }
 impl<'a, 'i> Spanned for Expr<'a, 'i> {
     fn span(&self) -> Span {
@@ -164,6 +166,7 @@ impl<'a, 'i> Expr<'a, 'i> {
             fns.push(Self::try_parse_precedence::<Math>);
         }
         let others: &[ParseFn<'a, '_, 'i>] = &[
+            |parser: &mut Parser<'a, '_, 'i>, depth| Ok(parser.arena.alloc(Expr::StructInitialization(ExprStructInitialization::parse(parser, depth)?))),
             |parser: &mut Parser<'a, '_, 'i>, depth| Ok(parser.arena.alloc(Expr::Parenthesized(ExprParenthesized::parse(parser, depth)?))),
             |parser: &mut Parser<'a, '_, 'i>, depth| Ok(parser.arena.alloc(Expr::Block(ExprBlock::parse(parser, depth)?))),
             |parser: &mut Parser<'a, '_, 'i>, depth| Ok(parser.arena.alloc(Expr::BoolNot(ExprBoolNot::parse(parser, depth)?))),
@@ -228,7 +231,7 @@ impl<'a, 'i> Expr<'a, 'i> {
             }
         }
         let max_span = expected.iter().map(|(span, _)| span).max().copied().unwrap();
-        let expected: HashSet<_> = expected.into_iter()
+        let expected: IndexSet<_> = expected.into_iter()
             .filter(|(span, _)| *span == max_span)
             .flat_map(|(_, expected)| expected.into_owned())
             .collect();
@@ -906,13 +909,13 @@ impl<'a, 'i> Display for ExprFunctionDefinition<'a, 'i> {
     }
 }
 
-pub type ExprStructFields<'a, 'i> = Separated<'a, 'i, (TokenIdent<'i>, TokenColon, ExprType<'i>), TokenComma>;
+pub type ExprStructDefFields<'a, 'i> = Separated<'a, 'i, (TokenIdent<'i>, TokenColon, ExprType<'i>), TokenComma>;
 #[derive(Debug, Clone)]
 pub struct ExprStructDefinition<'a, 'i> {
     pub struct_token: TokenStruct,
     pub name: TokenIdent<'i>,
     pub open: TokenOpenCurly,
-    pub fields: ExprStructFields<'a, 'i>,
+    pub fields: ExprStructDefFields<'a, 'i>,
     pub close: TokenCloseCurly,
 }
 impl<'a, 'i> Parse<'a, 'i> for ExprStructDefinition<'a, 'i> {
@@ -936,6 +939,77 @@ impl<'a, 'i> Display for ExprStructDefinition<'a, 'i> {
         write!(f, "struct {} {{ ", self.name.ident)?;
         for (name, _comma, typ) in &self.fields {
             write!(f, "{}: {}, ", name.ident, typ)?;
+        }
+        write!(f, "}}")
+    }
+}
+
+pub type ExprStructInitFields<'a, 'i> = Separated<'a, 'i, (TokenIdent<'i>, TokenColon, &'a Expr<'a, 'i>), TokenComma>;
+#[derive(Debug, Clone)]
+pub struct ExprStructInitialization<'a, 'i> {
+    pub name: TokenIdent<'i>,
+    pub open: TokenOpenCurly,
+    pub fields: ExprStructInitFields<'a, 'i>,
+    pub close: TokenCloseCurly,
+}
+impl<'a, 'i> Parse<'a, 'i> for ExprStructInitialization<'a, 'i> {
+    fn parse_marked(parser: &mut Parser<'a, '_, 'i>, depth: Depth) -> Result<Self, InternalError> {
+        let name: TokenIdent = parser.parse(depth.next())?;
+        let open = parser.parse(depth.next())?;
+        let fields: ExprStructInitFields = parser.parse(depth.next())?;
+        let close: TokenCloseCurly = parser.parse(depth.next())?;
+        match parser.pre_info.structs.get(name.ident) {
+            None => {
+                let similar = crate::util::similar_name(name.ident, parser.pre_info.structs.keys());
+                let mut diag = parser.diagnostics.error(ErrorCode::UnknownStruct)
+                    .with_error_label(name.span, "this struct doesn't exist");
+                if let Some(similar) = similar {
+                    diag = diag.with_info_label(name.span, format!("did you mean `{}`", similar));
+                }
+                diag.emit();
+            }
+            Some((typ, def_span)) => {
+                let mut expected_fields: IndexSet<_> = typ.fields.iter().map(|(name, _typ)| name).collect();
+                for (field, _colon, _expr) in &fields {
+                    // TODO: remove to_string, but "the trait `Borrow<&str>` is not implemented for `&std::string::String`"
+                    if !expected_fields.remove(&field.ident.to_string()) {
+                        let similar = crate::util::similar_name(field.ident, expected_fields.iter());
+                        let mut diag = parser.diagnostics.error(ErrorCode::UnknownField)
+                            .with_error_label(field.span, format!("unknown field `{}`", field.ident))
+                            .with_info_label(*def_span, "defined here");
+                        if let Some(similar) = similar {
+                            diag = diag.with_info_label(field.span, format!("did you mean `{}`", similar));
+                        }
+                        diag.emit();
+                    }
+                }
+                if !expected_fields.is_empty() {
+                    let mut diag = parser.diagnostics.error(ErrorCode::MissingField);
+                    for field in expected_fields {
+                        diag = diag.with_error_label(name.span, format!("missing field `{}`", field));
+                    }
+                    diag.emit();
+                }
+            },
+        };
+        Ok(ExprStructInitialization {
+            name,
+            open,
+            fields,
+            close,
+        })
+    }
+}
+impl<'a, 'i> Spanned for ExprStructInitialization<'a, 'i> {
+    fn span(&self) -> Span {
+        Span::new(self.name.span.file, self.name.span.start, self.close.span.end)
+    }
+}
+impl<'a, 'i> Display for ExprStructInitialization<'a, 'i> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "{} {{ ", self.name.ident)?;
+        for (name, _comma, expr) in &self.fields {
+            write!(f, "{}: {}, ", name.ident, expr)?;
         }
         write!(f, "}}")
     }

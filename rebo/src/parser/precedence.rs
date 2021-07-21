@@ -125,16 +125,16 @@ impl<'a, 'i> Expr<'a, 'i> {
     }
 
     fn try_parse_precedence_inner<P: Precedence>(parser: &mut Parser<'a, '_, 'i>, lhs: &'a Expr<'a, 'i>, depth: Depth) -> Result<&'a Expr<'a, 'i>, InternalError> {
-        let op_token = match parser.tokens.peek(0) {
+        let op_token = match parser.peek_token(0) {
             Some(token) => token,
             None => return Err(InternalError::Backtrack(parser.tokens.last_span(), P::expected())),
         };
         let op = P::try_from_token(op_token.clone())?;
-        drop(parser.tokens.next());
+        drop(parser.next_token());
         let mut rhs = P::primitive_parse_fn()(parser, depth.next())?;
         loop {
             trace!("{}    rhs: {}", depth, rhs);
-            let next = match parser.tokens.peek(0) {
+            let next = match parser.peek_token(0) {
                 Some(token) => token,
                 None => return Ok(parser.arena.alloc(op.expr_type_constructor()(lhs, op_token, rhs))),
             };

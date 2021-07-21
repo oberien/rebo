@@ -131,7 +131,7 @@ impl<'a, 'b, 'i> Parser<'a, 'b, 'i> {
         // create rogue scopes
         let old_scopes = ::std::mem::replace(&mut self.scopes, vec![Scope { idents: IndexMap::new() }]);
         let mark = self.tokens.mark();
-        while self.tokens.peek(0).is_some() {
+        while self.peek_token(0).is_some() {
             // test for function definition
             if let Ok(fun) = ExprFunctionDefinition::parse_reset(self, Depth::start()) {
                 let fun_expr = &*self.arena.alloc(Expr::FunctionDefinition(fun));
@@ -163,7 +163,7 @@ impl<'a, 'b, 'i> Parser<'a, 'b, 'i> {
                         .map(|(name, _, typ)| (name.ident.to_string(), SpecificType::from(typ)))
                         .collect(),
                 };
-                trace!("{} found {}", Depth::start(), struct_def);
+                trace!("{} found {} ({:?}, {})", Depth::start(), struct_def, struct_def.span().file, struct_def.span().start);
                 if let Some((_old_typ, old_span)) = self.pre_info.structs.insert(struct_def.name.ident, (typ, struct_def.name.span())) {
                     let mut spans = [old_span, struct_def.name.span()];
                     spans.sort();
@@ -174,7 +174,7 @@ impl<'a, 'b, 'i> Parser<'a, 'b, 'i> {
                 }
                 self.pre_parsed.insert((struct_def.span().file, struct_def.span().start), struct_expr);
             }
-            drop(self.tokens.next())
+            drop(self.next_token())
         }
         // reset token lookahead
         drop(mark);

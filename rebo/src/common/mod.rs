@@ -1,7 +1,7 @@
 mod values;
 mod types;
 
-pub use values::{Value, Function, FunctionImpl, IntoValue, FromValues, FromValue};
+pub use values::{Value, Function, FunctionImpl, IntoValue, FromValues, FromValue, Struct};
 pub use types::{Type, SpecificType, FunctionType, StructType};
 use std::fmt::{self, Display, Formatter};
 use indexmap::map::IndexMap;

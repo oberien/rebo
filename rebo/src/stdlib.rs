@@ -2,6 +2,7 @@ use crate::common::{Value, Function, FunctionImpl, FunctionType, SpecificType, T
 use crate::scope::Scopes;
 use crate as rebo;
 use std::borrow::Cow;
+use itertools::Itertools;
 
 pub fn add_to_scope(pre_info: &mut PreInfo<'_, '_>) {
     pre_info.bindings.extend([pre_info.root_scope.add_external_function("print", Function {
@@ -23,17 +24,8 @@ pub fn add_to_scope(pre_info: &mut PreInfo<'_, '_>) {
 }
 
 fn print(_scopes: &mut Scopes, values: Vec<Value>) -> Value {
-    for val in values {
-        match val {
-            Value::Unit => print!("{:<8?}", ()),
-            Value::Integer(i) => print!("{:<8}", i),
-            Value::Float(i) => print!("{:<8}", i),
-            Value::Bool(b) => print!("{:<8}", b),
-            Value::String(s) => print!("{:<8?}", s),
-            Value::Function(_f) => todo!("function print representation"),
-        }
-    }
-    println!();
+    let joined = values.iter().map(ToString::to_string).join(", ");
+    println!("{}", joined);
     Value::Unit
 }
 

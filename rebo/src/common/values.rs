@@ -3,6 +3,8 @@ use std::fmt;
 use crate::scope::{Scopes, BindingId};
 use crate::common::{SpecificType, FunctionType};
 use itertools::Itertools;
+use std::sync::Arc;
+use std::fmt::{Display, Formatter, Debug};
 
 pub trait FromValues {
     fn from_values(values: impl Iterator<Item = Value>) -> Self;
@@ -69,6 +71,7 @@ pub enum Value {
     Bool(bool),
     String(String),
     Function(FunctionImpl),
+    Struct(Arc<Struct>),
 }
 
 impl Value {
@@ -82,6 +85,26 @@ impl Value {
         match self {
             Value::String(s) => s,
             _ => panic!("{}", msg),
+        }
+    }
+}
+
+impl Display for Value {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            Value::Unit => Debug::fmt(&(), f),
+            Value::Integer(i) => Display::fmt(i, f),
+            Value::Float(float) => Display::fmt(float, f),
+            Value::Bool(b) => Display::fmt(b, f),
+            Value::String(s) => Debug::fmt(s, f),
+            Value::Function(_f) => todo!("function print representation"),
+            Value::Struct(s) => {
+                write!(f, "{} {{", s.name)?;
+                for (field, value) in &s.fields {
+                    write!(f, " {}: {},", field, value)?;
+                }
+                write!(f, " }}")
+            },
         }
     }
 }
@@ -106,6 +129,12 @@ impl fmt::Debug for FunctionImpl {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct Struct {
+    pub name: String,
+    pub fields: Vec<(String, Value)>,
+}
+
 impl From<&'_ Value> for SpecificType {
     fn from(val: &Value) -> Self {
         match val {
@@ -115,6 +144,7 @@ impl From<&'_ Value> for SpecificType {
             Value::Bool(_) => SpecificType::Bool,
             Value::String(_) => SpecificType::String,
             Value::Function(_) => todo!(),
+            Value::Struct(s) => SpecificType::Struct(s.name.clone()),
         }
     }
 }

@@ -16,3 +16,10 @@ print(c, 5, 7, 13);
 print();
 let unit = ();
 print(unit);
+
+struct Foo {
+    a: int,
+    b: string,
+}
+let foo = Foo { a: 1337, b: "uiae" };
+print(foo);
