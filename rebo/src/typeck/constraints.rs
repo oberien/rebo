@@ -1,4 +1,4 @@
-use crate::parser::{Expr, Spanned, ExprBind, ExprAssign, ExprPattern, ExprPatternUntyped, ExprPatternTyped, ExprVariable, ExprAdd, ExprSub, ExprMul, ExprDiv, ExprBoolAnd, ExprBoolOr, ExprBoolNot, ExprLessThan, ExprGreaterEquals, ExprLessEquals, ExprGreaterThan, ExprEquals, ExprNotEquals, ExprFuzzyEquals, ExprFuzzyNotEquals, ExprBlock, ExprParenthesized, ExprFunctionCall, ExprFunctionDefinition, BlockBody, ExprStructDefinition, ExprType, ExprStructDefFields, ExprStructInitialization};
+use crate::parser::{Expr, Spanned, ExprBind, ExprAssign, ExprPattern, ExprPatternUntyped, ExprPatternTyped, ExprVariable, ExprAdd, ExprSub, ExprMul, ExprDiv, ExprBoolAnd, ExprBoolOr, ExprBoolNot, ExprLessThan, ExprGreaterEquals, ExprLessEquals, ExprGreaterThan, ExprEquals, ExprNotEquals, ExprBlock, ExprParenthesized, ExprFunctionCall, ExprFunctionDefinition, BlockBody, ExprStructDefinition, ExprType, ExprStructDefFields, ExprStructInitialization};
 use crate::typeck::{Constraint, TypeVar};
 use crate::common::{SpecificType, Type, PreInfo};
 use itertools::{Either, Itertools};
@@ -127,20 +127,10 @@ impl<'a, 'i> ConstraintCreator<'a, 'i> {
                 let right = self.get_type(b);
                 self.constraints.push(Constraint::Eq(left, right));
                 self.constraints.push(Constraint::Type(type_var, Type::Specific(SpecificType::Bool)));
-                self.restrictions.push((left, vec![SpecificType::Unit, SpecificType::Integer, SpecificType::Bool, SpecificType::String]));
-                self.restrictions.push((right, vec![SpecificType::Unit, SpecificType::Integer, SpecificType::Bool, SpecificType::String]));
+                self.restrictions.push((left, vec![SpecificType::Unit, SpecificType::Integer, SpecificType::Float, SpecificType::Bool, SpecificType::String]));
+                self.restrictions.push((right, vec![SpecificType::Unit, SpecificType::Integer, SpecificType::Float, SpecificType::Bool, SpecificType::String]));
                 self.restrictions.push((type_var, vec![SpecificType::Bool]));
             },
-            FuzzyEquals(ExprFuzzyEquals { a, b, .. })
-            | FuzzyNotEquals(ExprFuzzyNotEquals { a, b, .. }) => {
-                let left = self.get_type(a);
-                let right = self.get_type(b);
-                self.constraints.push(Constraint::Eq(left, right));
-                self.constraints.push(Constraint::Type(type_var, Type::Specific(SpecificType::Bool)));
-                self.restrictions.push((left, vec![SpecificType::Float, SpecificType::String]));
-                self.restrictions.push((right, vec![SpecificType::Float, SpecificType::String]));
-                self.restrictions.push((type_var, vec![SpecificType::Bool]));
-            }
             Block(ExprBlock { body: BlockBody { exprs, terminated }, .. }) => {
                 let mut last = None;
                 for expr in exprs {

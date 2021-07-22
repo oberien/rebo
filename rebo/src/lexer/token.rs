@@ -94,8 +94,6 @@ gen_tokens! {
     LessEquals, TokenLessEquals, "<=", {}, (fmt = "<= "), (Copy, Eq, Hash);
     Equals, TokenEquals, "==", {}, (fmt = "== "), (Copy, Eq, Hash);
     NotEquals, TokenNotEquals, "!=", {}, (fmt = "!= "), (Copy, Eq, Hash);
-    FuzzyEquals, TokenFuzzyEquals, "~~", {}, (fmt = "~~ "), (Copy, Eq, Hash);
-    FuzzyNotEquals, TokenFuzzyNotEquals, "!~", {}, (fmt = "!~ "), (Copy, Eq, Hash);
     GreaterEquals, TokenGreaterEquals, ">=", {}, (fmt = ">= "), (Copy, Eq, Hash);
     GreaterThan, TokenGreaterThan, ">", {}, (fmt = "> "), (Copy, Eq, Hash);
     Plus, TokenPlus, "+", {}, (fmt = "+ "), (Copy, Eq, Hash);

@@ -54,8 +54,6 @@ impl Expected {
         Expected::Token(TokenType::LessEquals),
         Expected::Token(TokenType::Equals),
         Expected::Token(TokenType::NotEquals),
-        Expected::Token(TokenType::FuzzyEquals),
-        Expected::Token(TokenType::FuzzyNotEquals),
         Expected::Token(TokenType::GreaterEquals),
         Expected::Token(TokenType::GreaterThan),
     ];

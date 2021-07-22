@@ -1,4 +1,4 @@
-use crate::parser::{Expr, Binding, ExprVariable, ExprInteger, ExprFloat, ExprBool, ExprString, ExprAssign, ExprBind, ExprPattern, ExprPatternTyped, ExprPatternUntyped, ExprLessThan, ExprLessEquals, ExprEquals, ExprNotEquals, ExprFuzzyEquals, ExprFuzzyNotEquals, ExprGreaterEquals, ExprGreaterThan, ExprAdd, ExprSub, ExprMul, ExprDiv, ExprBoolNot, ExprBoolAnd, ExprBoolOr, ExprParenthesized, ExprBlock, ExprFunctionCall, Separated, ExprFunctionDefinition, BlockBody, ExprStructDefinition, ExprStructInitialization};
+use crate::parser::{Expr, Binding, ExprVariable, ExprInteger, ExprFloat, ExprBool, ExprString, ExprAssign, ExprBind, ExprPattern, ExprPatternTyped, ExprPatternUntyped, ExprLessThan, ExprLessEquals, ExprEquals, ExprNotEquals, ExprGreaterEquals, ExprGreaterThan, ExprAdd, ExprSub, ExprMul, ExprDiv, ExprBoolNot, ExprBoolAnd, ExprBoolOr, ExprParenthesized, ExprBlock, ExprFunctionCall, Separated, ExprFunctionDefinition, BlockBody, ExprStructDefinition, ExprStructInitialization};
 use crate::common::{Value, FunctionImpl, PreInfo, Depth, Struct};
 use crate::scope::{Scopes, BindingId, Scope};
 use crate::lexer::{TokenInteger, TokenFloat, TokenBool, TokenDqString, TokenComma};
@@ -70,8 +70,6 @@ impl<'a, 'i> Vm<'a, 'i> {
             Expr::LessEquals(ExprLessEquals { a, b, .. }) => cmp::<Le>(self.eval_expr(a, depth.next()), self.eval_expr(b, depth.next()), depth.last()),
             Expr::Equals(ExprEquals { a, b, .. }) => cmp::<Eq>(self.eval_expr(a, depth.next()), self.eval_expr(b, depth.next()), depth.last()),
             Expr::NotEquals(ExprNotEquals { a, b, .. }) => cmp::<Neq>(self.eval_expr(a, depth.next()), self.eval_expr(b, depth.next()), depth.last()),
-            Expr::FuzzyEquals(ExprFuzzyEquals { a, b, .. }) => cmp::<Feq>(self.eval_expr(a, depth.next()), self.eval_expr(b, depth.next()), depth.last()),
-            Expr::FuzzyNotEquals(ExprFuzzyNotEquals { a, b, .. }) => cmp::<Fneq>(self.eval_expr(a, depth.next()), self.eval_expr(b, depth.next()), depth.last()),
             Expr::GreaterEquals(ExprGreaterEquals { a, b, .. }) => cmp::<Ge>(self.eval_expr(a, depth.next()), self.eval_expr(b, depth.next()), depth.last()),
             Expr::GreaterThan(ExprGreaterThan { a, b, .. }) => cmp::<Gt>(self.eval_expr(a, depth.next()), self.eval_expr(b, depth.next()), depth.last()),
             Expr::Add(ExprAdd { a, b, .. }) => math::<Add>(self.eval_expr(a, depth.next()), self.eval_expr(b, depth.next()), depth.last()),
@@ -204,8 +202,6 @@ enum Lt {}
 enum Le {}
 enum Eq {}
 enum Neq {}
-enum Feq {}
-enum Fneq {}
 enum Ge {}
 enum Gt {}
 
@@ -229,22 +225,6 @@ impl CmpOp for Le {
 impl CmpOp for Eq {
     fn unit() -> bool { true }
     fn integer(a: i64, b: i64) -> bool { a == b }
-    fn float(_: f64, _: f64) -> bool { unreachable!("can't float == float") }
-    fn bool(a: bool, b: bool) -> bool { a == b }
-    fn string(a: &str, b: &str) -> bool { a == b }
-    fn str() -> &'static str { "==" }
-}
-impl CmpOp for Neq {
-    fn unit() -> bool { false }
-    fn integer(a: i64, b: i64) -> bool { a != b }
-    fn float(_: f64, _: f64) -> bool { unreachable!("can't float != float") }
-    fn bool(a: bool, b: bool) -> bool { a != b }
-    fn string(a: &str, b: &str) -> bool { a != b }
-    fn str() -> &'static str { "!=" }
-}
-impl CmpOp for Feq {
-    fn unit() -> bool { unreachable!("can't () ~~ ()") }
-    fn integer(_: i64, _: i64) -> bool { unreachable!("can't int ~~ int") }
     fn float(a: f64, b: f64) -> bool {
         // https://stackoverflow.com/a/4915891
         let epsilon = 1e-10;
@@ -262,21 +242,17 @@ impl CmpOp for Feq {
             diff / (abs_a + abs_b) < epsilon
         }
     }
-    fn bool(_: bool, _: bool) -> bool { unreachable!("can't bool ~~ bool") }
-    fn string(a: &str, b: &str) -> bool {
-        let a = lexical_sort::iter::iterate_lexical(a);
-        let b = lexical_sort::iter::iterate_lexical(b);
-        a.zip(b).all(|(a, b)| a == b)
-    }
-    fn str() -> &'static str { "~~" }
+    fn bool(a: bool, b: bool) -> bool { a == b }
+    fn string(a: &str, b: &str) -> bool { a == b }
+    fn str() -> &'static str { "==" }
 }
-impl CmpOp for Fneq {
-    fn unit() -> bool { unreachable!("can't () !~ ()") }
-    fn integer(_: i64, _: i64) -> bool { unreachable!("can't int !~ int") }
-    fn float(a: f64, b: f64) -> bool { !Feq::float(a, b) }
-    fn bool(_: bool, _: bool) -> bool { unreachable!("can't bool !~ bool") }
-    fn string(a: &str, b: &str) -> bool { !Feq::string(a, b) }
-    fn str() -> &'static str { "!~" }
+impl CmpOp for Neq {
+    fn unit() -> bool { false }
+    fn integer(a: i64, b: i64) -> bool { a != b }
+    fn float(a: f64, b: f64) -> bool { !Eq::float(a, b) }
+    fn bool(a: bool, b: bool) -> bool { a != b }
+    fn string(a: &str, b: &str) -> bool { a != b }
+    fn str() -> &'static str { "!=" }
 }
 impl CmpOp for Ge {
     fn unit() -> bool { true }

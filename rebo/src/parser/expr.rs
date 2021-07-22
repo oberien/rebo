@@ -4,7 +4,7 @@ use derive_more::Display;
 
 use crate::scope::BindingId;
 use crate::util::PadFmt;
-use crate::lexer::{TokenOpenParen, TokenCloseParen, TokenIdent, TokenInteger, TokenFloat, TokenBool, TokenDqString, TokenType, TokenStringType, TokenIntType, TokenFloatType, TokenBoolType, Token, TokenLet, TokenColon, TokenMut, TokenAssign, TokenOpenCurly, TokenCloseCurly, TokenComma, TokenArrow, TokenFn, TokenBang, TokenPlus, TokenMinus, TokenStar, TokenSlash, TokenDoubleAmp, TokenDoublePipe, TokenLessThan, TokenLessEquals, TokenEquals, TokenNotEquals, TokenFuzzyEquals, TokenFuzzyNotEquals, TokenGreaterEquals, TokenGreaterThan, TokenStruct};
+use crate::lexer::{TokenOpenParen, TokenCloseParen, TokenIdent, TokenInteger, TokenFloat, TokenBool, TokenDqString, TokenType, TokenStringType, TokenIntType, TokenFloatType, TokenBoolType, Token, TokenLet, TokenColon, TokenMut, TokenAssign, TokenOpenCurly, TokenCloseCurly, TokenComma, TokenArrow, TokenFn, TokenBang, TokenPlus, TokenMinus, TokenStar, TokenSlash, TokenDoubleAmp, TokenDoublePipe, TokenLessThan, TokenLessEquals, TokenEquals, TokenNotEquals, TokenGreaterEquals, TokenGreaterThan, TokenStruct};
 use crate::parser::{Parse, InternalError, Parser, Expected};
 use crate::error_codes::ErrorCode;
 use std::borrow::Cow;
@@ -108,10 +108,6 @@ pub enum Expr<'a, 'i> {
     Equals(ExprEquals<'a, 'i>),
     /// expr != expr
     NotEquals(ExprNotEquals<'a, 'i>),
-    /// expr ~~ expr
-    FuzzyEquals(ExprFuzzyEquals<'a, 'i>),
-    /// expr !~ expr
-    FuzzyNotEquals(ExprFuzzyNotEquals<'a, 'i>),
     /// expr >= expr
     GreaterEquals(ExprGreaterEquals<'a, 'i>),
     /// expr > expr
@@ -250,8 +246,6 @@ impl<'a, 'i> Expr<'a, 'i> {
             Some(op @ Token::LessEquals(_)) => (ExprLessEquals::new_as_expr, op),
             Some(op @ Token::Equals(_)) => (ExprEquals::new_as_expr, op),
             Some(op @ Token::NotEquals(_)) => (ExprNotEquals::new_as_expr, op),
-            Some(op @ Token::FuzzyEquals(_)) => (ExprFuzzyEquals::new_as_expr, op),
-            Some(op @ Token::FuzzyNotEquals(_)) => (ExprFuzzyNotEquals::new_as_expr, op),
             Some(op @ Token::GreaterEquals(_)) => (ExprGreaterEquals::new_as_expr, op),
             Some(op @ Token::GreaterThan(_)) => (ExprGreaterThan::new_as_expr, op),
             Some(token) => return Err(InternalError::Backtrack(token.span(), Cow::Borrowed(Expected::COMPARE_OP))),
@@ -680,8 +674,6 @@ binop! {
     ExprLessEquals, LessEquals, TokenLessEquals, LessEquals;
     ExprEquals, Equals, TokenEquals, Equals;
     ExprNotEquals, NotEquals, TokenNotEquals, NotEquals;
-    ExprFuzzyEquals, FuzzyEquals, TokenFuzzyEquals, FuzzyEquals;
-    ExprFuzzyNotEquals, FuzzyNotEquals, TokenFuzzyNotEquals, FuzzyNotEquals;
     ExprGreaterEquals, GreaterEquals, TokenGreaterEquals, GreaterEquals;
     ExprGreaterThan, GreaterThan, TokenGreaterThan, GreaterThan;
 }

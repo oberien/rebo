@@ -143,10 +143,6 @@ fn try_lex_token<'i>(diagnostics: &Diagnostics, file: FileId, s: &'i str, index:
             Some('=') => Ok(MaybeToken::Token(Token::Equals(TokenEquals { span: span2 }))),
             _ => Ok(MaybeToken::Token(Token::Assign(TokenAssign { span }))),
         }
-        '~' => match char2 {
-            Some('~') => Ok(MaybeToken::Token(Token::FuzzyEquals(TokenFuzzyEquals { span: span2 }))),
-            _ => Ok(MaybeToken::Backtrack),
-        }
         '>' => match char2 {
             Some('=') => Ok(MaybeToken::Token(Token::GreaterEquals(TokenGreaterEquals { span: span2 }))),
             _ => Ok(MaybeToken::Token(Token::GreaterThan(TokenGreaterThan { span }))),
@@ -157,7 +153,6 @@ fn try_lex_token<'i>(diagnostics: &Diagnostics, file: FileId, s: &'i str, index:
         }
         '!' => match char2 {
             Some('=') => Ok(MaybeToken::Token(Token::NotEquals(TokenNotEquals { span: span2 }))),
-            Some('~') => Ok(MaybeToken::Token(Token::FuzzyNotEquals(TokenFuzzyNotEquals { span: span2 }))),
             _ => Ok(MaybeToken::Token(Token::Bang(TokenBang { span }))),
         }
         '&' => match char2 {

@@ -201,8 +201,6 @@ impl_for_tokens! {
     LessEquals, TokenLessEquals;
     Equals, TokenEquals;
     NotEquals, TokenNotEquals;
-    FuzzyEquals, TokenFuzzyEquals;
-    FuzzyNotEquals, TokenFuzzyNotEquals;
     GreaterEquals, TokenGreaterEquals;
     GreaterThan, TokenGreaterThan;
     Plus, TokenPlus;
