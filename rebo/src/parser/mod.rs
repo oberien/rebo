@@ -143,7 +143,7 @@ impl<'a, 'b, 'i> Parser<'a, 'b, 'i> {
                 }));
                 trace!("{} found {}", Depth::start(), fun);
                 self.pre_info.bindings.insert(fun.binding, typ);
-                self.pre_info.rebo_functions.insert(fun.binding.id, &fun.body);
+                self.pre_info.rebo_functions.insert(fun.binding.id, fun);
                 let arg_binding_ids = fun.args.iter().map(|ExprPatternTyped { pattern: ExprPatternUntyped { binding }, .. }| binding.id).collect();
                 self.pre_info.root_scope.create(fun.binding.id, Value::Function(FunctionImpl::Rebo(fun.binding.id, arg_binding_ids)));
                 self.pre_parsed.insert((fun.fn_token.span.file, fun.fn_token.span.start), fun_expr);

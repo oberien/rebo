@@ -59,6 +59,12 @@ fn test_comparison() {
         assert("a" != "b" && !("b" != "b") && "c" != "b");
         assert(!("a" >= "b") && "b" >= "b" && "c" >= "b");
         assert(!("a" > "b") && !("b" > "b") && "c" > "b");
+
+        // bindings
+        let foo = 1337;
+        assert(foo == 1337);
+        let bar = 1337;
+        assert(foo == bar);
     "#.to_string()), ReturnValue::Ok);
 }
 
@@ -156,7 +162,7 @@ fn struct_definitions() {
         let bar2 = Bar { foo: foo2, bar: false };
         let bar3 = Bar { foo: Foo { foo: 1337 }, bar: false };
         assert(bar != bar2);
-        assert!(bar2 == bar3);
+        assert(bar2 == bar3);
 
         // field usage
         assert(foo.foo == 1337);
@@ -222,5 +228,5 @@ fn struct_diagnostics() {
         let baz = Baz {};
         let qux = Qux {};
         baz == qux;
-    "#.to_string()), ReturnValue::Diagnostics(7));
+    "#.to_string()), ReturnValue::Diagnostics(8));
 }

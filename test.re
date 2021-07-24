@@ -23,3 +23,5 @@ struct Foo {
 }
 let foo = Foo { a: 1337, b: "uiae" };
 print(foo);
+let foo2 = Foo { a: 1337, b: "dtrn" };
+print(foo, foo2, foo == foo2);

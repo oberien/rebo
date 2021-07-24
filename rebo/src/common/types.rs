@@ -3,7 +3,7 @@ use crate::parser::ExprType;
 use itertools::Either;
 use std::borrow::Cow;
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialOrd, Ord, PartialEq, Eq, Hash)]
 pub enum Type {
     /// Top-type, not yet unified, could be any type.
     Top,
@@ -13,7 +13,7 @@ pub enum Type {
     Varargs,
     Specific(SpecificType),
 }
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialOrd, Ord, PartialEq, Eq, Hash)]
 pub enum SpecificType {
     Unit,
     Integer,
@@ -24,7 +24,7 @@ pub enum SpecificType {
     /// struct name
     Struct(String),
 }
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialOrd, Ord, PartialEq, Eq, Hash)]
 pub struct FunctionType {
     pub args: Cow<'static, [Type]>,
     pub ret: Type,

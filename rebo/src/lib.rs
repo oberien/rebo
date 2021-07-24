@@ -49,7 +49,7 @@ pub fn run(filename: String, code: String) -> ReturnValue {
     // lex
     let time = Instant::now();
     let tokens = lexer::lex(&diagnostics, file, code).unwrap();
-    info!("Lexing took {:4.2}s", time.elapsed().as_secs_f32());
+    info!("Lexing took {}μs", time.elapsed().as_micros());
     info!("TOKENS:\n{}\n", tokens);
 
     let mut pre_info = PreInfo::new();
@@ -59,13 +59,13 @@ pub fn run(filename: String, code: String) -> ReturnValue {
     let arena = Arena::new();
     let parser = Parser::new(&arena, tokens, &diagnostics, &mut pre_info);
     let ast = parser.parse_ast().unwrap();
-    info!("Parsing took {:4.2}s", time.elapsed().as_secs_f32());
+    info!("Parsing took {}μs", time.elapsed().as_micros());
     info!("AST:\n{}\n", ast);
     let Ast { exprs, bindings: _ } = ast;
 
     let time = Instant::now();
     Typechecker::new(&diagnostics, &mut pre_info).typeck(&exprs);
-    info!("Typechecking took {:4.2}s", time.elapsed().as_secs_f32());
+    info!("Typechecking took {}μs", time.elapsed().as_micros());
 
     if diagnostics.errors_printed() > 0 {
         eprintln!("Aborted due to errors");
@@ -75,7 +75,7 @@ pub fn run(filename: String, code: String) -> ReturnValue {
     let time = Instant::now();
     let vm = Vm::new(pre_info);
     let result = vm.run(&exprs);
-    info!("Execution took {:4.2}s", time.elapsed().as_secs_f32());
+    info!("Execution took {}μs", time.elapsed().as_micros());
     println!("RESULT: {:?}", result);
     ReturnValue::Ok
 }

@@ -26,9 +26,18 @@ impl TypeVar {
     }
 }
 
-pub enum Constraint {
+pub struct Constraint {
+    pub span: Span,
+    pub typ: ConstraintTyp,
+}
+pub enum ConstraintTyp {
     Type(TypeVar, Type),
     Eq(TypeVar, TypeVar),
+}
+impl Constraint {
+    pub fn new(span: Span, typ: ConstraintTyp) -> Constraint {
+        Constraint { span, typ }
+    }
 }
 
 pub struct Typechecker<'a, 'b, 'i> {
@@ -44,7 +53,7 @@ impl<'a, 'b, 'i> Typechecker<'a, 'b, 'i> {
         }
     }
 
-    // Step 1: Create constraint set and collect function types
+    // Step 1: Create constraint set
     // Step 2: Solve constraint set and print unification errors
     // Step 3: Check resolved types
     pub fn typeck(&mut self, exprs: &[&Expr<'a, 'i>]) {
@@ -52,15 +61,15 @@ impl<'a, 'b, 'i> Typechecker<'a, 'b, 'i> {
         let (constraints, restrictions) = cc.get_constraints(exprs);
         let stringified = constraints.iter()
             .map(|c| match c {
-                Constraint::Type(var, typ) => format!("`{}` = {}", self.diagnostics.resolve_span(var.span), typ),
-                Constraint::Eq(a, b) => format!("`{}` = `{}`", self.diagnostics.resolve_span(a.span), self.diagnostics.resolve_span(b.span)),
+                Constraint { typ: ConstraintTyp::Type(var, typ), .. } => format!("`{}` = {}", self.diagnostics.resolve_span(var.span), typ),
+                Constraint { typ: ConstraintTyp::Eq(a, b), .. } => format!("`{}` = `{}`", self.diagnostics.resolve_span(a.span), self.diagnostics.resolve_span(b.span)),
             }).collect::<Vec<_>>();
         trace!("got constraints: {:#?}", stringified);
 
         let cs = ConstraintSolver::new(&self.diagnostics);
         let solved = cs.solve(constraints);
         let stringified = solved.iter()
-            .map(|(var, typ)| format!("`{}`: {}", self.diagnostics.resolve_span(var.span), typ))
+            .map(|(var, (_span, typ))| format!("`{}`: {}", self.diagnostics.resolve_span(var.span), typ))
             .collect::<Vec<_>>();
         trace!("got solve: {:#?}", stringified);
 

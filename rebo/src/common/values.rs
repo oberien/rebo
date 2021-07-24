@@ -5,6 +5,8 @@ use crate::common::{SpecificType, FunctionType};
 use itertools::Itertools;
 use std::sync::Arc;
 use std::fmt::{Display, Formatter, Debug};
+use std::ops::{Add, Sub, Mul, Div};
+use std::cmp::Ordering;
 
 pub trait FromValues {
     fn from_values(values: impl Iterator<Item = Value>) -> Self;
@@ -63,11 +65,11 @@ pub trait IntoValue {
     fn into_value(self) -> Value;
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialOrd, PartialEq)]
 pub enum Value {
     Unit,
     Integer(i64),
-    Float(f64),
+    Float(FuzzyFloat),
     Bool(bool),
     String(String),
     Function(FunctionImpl),
@@ -109,7 +111,54 @@ impl Display for Value {
     }
 }
 
-#[derive(Debug, Clone)]
+/// Float with fuzzy equality
+#[derive(Debug, Clone, PartialOrd)]
+pub struct FuzzyFloat(pub f64);
+
+impl PartialEq for FuzzyFloat {
+    fn eq(&self, other: &Self) -> bool {
+        let a = self.0;
+        let b = other.0;
+        // https://stackoverflow.com/a/4915891
+        let epsilon = 1e-10;
+        let abs_a = a.abs();
+        let abs_b = b.abs();
+        let diff = (a - b).abs();
+        #[allow(clippy::float_cmp)]
+        if a == b { // shortcut, handles infinities
+            true
+        } else if a == 0. || b == 0. || diff < f64::MIN_POSITIVE {
+            // a or b is zero or both are extremely close to it
+            // relative error is less meaningful here
+            diff < (epsilon * f64::MIN_POSITIVE)
+        } else { // use relative error
+            diff / (abs_a + abs_b) < epsilon
+        }
+    }
+}
+impl Add<FuzzyFloat> for FuzzyFloat {
+    type Output = FuzzyFloat;
+    fn add(self, rhs: FuzzyFloat) -> Self::Output { FuzzyFloat(self.0 + rhs.0) }
+}
+impl Sub<FuzzyFloat> for FuzzyFloat {
+    type Output = FuzzyFloat;
+    fn sub(self, rhs: FuzzyFloat) -> Self::Output { FuzzyFloat(self.0 - rhs.0) }
+}
+impl Mul<FuzzyFloat> for FuzzyFloat {
+    type Output = FuzzyFloat;
+    fn mul(self, rhs: FuzzyFloat) -> Self::Output { FuzzyFloat(self.0 * rhs.0) }
+}
+impl Div<FuzzyFloat> for FuzzyFloat {
+    type Output = FuzzyFloat;
+    fn div(self, rhs: FuzzyFloat) -> Self::Output { FuzzyFloat(self.0 / rhs.0) }
+}
+impl Display for FuzzyFloat {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        Display::fmt(&self.0, f)
+    }
+}
+
+#[derive(Debug, Clone, PartialOrd, PartialEq)]
 pub struct Function {
     pub typ: FunctionType,
     pub imp: FunctionImpl,
@@ -128,8 +177,28 @@ impl fmt::Debug for FunctionImpl {
         }
     }
 }
+impl PartialOrd for FunctionImpl {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        // TODO: make rust functions comparable
+        match (self, other) {
+            (FunctionImpl::Rust(_), _) => None,
+            (_, FunctionImpl::Rust(_)) => None,
+            (FunctionImpl::Rebo(a, _), FunctionImpl::Rebo(b, _)) => Some(a.cmp(b)),
+        }
+    }
+}
+impl PartialEq for FunctionImpl {
+    fn eq(&self, other: &Self) -> bool {
+        // TODO: make rust functions comparable
+        match (self, other) {
+            (FunctionImpl::Rust(_), _) => false,
+            (_, FunctionImpl::Rust(_)) => false,
+            (FunctionImpl::Rebo(a, _), FunctionImpl::Rebo(b, _)) => a.eq(b),
+        }
+    }
+}
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialOrd, PartialEq)]
 pub struct Struct {
     pub name: String,
     pub fields: Vec<(String, Value)>,
@@ -186,7 +255,7 @@ impl IntoValue for () {
 }
 
 impl_from_into!(i64, Integer);
-impl_from_into!(f64, Float);
+impl_from_into!(FuzzyFloat, Float);
 impl_from_into!(bool, Bool);
 impl_from_into!(String, String);
 // impl_from_into!(Function, Function);

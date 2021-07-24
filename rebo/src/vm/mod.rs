@@ -1,13 +1,15 @@
 use crate::parser::{Expr, Binding, ExprVariable, ExprInteger, ExprFloat, ExprBool, ExprString, ExprAssign, ExprBind, ExprPattern, ExprPatternTyped, ExprPatternUntyped, ExprLessThan, ExprLessEquals, ExprEquals, ExprNotEquals, ExprGreaterEquals, ExprGreaterThan, ExprAdd, ExprSub, ExprMul, ExprDiv, ExprBoolNot, ExprBoolAnd, ExprBoolOr, ExprParenthesized, ExprBlock, ExprFunctionCall, Separated, ExprFunctionDefinition, BlockBody, ExprStructDefinition, ExprStructInitialization};
-use crate::common::{Value, FunctionImpl, PreInfo, Depth, Struct};
+use crate::common::{Value, FunctionImpl, PreInfo, Depth, Struct, StructType, FuzzyFloat};
 use crate::scope::{Scopes, BindingId, Scope};
 use crate::lexer::{TokenInteger, TokenFloat, TokenBool, TokenDqString, TokenComma};
 use indexmap::map::IndexMap;
 use std::sync::Arc;
+use diagnostic::Span;
 
 pub struct Vm<'a, 'i> {
     scopes: Scopes,
-    rebo_functions: IndexMap<BindingId, &'a ExprBlock<'a, 'i>>,
+    rebo_functions: IndexMap<BindingId, &'a ExprFunctionDefinition<'a, 'i>>,
+    structs: IndexMap<&'i str, (StructType, Span)>,
 }
 
 impl<'a, 'i> Vm<'a, 'i> {
@@ -17,6 +19,7 @@ impl<'a, 'i> Vm<'a, 'i> {
         scopes.push_scope(root_scope);
         Vm {
             scopes,
+            structs,
             rebo_functions,
         }
     }
@@ -54,7 +57,7 @@ impl<'a, 'i> Vm<'a, 'i> {
             Expr::Unit(_) => Value::Unit,
             Expr::Variable(ExprVariable { binding, .. }) => self.load_binding(binding, depth.last()),
             Expr::Integer(ExprInteger { int: TokenInteger { value, .. } }) => Value::Integer(*value),
-            Expr::Float(ExprFloat { float: TokenFloat { value, .. }}) => Value::Float(*value),
+            Expr::Float(ExprFloat { float: TokenFloat { value, .. }}) => Value::Float(FuzzyFloat(*value)),
             Expr::Bool(ExprBool { b: TokenBool { value, .. } }) => Value::Bool(*value),
             Expr::String(ExprString { string: TokenDqString { string, .. } }) => Value::String(string.clone()),
             Expr::Assign(ExprAssign { variable: ExprVariable { binding, .. }, expr, .. }) => {
@@ -113,6 +116,9 @@ impl<'a, 'i> Vm<'a, 'i> {
                 for (field, _colon, expr) in fields {
                     field_values.push((field.ident.to_string(), self.eval_expr(expr, depth.next())));
                 }
+                // TODO: O(n²log(n)) probably isn't the best but we need the correct order of the type-definition for comparisons
+                let (typ, _) = &self.structs[name.ident];
+                field_values.sort_by_key(|(field, _)| typ.fields.iter().position(|(name, _)| field == name));
                 Value::Struct(Arc::new(Struct {
                     name: name.ident.to_string(),
                     fields: field_values,
@@ -135,7 +141,7 @@ impl<'a, 'i> Vm<'a, 'i> {
                     self.scopes.push_scope(scope);
 
                     let mut last = None;
-                    for expr in &self.rebo_functions[&binding_id].body.exprs {
+                    for expr in &self.rebo_functions[&binding_id].body.body.exprs {
                         last = Some(self.eval_expr(expr, depth.next()));
                     }
 
@@ -150,7 +156,7 @@ impl<'a, 'i> Vm<'a, 'i> {
 
 trait MathOp {
     fn integer(a: i64, b: i64) -> i64;
-    fn float(a: f64, b: f64) -> f64;
+    fn float(a: FuzzyFloat, b: FuzzyFloat) -> FuzzyFloat;
     fn str() -> &'static str;
 }
 
@@ -161,22 +167,22 @@ enum Div {}
 
 impl MathOp for Add {
     fn integer(a: i64, b: i64) -> i64 { a + b }
-    fn float(a: f64, b: f64) -> f64 { a + b }
+    fn float(a: FuzzyFloat, b: FuzzyFloat) -> FuzzyFloat { a + b }
     fn str() -> &'static str { "+" }
 }
 impl MathOp for Sub {
     fn integer(a: i64, b: i64) -> i64 { a - b }
-    fn float(a: f64, b: f64) -> f64 { a - b }
+    fn float(a: FuzzyFloat, b: FuzzyFloat) -> FuzzyFloat { a - b }
     fn str() -> &'static str { "-" }
 }
 impl MathOp for Mul {
     fn integer(a: i64, b: i64) -> i64 { a * b }
-    fn float(a: f64, b: f64) -> f64 { a * b }
+    fn float(a: FuzzyFloat, b: FuzzyFloat) -> FuzzyFloat { a * b }
     fn str() -> &'static str { "*" }
 }
 impl MathOp for Div {
     fn integer(a: i64, b: i64) -> i64 { a / b }
-    fn float(a: f64, b: f64) -> f64 { a / b }
+    fn float(a: FuzzyFloat, b: FuzzyFloat) -> FuzzyFloat { a / b }
     fn str() -> &'static str { "/" }
 }
 
@@ -192,9 +198,10 @@ fn math<O: MathOp>(a: Value, b: Value, depth: Depth) -> Value {
 trait CmpOp {
     fn unit() -> bool;
     fn integer(a: i64, b: i64) -> bool;
-    fn float(a: f64, b: f64) -> bool;
+    fn float(a: FuzzyFloat, b: FuzzyFloat) -> bool;
     fn bool(a: bool, b: bool) -> bool;
     fn string(a: &str, b: &str) -> bool;
+    fn structs(a: Arc<Struct>, b: Arc<Struct>) -> bool;
     fn str() -> &'static str;
 }
 
@@ -208,67 +215,57 @@ enum Gt {}
 impl CmpOp for Lt {
     fn unit() -> bool { false }
     fn integer(a: i64, b: i64) -> bool { a < b }
-    fn float(a: f64, b: f64) -> bool { a < b }
+    fn float(a: FuzzyFloat, b: FuzzyFloat) -> bool { a < b }
     #[allow(clippy::bool_comparison)]
     fn bool(a: bool, b: bool) -> bool { a < b }
     fn string(a: &str, b: &str) -> bool { a < b }
+    fn structs(a: Arc<Struct>, b: Arc<Struct>) -> bool { a < b }
     fn str() -> &'static str { "<" }
 }
 impl CmpOp for Le {
     fn unit() -> bool { true }
     fn integer(a: i64, b: i64) -> bool { a <= b }
-    fn float(a: f64, b: f64) -> bool { a <= b }
+    fn float(a: FuzzyFloat, b: FuzzyFloat) -> bool { a <= b }
     fn bool(a: bool, b: bool) -> bool { a <= b }
     fn string(a: &str, b: &str) -> bool { a <= b }
+    fn structs(a: Arc<Struct>, b: Arc<Struct>) -> bool { a <= b }
     fn str() -> &'static str { "<=" }
 }
 impl CmpOp for Eq {
     fn unit() -> bool { true }
     fn integer(a: i64, b: i64) -> bool { a == b }
-    fn float(a: f64, b: f64) -> bool {
-        // https://stackoverflow.com/a/4915891
-        let epsilon = 1e-10;
-        let abs_a = a.abs();
-        let abs_b = b.abs();
-        let diff = (a - b).abs();
-        #[allow(clippy::float_cmp)]
-        if a == b { // shortcut, handles infinities
-            true
-        } else if a == 0. || b == 0. || diff < f64::MIN_POSITIVE {
-            // a or b is zero or both are extremely close to it
-            // relative error is less meaningful here
-            diff < (epsilon * f64::MIN_POSITIVE)
-        } else { // use relative error
-            diff / (abs_a + abs_b) < epsilon
-        }
-    }
+    fn float(a: FuzzyFloat, b: FuzzyFloat) -> bool { a == b }
     fn bool(a: bool, b: bool) -> bool { a == b }
     fn string(a: &str, b: &str) -> bool { a == b }
+    fn structs(a: Arc<Struct>, b: Arc<Struct>) -> bool { a == b }
     fn str() -> &'static str { "==" }
 }
 impl CmpOp for Neq {
     fn unit() -> bool { false }
     fn integer(a: i64, b: i64) -> bool { a != b }
-    fn float(a: f64, b: f64) -> bool { !Eq::float(a, b) }
+    fn float(a: FuzzyFloat, b: FuzzyFloat) -> bool { !Eq::float(a, b) }
     fn bool(a: bool, b: bool) -> bool { a != b }
     fn string(a: &str, b: &str) -> bool { a != b }
+    fn structs(a: Arc<Struct>, b: Arc<Struct>) -> bool { a != b }
     fn str() -> &'static str { "!=" }
 }
 impl CmpOp for Ge {
     fn unit() -> bool { true }
     fn integer(a: i64, b: i64) -> bool { a >= b }
-    fn float(a: f64, b: f64) -> bool { a >= b }
+    fn float(a: FuzzyFloat, b: FuzzyFloat) -> bool { a >= b }
     fn bool(a: bool, b: bool) -> bool { a >= b }
     fn string(a: &str, b: &str) -> bool { a >= b }
+    fn structs(a: Arc<Struct>, b: Arc<Struct>) -> bool { a >= b }
     fn str() -> &'static str { ">=" }
 }
 impl CmpOp for Gt {
     fn unit() -> bool { false }
     fn integer(a: i64, b: i64) -> bool { a > b }
-    fn float(a: f64, b: f64) -> bool { a > b }
+    fn float(a: FuzzyFloat, b: FuzzyFloat) -> bool { a > b }
     #[allow(clippy::bool_comparison)]
     fn bool(a: bool, b: bool) -> bool { a > b }
     fn string(a: &str, b: &str) -> bool { a > b }
+    fn structs(a: Arc<Struct>, b: Arc<Struct>) -> bool { a > b }
     fn str() -> &'static str { ">" }
 }
 fn cmp<O: CmpOp>(a: Value, b: Value, depth: Depth) -> Value {
@@ -279,6 +276,7 @@ fn cmp<O: CmpOp>(a: Value, b: Value, depth: Depth) -> Value {
         (Value::Float(a), Value::Float(b)) => Value::Bool(O::float(a, b)),
         (Value::Bool(a), Value::Bool(b)) => Value::Bool(O::bool(a, b)),
         (Value::String(a), Value::String(b)) => Value::Bool(O::string(&a, &b)),
+        (Value::Struct(a), Value::Struct(b)) => Value::Bool(O::structs(a, b)),
         _ => todo!("error handling"),
     }
 }

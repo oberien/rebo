@@ -1,12 +1,12 @@
 mod values;
 mod types;
 
-pub use values::{Value, Function, FunctionImpl, IntoValue, FromValues, FromValue, Struct};
+pub use values::{Value, Function, FunctionImpl, IntoValue, FromValues, FromValue, Struct, FuzzyFloat};
 pub use types::{Type, SpecificType, FunctionType, StructType};
 use std::fmt::{self, Display, Formatter};
 use indexmap::map::IndexMap;
 use diagnostic::Span;
-use crate::parser::{Binding, ExprBlock};
+use crate::parser::{Binding, ExprFunctionDefinition};
 use crate::scope::{Scope, BindingId};
 
 /// Info needed before parsing / before typechecking
@@ -14,7 +14,7 @@ pub struct PreInfo<'a, 'i> {
     /// types of bindings of the root scope / stdlib and function definitions of the first parser pass
     pub bindings: IndexMap<Binding<'i>, SpecificType>,
     /// functions found in the code
-    pub rebo_functions: IndexMap<BindingId, &'a ExprBlock<'a, 'i>>,
+    pub rebo_functions: IndexMap<BindingId, &'a ExprFunctionDefinition<'a, 'i>>,
     /// struct definitions found in the code
     pub structs: IndexMap<&'i str, (StructType, Span)>,
     pub root_scope: Scope,
