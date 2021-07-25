@@ -23,8 +23,10 @@ pub enum ErrorCode {
     TypeNotFound,
     RecursiveStruct,
     UnknownStruct,
-    UnknownField,
+    UnknownFieldInit,
     MissingField,
+    NonStructFieldAccess,
+    UnknownFieldAccess,
 }
 use ErrorCode::*;
 
@@ -54,8 +56,10 @@ impl diagnostic::ErrorCode for ErrorCode {
             TypeNotFound => "0022",
             RecursiveStruct => "0023",
             UnknownStruct => "0024",
-            UnknownField => "0025",
+            UnknownFieldInit => "0025",
             MissingField => "0026",
+            NonStructFieldAccess => "0027",
+            UnknownFieldAccess => "0028",
         }.to_string()
     }
 
@@ -84,8 +88,10 @@ impl diagnostic::ErrorCode for ErrorCode {
             TypeNotFound => "type not found",
             RecursiveStruct => "recursive struct",
             UnknownStruct => "unknown struct",
-            UnknownField => "unknown struct field",
+            UnknownFieldInit => "unknown struct field in initializer",
             MissingField => "missing struct field",
+            NonStructFieldAccess => "tried accessing field of a non-struct",
+            UnknownFieldAccess => "tried to access non-existent field",
         }.to_string()
     }
 }

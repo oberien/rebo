@@ -1,4 +1,4 @@
-use crate::parser::{Expr, Spanned, ExprBind, ExprAssign, ExprPattern, ExprPatternUntyped, ExprPatternTyped, ExprVariable, ExprAdd, ExprSub, ExprMul, ExprDiv, ExprBoolAnd, ExprBoolOr, ExprBoolNot, ExprLessThan, ExprGreaterEquals, ExprLessEquals, ExprGreaterThan, ExprEquals, ExprNotEquals, ExprBlock, ExprParenthesized, ExprFunctionCall, ExprFunctionDefinition, BlockBody, ExprStructDefinition, ExprType, ExprStructDefFields, ExprStructInitialization};
+use crate::parser::{Expr, Spanned, ExprBind, ExprAssign, ExprPattern, ExprPatternUntyped, ExprPatternTyped, ExprVariable, ExprAdd, ExprSub, ExprMul, ExprDiv, ExprBoolAnd, ExprBoolOr, ExprBoolNot, ExprLessThan, ExprGreaterEquals, ExprLessEquals, ExprGreaterThan, ExprEquals, ExprNotEquals, ExprBlock, ExprParenthesized, ExprFunctionCall, ExprFunctionDefinition, BlockBody, ExprStructDefinition, ExprType, ExprStructDefFields, ExprStructInitialization, ExprAssignLhs};
 use crate::typeck::{Constraint, TypeVar, ConstraintTyp};
 use crate::common::{SpecificType, Type, PreInfo};
 use itertools::{Either, Itertools};
@@ -40,8 +40,13 @@ impl<'a, 'i> ConstraintCreator<'a, 'i> {
                 self.restrictions.push((type_var, vec![SpecificType::Unit]));
             },
             Variable(variable) => {
-                return TypeVar::new(variable.binding.span())
+                return TypeVar::new(variable.binding.ident.span())
             },
+            FieldAccess(field_access) => {
+                let initial_var = TypeVar::new(field_access.variable.binding.ident.span());
+                let field_names = field_access.fields.iter().map(|f| f.ident.to_string()).collect();
+                self.constraints.push(Constraint::new(field_access.span(), ConstraintTyp::FieldAccess(initial_var, field_names, type_var)));
+            }
             Integer(_) => {
                 self.constraints.push(Constraint::new(expr_outer.span(), ConstraintTyp::Type(type_var, Type::Specific(SpecificType::Integer))));
                 self.restrictions.push((type_var, vec![SpecificType::Integer]));
@@ -60,11 +65,11 @@ impl<'a, 'i> ConstraintCreator<'a, 'i> {
             },
             Bind(ExprBind { pattern, expr, .. }) => {
                 let left = match pattern {
-                    ExprPattern::Untyped(ExprPatternUntyped { binding }) => TypeVar::new(binding.span()),
+                    ExprPattern::Untyped(ExprPatternUntyped { binding }) => TypeVar::new(binding.ident.span()),
                     ExprPattern::Typed(typed) => {
                         let pattern_span = typed.span();
                         let ExprPatternTyped { pattern: ExprPatternUntyped { binding }, typ, .. } = typed;
-                        let left = TypeVar::new(binding.span());
+                        let left = TypeVar::new(binding.ident.span());
                         self.constraints.push(Constraint::new(pattern_span, ConstraintTyp::Type(left, Type::Specific(SpecificType::from(typ)))));
                         self.restrictions.push((type_var, vec![SpecificType::from(typ)]));
                         left
@@ -75,8 +80,17 @@ impl<'a, 'i> ConstraintCreator<'a, 'i> {
                 self.constraints.push(Constraint::new(expr_outer.span(), ConstraintTyp::Type(type_var, Type::Specific(SpecificType::Unit))));
                 self.restrictions.push((type_var, vec![SpecificType::Unit]));
             }
-            Assign(ExprAssign { variable: ExprVariable { binding, .. }, expr, .. }) => {
-                let left = TypeVar::new(binding.span());
+            Assign(ExprAssign { lhs, expr, .. }) => {
+                let left = match lhs {
+                    ExprAssignLhs::Variable(ExprVariable { binding, .. }) => TypeVar::new(binding.ident.span()),
+                    ExprAssignLhs::FieldAccess(field_access) => {
+                        let initial_var = TypeVar::new(field_access.variable.binding.ident.span());
+                        let field_type_var = TypeVar::new(field_access.span());
+                        let field_names = field_access.fields.iter().map(|f| f.ident.to_string()).collect();
+                        self.constraints.push(Constraint::new(field_access.span(), ConstraintTyp::FieldAccess(initial_var, field_names, field_type_var)));
+                        field_type_var
+                    }
+                };
                 let right = self.get_type(expr);
                 self.constraints.push(Constraint::new(expr_outer.span(), ConstraintTyp::Eq(left, right)));
                 self.constraints.push(Constraint::new(expr_outer.span(), ConstraintTyp::Type(type_var, Type::Specific(SpecificType::Unit))));
@@ -191,6 +205,10 @@ impl<'a, 'i> ConstraintCreator<'a, 'i> {
                             self.restrictions.push((passed_type_var, vec![typ.clone()]));
                         }
                     }
+                }
+                self.constraints.push(Constraint::new(expr_outer.span(), ConstraintTyp::Type(type_var, fun.ret.clone())));
+                if let Type::Specific(ret) = &fun.ret {
+                    self.restrictions.push((type_var, vec![ret.clone()]));
                 }
             },
             FunctionDefinition(ExprFunctionDefinition { binding, ret_type, body: ExprBlock { body: BlockBody { exprs, terminated }, .. }, .. }) => {

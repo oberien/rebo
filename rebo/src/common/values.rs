@@ -7,6 +7,8 @@ use std::sync::Arc;
 use std::fmt::{Display, Formatter, Debug};
 use std::ops::{Add, Sub, Mul, Div};
 use std::cmp::Ordering;
+use parking_lot::ReentrantMutex;
+use std::cell::RefCell;
 
 pub trait FromValues {
     fn from_values(values: impl Iterator<Item = Value>) -> Self;
@@ -73,7 +75,7 @@ pub enum Value {
     Bool(bool),
     String(String),
     Function(FunctionImpl),
-    Struct(Arc<Struct>),
+    Struct(StructArc),
 }
 
 impl Value {
@@ -101,6 +103,8 @@ impl Display for Value {
             Value::String(s) => Debug::fmt(s, f),
             Value::Function(_f) => todo!("function print representation"),
             Value::Struct(s) => {
+                let s = s.s.lock();
+                let s = s.borrow();
                 write!(f, "{} {{", s.name)?;
                 for (field, value) in &s.fields {
                     write!(f, " {}: {},", field, value)?;
@@ -198,6 +202,20 @@ impl PartialEq for FunctionImpl {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct StructArc {
+    pub s: Arc<ReentrantMutex<RefCell<Struct>>>,
+}
+impl PartialOrd for StructArc {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        self.s.lock().borrow().partial_cmp(&other.s.lock().borrow())
+    }
+}
+impl PartialEq for StructArc {
+    fn eq(&self, other: &Self) -> bool {
+        self.s.lock().borrow().eq(&other.s.lock().borrow())
+    }
+}
 #[derive(Debug, Clone, PartialOrd, PartialEq)]
 pub struct Struct {
     pub name: String,
@@ -213,7 +231,7 @@ impl From<&'_ Value> for SpecificType {
             Value::Bool(_) => SpecificType::Bool,
             Value::String(_) => SpecificType::String,
             Value::Function(_) => todo!(),
-            Value::Struct(s) => SpecificType::Struct(s.name.clone()),
+            Value::Struct(s) => SpecificType::Struct(s.s.lock().borrow().name.clone()),
         }
     }
 }

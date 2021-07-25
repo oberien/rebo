@@ -94,15 +94,18 @@ impl<'b, 'a: 'b, 'i: 'b, T: 'a, D: 'a> Separated<'a, 'i, T, D> {
     pub fn last_terminated(&'b self) -> Option<&T> {
         self.inner.last().map(|(t, _d)| t)
     }
+    pub fn is_terminated(&self) -> bool {
+        self.last.is_none()
+    }
 }
 impl<'a, 'i, T: Spanned + 'a, D: 'a> Separated<'a, 'i, T, D> {
     pub fn span(&self) -> Option<Span> {
         let first = self.iter().next();
-        let last = self.last.as_ref().or(self.inner.iter().next().map(|(t, _d)| t));
+        let last = self.last.as_ref().or(self.inner.iter().last().map(|(t, _d)| t));
         match (first, last) {
             (Some(first), None) => Some(first.span()),
             (None, Some(last)) => Some(last.span()),
-            (Some(first), Some(last)) => Some(Span::new(first.span().file, first.span().start, last.span().start)),
+            (Some(first), Some(last)) => Some(Span::new(first.span().file, first.span().start, last.span().end)),
             (None, None) => None,
         }
     }
@@ -220,6 +223,7 @@ impl_for_tokens! {
     Semicolon, TokenSemicolon;
     Colon, TokenColon;
     Arrow, TokenArrow;
+    Dot, TokenDot;
     LineComment<'i>, TokenLineComment;
     BlockComment<'i>, TokenBlockComment;
     Eof, TokenEof;

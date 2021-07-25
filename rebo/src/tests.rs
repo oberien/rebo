@@ -155,7 +155,7 @@ fn struct_definitions() {
         let empty = Empty {};
         let empty2 = Empty {  };
         assert(empty == empty2);
-        let foo = Foo { foo: 1337 };
+        let mut foo = Foo { foo: 1337 };
         let foo2 = Foo { foo: 1337, };
         assert(foo == foo2);
         let bar = Bar { foo: foo, bar: true };
@@ -166,6 +166,9 @@ fn struct_definitions() {
 
         // field usage
         assert(foo.foo == 1337);
+        // field assignment
+        foo.foo = 42;
+        assert(foo.foo == 42);
 
         // impl block
         impl Foo {
@@ -214,7 +217,7 @@ fn struct_diagnostics() {
         }
 
         // missing struct field
-        Bar {};
+        let bar = Bar {};
 
         // unknown struct field
         Bar {
@@ -228,5 +231,8 @@ fn struct_diagnostics() {
         let baz = Baz {};
         let qux = Qux {};
         baz == qux;
-    "#.to_string()), ReturnValue::Diagnostics(8));
+
+        // mutable access to non-mutable variable
+        bar.i = 42;
+    "#.to_string()), ReturnValue::Diagnostics(9));
 }

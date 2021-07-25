@@ -33,6 +33,8 @@ pub struct Constraint {
 pub enum ConstraintTyp {
     Type(TypeVar, Type),
     Eq(TypeVar, TypeVar),
+    /// initial-struct-type-var, field-names, field-type-var
+    FieldAccess(TypeVar, Vec<String>, TypeVar),
 }
 impl Constraint {
     pub fn new(span: Span, typ: ConstraintTyp) -> Constraint {
@@ -63,15 +65,16 @@ impl<'a, 'b, 'i> Typechecker<'a, 'b, 'i> {
             .map(|c| match c {
                 Constraint { typ: ConstraintTyp::Type(var, typ), .. } => format!("`{}` = {}", self.diagnostics.resolve_span(var.span), typ),
                 Constraint { typ: ConstraintTyp::Eq(a, b), .. } => format!("`{}` = `{}`", self.diagnostics.resolve_span(a.span), self.diagnostics.resolve_span(b.span)),
+                Constraint { typ: ConstraintTyp::FieldAccess(variable, _fields, field_type_var), .. } => format!("`{}` -> `{}`", self.diagnostics.resolve_span(variable.span), self.diagnostics.resolve_span(field_type_var.span)),
             }).collect::<Vec<_>>();
-        trace!("got constraints: {:#?}", stringified);
+        debug!("got constraints: {:#?}", stringified);
 
-        let cs = ConstraintSolver::new(&self.diagnostics);
+        let cs = ConstraintSolver::new(self.diagnostics, self.pre_info);
         let solved = cs.solve(constraints);
         let stringified = solved.iter()
             .map(|(var, (_span, typ))| format!("`{}`: {}", self.diagnostics.resolve_span(var.span), typ))
             .collect::<Vec<_>>();
-        trace!("got solve: {:#?}", stringified);
+        debug!("got solve: {:#?}", stringified);
 
         let c = Checker::new(&self.diagnostics, solved, restrictions);
         c.check();

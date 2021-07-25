@@ -1,10 +1,12 @@
-use crate::parser::{Expr, Binding, ExprVariable, ExprInteger, ExprFloat, ExprBool, ExprString, ExprAssign, ExprBind, ExprPattern, ExprPatternTyped, ExprPatternUntyped, ExprLessThan, ExprLessEquals, ExprEquals, ExprNotEquals, ExprGreaterEquals, ExprGreaterThan, ExprAdd, ExprSub, ExprMul, ExprDiv, ExprBoolNot, ExprBoolAnd, ExprBoolOr, ExprParenthesized, ExprBlock, ExprFunctionCall, Separated, ExprFunctionDefinition, BlockBody, ExprStructDefinition, ExprStructInitialization};
-use crate::common::{Value, FunctionImpl, PreInfo, Depth, Struct, StructType, FuzzyFloat};
+use crate::parser::{Expr, Binding, ExprVariable, ExprInteger, ExprFloat, ExprBool, ExprString, ExprAssign, ExprBind, ExprPattern, ExprPatternTyped, ExprPatternUntyped, ExprLessThan, ExprLessEquals, ExprEquals, ExprNotEquals, ExprGreaterEquals, ExprGreaterThan, ExprAdd, ExprSub, ExprMul, ExprDiv, ExprBoolNot, ExprBoolAnd, ExprBoolOr, ExprParenthesized, ExprBlock, ExprFunctionCall, Separated, ExprFunctionDefinition, BlockBody, ExprStructDefinition, ExprStructInitialization, ExprAssignLhs, ExprFieldAccess};
+use crate::common::{Value, FunctionImpl, PreInfo, Depth, Struct, StructType, FuzzyFloat, StructArc};
 use crate::scope::{Scopes, BindingId, Scope};
-use crate::lexer::{TokenInteger, TokenFloat, TokenBool, TokenDqString, TokenComma};
+use crate::lexer::{TokenInteger, TokenFloat, TokenBool, TokenDqString, TokenComma, TokenIdent};
 use indexmap::map::IndexMap;
 use std::sync::Arc;
 use diagnostic::Span;
+use parking_lot::ReentrantMutex;
+use std::cell::RefCell;
 
 pub struct Vm<'a, 'i> {
     scopes: Scopes,
@@ -45,10 +47,9 @@ impl<'a, 'i> Vm<'a, 'i> {
         Value::Unit
     }
 
-    fn assign(&mut self, binding: &Binding, value: Value, depth: Depth) -> Value {
+    fn assign(&mut self, binding: &Binding, value: Value, depth: Depth) {
         trace!("{}assign {} = {:?}", depth, binding.ident.ident, value);
         self.scopes.assign(binding.id, value);
-        Value::Unit
     }
 
     fn eval_expr(&mut self, expr: &Expr, depth: Depth) -> Value {
@@ -56,13 +57,60 @@ impl<'a, 'i> Vm<'a, 'i> {
         match expr {
             Expr::Unit(_) => Value::Unit,
             Expr::Variable(ExprVariable { binding, .. }) => self.load_binding(binding, depth.last()),
+            Expr::FieldAccess(ExprFieldAccess { variable: ExprVariable { binding, .. }, fields, .. }) => {
+                let mut struct_arc = match self.load_binding(binding, depth.last()) {
+                    Value::Struct(s) => s,
+                    _ => unreachable!("typechecker ensures this is a struct"),
+                };
+                for TokenIdent { ident, .. } in fields {
+                    let field_value = struct_arc.s.lock().borrow_mut().fields.iter()
+                        .filter(|(name, _value)| name == ident)
+                        .map(|(_name, value)| value.clone())
+                        .next()
+                        .expect("typechecker ensures all fields exist");
+                    match field_value {
+                        Value::Struct(s) => struct_arc = s,
+                        value => return value,
+                    }
+                }
+                Value::Struct(struct_arc)
+            },
             Expr::Integer(ExprInteger { int: TokenInteger { value, .. } }) => Value::Integer(*value),
             Expr::Float(ExprFloat { float: TokenFloat { value, .. }}) => Value::Float(FuzzyFloat(*value)),
             Expr::Bool(ExprBool { b: TokenBool { value, .. } }) => Value::Bool(*value),
             Expr::String(ExprString { string: TokenDqString { string, .. } }) => Value::String(string.clone()),
-            Expr::Assign(ExprAssign { variable: ExprVariable { binding, .. }, expr, .. }) => {
+            Expr::Assign(ExprAssign { lhs, expr, .. }) => {
                 let value = self.eval_expr(expr, depth.next());
-                self.assign(binding, value, depth.last())
+                match lhs {
+                    ExprAssignLhs::Variable(ExprVariable { binding, .. }) => self.assign(binding, value, depth.last()),
+                    ExprAssignLhs::FieldAccess(ExprFieldAccess { variable: ExprVariable { binding, .. }, fields, .. }) => {
+
+                        let mut struct_arc = match self.load_binding(&binding, depth.next()) {
+                            Value::Struct(s) => s,
+                            _ => unreachable!("typechecker should have ensured that this is a struct"),
+                        };
+                        for TokenIdent { ident, .. } in fields {
+                            let new_struct = {
+                                let s = struct_arc.s.lock();
+                                let mut s = s.borrow_mut();
+                                let field_value = s.fields.iter_mut()
+                                    .filter(|(name, _value)| name == ident)
+                                    .map(|(_name, value)| value)
+                                    .next()
+                                    .expect("typechecker ensured that all fields exist");
+                                match field_value {
+                                    Value::Struct(s) => s.clone(),
+                                    var => {
+                                        *var = value.clone();
+                                        break;
+                                    },
+                                }
+                            };
+                            struct_arc = new_struct;
+                        }
+                    }
+                }
+                Value::Unit
             },
             Expr::Bind(ExprBind { pattern: ExprPattern::Typed(ExprPatternTyped { pattern: ExprPatternUntyped { binding }, .. }), expr, .. })
             | Expr::Bind(ExprBind { pattern: ExprPattern::Untyped(ExprPatternUntyped { binding }), expr, .. }) => {
@@ -119,10 +167,10 @@ impl<'a, 'i> Vm<'a, 'i> {
                 // TODO: O(n²log(n)) probably isn't the best but we need the correct order of the type-definition for comparisons
                 let (typ, _) = &self.structs[name.ident];
                 field_values.sort_by_key(|(field, _)| typ.fields.iter().position(|(name, _)| field == name));
-                Value::Struct(Arc::new(Struct {
+                Value::Struct(StructArc { s: Arc::new(ReentrantMutex::new(RefCell::new(Struct {
                     name: name.ident.to_string(),
                     fields: field_values,
-                }))
+                })))})
             }
         }
     }
@@ -201,7 +249,7 @@ trait CmpOp {
     fn float(a: FuzzyFloat, b: FuzzyFloat) -> bool;
     fn bool(a: bool, b: bool) -> bool;
     fn string(a: &str, b: &str) -> bool;
-    fn structs(a: Arc<Struct>, b: Arc<Struct>) -> bool;
+    fn structs(a: StructArc, b: StructArc) -> bool;
     fn str() -> &'static str;
 }
 
@@ -219,7 +267,7 @@ impl CmpOp for Lt {
     #[allow(clippy::bool_comparison)]
     fn bool(a: bool, b: bool) -> bool { a < b }
     fn string(a: &str, b: &str) -> bool { a < b }
-    fn structs(a: Arc<Struct>, b: Arc<Struct>) -> bool { a < b }
+    fn structs(a: StructArc, b: StructArc) -> bool { a < b }
     fn str() -> &'static str { "<" }
 }
 impl CmpOp for Le {
@@ -228,7 +276,7 @@ impl CmpOp for Le {
     fn float(a: FuzzyFloat, b: FuzzyFloat) -> bool { a <= b }
     fn bool(a: bool, b: bool) -> bool { a <= b }
     fn string(a: &str, b: &str) -> bool { a <= b }
-    fn structs(a: Arc<Struct>, b: Arc<Struct>) -> bool { a <= b }
+    fn structs(a: StructArc, b: StructArc) -> bool { a <= b }
     fn str() -> &'static str { "<=" }
 }
 impl CmpOp for Eq {
@@ -237,7 +285,7 @@ impl CmpOp for Eq {
     fn float(a: FuzzyFloat, b: FuzzyFloat) -> bool { a == b }
     fn bool(a: bool, b: bool) -> bool { a == b }
     fn string(a: &str, b: &str) -> bool { a == b }
-    fn structs(a: Arc<Struct>, b: Arc<Struct>) -> bool { a == b }
+    fn structs(a: StructArc, b: StructArc) -> bool { a == b }
     fn str() -> &'static str { "==" }
 }
 impl CmpOp for Neq {
@@ -246,7 +294,7 @@ impl CmpOp for Neq {
     fn float(a: FuzzyFloat, b: FuzzyFloat) -> bool { !Eq::float(a, b) }
     fn bool(a: bool, b: bool) -> bool { a != b }
     fn string(a: &str, b: &str) -> bool { a != b }
-    fn structs(a: Arc<Struct>, b: Arc<Struct>) -> bool { a != b }
+    fn structs(a: StructArc, b: StructArc) -> bool { a != b }
     fn str() -> &'static str { "!=" }
 }
 impl CmpOp for Ge {
@@ -255,7 +303,7 @@ impl CmpOp for Ge {
     fn float(a: FuzzyFloat, b: FuzzyFloat) -> bool { a >= b }
     fn bool(a: bool, b: bool) -> bool { a >= b }
     fn string(a: &str, b: &str) -> bool { a >= b }
-    fn structs(a: Arc<Struct>, b: Arc<Struct>) -> bool { a >= b }
+    fn structs(a: StructArc, b: StructArc) -> bool { a >= b }
     fn str() -> &'static str { ">=" }
 }
 impl CmpOp for Gt {
@@ -265,7 +313,7 @@ impl CmpOp for Gt {
     #[allow(clippy::bool_comparison)]
     fn bool(a: bool, b: bool) -> bool { a > b }
     fn string(a: &str, b: &str) -> bool { a > b }
-    fn structs(a: Arc<Struct>, b: Arc<Struct>) -> bool { a > b }
+    fn structs(a: StructArc, b: StructArc) -> bool { a > b }
     fn str() -> &'static str { ">" }
 }
 fn cmp<O: CmpOp>(a: Value, b: Value, depth: Depth) -> Value {

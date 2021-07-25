@@ -113,6 +113,7 @@ gen_tokens! {
     Semicolon, TokenSemicolon, ";", {}, (fmt = ";\n"), (Copy, Eq, Hash);
     Colon, TokenColon, ":", {}, (fmt = ": "), (Copy, Eq, Hash);
     Arrow, TokenArrow, "->", {}, (fmt = "-> "), (Copy, Eq, Hash);
+    Dot, TokenDot, ".", {}, (fmt = ". "), (Copy, Eq, Hash);
     LineComment<'i>, TokenLineComment, "//", {comment: &'i str,}, (fmt = "{}", comment), (Copy, Eq, Hash), #[doc = "Line Comment including starting `//` and ending newline"];
     BlockComment<'i>, TokenBlockComment, "/* */", {comment: &'i str,}, (fmt = "{}", comment), (Copy, Eq, Hash), #[doc = "/// Block Comment including starting `/*` and ending `*/`"];
     Eof, TokenEof, "EOF", {}, (fmt = "EOF");

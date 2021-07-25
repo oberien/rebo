@@ -4,7 +4,7 @@ use derive_more::Display;
 
 use crate::scope::BindingId;
 use crate::util::PadFmt;
-use crate::lexer::{TokenOpenParen, TokenCloseParen, TokenIdent, TokenInteger, TokenFloat, TokenBool, TokenDqString, TokenType, TokenStringType, TokenIntType, TokenFloatType, TokenBoolType, Token, TokenLet, TokenColon, TokenMut, TokenAssign, TokenOpenCurly, TokenCloseCurly, TokenComma, TokenArrow, TokenFn, TokenBang, TokenPlus, TokenMinus, TokenStar, TokenSlash, TokenDoubleAmp, TokenDoublePipe, TokenLessThan, TokenLessEquals, TokenEquals, TokenNotEquals, TokenGreaterEquals, TokenGreaterThan, TokenStruct};
+use crate::lexer::{TokenOpenParen, TokenCloseParen, TokenIdent, TokenInteger, TokenFloat, TokenBool, TokenDqString, TokenType, TokenStringType, TokenIntType, TokenFloatType, TokenBoolType, Token, TokenLet, TokenColon, TokenMut, TokenAssign, TokenOpenCurly, TokenCloseCurly, TokenComma, TokenArrow, TokenFn, TokenBang, TokenPlus, TokenMinus, TokenStar, TokenSlash, TokenDoubleAmp, TokenDoublePipe, TokenLessThan, TokenLessEquals, TokenEquals, TokenNotEquals, TokenGreaterEquals, TokenGreaterThan, TokenStruct, TokenDot};
 use crate::parser::{Parse, InternalError, Parser, Expected};
 use crate::error_codes::ErrorCode;
 use std::borrow::Cow;
@@ -27,8 +27,8 @@ macro_rules! module_path {
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Hash)]
 pub struct Binding<'i> {
     pub id: BindingId,
-    pub ident: TokenIdent<'i>,
     pub mutable: Option<TokenMut>,
+    pub ident: TokenIdent<'i>,
     /// If this is a rogue binding that was created by the parser when an error occurred.
     /// If there is a further error involving this binding, it shouldn't be emitted.
     pub rogue: bool,
@@ -116,6 +116,8 @@ pub enum Expr<'a, 'i> {
     Block(ExprBlock<'a, 'i>),
     /// foo
     Variable(ExprVariable<'i>),
+    // foo.bar.baz
+    FieldAccess(ExprFieldAccess<'a, 'i>),
     /// (expr)
     Parenthesized(ExprParenthesized<'a, 'i>),
     /// ident(expr, expr, ...)
@@ -174,6 +176,7 @@ impl<'a, 'i> Expr<'a, 'i> {
             |parser: &mut Parser<'a, '_, 'i>, depth| Ok(parser.arena.alloc(Expr::Float(ExprFloat::parse(parser, depth)?))),
             |parser: &mut Parser<'a, '_, 'i>, depth| Ok(parser.arena.alloc(Expr::Bool(ExprBool::parse(parser, depth)?))),
             |parser: &mut Parser<'a, '_, 'i>, depth| Ok(parser.arena.alloc(Expr::String(ExprString::parse(parser, depth)?))),
+            |parser: &mut Parser<'a, '_, 'i>, depth| Ok(parser.arena.alloc(Expr::FieldAccess(ExprFieldAccess::parse(parser, depth)?))),
             |parser: &mut Parser<'a, '_, 'i>, depth| Ok(parser.arena.alloc(Expr::Variable(ExprVariable::parse(parser, depth)?))),
         ];
         fns.extend(others);
@@ -568,34 +571,107 @@ impl<'a, 'i> Display for ExprBind<'a, 'i> {
 
 #[derive(Debug, Clone)]
 pub struct ExprAssign<'a, 'i> {
-    pub variable: ExprVariable<'i>,
+    pub lhs: ExprAssignLhs<'a, 'i>,
     pub assign: TokenAssign,
     pub expr: &'a Expr<'a, 'i>,
 }
 impl<'a, 'i> Parse<'a, 'i> for ExprAssign<'a, 'i> {
     fn parse_marked(parser: &mut Parser<'a, '_, 'i>, depth: Depth) -> Result<Self, InternalError> {
-        let variable: ExprVariable = parser.parse(depth.next())?;
+        let lhs: ExprAssignLhs = parser.parse(depth.next())?;
         let assign = parser.parse(depth.next())?;
         let expr = parser.parse(depth.last())?;
         // check mutability
+        let variable = match &lhs {
+            ExprAssignLhs::Variable(variable) => variable,
+            ExprAssignLhs::FieldAccess(ExprFieldAccess { variable, .. }) => variable,
+        };
         if variable.binding.mutable.is_none() {
             parser.diagnostics.error(ErrorCode::ImmutableAssign)
-                .with_error_label(variable.binding.ident.span, format!("variable `{}` is assigned to even though it's not declared as mutable", variable.binding.ident.ident))
-                .with_info_label(variable.binding.ident.span, format!("`{}` previously defined here", variable.binding.ident.ident))
+                .with_error_label(variable.span, format!("variable `{}` is assigned to even though it's not declared as mutable", variable.binding.ident.ident))
+                .with_info_label(variable.binding.ident.span, format!("`{}` defined here", variable.binding.ident.ident))
                 .with_info_label(variable.binding.ident.span, format!("help: try using `let mut {} = {}` here", variable.binding.ident.ident, expr))
                 .emit();
         }
-        Ok(ExprAssign { variable, assign, expr })
+        Ok(ExprAssign { lhs, assign, expr })
     }
 }
 impl<'a, 'i> Spanned for ExprAssign<'a, 'i> {
     fn span(&self) -> Span {
-        Span::new(self.variable.span().file, self.variable.span().start, self.expr.span().end)
+        Span::new(self.lhs.span().file, self.lhs.span().start, self.expr.span().end)
     }
 }
 impl<'a, 'i> Display for ExprAssign<'a, 'i> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "{} = {}", self.variable, self.expr)
+        write!(f, "{} = {}", self.lhs, self.expr)
+    }
+}
+#[derive(Debug, Clone, Display)]
+pub enum ExprAssignLhs<'a, 'i> {
+    Variable(ExprVariable<'i>),
+    FieldAccess(ExprFieldAccess<'a, 'i>),
+}
+impl<'a, 'i> Parse<'a, 'i> for ExprAssignLhs<'a, 'i> {
+    fn parse_marked(parser: &mut Parser<'a, '_, 'i>, depth: Depth) -> Result<Self, InternalError> {
+        let err1 = match ExprFieldAccess::parse(parser, depth.next()) {
+            Ok(field_access) => return Ok(ExprAssignLhs::FieldAccess(field_access)),
+            Err(e) => e,
+        };
+        let err2 = match ExprVariable::parse(parser, depth.last()) {
+            Ok(variable) => return Ok(ExprAssignLhs::Variable(variable)),
+            Err(e) => e,
+        };
+        match (err1, err2) {
+            (InternalError::Error(_), err2) => Err(err2),
+            (err1, InternalError::Error(_)) => Err(err1),
+            (InternalError::Backtrack(span1, ex1), InternalError::Backtrack(span2, ex2)) => if span1 >= span2 {
+                Err(InternalError::Backtrack(span1, ex1))
+            } else {
+                Err(InternalError::Backtrack(span2, ex2))
+            }
+        }
+    }
+}
+impl<'a, 'i> Spanned for ExprAssignLhs<'a, 'i> {
+    fn span(&self) -> Span {
+        match self {
+            ExprAssignLhs::Variable(v) => v.span(),
+            ExprAssignLhs::FieldAccess(fa) => fa.span(),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct ExprFieldAccess<'a, 'i> {
+    pub variable: ExprVariable<'i>,
+    pub dot: TokenDot,
+    pub fields: Separated<'a, 'i, TokenIdent<'i>, TokenDot>,
+}
+impl<'a, 'i> Parse<'a, 'i> for ExprFieldAccess<'a, 'i> {
+    fn parse_marked(parser: &mut Parser<'a, '_, 'i>, depth: Depth) -> Result<Self, InternalError> {
+        let variable: ExprVariable = parser.parse(depth.next())?;
+        let dot: TokenDot = parser.parse(depth.next())?;
+        let fields: Separated<TokenIdent, TokenDot> = parser.parse(depth.last())?;
+        // check length
+        if fields.is_empty() {
+            return Err(InternalError::Backtrack(parser.tokens.next_span(), Cow::Borrowed(&[Expected::Token(TokenType::Ident)])));
+        }
+        // check trailing dot
+        if fields.is_terminated() {
+            parser.diagnostics.error(ErrorCode::InvalidExpression)
+                .with_error_label(fields.span().unwrap(), "trailing dot")
+                .emit();
+        }
+        Ok(ExprFieldAccess { variable, dot, fields })
+    }
+}
+impl<'a, 'i> Spanned for ExprFieldAccess<'a, 'i> {
+    fn span(&self) -> Span {
+        Span::new(self.variable.span.file, self.variable.span.start, self.fields.span().unwrap().end)
+    }
+}
+impl<'a, 'i> Display for ExprFieldAccess<'a, 'i> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "{}.{}", self.variable, self.fields.iter().map(|f| f.ident).join("."))
     }
 }
 
@@ -961,12 +1037,11 @@ impl<'a, 'i> Parse<'a, 'i> for ExprStructInitialization<'a, 'i> {
                 diag.emit();
             }
             Some((typ, def_span)) => {
-                let mut expected_fields: IndexSet<_> = typ.fields.iter().map(|(name, _typ)| name).collect();
+                let mut expected_fields: IndexSet<_> = typ.fields.iter().map(|(name, _typ)| name.as_str()).collect();
                 for (field, _colon, _expr) in &fields {
-                    // TODO: remove to_string, but "the trait `Borrow<&str>` is not implemented for `&std::string::String`"
-                    if !expected_fields.remove(&field.ident.to_string()) {
+                    if !expected_fields.remove(field.ident) {
                         let similar = crate::util::similar_name(field.ident, expected_fields.iter());
-                        let mut diag = parser.diagnostics.error(ErrorCode::UnknownField)
+                        let mut diag = parser.diagnostics.error(ErrorCode::UnknownFieldInit)
                             .with_error_label(field.span, format!("unknown field `{}`", field.ident))
                             .with_info_label(*def_span, "defined here");
                         if let Some(similar) = similar {

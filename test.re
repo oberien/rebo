@@ -21,7 +21,10 @@ struct Foo {
     a: int,
     b: string,
 }
-let foo = Foo { a: 1337, b: "uiae" };
+let mut foo = Foo { a: 1337, b: "uiae" };
 print(foo);
 let foo2 = Foo { a: 1337, b: "dtrn" };
+print(foo, foo2, foo == foo2);
+print(foo.a, foo.b);
+foo.b = "dtrn";
 print(foo, foo2, foo == foo2);

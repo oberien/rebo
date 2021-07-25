@@ -163,6 +163,7 @@ fn try_lex_token<'i>(diagnostics: &Diagnostics, file: FileId, s: &'i str, index:
             Some('|') => Ok(MaybeToken::Token(Token::DoublePipe(TokenDoublePipe { span: span2 }))),
             _ => Ok(MaybeToken::Token(Token::Pipe(TokenPipe { span }))),
         }
+        '.' => Ok(MaybeToken::Token(Token::Dot(TokenDot { span }))),
         '"' => Ok(MaybeToken::Token(lex_double_quoted_string(diagnostics, file, s, index)?)),
         _ => Ok(MaybeToken::Backtrack),
     }
