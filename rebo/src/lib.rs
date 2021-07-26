@@ -67,9 +67,14 @@ pub fn run(filename: String, code: String) -> ReturnValue {
     Typechecker::new(&diagnostics, &mut pre_info).typeck(&exprs);
     info!("Typechecking took {}μs", time.elapsed().as_micros());
 
-    if diagnostics.errors_printed() > 0 {
+    let diags = diagnostics.bugs_printed()
+        + diagnostics.errors_printed()
+        + diagnostics.warnings_printed()
+        + diagnostics.notes_printed()
+        + diagnostics.helps_printed();
+    if diags > 0 {
         eprintln!("Aborted due to errors");
-        return ReturnValue::Diagnostics(diagnostics.errors_printed());
+        return ReturnValue::Diagnostics(diags);
     }
 
     let time = Instant::now();

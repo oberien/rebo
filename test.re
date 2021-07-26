@@ -28,3 +28,5 @@ print(foo, foo2, foo == foo2);
 print(foo.a, foo.b);
 foo.b = "dtrn";
 print(foo, foo2, foo == foo2);
+
+print(if true { 1337 } else { panic("F") } + 5);

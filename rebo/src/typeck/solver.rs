@@ -81,7 +81,7 @@ impl<'a, 'i> ConstraintSolver<'a, 'i> {
                 _ => { solved.insert(var, (origin, typ.clone())); },
             }
 
-            if !typ.is_specific() {
+            if !typ.is_specific() && typ != Type::Bottom {
                 continue;
             }
             'dep: for (span, dependant) in self.dependants.remove(&var).into_iter().flatten() {

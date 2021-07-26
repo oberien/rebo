@@ -27,6 +27,8 @@ pub enum ErrorCode {
     MissingField,
     NonStructFieldAccess,
     UnknownFieldAccess,
+    UnnecessaryIfConditionParenthesis,
+    MissingElse,
 }
 use ErrorCode::*;
 
@@ -60,6 +62,8 @@ impl diagnostic::ErrorCode for ErrorCode {
             MissingField => "0026",
             NonStructFieldAccess => "0027",
             UnknownFieldAccess => "0028",
+            UnnecessaryIfConditionParenthesis => "0029",
+            MissingElse => "0030",
         }.to_string()
     }
 
@@ -92,6 +96,8 @@ impl diagnostic::ErrorCode for ErrorCode {
             MissingField => "missing struct field",
             NonStructFieldAccess => "tried accessing field of a non-struct",
             UnknownFieldAccess => "tried to access non-existent field",
+            UnnecessaryIfConditionParenthesis => "unnecessary parenthesis surrounding if condition",
+            MissingElse => "missing else clause",
         }.to_string()
     }
 }

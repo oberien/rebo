@@ -1,10 +1,11 @@
-use crate::parser::{Expr, Spanned, ExprBind, ExprAssign, ExprPattern, ExprPatternUntyped, ExprPatternTyped, ExprVariable, ExprAdd, ExprSub, ExprMul, ExprDiv, ExprBoolAnd, ExprBoolOr, ExprBoolNot, ExprLessThan, ExprGreaterEquals, ExprLessEquals, ExprGreaterThan, ExprEquals, ExprNotEquals, ExprBlock, ExprParenthesized, ExprFunctionCall, ExprFunctionDefinition, BlockBody, ExprStructDefinition, ExprType, ExprStructDefFields, ExprStructInitialization, ExprAssignLhs};
+use crate::parser::{Expr, Spanned, ExprBind, ExprAssign, ExprPattern, ExprPatternUntyped, ExprPatternTyped, ExprVariable, ExprAdd, ExprSub, ExprMul, ExprDiv, ExprBoolAnd, ExprBoolOr, ExprBoolNot, ExprLessThan, ExprGreaterEquals, ExprLessEquals, ExprGreaterThan, ExprEquals, ExprNotEquals, ExprBlock, ExprParenthesized, ExprFunctionCall, ExprFunctionDefinition, BlockBody, ExprStructDefinition, ExprType, ExprStructDefFields, ExprStructInitialization, ExprAssignLhs, ExprIfElse};
 use crate::typeck::{Constraint, TypeVar, ConstraintTyp};
 use crate::common::{SpecificType, Type, PreInfo};
 use itertools::{Either, Itertools};
 use diagnostic::{Diagnostics, Span};
 use crate::error_codes::ErrorCode;
 use crate::lexer::TokenIdent;
+use std::collections::VecDeque;
 
 pub struct ConstraintCreator<'a, 'i> {
     diagnostics: &'a Diagnostics,
@@ -163,6 +164,55 @@ impl<'a, 'i> ConstraintCreator<'a, 'i> {
                 let val_type_var = self.get_type(expr);
                 self.constraints.push(Constraint::new(expr_outer.span(), ConstraintTyp::Eq(type_var, val_type_var)));
             },
+            IfElse(ifelse) => {
+                let ifelse_span = ifelse.span();
+                let ExprIfElse { condition, then, else_ifs, els, .. } = ifelse;
+
+                // find out if the `if` has a value
+                let then_with_value = !then.body.terminated;
+                let else_if_with_value = else_ifs.iter().any(|(_, _, _, block)| !block.body.terminated);
+                let else_with_value = els.iter().any(|(_, block)| !block.body.terminated);
+                let with_value = then_with_value || else_if_with_value || else_with_value;
+
+                if with_value && els.is_none() {
+                    self.diagnostics.error(ErrorCode::MissingElse)
+                        .with_error_label(ifelse_span, "missing else-branch in this if")
+                        .with_note("if the `if` should return a value, all branches must return a value")
+                        .with_note("if the `if` should not return a value, all branches must be terminated with a `;`")
+                        .emit();
+                }
+
+                let branches = ::std::iter::once((Some(condition), then))
+                    .chain(else_ifs.iter().map(|(_, _, cond, block)| (Some(cond), block)))
+                    .chain(els.iter().map(|(_, block)| (None, block)));
+
+                let mut branch_type_vars = VecDeque::new();
+                for (cond, block) in branches {
+                    // cond
+                    if let Some(cond) = cond {
+                        let cond_type_var = self.get_type(cond);
+                        self.constraints.push(Constraint::new(condition.span(), ConstraintTyp::Type(cond_type_var, Type::Specific(SpecificType::Bool))));
+                        self.restrictions.push((cond_type_var, vec![SpecificType::Bool]));
+                    }
+                    // block
+                    let mut last = None;
+                    for expr in &block.body.exprs {
+                        last = Some((expr.span(), self.get_type(expr)));
+                    }
+                    branch_type_vars.extend(last);
+                }
+
+                if with_value {
+                    for (span, var) in branch_type_vars {
+                        self.constraints.push(Constraint::new(span, ConstraintTyp::Eq(type_var, var)));
+                    }
+                } else {
+                    for (span, var) in branch_type_vars.into_iter().chain(Some((expr_outer.span(), type_var))) {
+                        self.constraints.push(Constraint::new(span, ConstraintTyp::Type(var, Type::Specific(SpecificType::Unit))));
+                        self.restrictions.push((var, vec![SpecificType::Unit]));
+                    }
+                }
+            }
             FunctionCall(ExprFunctionCall { variable, args, open, close }) => {
                 let args_span = args.span().unwrap_or_else(|| Span::new(open.span.file, open.span.start, close.span.end));
                 let passed_arg_type_vars: Vec<_> = args.iter().map(|expr| (expr.span(), self.get_type(expr))).collect();

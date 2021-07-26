@@ -7,7 +7,7 @@ use std::borrow::Cow;
 pub enum Type {
     /// Top-type, not yet unified, could be any type.
     Top,
-    /// Bottom-type, unreachable type, return type of non-returning functions, can indicate unification error.
+    /// Bottom-type, unreachable type, return type of non-returning functions.
     Bottom,
     /// Varargs used by functions.
     Varargs,
@@ -55,8 +55,8 @@ impl Type {
         match (self, other) {
             (t, Type::Top) => Ok(Either::Left(t.clone())),
             (Type::Top, t) => Ok(Either::Right(t.clone())),
-            (Type::Bottom, _) => Ok(Either::Left(Type::Bottom)),
-            (_, Type::Bottom) => Ok(Either::Right(Type::Bottom)),
+            (t, Type::Bottom) => Ok(Either::Left(t.clone())),
+            (Type::Bottom, t) => Ok(Either::Right(t.clone())),
             (t, Type::Varargs) => Ok(Either::Left(t.clone())),
             (Type::Varargs, t) => Ok(Either::Right(t.clone())),
             (t @ Type::Specific(SpecificType::Unit), Type::Specific(SpecificType::Unit)) => Ok(Either::Left(t.clone())),

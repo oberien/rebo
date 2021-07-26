@@ -4,7 +4,7 @@ use derive_more::Display;
 
 use crate::scope::BindingId;
 use crate::util::PadFmt;
-use crate::lexer::{TokenOpenParen, TokenCloseParen, TokenIdent, TokenInteger, TokenFloat, TokenBool, TokenDqString, TokenType, TokenStringType, TokenIntType, TokenFloatType, TokenBoolType, Token, TokenLet, TokenColon, TokenMut, TokenAssign, TokenOpenCurly, TokenCloseCurly, TokenComma, TokenArrow, TokenFn, TokenBang, TokenPlus, TokenMinus, TokenStar, TokenSlash, TokenDoubleAmp, TokenDoublePipe, TokenLessThan, TokenLessEquals, TokenEquals, TokenNotEquals, TokenGreaterEquals, TokenGreaterThan, TokenStruct, TokenDot};
+use crate::lexer::{TokenOpenParen, TokenCloseParen, TokenIdent, TokenInteger, TokenFloat, TokenBool, TokenDqString, TokenType, TokenStringType, TokenIntType, TokenFloatType, TokenBoolType, Token, TokenLet, TokenColon, TokenMut, TokenAssign, TokenOpenCurly, TokenCloseCurly, TokenComma, TokenArrow, TokenFn, TokenBang, TokenPlus, TokenMinus, TokenStar, TokenSlash, TokenDoubleAmp, TokenDoublePipe, TokenLessThan, TokenLessEquals, TokenEquals, TokenNotEquals, TokenGreaterEquals, TokenGreaterThan, TokenStruct, TokenDot, TokenIf, TokenElse};
 use crate::parser::{Parse, InternalError, Parser, Expected};
 use crate::error_codes::ErrorCode;
 use std::borrow::Cow;
@@ -120,6 +120,8 @@ pub enum Expr<'a, 'i> {
     FieldAccess(ExprFieldAccess<'a, 'i>),
     /// (expr)
     Parenthesized(ExprParenthesized<'a, 'i>),
+    /// if expr {...} else if {...} else if {...} else {...}
+    IfElse(ExprIfElse<'a, 'i>),
     /// ident(expr, expr, ...)
     FunctionCall(ExprFunctionCall<'a, 'i>),
     /// fn ident(ident: typ, ident: typ, ...) -> typ { expr... }
@@ -165,6 +167,7 @@ impl<'a, 'i> Expr<'a, 'i> {
         }
         let others: &[ParseFn<'a, '_, 'i>] = &[
             |parser: &mut Parser<'a, '_, 'i>, depth| Ok(parser.arena.alloc(Expr::StructInitialization(ExprStructInitialization::parse(parser, depth)?))),
+            |parser: &mut Parser<'a, '_, 'i>, depth| Ok(parser.arena.alloc(Expr::IfElse(ExprIfElse::parse(parser, depth)?))),
             |parser: &mut Parser<'a, '_, 'i>, depth| Ok(parser.arena.alloc(Expr::Parenthesized(ExprParenthesized::parse(parser, depth)?))),
             |parser: &mut Parser<'a, '_, 'i>, depth| Ok(parser.arena.alloc(Expr::Block(ExprBlock::parse(parser, depth)?))),
             |parser: &mut Parser<'a, '_, 'i>, depth| Ok(parser.arena.alloc(Expr::BoolNot(ExprBoolNot::parse(parser, depth)?))),
@@ -845,8 +848,9 @@ impl<'a, 'i> Parse<'a, 'i> for BlockBody<'a, 'i> {
             } else {
                 last = match expr {
                     Expr::FunctionDefinition(_) => Last::Terminated,
-                    Expr::Block(_) => Last::Terminated,
                     Expr::StructDefinition(_) => Last::Terminated,
+                    Expr::IfElse(_) => Last::Terminated,
+                    Expr::Block(_) => Last::Terminated,
                     _ => Last::Unterminated(expr.span()),
                 };
             }
@@ -885,6 +889,54 @@ impl<'a, 'i> Spanned for ExprParenthesized<'a, 'i> {
 impl<'a, 'i> Display for ExprParenthesized<'a, 'i> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "({})", self.expr)
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct ExprIfElse<'a, 'i> {
+    pub if_token: TokenIf,
+    pub condition: &'a Expr<'a, 'i>,
+    pub then: ExprBlock<'a, 'i>,
+    pub else_ifs: Vec<(TokenElse, TokenIf, &'a Expr<'a, 'i>, ExprBlock<'a, 'i>)>,
+    pub els: Option<(TokenElse, ExprBlock<'a, 'i>)>,
+}
+impl<'a, 'i> Parse<'a, 'i> for ExprIfElse<'a, 'i> {
+    fn parse_marked(parser: &mut Parser<'a, '_, 'i>, depth: Depth) -> Result<Self, InternalError> {
+        let if_token = parser.parse(depth.next())?;
+        let condition = Expr::try_parse_until_including(parser, ParseUntil::All, depth.next())?;
+        if let Expr::Parenthesized(_) = condition {
+            parser.diagnostics.warning(ErrorCode::UnnecessaryIfConditionParenthesis)
+                .with_info_label(condition.span(), "in this condition")
+                .with_note("remove the parenthesis")
+                .emit();
+        }
+        Ok(ExprIfElse {
+            if_token,
+            condition,
+            then: parser.parse(depth.next())?,
+            else_ifs: parser.parse(depth.next())?,
+            els: parser.parse(depth.last())?,
+        })
+    }
+}
+impl<'a, 'i> Spanned for ExprIfElse<'a, 'i> {
+    fn span(&self) -> Span {
+        let end = self.els.as_ref().map(|(_, block)| block.span().end)
+            .or(self.else_ifs.last().map(|(_, _, _, block)| block.span().end))
+            .unwrap_or(self.then.span().end);
+        Span::new(self.if_token.span.file, self.if_token.span.start, end)
+    }
+}
+impl<'a, 'i> Display for ExprIfElse<'a, 'i> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "if {} {}", self.condition, self.then)?;
+        for (_, _, cond, block) in &self.else_ifs {
+            write!(f, "else if {} {}", cond, block)?;
+        }
+        if let Some((_, block)) = &self.els {
+            write!(f, "else {}", block)?;
+        }
+        Ok(())
     }
 }
 

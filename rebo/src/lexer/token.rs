@@ -83,6 +83,8 @@ gen_tokens! {
     Mut, TokenMut, "mut", {}, (fmt = "mut "), (Copy, Eq, Hash);
     Fn, TokenFn, "fn", {}, (fmt = "fn "), (Copy, Eq, Hash);
     Struct, TokenStruct, "struct", {}, (fmt = "struct "), (Copy, Eq, Hash);
+    If, TokenIf, "if", {}, (fmt = "if "), (Copy, Eq, Hash);
+    Else, TokenElse, "else", {}, (fmt = "else "), (Copy, Eq, Hash);
     // types
     StringType, TokenStringType, "string", {}, (fmt = "string "), (Copy, Eq, Hash);
     IntType, TokenIntType, "int", {}, (fmt = "int "), (Copy, Eq, Hash);

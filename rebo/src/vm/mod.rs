@@ -1,4 +1,4 @@
-use crate::parser::{Expr, Binding, ExprVariable, ExprInteger, ExprFloat, ExprBool, ExprString, ExprAssign, ExprBind, ExprPattern, ExprPatternTyped, ExprPatternUntyped, ExprLessThan, ExprLessEquals, ExprEquals, ExprNotEquals, ExprGreaterEquals, ExprGreaterThan, ExprAdd, ExprSub, ExprMul, ExprDiv, ExprBoolNot, ExprBoolAnd, ExprBoolOr, ExprParenthesized, ExprBlock, ExprFunctionCall, Separated, ExprFunctionDefinition, BlockBody, ExprStructDefinition, ExprStructInitialization, ExprAssignLhs, ExprFieldAccess};
+use crate::parser::{Expr, Binding, ExprVariable, ExprInteger, ExprFloat, ExprBool, ExprString, ExprAssign, ExprBind, ExprPattern, ExprPatternTyped, ExprPatternUntyped, ExprLessThan, ExprLessEquals, ExprEquals, ExprNotEquals, ExprGreaterEquals, ExprGreaterThan, ExprAdd, ExprSub, ExprMul, ExprDiv, ExprBoolNot, ExprBoolAnd, ExprBoolOr, ExprParenthesized, ExprBlock, ExprFunctionCall, Separated, ExprFunctionDefinition, BlockBody, ExprStructDefinition, ExprStructInitialization, ExprAssignLhs, ExprFieldAccess, ExprIfElse};
 use crate::common::{Value, FunctionImpl, PreInfo, Depth, Struct, StructType, FuzzyFloat, StructArc};
 use crate::scope::{Scopes, BindingId, Scope};
 use crate::lexer::{TokenInteger, TokenFloat, TokenBool, TokenDqString, TokenComma, TokenIdent};
@@ -144,16 +144,22 @@ impl<'a, 'i> Vm<'a, 'i> {
                 Value::Bool(res)
             }
             Expr::Parenthesized(ExprParenthesized { expr, .. }) => self.eval_expr(expr, depth.last()),
-            Expr::Block(ExprBlock { body: BlockBody { exprs, terminated }, .. }) => {
-                let mut val = Value::Unit;
-                for expr in exprs {
-                    val = self.eval_expr(expr, depth.next());
+            Expr::Block(block) => {
+                self.eval_block(block, depth)
+            }
+            Expr::IfElse(ExprIfElse { condition, then, else_ifs, els, .. }) => {
+                let branches = ::std::iter::once((condition, then))
+                    .chain(else_ifs.iter().map(|(_, _, cond, block)| (cond, block)));
+                for (cond, block) in branches {
+                    let cond = self.eval_expr(cond, depth.next()).expect_bool("if-condition doesn't evaluate to bool");
+                    if cond {
+                        return self.eval_block(block, depth.last());
+                    }
                 }
-                if *terminated {
-                    Value::Unit
-                } else {
-                    val
+                if let Some((_, block)) = els {
+                    return self.eval_block(block, depth.last());
                 }
+                Value::Unit
             }
             Expr::FunctionCall(ExprFunctionCall { variable: ExprVariable { binding, .. }, args, .. }) => self.call_function(binding, args, depth.last()),
             // ignore function definitions as we have those handled already
@@ -175,6 +181,17 @@ impl<'a, 'i> Vm<'a, 'i> {
         }
     }
 
+    fn eval_block(&mut self, ExprBlock { body: BlockBody { exprs, terminated }, .. }: &ExprBlock, depth: Depth) -> Value {
+        let mut val = Value::Unit;
+        for expr in exprs {
+            val = self.eval_expr(expr, depth.next());
+        }
+        if *terminated {
+            Value::Unit
+        } else {
+            val
+        }
+    }
     fn call_function(&mut self, binding: &Binding, args: &Separated<&Expr<'_, '_>, TokenComma>, depth: Depth) -> Value {
         trace!("{}call_function: {}({:?})", depth, binding.ident.ident, args);
         let args = args.iter().map(|expr| self.eval_expr(expr, depth.next())).collect();

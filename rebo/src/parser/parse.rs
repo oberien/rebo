@@ -193,6 +193,8 @@ impl_for_tokens! {
     Let, TokenLet;
     Mut, TokenMut;
     Fn, TokenFn;
+    If, TokenIf;
+    Else, TokenElse;
     // types
     StringType, TokenStringType;
     IntType, TokenIntType;
