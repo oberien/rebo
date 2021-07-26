@@ -200,6 +200,22 @@ impl<'a, 'i> ConstraintCreator<'a, 'i> {
                         last = Some((expr.span(), self.get_type(expr)));
                     }
                     branch_type_vars.extend(last);
+
+                    // if returns value but block is empty
+                    if with_value && block.body.exprs.is_empty() {
+                        self.diagnostics.error(ErrorCode::MissingBranchBody)
+                            .with_error_label(block.span(), "this branch body is expected to evaluate to a value")
+                            .with_info_label(ifelse_span, "all branches in this if must evaluate to a value")
+                            .with_note("if not all branches are terminated with a `;` an if-expression evalutes to a value")
+                            .emit();
+                    // if returns value but block is terminated
+                    } else if with_value && block.body.terminated {
+                        self.diagnostics.error(ErrorCode::MissingBranchValue)
+                            .with_error_label(block.span(), "this block doesn't evaluate to a value")
+                            .with_info_label(ifelse_span, "all branches in this if must evaluate to a value")
+                            .with_note("if not all branches are terminated with a `;` an if-expression evalutes to a value")
+                            .emit();
+                    }
                 }
 
                 if with_value {

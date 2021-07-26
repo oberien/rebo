@@ -29,6 +29,8 @@ pub enum ErrorCode {
     UnknownFieldAccess,
     UnnecessaryIfConditionParenthesis,
     MissingElse,
+    MissingBranchValue,
+    MissingBranchBody,
 }
 use ErrorCode::*;
 
@@ -64,6 +66,8 @@ impl diagnostic::ErrorCode for ErrorCode {
             UnknownFieldAccess => "0028",
             UnnecessaryIfConditionParenthesis => "0029",
             MissingElse => "0030",
+            MissingBranchValue => "0031",
+            MissingBranchBody => "0032",
         }.to_string()
     }
 
@@ -98,6 +102,8 @@ impl diagnostic::ErrorCode for ErrorCode {
             UnknownFieldAccess => "tried to access non-existent field",
             UnnecessaryIfConditionParenthesis => "unnecessary parenthesis surrounding if condition",
             MissingElse => "missing else clause",
+            MissingBranchValue => "missing branch value",
+            MissingBranchBody => "missing branch body",
         }.to_string()
     }
 }

@@ -141,11 +141,11 @@ fn pre_parsed() {
 fn if_else_usage() {
     let _ = env_logger::builder().is_test(true).try_init();
     assert_eq!(rebo::run("test".to_string(), r#"
-        if true {} else { panic("") }
+        if true {} else { panic(""); }
         if true {} else if true { panic(""); }
-        if true {} else if true { panic(""); } else { panic("") }
-        if false { panic(""); } else if true {} else { panic("") }
-        if false { panic(""); } else if false { panic("") } else {}
+        if true {} else if true { panic(""); } else { panic(""); }
+        if false { panic(""); } else if true {} else { panic(""); }
+        if false { panic(""); } else if false { panic(""); } else {}
         assert(if true { true } else { false });
         assert(1342 == if true { 1337 } else { panic("") } + 5);
     "#.to_string()), ReturnValue::Ok);
@@ -157,7 +157,9 @@ fn if_else_diagnostics() {
         if true { 1337 } else { "" }
         if (true) {} else {}
         if true { 1337 }
-    "#.to_string()), ReturnValue::Diagnostics(4));
+        if true { 1337 } else {}
+        if true { 1337 } else { 42; }
+    "#.to_string()), ReturnValue::Diagnostics(6));
 }
 #[test]
 fn struct_definitions() {
