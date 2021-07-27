@@ -595,7 +595,7 @@ impl<'a, 'i> Parse<'a, 'i> for ExprAssign<'a, 'i> {
             parser.diagnostics.error(ErrorCode::ImmutableAssign)
                 .with_error_label(variable.span, format!("variable `{}` is assigned to even though it's not declared as mutable", variable.binding.ident.ident))
                 .with_info_label(variable.binding.ident.span, format!("`{}` defined here", variable.binding.ident.ident))
-                .with_info_label(variable.binding.ident.span, format!("help: try using `let mut {} = {}` here", variable.binding.ident.ident, expr))
+                .with_info_label(variable.binding.ident.span, format!("help: try using `mut {}` here", variable.binding.ident.ident))
                 .emit();
         }
         Ok(ExprAssign { lhs, assign, expr })

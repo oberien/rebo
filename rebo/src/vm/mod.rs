@@ -19,11 +19,7 @@ impl<'a, 'i> Vm<'a, 'i> {
         let PreInfo { bindings: _, rebo_functions, structs, root_scope } = pre_info;
         let mut scopes = Scopes::new();
         scopes.push_scope(root_scope);
-        Vm {
-            scopes,
-            structs,
-            rebo_functions,
-        }
+        Vm { scopes, rebo_functions, structs }
     }
 
     pub fn run(mut self, ast: &[&Expr]) -> Value {
@@ -188,10 +184,12 @@ impl<'a, 'i> Vm<'a, 'i> {
     }
 
     fn eval_block(&mut self, ExprBlock { body: BlockBody { exprs, terminated }, .. }: &ExprBlock, depth: Depth) -> Value {
+        self.scopes.push_scope(Scope::new());
         let mut val = Value::Unit;
         for expr in exprs {
             val = self.eval_expr(expr, depth.next());
         }
+        self.scopes.pop_scope();
         if *terminated {
             Value::Unit
         } else {

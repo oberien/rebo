@@ -36,3 +36,32 @@ while i < 3 {
     i = i + 1;
 }
 print(i);
+
+// fibonacci sequence
+fn fib(i: int) -> int {
+    if i == 0 {
+        0
+    } else if i == 1 {
+        1
+    } else {
+        fib(i - 1) + fib(i - 2)
+    }
+}
+fn fib_iter(mut i: int) -> int {
+    if i <= 1 {
+        i
+    } else {
+        let mut a = 0;
+        let mut b = 1;
+        i = i - 2;
+        while i >= 0 {
+            let temp = b;
+            b = b + a;
+            a = temp;
+            i = i - 1;
+        }
+        b
+    }
+}
+print(fib(10));
+print(fib_iter(90));
