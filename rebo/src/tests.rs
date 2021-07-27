@@ -159,7 +159,8 @@ fn if_else_diagnostics() {
         if true { 1337 }
         if true { 1337 } else {}
         if true { 1337 } else { 42; }
-    "#.to_string()), ReturnValue::Diagnostics(6));
+        if 1337 {}
+    "#.to_string()), ReturnValue::Diagnostics(8));
 }
 #[test]
 fn while_usage() {
@@ -177,7 +178,8 @@ fn while_diagnostics() {
     let _ = env_logger::builder().is_test(true).try_init();
     assert_eq!(rebo::run("test".to_string(), r#"
         while (true) {}
-    "#.to_string()), ReturnValue::Diagnostics(1));
+        while 1337 {}
+    "#.to_string()), ReturnValue::Diagnostics(3));
 }
 #[test]
 fn struct_definitions() {
