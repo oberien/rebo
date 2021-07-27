@@ -1,4 +1,4 @@
-use crate::parser::{Expr, Spanned, ExprBind, ExprAssign, ExprPattern, ExprPatternUntyped, ExprPatternTyped, ExprVariable, ExprAdd, ExprSub, ExprMul, ExprDiv, ExprBoolAnd, ExprBoolOr, ExprBoolNot, ExprLessThan, ExprGreaterEquals, ExprLessEquals, ExprGreaterThan, ExprEquals, ExprNotEquals, ExprBlock, ExprParenthesized, ExprFunctionCall, ExprFunctionDefinition, BlockBody, ExprStructDefinition, ExprType, ExprStructDefFields, ExprStructInitialization, ExprAssignLhs, ExprIfElse};
+use crate::parser::{Expr, Spanned, ExprBind, ExprAssign, ExprPattern, ExprPatternUntyped, ExprPatternTyped, ExprVariable, ExprAdd, ExprSub, ExprMul, ExprDiv, ExprBoolAnd, ExprBoolOr, ExprBoolNot, ExprLessThan, ExprGreaterEquals, ExprLessEquals, ExprGreaterThan, ExprEquals, ExprNotEquals, ExprBlock, ExprParenthesized, ExprFunctionCall, ExprFunctionDefinition, BlockBody, ExprStructDefinition, ExprType, ExprStructDefFields, ExprStructInitialization, ExprAssignLhs, ExprIfElse, ExprWhile};
 use crate::typeck::{Constraint, TypeVar, ConstraintTyp};
 use crate::common::{SpecificType, Type, PreInfo};
 use itertools::{Either, Itertools};
@@ -227,6 +227,14 @@ impl<'a, 'i> ConstraintCreator<'a, 'i> {
                         self.constraints.push(Constraint::new(span, ConstraintTyp::Type(var, Type::Specific(SpecificType::Unit))));
                         self.restrictions.push((var, vec![SpecificType::Unit]));
                     }
+                }
+            }
+            While(ExprWhile { condition, block, .. }) => {
+                let cond_type_var = self.get_type(condition);
+                self.constraints.push(Constraint::new(condition.span(), ConstraintTyp::Type(cond_type_var, Type::Specific(SpecificType::Bool))));
+                self.restrictions.push((cond_type_var, vec![SpecificType::Bool]));
+                for expr in &block.body.exprs {
+                    let _ = self.get_type(expr);
                 }
             }
             FunctionCall(ExprFunctionCall { variable, args, open, close }) => {

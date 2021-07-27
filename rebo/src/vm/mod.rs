@@ -1,4 +1,4 @@
-use crate::parser::{Expr, Binding, ExprVariable, ExprInteger, ExprFloat, ExprBool, ExprString, ExprAssign, ExprBind, ExprPattern, ExprPatternTyped, ExprPatternUntyped, ExprLessThan, ExprLessEquals, ExprEquals, ExprNotEquals, ExprGreaterEquals, ExprGreaterThan, ExprAdd, ExprSub, ExprMul, ExprDiv, ExprBoolNot, ExprBoolAnd, ExprBoolOr, ExprParenthesized, ExprBlock, ExprFunctionCall, Separated, ExprFunctionDefinition, BlockBody, ExprStructDefinition, ExprStructInitialization, ExprAssignLhs, ExprFieldAccess, ExprIfElse};
+use crate::parser::{Expr, Binding, ExprVariable, ExprInteger, ExprFloat, ExprBool, ExprString, ExprAssign, ExprBind, ExprPattern, ExprPatternTyped, ExprPatternUntyped, ExprLessThan, ExprLessEquals, ExprEquals, ExprNotEquals, ExprGreaterEquals, ExprGreaterThan, ExprAdd, ExprSub, ExprMul, ExprDiv, ExprBoolNot, ExprBoolAnd, ExprBoolOr, ExprParenthesized, ExprBlock, ExprFunctionCall, Separated, ExprFunctionDefinition, BlockBody, ExprStructDefinition, ExprStructInitialization, ExprAssignLhs, ExprFieldAccess, ExprIfElse, ExprWhile};
 use crate::common::{Value, FunctionImpl, PreInfo, Depth, Struct, StructType, FuzzyFloat, StructArc};
 use crate::scope::{Scopes, BindingId, Scope};
 use crate::lexer::{TokenInteger, TokenFloat, TokenBool, TokenDqString, TokenComma, TokenIdent};
@@ -158,6 +158,12 @@ impl<'a, 'i> Vm<'a, 'i> {
                 }
                 if let Some((_, block)) = els {
                     return self.eval_block(block, depth.last());
+                }
+                Value::Unit
+            }
+            Expr::While(ExprWhile { condition, block, .. }) => {
+                while self.eval_expr(condition, depth.next()).expect_bool("while condition not a bool") {
+                    self.eval_block(block, depth.next());
                 }
                 Value::Unit
             }

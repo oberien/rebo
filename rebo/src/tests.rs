@@ -162,6 +162,24 @@ fn if_else_diagnostics() {
     "#.to_string()), ReturnValue::Diagnostics(6));
 }
 #[test]
+fn while_usage() {
+    let _ = env_logger::builder().is_test(true).try_init();
+    assert_eq!(rebo::run("test".to_string(), r#"
+        let mut i = 0;
+        while i < 3 {
+            i = i + 1;
+        }
+        assert(i == 3);
+    "#.to_string()), ReturnValue::Ok);
+}
+#[test]
+fn while_diagnostics() {
+    let _ = env_logger::builder().is_test(true).try_init();
+    assert_eq!(rebo::run("test".to_string(), r#"
+        while (true) {}
+    "#.to_string()), ReturnValue::Diagnostics(1));
+}
+#[test]
 fn struct_definitions() {
     let _ = env_logger::builder().is_test(true).try_init();
     assert_eq!(rebo::run("test".to_string(), r#"

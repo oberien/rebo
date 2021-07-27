@@ -30,3 +30,9 @@ foo.b = "dtrn";
 print(foo, foo2, foo == foo2);
 
 print(if true { 1337 } else { panic("F") } + 5);
+
+let mut i = 0;
+while i < 3 {
+    i = i + 1;
+}
+print(i);

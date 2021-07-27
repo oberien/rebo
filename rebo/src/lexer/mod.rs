@@ -107,6 +107,9 @@ fn try_lex_token<'i>(diagnostics: &Diagnostics, file: FileId, s: &'i str, index:
     if s[index..].starts_with("if") {
         return Ok(MaybeToken::Token(Token::If(TokenIf { span: Span::new(file, index, index+2) })));
     }
+    if s[index..].starts_with("while") {
+        return Ok(MaybeToken::Token(Token::While(TokenWhile { span: Span::new(file, index, index+5) })));
+    }
     if s[index..].starts_with("else") {
         return Ok(MaybeToken::Token(Token::Else(TokenElse { span: Span::new(file, index, index+4) })));
     }
