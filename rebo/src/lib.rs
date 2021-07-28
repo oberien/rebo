@@ -44,11 +44,11 @@ pub fn run(filename: String, code: String) -> ReturnValue {
     let external = diagnostics.add_file("external".to_string(), EXTERNAL_SOURCE.to_string());
     *EXTERNAL_SPAN.lock().unwrap() = Some(Span::new(external.0, 0, EXTERNAL_SOURCE.len()));
 
-    let (file, code) = diagnostics.add_file(filename, code);
+    let (file, _code) = diagnostics.add_file(filename, code);
 
     // lex
     let time = Instant::now();
-    let tokens = lexer::lex(&diagnostics, file, code).unwrap();
+    let tokens = lexer::lex(&diagnostics, file).unwrap();
     info!("Lexing took {}μs", time.elapsed().as_micros());
     info!("TOKENS:\n{}\n", tokens);
 

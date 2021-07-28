@@ -26,12 +26,18 @@ pub enum MaybeToken<'i> {
     Diagnostic(usize),
 }
 
-pub fn lex<'i>(diagnostics: &Diagnostics, file: FileId, s: &'i str) -> Result<Tokens<'i>, Error> {
+pub fn lex<'i>(diagnostics: &'i Diagnostics, file: FileId) -> Result<Tokens<'i>, Error> {
+    let source = diagnostics.get_file(file);
+    lex_in(diagnostics, file, 0, source.len())
+}
+
+pub fn lex_in<'i>(diagnostics: &'i Diagnostics, file: FileId, from: usize, to: usize) -> Result<Tokens<'i>, Error> {
     trace!("lex");
-    let mut index = 0;
+    let source = &diagnostics.get_file(file)[..to];
+    let mut index = from;
     let mut res = VecDeque::new();
     loop {
-        match lex_next(diagnostics, file, s, index)? {
+        match lex_next(diagnostics, file, source, index)? {
             token @ Token::Eof(_) => {
                 res.push_back(token);
                 return Ok(Tokens::new(file, res))
