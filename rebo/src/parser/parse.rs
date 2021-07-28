@@ -21,14 +21,14 @@ pub trait Parse<'a, 'i>: Sized {
             static ref REGEX: Regex = Regex::new(r#"\w*::[a-zA-Z0-9_:]*::"#).unwrap();
         }
         trace!("{} {}::parse        ({:?})", depth, REGEX.replace_all(::std::any::type_name::<Self>(), ""), parser.peek_token(0));
-        let mark = parser.tokens.mark();
+        let mark = parser.lexer.mark();
         let res = Self::parse_marked(parser, depth)?;
         mark.apply();
         Ok(res)
     }
     /// Parse the element, resetting the tokens to the previous state even on success
     fn parse_reset(parser: &mut Parser<'a, '_, 'i>, depth: Depth) -> Result<Self, InternalError> {
-        let mark = parser.tokens.mark();
+        let mark = parser.lexer.mark();
         let res = Self::parse(parser, depth);
         drop(mark);
         res
@@ -161,13 +161,13 @@ macro_rules! impl_for_tokens {
         $(
             impl<'a, 'i> crate::parser::Parse<'a, 'i> for $tokenname $(<$lt>)? {
                 fn parse_marked(parser: &mut crate::parser::Parser<'a, '_, 'i>, _depth: Depth) -> Result<Self, crate::parser::InternalError> {
-                    match parser.peek_token(0) {
-                        Some(crate::lexer::Token::$name(t)) => {
+                    match parser.peek_token(0)? {
+                        crate::lexer::Token::$name(t) => {
                             drop(parser.next_token());
                             Ok(t)
                         },
                         _ => Err(crate::parser::InternalError::Backtrack(
-                            parser.tokens.next_span(),
+                            parser.lexer.next_span(),
                             ::std::borrow::Cow::Borrowed(&[crate::parser::Expected::Token(crate::lexer::TokenType::$name)]),
                         )),
                     }

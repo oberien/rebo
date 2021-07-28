@@ -108,7 +108,7 @@ impl Precedence for BooleanExpr {
 impl<'a, 'i> Expr<'a, 'i> {
     pub(super) fn try_parse_precedence<P: Precedence>(parser: &mut Parser<'a, '_, 'i>, depth: Depth) -> Result<&'a Expr<'a, 'i>, InternalError> {
         trace!("{} Expr::try_parse_precedence {}        ({:?})", depth, ::std::any::type_name::<P>(), parser.peek_token(0));
-        let mark = parser.tokens.mark();
+        let mark = parser.lexer.mark();
         let mut lhs = P::primitive_parse_fn()(parser, depth.next())?;
         lhs = Expr::try_parse_precedence_inner::<P>(parser, lhs, depth.next())?;
         loop {
@@ -125,19 +125,13 @@ impl<'a, 'i> Expr<'a, 'i> {
     }
 
     fn try_parse_precedence_inner<P: Precedence>(parser: &mut Parser<'a, '_, 'i>, lhs: &'a Expr<'a, 'i>, depth: Depth) -> Result<&'a Expr<'a, 'i>, InternalError> {
-        let op_token = match parser.peek_token(0) {
-            Some(token) => token,
-            None => return Err(InternalError::Backtrack(parser.tokens.last_span(), P::expected())),
-        };
+        let op_token = parser.peek_token(0)?;
         let op = P::try_from_token(op_token.clone())?;
         drop(parser.next_token());
         let mut rhs = P::primitive_parse_fn()(parser, depth.next())?;
         loop {
             trace!("{}    rhs: {}", depth, rhs);
-            let next = match parser.peek_token(0) {
-                Some(token) => token,
-                None => return Ok(parser.arena.alloc(op.expr_type_constructor()(lhs, op_token, rhs))),
-            };
+            let next = parser.peek_token(0)?;
             let op2 = match P::try_from_token(next) {
                 Ok(op) => op,
                 Err(_) => return Ok(parser.arena.alloc(op.expr_type_constructor()(lhs, op_token, rhs))),

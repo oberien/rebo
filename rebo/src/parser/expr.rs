@@ -37,7 +37,7 @@ impl<'i> Binding<'i> {
     /// Return the newly created binding
     fn parse_new<'a>(parser: &mut Parser<'a, '_, 'i>, depth: Depth) -> Result<Binding<'i>, InternalError> {
         trace!("{} Binding::parse_new        ({:?})", depth, parser.peek_token(0));
-        let mark = parser.tokens.mark();
+        let mark = parser.lexer.mark();
         let mut_token: Option<TokenMut> = parser.parse(depth.next())?;
         let ident: TokenIdent = parser.parse(depth.last())?;
         mark.apply();
@@ -190,36 +190,31 @@ impl<'a, 'i> Expr<'a, 'i> {
         let mut expected = Vec::new();
         for (i, f) in fns.iter().enumerate() {
             // check if we have memoization already
-            if let Some(token) = parser.peek_token(0) {
-                let memoized = if let Some(expr) = parser.pre_parsed.remove(&(token.span().file, token.span().start)) {
+            let token = parser.peek_token(0)?;
+            let memoized = if let Some(expr) = parser.pre_parsed.remove(&(token.span().file, token.span().start)) {
+                Some(expr)
+            } else if let Some(&(expr, memuntil)) = parser.memoization.get(&(token.span().file, token.span().start)) {
+                if cmp(&until, &memuntil) {
                     Some(expr)
-                } else if let Some(&(expr, memuntil)) = parser.memoization.get(&(token.span().file, token.span().start)) {
-                    if cmp(&until, &memuntil) {
-                        Some(expr)
-                    } else {
-                        None
-                    }
                 } else {
                     None
-                };
-                match memoized {
-                    None => (),
-                    Some(expr) => {
-                        // consume tokens of known expression
-                        while let Some(token) = parser.peek_token(0) {
-                            if token.span().start < expr.span().end {
-                                drop(parser.next_token());
-                            } else {
-                                break;
-                            }
-                        }
-                        trace!("{}    reusing {:?}: {}", depth, expr.span(), expr);
-                        return Ok(expr);
+                }
+            } else {
+                None
+            };
+            match memoized {
+                None => (),
+                Some(expr) => {
+                    // consume tokens of known expression
+                    while parser.peek_token(0).unwrap().span().start < expr.span().end {
+                        drop(parser.next_token());
                     }
+                    trace!("{}    reusing {:?}: {}", depth, expr.span(), expr);
+                    return Ok(expr);
                 }
             }
 
-            let mark = parser.tokens.mark();
+            let mark = parser.lexer.mark();
             let next_depth = if i == fns.len() - 1 { depth.last() } else { depth.next() };
             match f(parser, next_depth) {
                 Ok(expr) => {
@@ -247,18 +242,17 @@ impl<'a, 'i> Expr<'a, 'i> {
 
     fn try_parse_compare(parser: &mut Parser<'a, '_, 'i>, depth: Depth) -> Result<&'a Expr<'a, 'i>, InternalError> {
         trace!("{} Expr::try_parse_compare        ({:?})", depth, parser.peek_token(0));
-        let mark = parser.tokens.mark();
+        let mark = parser.lexer.mark();
         let left = Expr::try_parse_until_excluding(parser, ParseUntil::Compare, depth.next())?;
         trace!("{}    left: {}", depth, left);
-        let (constructor, token): (fn(&'a Expr<'a, 'i>, Token<'i>, &'a Expr<'a, 'i>) -> Expr<'a, 'i>, _) = match parser.next_token() {
-            Some(op @ Token::LessThan(_)) => (ExprLessThan::new_as_expr, op),
-            Some(op @ Token::LessEquals(_)) => (ExprLessEquals::new_as_expr, op),
-            Some(op @ Token::Equals(_)) => (ExprEquals::new_as_expr, op),
-            Some(op @ Token::NotEquals(_)) => (ExprNotEquals::new_as_expr, op),
-            Some(op @ Token::GreaterEquals(_)) => (ExprGreaterEquals::new_as_expr, op),
-            Some(op @ Token::GreaterThan(_)) => (ExprGreaterThan::new_as_expr, op),
-            Some(token) => return Err(InternalError::Backtrack(token.span(), Cow::Borrowed(Expected::COMPARE_OP))),
-            None => return Err(InternalError::Backtrack(parser.tokens.last_span(), Cow::Borrowed(Expected::COMPARE_OP))),
+        let (constructor, token): (fn(&'a Expr<'a, 'i>, Token<'i>, &'a Expr<'a, 'i>) -> Expr<'a, 'i>, _) = match parser.next_token()? {
+            op @ Token::LessThan(_) => (ExprLessThan::new_as_expr, op),
+            op @ Token::LessEquals(_) => (ExprLessEquals::new_as_expr, op),
+            op @ Token::Equals(_) => (ExprEquals::new_as_expr, op),
+            op @ Token::NotEquals(_) => (ExprNotEquals::new_as_expr, op),
+            op @ Token::GreaterEquals(_) => (ExprGreaterEquals::new_as_expr, op),
+            op @ Token::GreaterThan(_) => (ExprGreaterThan::new_as_expr, op),
+            token => return Err(InternalError::Backtrack(token.span(), Cow::Borrowed(Expected::COMPARE_OP))),
         };
         let right = Expr::try_parse_until_including(parser, ParseUntil::Compare, depth.last())?;
         trace!("{}    right: {}", depth, right);
@@ -285,26 +279,26 @@ pub enum ExprType<'i> {
 }
 impl<'a, 'i> Parse<'a, 'i> for ExprType<'i> {
     fn parse_marked(parser: &mut Parser<'a, '_, 'i>, _depth: Depth) -> Result<Self, InternalError> {
-        let res = match parser.peek_token(0) {
-            Some(Token::StringType(t)) => ExprType::String(t),
-            Some(Token::IntType(t)) => ExprType::Int(t),
-            Some(Token::FloatType(t)) => ExprType::Float(t),
-            Some(Token::BoolType(t)) => ExprType::Bool(t),
-            Some(Token::OpenParen(o)) => match parser.peek_token(1) {
-                Some(Token::CloseParen(c)) => {
+        let res = match parser.peek_token(0)? {
+            Token::StringType(t) => ExprType::String(t),
+            Token::IntType(t) => ExprType::Int(t),
+            Token::FloatType(t) => ExprType::Float(t),
+            Token::BoolType(t) => ExprType::Bool(t),
+            Token::OpenParen(o) => match parser.peek_token(1)? {
+                Token::CloseParen(c) => {
                     drop(parser.next_token());
                     ExprType::Unit(o, c)
                 }
                 _ => return Err(InternalError::Backtrack(
-                    parser.tokens.next_span_from(1),
+                    parser.lexer.next_span_from(1),
                     Cow::Borrowed(&[Expected::Token(TokenType::CloseParen)])
                 )),
             }
             // defer struct type resolution until the typechecker
             // otherwise using struct B as field struct A won't work if B is defined after A
-            Some(Token::Ident(i)) => ExprType::Struct(i),
+            Token::Ident(i) => ExprType::Struct(i),
             _ => return Err(InternalError::Backtrack(
-                parser.tokens.next_span(),
+                parser.lexer.next_span(),
                 Cow::Borrowed(&[Expected::Type])
             )),
         };
@@ -659,7 +653,7 @@ impl<'a, 'i> Parse<'a, 'i> for ExprFieldAccess<'a, 'i> {
         let fields: Separated<TokenIdent, TokenDot> = parser.parse(depth.last())?;
         // check length
         if fields.is_empty() {
-            return Err(InternalError::Backtrack(parser.tokens.next_span(), Cow::Borrowed(&[Expected::Token(TokenType::Ident)])));
+            return Err(InternalError::Backtrack(parser.lexer.next_span(), Cow::Borrowed(&[Expected::Token(TokenType::Ident)])));
         }
         // check trailing dot
         if fields.is_terminated() {
@@ -797,10 +791,15 @@ impl<'a, 'i> Display for ExprBlock<'a, 'i> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         writeln!(f, "{{")?;
         let mut padded = PadFmt::new(&mut *f);
-        for expr in &self.body.exprs {
+        for (i, expr) in self.body.exprs.iter().enumerate() {
             write!(&mut padded, "{}", expr)?;
+            if i == self.body.exprs.len() - 1 && !self.body.terminated {
+                writeln!(padded)?;
+            } else {
+                writeln!(padded, ";")?;
+            }
         }
-        writeln!(f, "\n}}")
+        writeln!(f, "}}")
     }
 }
 
@@ -819,7 +818,7 @@ impl<'a, 'i> Parse<'a, 'i> for BlockBody<'a, 'i> {
         let mut exprs = Vec::new();
         let mut last = Last::Terminated;
 
-        while !parser.tokens.is_empty() && parser.peek_token(0).unwrap().typ() != TokenType::Eof && parser.peek_token(0).unwrap().typ() != TokenType::CloseCurly {
+        while !parser.lexer.is_empty() && parser.peek_token(0).unwrap().typ() != TokenType::Eof && parser.peek_token(0).unwrap().typ() != TokenType::CloseCurly {
             // TODO: recover
             // match parser.consume_until(&[TokenType::Semicolon, TokenType::CloseCurly]) {
             //     Consumed::InstantEof | Consumed::Eof(_) => {
@@ -831,8 +830,8 @@ impl<'a, 'i> Parse<'a, 'i> for BlockBody<'a, 'i> {
             // }
             let expr = Expr::try_parse_until_including(parser, ParseUntil::All, depth.next())?;
 
-            let trailing_semicolon = match parser.peek_token(0) {
-                Some(Token::Semicolon(_)) => {
+            let trailing_semicolon = match parser.peek_token(0)? {
+                Token::Semicolon(_) => {
                     drop(parser.next_token());
                     true
                 }

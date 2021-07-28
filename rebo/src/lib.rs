@@ -26,6 +26,8 @@ pub use rebo_derive::function;
 use crate::typeck::Typechecker;
 use crate::common::PreInfo;
 use std::time::Instant;
+use crate::lexer::Lexer;
+use itertools::Itertools;
 
 const EXTERNAL_SOURCE: &str = "defined externally";
 lazy_static::lazy_static! {
@@ -48,16 +50,16 @@ pub fn run(filename: String, code: String) -> ReturnValue {
 
     // lex
     let time = Instant::now();
-    let tokens = lexer::lex(&diagnostics, file).unwrap();
+    let lexer = Lexer::new(&diagnostics, file);
     info!("Lexing took {}μs", time.elapsed().as_micros());
-    info!("TOKENS:\n{}\n", tokens);
+    info!("TOKENS:\n{}\n", lexer.iter().map(|token| token.to_string()).join(""));
 
     let mut pre_info = PreInfo::new();
     stdlib::add_to_scope(&mut pre_info);
 
     let time = Instant::now();
     let arena = Arena::new();
-    let parser = Parser::new(&arena, tokens, &diagnostics, &mut pre_info);
+    let parser = Parser::new(&arena, lexer, &diagnostics, &mut pre_info);
     let ast = parser.parse_ast().unwrap();
     info!("Parsing took {}μs", time.elapsed().as_micros());
     info!("AST:\n{}\n", ast);

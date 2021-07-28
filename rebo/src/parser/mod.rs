@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use typed_arena::Arena;
 use diagnostic::{Span, Diagnostics, DiagnosticBuilder, FileId};
 
-use crate::lexer::{Tokens, Token, TokenType, TokenMut, TokenIdent, TokenOpenCurly, TokenCloseCurly, TokenCloseParen, TokenOpenParen, TokenLineComment, TokenBlockComment};
+use crate::lexer::{Lexer, Token, TokenType, TokenMut, TokenIdent, TokenOpenCurly, TokenCloseCurly, TokenCloseParen, TokenOpenParen, TokenLineComment, TokenBlockComment};
 use crate::error_codes::ErrorCode;
 use crate::scope::BindingId;
 
@@ -35,6 +35,11 @@ pub enum InternalError {
 impl From<Error> for InternalError {
     fn from(e: Error) -> Self {
         InternalError::Error(e)
+    }
+}
+impl From<crate::lexer::Error> for InternalError {
+    fn from(_: crate::lexer::Error) -> Self {
+        InternalError::Error(Error::Abort)
     }
 }
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Ord, PartialOrd)]
@@ -78,7 +83,7 @@ pub struct Parser<'a, 'b, 'i> {
     /// arena to allocate expressions into
     arena: &'a Arena<Expr<'a, 'i>>,
     /// tokens to be consumed
-    tokens: Tokens<'i>,
+    lexer: Lexer<'i>,
     diagnostics: &'i Diagnostics,
     /// finished bindings that aren't live anymore
     bindings: Vec<Binding<'i>>,
@@ -97,10 +102,10 @@ struct Scope<'i> {
 
 /// All expression parsing function consume whitespace and comments before tokens, but not after.
 impl<'a, 'b, 'i> Parser<'a, 'b, 'i> {
-    pub fn new(arena: &'a Arena<Expr<'a, 'i>>, tokens: Tokens<'i>, diagnostics: &'i Diagnostics, pre_info: &'b mut PreInfo<'a, 'i>) -> Self {
+    pub fn new(arena: &'a Arena<Expr<'a, 'i>>, lexer: Lexer<'i>, diagnostics: &'i Diagnostics, pre_info: &'b mut PreInfo<'a, 'i>) -> Self {
         let mut parser = Parser {
             arena,
-            tokens,
+            lexer,
             diagnostics,
             bindings: Vec::new(),
             pre_info,
@@ -128,8 +133,8 @@ impl<'a, 'b, 'i> Parser<'a, 'b, 'i> {
         trace!("first_pass");
         // create rogue scopes
         let old_scopes = ::std::mem::replace(&mut self.scopes, vec![Scope { idents: IndexMap::new() }]);
-        let mark = self.tokens.mark();
-        while self.peek_token(0).is_some() {
+        let mark = self.lexer.mark();
+        while self.peek_token(0).is_ok() && !matches!(self.peek_token(0).unwrap(), Token::Eof(_)) {
             // test for function definition
             if let Ok(fun) = ExprFunctionDefinition::parse_reset(self, Depth::start()) {
                 let fun_expr = &*self.arena.alloc(Expr::FunctionDefinition(fun));
@@ -192,7 +197,7 @@ impl<'a, 'b, 'i> Parser<'a, 'b, 'i> {
         };
         // make sure everything parsed during first-pass was consumed and used by the second pass
         assert!(self.pre_parsed.is_empty(), "not everything from first-pass was consumed: {:?}", self.pre_parsed);
-        assert!(self.peek_token(0).is_none() || matches!(self.peek_token(0), Some(Token::Eof(_))), "not all tokens were consumed: {}", self.tokens.iter().map(|t| format!("    {:?}", t)).join("\n"));
+        assert!(matches!(self.peek_token(0), Ok(Token::Eof(_))), "not all tokens were consumed: {}", self.lexer.iter().map(|t| format!("    {:?}", t)).join("\n"));
         Ok(Ast {
             exprs: body.exprs,
             bindings: self.bindings,
@@ -230,19 +235,19 @@ impl<'a, 'b, 'i> Parser<'a, 'b, 'i> {
         }
     }
 
-    fn next_token(&mut self) -> Option<Token<'i>> {
+    fn next_token(&mut self) -> Result<Token<'i>, InternalError> {
         self.consume_comments();
-        self.tokens.next()
+        Ok(self.lexer.next()?)
     }
-    fn peek_token(&mut self, index: usize) -> Option<Token<'i>> {
+    fn peek_token(&mut self, index: usize) -> Result<Token<'i>, InternalError> {
         let mut non_comments = 0;
         for i in 0.. {
-            match self.tokens.peek(i)? {
+            match self.lexer.peek(i)? {
                 Token::BlockComment(_) | Token::LineComment(_) => (),
                 _ => {
                     non_comments += 1;
                     if non_comments - 1 == index {
-                        return self.tokens.peek(i);
+                        return Ok(self.lexer.peek(i)?);
                     }
                 }
             }
@@ -289,47 +294,49 @@ impl<'a, 'b, 'i> Parser<'a, 'b, 'i> {
     }
 
     fn consume_comments(&mut self) {
-        match self.tokens.peek(0) {
-            Some(Token::LineComment(TokenLineComment { .. }))
-            | Some(Token::BlockComment(TokenBlockComment { .. })) => {
-                drop(self.tokens.next().unwrap());
-            },
-            _ => (),
+        loop {
+            match self.lexer.peek(0) {
+                Ok(Token::LineComment(TokenLineComment { .. }))
+                | Ok(Token::BlockComment(TokenBlockComment { .. })) => {
+                    drop(self.lexer.next().unwrap());
+                },
+                _ => break,
+            }
         }
     }
 
     /// Consume until excluding the next instance of one of the passed tokens
     fn consume_until(&mut self, until: &[TokenType]) -> Consumed<'i> {
         let start_span = match self.peek_token(0) {
-            Some(token) => token.span(),
-            None => return Consumed::InstantEof,
+            Ok(token) => token.span(),
+            Err(_) => return Consumed::InstantError,
         };
         let mut paren_depth = 0;
         let mut curly_depth = 0;
         let mut last_end = start_span.end;
         loop {
             match self.peek_token(0) {
-                Some(token) if until.contains(&token.typ()) && paren_depth == 0 && curly_depth == 0 => {
+                Ok(token) if until.contains(&token.typ()) && paren_depth == 0 && curly_depth == 0 => {
                     return Consumed::Found(Span::new(start_span.file, start_span.start, token.span().end), token)
                 },
-                Some(Token::OpenParen(TokenOpenParen { span })) => {
+                Ok(Token::OpenParen(TokenOpenParen { span })) => {
                     last_end = span.end;
                     paren_depth += 1
                 },
-                Some(Token::CloseParen(TokenCloseParen { span })) => {
+                Ok(Token::CloseParen(TokenCloseParen { span })) => {
                     last_end = span.end;
                     paren_depth -= 1
                 },
-                Some(Token::OpenCurly(TokenOpenCurly { span })) => {
+                Ok(Token::OpenCurly(TokenOpenCurly { span })) => {
                     last_end = span.end;
                     curly_depth += 1
                 },
-                Some(Token::CloseCurly(TokenCloseCurly { span })) => {
+                Ok(Token::CloseCurly(TokenCloseCurly { span })) => {
                     last_end = span.end;
                     curly_depth -= 1
                 },
-                Some(token) => last_end = token.span().end,
-                None => return Consumed::Eof(Span::new(start_span.file, start_span.start, last_end)),
+                Err(_) | Ok(Token::Eof(_)) => return Consumed::Eof(Span::new(start_span.file, start_span.start, last_end)),
+                Ok(token) => last_end = token.span().end,
             }
             drop(self.next_token());
         }
@@ -338,7 +345,7 @@ impl<'a, 'b, 'i> Parser<'a, 'b, 'i> {
 
 
 enum Consumed<'i> {
-    InstantEof,
+    InstantError,
     Found(Span, Token<'i>),
     Eof(Span),
 }
