@@ -31,6 +31,10 @@ pub enum ErrorCode {
     MissingElse,
     MissingBranchValue,
     MissingBranchBody,
+    UnterminatedFormatString,
+    UnterminatedFormatStringArg,
+    UnescapedFormatStringCurlyParen,
+    InvalidFormatString,
 }
 use ErrorCode::*;
 
@@ -68,6 +72,10 @@ impl diagnostic::ErrorCode for ErrorCode {
             MissingElse => "0030",
             MissingBranchValue => "0031",
             MissingBranchBody => "0032",
+            UnterminatedFormatString => "0033",
+            UnterminatedFormatStringArg => "0034",
+            UnescapedFormatStringCurlyParen => "0035",
+            InvalidFormatString => "0036",
         }.to_string()
     }
 
@@ -104,6 +112,10 @@ impl diagnostic::ErrorCode for ErrorCode {
             MissingElse => "missing else clause",
             MissingBranchValue => "missing branch value",
             MissingBranchBody => "missing branch body",
+            UnterminatedFormatString => "unterminated format string",
+            UnterminatedFormatStringArg => "unterminated format string argument",
+            UnescapedFormatStringCurlyParen => "unescaped `}` in format string",
+            InvalidFormatString => "invalid format string",
         }.to_string()
     }
 }

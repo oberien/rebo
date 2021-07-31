@@ -145,6 +145,10 @@ pub fn try_lex_token<'i>(diagnostics: &Diagnostics, file: FileId, s: &'i str, in
         }
         '.' => Ok(MaybeToken::Token(Token::Dot(TokenDot { span }))),
         '"' => Ok(MaybeToken::Token(lex_double_quoted_string(diagnostics, file, s, index)?)),
+        'f' => match char2 {
+            Some('"') => Ok(MaybeToken::Token(lex_format_string(diagnostics, file, s, index)?)),
+            _ => Ok(MaybeToken::Backtrack),
+        }
         _ => Ok(MaybeToken::Backtrack),
     }
 }
@@ -292,12 +296,9 @@ pub fn lex_double_quoted_string<'i>(diagnostics: &Diagnostics, file: FileId, s: 
     let mut res = String::new();
     let start = index;
     index += 1;
-    loop {
+    let post_index = loop {
         if let Some('"') = s[index..].chars().next() {
-            return Ok(Token::DqString(TokenDqString {
-                span: Span::new(file, start, index + 1),
-                string: res,
-            }));
+            break 1;
         }
         match lex_string_char(s, index, false) {
             None => {
@@ -305,16 +306,19 @@ pub fn lex_double_quoted_string<'i>(diagnostics: &Diagnostics, file: FileId, s: 
                     .with_error_label(Span::new(file, start, index), "this string is unterminated")
                     .with_info_label(Span::new(file, index, index), "try adding a closing `\"`")
                     .emit();
-                return Err(Error::Abort)
+                break 0;
             },
             Some((c, idx)) => {
                 res.push(c);
                 index = idx;
             }
         }
-    }
+    };
+    Ok(Token::DqString(TokenDqString {
+        span: Span::new(file, start, index + post_index),
+        string: res,
+    }))
 }
-
 pub fn lex_string_char(s: &str, index: usize, escaped: bool) -> Option<(char, usize)> {
     let next = s[index..].chars().next()?;
 
@@ -322,4 +326,117 @@ pub fn lex_string_char(s: &str, index: usize, escaped: bool) -> Option<(char, us
         '\\' if !escaped => lex_string_char(s, index + 1, true),
         c => Some((c, index + c.len_utf8()))
     }
+}
+
+pub fn lex_format_string<'i>(diagnostics: &Diagnostics, file: FileId, s: &'i str, mut index: usize) -> Result<Token<'i>, Error> {
+    trace!("lex_format_string: {}", index);
+    assert_eq!(s[index..].chars().next(), Some('f'));
+    assert_eq!(s[index+1..].chars().next(), Some('"'));
+    index += 2;
+
+    #[derive(Debug, Copy, Clone)]
+    enum CurrentPart {
+        Str,
+        Escaped,
+        FmtArg,
+    }
+
+    let mut parts = Vec::new();
+
+    let start = index;
+    let mut current = CurrentPart::Str;
+    let mut part_start = start;
+    let mut depth = 0;
+    let mut post_index = 0;
+
+    fn make_part<'i>(s: &'i str, typ: CurrentPart, part_start: usize, part_end: usize) -> TokenFormatStringPart<'i> {
+        match typ {
+            CurrentPart::Str => TokenFormatStringPart::Str(&s[part_start..part_end]),
+            CurrentPart::Escaped => TokenFormatStringPart::Escaped(&s[part_start..part_end]),
+            CurrentPart::FmtArg => TokenFormatStringPart::FormatArg(&s[part_start..part_end], part_start),
+        }
+    }
+
+    let err_dig = |index| {
+        diagnostics.error(ErrorCode::UnterminatedFormatString)
+            .with_error_label(Span::new(file, start, index), "this format string is unterminated")
+            .with_info_label(Span::new(file, index, index), "try adding a closing `\"`")
+            .emit();
+    };
+
+    loop {
+        match (s[index..].chars().next(), current) {
+            (None, _) => {
+                if depth == 0 { err_dig(index) };
+                break;
+            },
+            (Some('"'), CurrentPart::Str | CurrentPart::Escaped) => {
+                post_index = 1;
+                break;
+            },
+            (Some('\\'), _) => {
+                match current {
+                    CurrentPart::Str | CurrentPart::Escaped => {
+                        parts.push(make_part(s, current, part_start, index));
+                        index += 1;
+                        part_start = index;
+                        current = CurrentPart::Escaped;
+                    }
+                    CurrentPart::FmtArg => index += 1,
+                }
+                match s[index..].chars().next() {
+                    None => {
+                        if depth == 0 { err_dig(index) };
+                        break;
+                    },
+                    Some(c) => index += c.len_utf8(),
+                }
+            }
+            (Some('{'), CurrentPart::Str) => {
+                assert_eq!(depth, 0);
+                depth += 1;
+                parts.push(make_part(s, current, part_start, index));
+                current = CurrentPart::FmtArg;
+                index += 1;
+                part_start = index;
+            }
+            (Some('{'), CurrentPart::FmtArg) => {
+                depth += 1;
+                index += 1;
+            }
+            (Some('}'), CurrentPart::FmtArg) => {
+                depth -= 1;
+                if depth == 0 {
+                    parts.push(make_part(s, current, part_start, index));
+                    current = CurrentPart::Str;
+                    index += 1;
+                    part_start = index;
+                } else {
+                    index += 1;
+                }
+            }
+            (Some('}'), CurrentPart::Str) => {
+                diagnostics.error(ErrorCode::UnescapedFormatStringCurlyParen)
+                    .with_error_label(Span::new(file, index, index+1), "this paren isn't escaped")
+                    .with_note("escape it with `\\}`")
+                    .emit();
+                index += 1;
+            }
+            (Some(c), _) => {
+                index += c.len_utf8();
+            }
+        }
+    }
+    if depth != 0 {
+        diagnostics.error(ErrorCode::UnterminatedFormatStringArg)
+            .with_error_label(Span::new(file, part_start, index), "this interpolation argument isn't closed")
+            .with_info_label(Span::new(file, start, index), "in this format string")
+            .with_note("if you want to output a curly parenthesis, escape it like `\\{`")
+            .emit();
+    }
+    parts.push(make_part(s, current, part_start, index));
+    return Ok(Token::FormatString(TokenFormatString {
+        span: Span::new(file, start, index + post_index),
+        parts,
+    }));
 }

@@ -1,4 +1,4 @@
-use crate::parser::{Expr, Spanned, ExprBind, ExprAssign, ExprPattern, ExprPatternUntyped, ExprPatternTyped, ExprVariable, ExprAdd, ExprSub, ExprMul, ExprDiv, ExprBoolAnd, ExprBoolOr, ExprBoolNot, ExprLessThan, ExprGreaterEquals, ExprLessEquals, ExprGreaterThan, ExprEquals, ExprNotEquals, ExprBlock, ExprParenthesized, ExprFunctionCall, ExprFunctionDefinition, BlockBody, ExprStructDefinition, ExprType, ExprStructDefFields, ExprStructInitialization, ExprAssignLhs, ExprIfElse, ExprWhile};
+use crate::parser::{Expr, Spanned, ExprBind, ExprAssign, ExprPattern, ExprPatternUntyped, ExprPatternTyped, ExprVariable, ExprAdd, ExprSub, ExprMul, ExprDiv, ExprBoolAnd, ExprBoolOr, ExprBoolNot, ExprLessThan, ExprGreaterEquals, ExprLessEquals, ExprGreaterThan, ExprEquals, ExprNotEquals, ExprBlock, ExprParenthesized, ExprFunctionCall, ExprFunctionDefinition, BlockBody, ExprStructDefinition, ExprType, ExprStructDefFields, ExprStructInitialization, ExprAssignLhs, ExprIfElse, ExprWhile, ExprFormatString, ExprFormatStringPart};
 use crate::typeck::{Constraint, TypeVar, ConstraintTyp};
 use crate::common::{SpecificType, Type, PreInfo};
 use itertools::{Either, Itertools};
@@ -61,6 +61,19 @@ impl<'a, 'i> ConstraintCreator<'a, 'i> {
                 self.restrictions.push((type_var, vec![SpecificType::Bool]));
             },
             String(_) => {
+                self.constraints.push(Constraint::new(expr_outer.span(), ConstraintTyp::Type(type_var, Type::Specific(SpecificType::String))));
+                self.restrictions.push((type_var, vec![SpecificType::String]));
+            },
+            FormatString(ExprFormatString { parts, .. }) => {
+                for part in parts {
+                    match part {
+                        ExprFormatStringPart::Str(_) => (),
+                        ExprFormatStringPart::Escaped(_) => (),
+                        ExprFormatStringPart::FmtArg(expr) => {
+                            let _ = self.get_type(expr);
+                        },
+                    }
+                }
                 self.constraints.push(Constraint::new(expr_outer.span(), ConstraintTyp::Type(type_var, Type::Specific(SpecificType::String))));
                 self.restrictions.push((type_var, vec![SpecificType::String]));
             },

@@ -69,12 +69,13 @@ pub fn run(filename: String, code: String) -> ReturnValue {
     Typechecker::new(&diagnostics, &mut pre_info).typeck(&exprs);
     info!("Typechecking took {}μs", time.elapsed().as_micros());
 
+    let errors = diagnostics.errors_printed();
     let diags = diagnostics.bugs_printed()
-        + diagnostics.errors_printed()
+        + errors
         + diagnostics.warnings_printed()
         + diagnostics.notes_printed()
         + diagnostics.helps_printed();
-    if diags > 0 {
+    if  errors > 0 {
         eprintln!("Aborted due to errors");
         return ReturnValue::Diagnostics(diags);
     }
@@ -84,5 +85,9 @@ pub fn run(filename: String, code: String) -> ReturnValue {
     let result = vm.run(&exprs);
     info!("Execution took {}μs", time.elapsed().as_micros());
     println!("RESULT: {:?}", result);
-    ReturnValue::Ok
+    if diags > 0 {
+        return ReturnValue::Diagnostics(diags);
+    } else {
+        ReturnValue::Ok
+    }
 }

@@ -4,7 +4,7 @@ use derive_more::Display;
 
 use crate::scope::BindingId;
 use crate::util::PadFmt;
-use crate::lexer::{TokenOpenParen, TokenCloseParen, TokenIdent, TokenInteger, TokenFloat, TokenBool, TokenDqString, TokenType, TokenStringType, TokenIntType, TokenFloatType, TokenBoolType, Token, TokenLet, TokenColon, TokenMut, TokenAssign, TokenOpenCurly, TokenCloseCurly, TokenComma, TokenArrow, TokenFn, TokenBang, TokenPlus, TokenMinus, TokenStar, TokenSlash, TokenDoubleAmp, TokenDoublePipe, TokenLessThan, TokenLessEquals, TokenEquals, TokenNotEquals, TokenGreaterEquals, TokenGreaterThan, TokenStruct, TokenDot, TokenIf, TokenElse, TokenWhile};
+use crate::lexer::{TokenOpenParen, TokenCloseParen, TokenIdent, TokenInteger, TokenFloat, TokenBool, TokenDqString, TokenType, TokenStringType, TokenIntType, TokenFloatType, TokenBoolType, Token, TokenLet, TokenColon, TokenMut, TokenAssign, TokenOpenCurly, TokenCloseCurly, TokenComma, TokenArrow, TokenFn, TokenBang, TokenPlus, TokenMinus, TokenStar, TokenSlash, TokenDoubleAmp, TokenDoublePipe, TokenLessThan, TokenLessEquals, TokenEquals, TokenNotEquals, TokenGreaterEquals, TokenGreaterThan, TokenStruct, TokenDot, TokenIf, TokenElse, TokenWhile, TokenFormatString, TokenFormatStringPart, Lexer};
 use crate::parser::{Parse, InternalError, Parser, Expected};
 use crate::error_codes::ErrorCode;
 use std::borrow::Cow;
@@ -79,6 +79,8 @@ pub enum Expr<'a, 'i> {
     Bool(ExprBool),
     /// "foo"
     String(ExprString),
+    /// f"abc {expr} def"
+    FormatString(ExprFormatString<'a, 'i>),
     /// let ident = expr
     Bind(ExprBind<'a, 'i>),
     /// ident = expr
@@ -182,6 +184,7 @@ impl<'a, 'i> Expr<'a, 'i> {
             |parser: &mut Parser<'a, '_, 'i>, depth| Ok(parser.arena.alloc(Expr::Float(ExprFloat::parse(parser, depth)?))),
             |parser: &mut Parser<'a, '_, 'i>, depth| Ok(parser.arena.alloc(Expr::Bool(ExprBool::parse(parser, depth)?))),
             |parser: &mut Parser<'a, '_, 'i>, depth| Ok(parser.arena.alloc(Expr::String(ExprString::parse(parser, depth)?))),
+            |parser: &mut Parser<'a, '_, 'i>, depth| Ok(parser.arena.alloc(Expr::FormatString(ExprFormatString::parse(parser, depth)?))),
             |parser: &mut Parser<'a, '_, 'i>, depth| Ok(parser.arena.alloc(Expr::FieldAccess(ExprFieldAccess::parse(parser, depth)?))),
             |parser: &mut Parser<'a, '_, 'i>, depth| Ok(parser.arena.alloc(Expr::Variable(ExprVariable::parse(parser, depth)?))),
         ];
@@ -530,6 +533,75 @@ impl<'a, 'i> Parse<'a, 'i> for ExprString {
 impl Spanned for ExprString {
     fn span(&self) -> Span {
         self.string.span
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum ExprFormatStringPart<'a, 'i> {
+    Str(&'i str),
+    Escaped(&'i str),
+    FmtArg(&'a Expr<'a, 'i>),
+}
+#[derive(Debug, Clone)]
+pub struct ExprFormatString<'a, 'i> {
+    pub parts: Vec<ExprFormatStringPart<'a, 'i>>,
+    pub span: Span,
+}
+impl<'a, 'i> Parse<'a, 'i> for ExprFormatString<'a, 'i> {
+    fn parse_marked(parser: &mut Parser<'a, '_, 'i>, depth: Depth) -> Result<Self, InternalError> {
+        let fmtstr: TokenFormatString = parser.parse(depth.next())?;
+        let mut parts = Vec::new();
+
+        for part in fmtstr.parts {
+            match part {
+                TokenFormatStringPart::Str(s) => parts.push(ExprFormatStringPart::Str(s)),
+                TokenFormatStringPart::Escaped(s) => parts.push(ExprFormatStringPart::Escaped(s)),
+                TokenFormatStringPart::FormatArg(s, part_start) => {
+                    // skip `{`
+                    // let part_start = part_start + 1;
+                    let part_end = part_start + s.len();
+                    let part_lexer = Lexer::new_in(parser.diagnostics, fmtstr.span.file, part_start, part_end);
+                    let old_lexer = std::mem::replace(&mut parser.lexer, part_lexer);
+                    parser.push_scope();
+
+                    let expr = parser.parse(depth.next())?;
+                    parts.push(ExprFormatStringPart::FmtArg(expr));
+
+                    parser.pop_scope();
+                    let part_lexer = std::mem::replace(&mut parser.lexer, old_lexer);
+                    let next = part_lexer.next();
+                    if !matches!(next, Ok(Token::Eof(_))) {
+                        parser.diagnostics.error(ErrorCode::InvalidFormatString)
+                            .with_error_label(fmtstr.span, "in this format string")
+                            .with_error_label(Span::new(fmtstr.span.file, part_start, part_end), "in this format argument")
+                            .emit();
+                    }
+                }
+            }
+        }
+
+        Ok(ExprFormatString {
+            parts,
+            span: fmtstr.span,
+        })
+    }
+}
+impl<'a, 'i> Spanned for ExprFormatString<'a, 'i> {
+    fn span(&self) -> Span {
+        self.span
+    }
+}
+impl<'a, 'i> Display for ExprFormatString<'a, 'i> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "f\"")?;
+        for part in &self.parts {
+            match part {
+                ExprFormatStringPart::Str(s) => write!(f, "{}", s)?,
+                ExprFormatStringPart::Escaped(s) => write!(f, "\\{}", s)?,
+                ExprFormatStringPart::FmtArg(s) => write!(f, "{{{}}}", s)?,
+            }
+        }
+        Ok(())
     }
 }
 

@@ -66,6 +66,31 @@ macro_rules! gen_tokens {
     }
 }
 
+#[derive(Debug, Clone, Eq, PartialEq, Hash)]
+pub enum TokenFormatStringPart<'i> {
+    Str(&'i str),
+    /// Substring that starts with an escaped character
+    Escaped(&'i str),
+    /// argument-str, start in file-str
+    FormatArg(&'i str, usize),
+}
+
+fn format_parts(parts: &[TokenFormatStringPart]) -> String {
+    let mut res = String::new();
+    for part in parts {
+        match part {
+            TokenFormatStringPart::Str(s) => res.push_str(s),
+            TokenFormatStringPart::Escaped(s) => res.push_str(s),
+            TokenFormatStringPart::FormatArg(s, _) => {
+                res.push('{');
+                res.push_str(s);
+                res.push('}');
+            }
+        }
+    }
+    res
+}
+
 gen_tokens! {
     // primitives
     Ident<'i>, TokenIdent, "ident", {ident: &'i str,}, (fmt = "{} ", ident), (Copy, Eq, Hash);
@@ -73,6 +98,7 @@ gen_tokens! {
     Integer, TokenInteger, "integer value", {value: i64, radix: Radix,}, (fmt = "{} ", "lexical::to_string_radix(*value, radix.to_u8())"), (Copy, Eq, Hash);
     Float, TokenFloat, "float value", {value: f64, radix: Radix,}, (fmt = "{} ", "lexical::to_string_radix(*value, radix.to_u8())"), (Copy);
     Bool, TokenBool, "bool value", {value: bool,}, (fmt = "{} ", value), (Copy, Eq, Hash);
+    FormatString<'i>, TokenFormatString, "format string", {parts: Vec<TokenFormatStringPart<'i>>,}, (fmt = "f{:?} ", "format_parts(parts)"), (Eq, Hash);
     // keywords
     Let, TokenLet, "let", {}, (fmt = "let "), (Copy, Eq, Hash);
     Mut, TokenMut, "mut", {}, (fmt = "mut "), (Copy, Eq, Hash);
@@ -86,7 +112,7 @@ gen_tokens! {
     IntType, TokenIntType, "int", {}, (fmt = "int "), (Copy, Eq, Hash);
     FloatType, TokenFloatType, "float", {}, (fmt = "float "), (Copy, Eq, Hash);
     BoolType, TokenBoolType, "bool", {}, (fmt = "bool "), (Copy, Eq, Hash);
-    // symbols
+    // symbolgerades
     Assign, TokenAssign, "=", {}, (fmt = "= "), (Copy, Eq, Hash);
     LessThan, TokenLessThan, "<", {}, (fmt = "< "), (Copy, Eq, Hash);
     LessEquals, TokenLessEquals, "<=", {}, (fmt = "<= "), (Copy, Eq, Hash);

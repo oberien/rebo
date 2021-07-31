@@ -186,6 +186,7 @@ impl_for_tokens! {
     // primitives
     Ident<'i>, TokenIdent;
     DqString, TokenDqString;
+    FormatString<'i>, TokenFormatString;
     Integer, TokenInteger;
     Float, TokenFloat;
     Bool, TokenBool;

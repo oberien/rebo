@@ -100,7 +100,7 @@ impl Display for Value {
             Value::Integer(i) => Display::fmt(i, f),
             Value::Float(float) => Display::fmt(float, f),
             Value::Bool(b) => Display::fmt(b, f),
-            Value::String(s) => Debug::fmt(s, f),
+            Value::String(s) => Display::fmt(s, f),
             Value::Function(_f) => todo!("function print representation"),
             Value::Struct(s) => {
                 let s = s.s.lock();

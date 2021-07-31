@@ -182,6 +182,33 @@ fn while_diagnostics() {
     "#.to_string()), ReturnValue::Diagnostics(3));
 }
 #[test]
+fn format_strings() {
+    let _ = env_logger::builder().is_test(true).try_init();
+    assert_eq!(rebo::run("test".to_string(), r#"
+        let foo = 42;
+        assert(f"uiae" == "uiae");
+        assert(f"{foo}" == "42");
+        assert(f"{4 * 10 + 2}" == "42");
+        assert(f"\{\}" == "{}");
+        assert(f"{f"42"}" == "42");
+    "#.to_string()), ReturnValue::Ok);
+}
+#[test]
+fn format_string_diagnostics1() {
+    let _ = env_logger::builder().is_test(true).try_init();
+    assert_eq!(rebo::run("test".to_string(), r#"
+        f"}";
+        f"uiae {";
+    "#.to_string()), ReturnValue::Diagnostics(3));
+}
+#[test]
+fn format_string_diagnostics2() {
+    let _ = env_logger::builder().is_test(true).try_init();
+    assert_eq!(rebo::run("test".to_string(), r#"
+        f"uiae
+    "#.to_string()), ReturnValue::Diagnostics(1));
+}
+#[test]
 fn struct_definitions() {
     let _ = env_logger::builder().is_test(true).try_init();
     assert_eq!(rebo::run("test".to_string(), r#"

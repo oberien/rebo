@@ -1,4 +1,4 @@
-use crate::parser::{Expr, Binding, ExprVariable, ExprInteger, ExprFloat, ExprBool, ExprString, ExprAssign, ExprBind, ExprPattern, ExprPatternTyped, ExprPatternUntyped, ExprLessThan, ExprLessEquals, ExprEquals, ExprNotEquals, ExprGreaterEquals, ExprGreaterThan, ExprAdd, ExprSub, ExprMul, ExprDiv, ExprBoolNot, ExprBoolAnd, ExprBoolOr, ExprParenthesized, ExprBlock, ExprFunctionCall, Separated, ExprFunctionDefinition, BlockBody, ExprStructDefinition, ExprStructInitialization, ExprAssignLhs, ExprFieldAccess, ExprIfElse, ExprWhile};
+use crate::parser::{Expr, Binding, ExprVariable, ExprInteger, ExprFloat, ExprBool, ExprString, ExprAssign, ExprBind, ExprPattern, ExprPatternTyped, ExprPatternUntyped, ExprLessThan, ExprLessEquals, ExprEquals, ExprNotEquals, ExprGreaterEquals, ExprGreaterThan, ExprAdd, ExprSub, ExprMul, ExprDiv, ExprBoolNot, ExprBoolAnd, ExprBoolOr, ExprParenthesized, ExprBlock, ExprFunctionCall, Separated, ExprFunctionDefinition, BlockBody, ExprStructDefinition, ExprStructInitialization, ExprAssignLhs, ExprFieldAccess, ExprIfElse, ExprWhile, ExprFormatString, ExprFormatStringPart};
 use crate::common::{Value, FunctionImpl, PreInfo, Depth, Struct, StructType, FuzzyFloat, StructArc};
 use crate::scope::{Scopes, BindingId, Scope};
 use crate::lexer::{TokenInteger, TokenFloat, TokenBool, TokenDqString, TokenComma, TokenIdent};
@@ -75,6 +75,20 @@ impl<'a, 'i> Vm<'a, 'i> {
             Expr::Float(ExprFloat { float: TokenFloat { value, .. }}) => Value::Float(FuzzyFloat(*value)),
             Expr::Bool(ExprBool { b: TokenBool { value, .. } }) => Value::Bool(*value),
             Expr::String(ExprString { string: TokenDqString { string, .. } }) => Value::String(string.clone()),
+            Expr::FormatString(ExprFormatString { parts, .. }) => {
+                let mut res = String::new();
+                for part in parts {
+                    match part {
+                        ExprFormatStringPart::Str(s) => res.push_str(s),
+                        ExprFormatStringPart::Escaped(s) => res.push_str(s),
+                        ExprFormatStringPart::FmtArg(expr) => {
+                            let val = self.eval_expr(expr, depth.next());
+                            res.push_str(&val.to_string());
+                        }
+                    }
+                }
+                Value::String(res)
+            },
             Expr::Assign(ExprAssign { lhs, expr, .. }) => {
                 let value = self.eval_expr(expr, depth.next());
                 match lhs {

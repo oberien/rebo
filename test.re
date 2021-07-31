@@ -65,3 +65,6 @@ fn fib_iter(mut i: int) -> int {
 }
 print(fib(10));
 print(fib_iter(90));
+
+let foo = 4;
+print(f"{foo * 10 + 2} is the answer ");
