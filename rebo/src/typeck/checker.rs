@@ -96,12 +96,15 @@ impl<'i> Checker<'i> {
             },
             Expr::Match(ExprMatch { expr, arms, .. }) => {
                 let expr_type_var = TypeVar::new(expr.span());
-                let (_typ_span, typ) = &self.solved[&expr_type_var];
+                let (_typ_span, typ) = self.solved.get(&expr_type_var).unwrap_or_else(|| panic!("no type found for `{}`", self.diagnostics.resolve_span(expr.span())));
                 match typ {
                     Type::Bottom | Type::Varargs | Type::Top => unreachable!("expr type not inferred correctly"),
                     Type::Specific(specific) => {
                         let pattern_iter = arms.iter().map(|(pattern, _arrow, _expr)| pattern);
                         self.check_specific_type_match_variants(expr.span(), specific, pattern_iter);
+                        for (_pattern, _arrow, expr) in arms {
+                            self.check_match_variants(expr);
+                        }
                     },
                 }
             }

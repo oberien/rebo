@@ -67,7 +67,8 @@ impl<'a, 'i> ConstraintCreator<'a, 'i> {
         match expr_outer {
             Literal(lit) => { let _ = self.get_literal_type(lit); },
             Variable(variable) => {
-                return TypeVar::new(variable.binding.ident.span())
+                let binding_type_var = TypeVar::new(variable.binding.ident.span());
+                self.constraints.push(Constraint::new(expr_outer.span(), ConstraintTyp::Eq(binding_type_var, type_var)));
             },
             FieldAccess(field_access) => {
                 let initial_var = TypeVar::new(field_access.variable.binding.ident.span());

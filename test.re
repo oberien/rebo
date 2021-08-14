@@ -73,4 +73,9 @@ print(match 1 {
     0 => 21,
     1 => 1337,
     _ => 42,
-} == 1337)
+} == 1337);
+
+match 1 {
+  0 => print("it was a 0"),
+  foo => print(f"it was something else: {foo}"),
+}

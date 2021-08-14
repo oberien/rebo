@@ -178,6 +178,14 @@ fn match_usage() {
         assert(match () { () => () } == ());
         assert(match () { _ => () } == ());
         assert(match () { () => 1337 } == 1337);
+        assert(match "foo" {
+            "bar" => 1,
+            "baz" => 2,
+            whatever => match whatever {
+                "foo" => 42,
+                _ => 1337,
+            },
+        } == 42);
     "#.to_string()), ReturnValue::Ok);
 }
 #[test]
