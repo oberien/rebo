@@ -75,6 +75,12 @@ pub fn try_lex_token<'i>(diagnostics: &Diagnostics, file: FileId, s: &'i str, in
     if s[index..].starts_with("struct") {
         return Ok(MaybeToken::Token(Token::Struct(TokenStruct { span: Span::new(file, index, index+6) })));
     }
+    if s[index..].starts_with("enum") {
+        return Ok(MaybeToken::Token(Token::Enum(TokenEnum { span: Span::new(file, index, index+4) })));
+    }
+    if s[index..].starts_with("match") {
+        return Ok(MaybeToken::Token(Token::Match(TokenMatch { span: Span::new(file, index, index+5) })));
+    }
     if s[index..].starts_with("if") {
         return Ok(MaybeToken::Token(Token::If(TokenIf { span: Span::new(file, index, index+2) })));
     }
@@ -106,7 +112,10 @@ pub fn try_lex_token<'i>(diagnostics: &Diagnostics, file: FileId, s: &'i str, in
         '{' => Ok(MaybeToken::Token(Token::OpenCurly(TokenOpenCurly { span }))),
         '}' => Ok(MaybeToken::Token(Token::CloseCurly(TokenCloseCurly { span }))),
         ';' => Ok(MaybeToken::Token(Token::Semicolon(TokenSemicolon { span }))),
-        ':' => Ok(MaybeToken::Token(Token::Colon(TokenColon { span }))),
+        ':' => match char2 {
+            Some(':') => Ok(MaybeToken::Token(Token::DoubleColon(TokenDoubleColon { span: span2 }))),
+            _ => Ok(MaybeToken::Token(Token::Colon(TokenColon { span }))),
+        }
         '+' => Ok(MaybeToken::Token(Token::Plus(TokenPlus { span }))),
         '-' => match char2 {
             Some('>') => Ok(MaybeToken::Token(Token::Arrow(TokenArrow { span: span2 }))),
@@ -121,6 +130,7 @@ pub fn try_lex_token<'i>(diagnostics: &Diagnostics, file: FileId, s: &'i str, in
         ',' => Ok(MaybeToken::Token(Token::Comma(TokenComma { span }))),
         '=' => match char2 {
             Some('=') => Ok(MaybeToken::Token(Token::Equals(TokenEquals { span: span2 }))),
+            Some('>') => Ok(MaybeToken::Token(Token::FatArrow(TokenFatArrow { span: span2 }))),
             _ => Ok(MaybeToken::Token(Token::Assign(TokenAssign { span }))),
         }
         '>' => match char2 {
@@ -144,6 +154,7 @@ pub fn try_lex_token<'i>(diagnostics: &Diagnostics, file: FileId, s: &'i str, in
             _ => Ok(MaybeToken::Token(Token::Pipe(TokenPipe { span }))),
         }
         '.' => Ok(MaybeToken::Token(Token::Dot(TokenDot { span }))),
+        '_' => Ok(MaybeToken::Token(Token::Underscore(TokenUnderscore { span }))),
         '"' => Ok(MaybeToken::Token(lex_double_quoted_string(diagnostics, file, s, index)?)),
         'f' => match char2 {
             Some('"') => Ok(MaybeToken::Token(lex_format_string(diagnostics, file, s, index)?)),

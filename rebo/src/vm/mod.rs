@@ -1,4 +1,4 @@
-use crate::parser::{Expr, Binding, ExprVariable, ExprInteger, ExprFloat, ExprBool, ExprString, ExprAssign, ExprBind, ExprPattern, ExprPatternTyped, ExprPatternUntyped, ExprLessThan, ExprLessEquals, ExprEquals, ExprNotEquals, ExprGreaterEquals, ExprGreaterThan, ExprAdd, ExprSub, ExprMul, ExprDiv, ExprBoolNot, ExprBoolAnd, ExprBoolOr, ExprParenthesized, ExprBlock, ExprFunctionCall, Separated, ExprFunctionDefinition, BlockBody, ExprStructDefinition, ExprStructInitialization, ExprAssignLhs, ExprFieldAccess, ExprIfElse, ExprWhile, ExprFormatString, ExprFormatStringPart};
+use crate::parser::{Expr, Binding, ExprVariable, ExprInteger, ExprFloat, ExprBool, ExprString, ExprAssign, ExprBind, ExprPattern, ExprPatternTyped, ExprPatternUntyped, ExprLessThan, ExprLessEquals, ExprEquals, ExprNotEquals, ExprGreaterEquals, ExprGreaterThan, ExprAdd, ExprSub, ExprMul, ExprDiv, ExprBoolNot, ExprBoolAnd, ExprBoolOr, ExprParenthesized, ExprBlock, ExprFunctionCall, Separated, ExprFunctionDefinition, BlockBody, ExprStructDefinition, ExprStructInitialization, ExprAssignLhs, ExprFieldAccess, ExprIfElse, ExprWhile, ExprFormatString, ExprFormatStringPart, ExprLiteral, ExprMatch, ExprMatchPattern};
 use crate::common::{Value, FunctionImpl, PreInfo, Depth, Struct, StructType, FuzzyFloat, StructArc};
 use crate::scope::{Scopes, BindingId, Scope};
 use crate::lexer::{TokenInteger, TokenFloat, TokenBool, TokenDqString, TokenComma, TokenIdent};
@@ -34,7 +34,7 @@ impl<'a, 'i> Vm<'a, 'i> {
 
     fn load_binding(&self, binding: &Binding, depth: Depth) -> Value {
         trace!("{}load_binding: {}", depth, binding.ident.ident);
-        self.scopes.get(binding.id).unwrap().clone()
+        self.scopes.get(binding.id).unwrap_or_else(|| panic!("binding {}[{}] is None", binding.ident.ident, binding.id)).clone()
     }
 
     fn bind(&mut self, binding: &Binding, value: Value, depth: Depth) -> Value {
@@ -51,7 +51,11 @@ impl<'a, 'i> Vm<'a, 'i> {
     fn eval_expr(&mut self, expr: &Expr, depth: Depth) -> Value {
         trace!("{}eval_expr: {}", depth, expr);
         match expr {
-            Expr::Unit(_) => Value::Unit,
+            Expr::Literal(ExprLiteral::Unit(_)) => Value::Unit,
+            Expr::Literal(ExprLiteral::Integer(ExprInteger { int: TokenInteger { value, .. } })) => Value::Integer(*value),
+            Expr::Literal(ExprLiteral::Float(ExprFloat { float: TokenFloat { value, .. }})) => Value::Float(FuzzyFloat(*value)),
+            Expr::Literal(ExprLiteral::Bool(ExprBool { b: TokenBool { value, .. } })) => Value::Bool(*value),
+            Expr::Literal(ExprLiteral::String(ExprString { string: TokenDqString { string, .. } })) => Value::String(string.clone()),
             Expr::Variable(ExprVariable { binding, .. }) => self.load_binding(binding, depth.last()),
             Expr::FieldAccess(ExprFieldAccess { variable: ExprVariable { binding, .. }, fields, .. }) => {
                 let mut struct_arc = match self.load_binding(binding, depth.last()) {
@@ -71,10 +75,6 @@ impl<'a, 'i> Vm<'a, 'i> {
                 }
                 Value::Struct(struct_arc)
             },
-            Expr::Integer(ExprInteger { int: TokenInteger { value, .. } }) => Value::Integer(*value),
-            Expr::Float(ExprFloat { float: TokenFloat { value, .. }}) => Value::Float(FuzzyFloat(*value)),
-            Expr::Bool(ExprBool { b: TokenBool { value, .. } }) => Value::Bool(*value),
-            Expr::String(ExprString { string: TokenDqString { string, .. } }) => Value::String(string.clone()),
             Expr::FormatString(ExprFormatString { parts, .. }) => {
                 let mut res = String::new();
                 for part in parts {
@@ -170,6 +170,34 @@ impl<'a, 'i> Vm<'a, 'i> {
                     return self.eval_block(block, depth.last());
                 }
                 Value::Unit
+            }
+            Expr::Match(ExprMatch { expr, arms, .. }) => {
+                let to_match = self.eval_expr(expr, depth.next());
+                let mut val = None;
+                for (pattern, _arrow, expr) in arms {
+                    match pattern {
+                        ExprMatchPattern::Wildcard(_) => {
+                            self.scopes.push_scope(Scope::new());
+                            val = Some(self.eval_expr(expr, depth.last()));
+                            self.scopes.pop_scope();
+                            break;
+                        },
+                        ExprMatchPattern::Binding(binding) => {
+                            self.scopes.push_scope(Scope::new());
+                            self.scopes.create(binding.id, to_match);
+                            val = Some(self.eval_expr(expr, depth.last()));
+                            self.scopes.pop_scope();
+                            break;
+                        }
+                        ExprMatchPattern::Literal(lit) => if &to_match == lit {
+                            self.scopes.push_scope(Scope::new());
+                            val = Some(self.eval_expr(expr, depth.last()));
+                            self.scopes.pop_scope();
+                            break;
+                        }
+                    }
+                }
+                val.unwrap()
             }
             Expr::While(ExprWhile { condition, block, .. }) => {
                 while self.eval_expr(condition, depth.next()).expect_bool("while condition not a bool") {

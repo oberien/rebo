@@ -1,4 +1,4 @@
-use crate::parser::{Expr, Spanned, ExprBind, ExprAssign, ExprPattern, ExprPatternUntyped, ExprPatternTyped, ExprVariable, ExprAdd, ExprSub, ExprMul, ExprDiv, ExprBoolAnd, ExprBoolOr, ExprBoolNot, ExprLessThan, ExprGreaterEquals, ExprLessEquals, ExprGreaterThan, ExprEquals, ExprNotEquals, ExprBlock, ExprParenthesized, ExprFunctionCall, ExprFunctionDefinition, BlockBody, ExprStructDefinition, ExprType, ExprStructDefFields, ExprStructInitialization, ExprAssignLhs, ExprIfElse, ExprWhile, ExprFormatString, ExprFormatStringPart};
+use crate::parser::{Expr, Spanned, ExprBind, ExprAssign, ExprPattern, ExprPatternUntyped, ExprPatternTyped, ExprVariable, ExprAdd, ExprSub, ExprMul, ExprDiv, ExprBoolAnd, ExprBoolOr, ExprBoolNot, ExprLessThan, ExprGreaterEquals, ExprLessEquals, ExprGreaterThan, ExprEquals, ExprNotEquals, ExprBlock, ExprParenthesized, ExprFunctionCall, ExprFunctionDefinition, BlockBody, ExprStructDefinition, ExprType, ExprStructDefFields, ExprStructInitialization, ExprAssignLhs, ExprIfElse, ExprWhile, ExprFormatString, ExprFormatStringPart, ExprLiteral, ExprMatch, ExprMatchPattern};
 use crate::typeck::{Constraint, TypeVar, ConstraintTyp};
 use crate::common::{SpecificType, Type, PreInfo};
 use itertools::{Either, Itertools};
@@ -31,15 +31,41 @@ impl<'a, 'i> ConstraintCreator<'a, 'i> {
         }
         (self.constraints, self.restrictions)
     }
+
+    #[must_use]
+    fn get_literal_type(&mut self, lit: &ExprLiteral) -> TypeVar {
+        let type_var = TypeVar::new(lit.span());
+        match lit {
+            ExprLiteral::Unit(_) => {
+                self.constraints.push(Constraint::new(lit.span(), ConstraintTyp::Type(type_var, Type::Specific(SpecificType::Unit))));
+                self.restrictions.push((type_var, vec![SpecificType::Unit]));
+            },
+            ExprLiteral::Integer(_) => {
+                self.constraints.push(Constraint::new(lit.span(), ConstraintTyp::Type(type_var, Type::Specific(SpecificType::Integer))));
+                self.restrictions.push((type_var, vec![SpecificType::Integer]));
+            },
+            ExprLiteral::Float(_) => {
+                self.constraints.push(Constraint::new(lit.span(), ConstraintTyp::Type(type_var, Type::Specific(SpecificType::Float))));
+                self.restrictions.push((type_var, vec![SpecificType::Float]));
+            },
+            ExprLiteral::Bool(_) => {
+                self.constraints.push(Constraint::new(lit.span(), ConstraintTyp::Type(type_var, Type::Specific(SpecificType::Bool))));
+                self.restrictions.push((type_var, vec![SpecificType::Bool]));
+            },
+            ExprLiteral::String(_) => {
+                self.constraints.push(Constraint::new(lit.span(), ConstraintTyp::Type(type_var, Type::Specific(SpecificType::String))));
+                self.restrictions.push((type_var, vec![SpecificType::String]));
+            },
+        }
+        type_var
+    }
+
     #[must_use]
     fn get_type(&mut self, expr_outer: &Expr<'a, 'i>) -> TypeVar {
         use Expr::*;
         let type_var = TypeVar::new(expr_outer.span());
         match expr_outer {
-            Unit(..) => {
-                self.constraints.push(Constraint::new(expr_outer.span(), ConstraintTyp::Type(type_var, Type::Specific(SpecificType::Unit))));
-                self.restrictions.push((type_var, vec![SpecificType::Unit]));
-            },
+            Literal(lit) => { let _ = self.get_literal_type(lit); },
             Variable(variable) => {
                 return TypeVar::new(variable.binding.ident.span())
             },
@@ -48,22 +74,6 @@ impl<'a, 'i> ConstraintCreator<'a, 'i> {
                 let field_names = field_access.fields.iter().map(|f| f.ident.to_string()).collect();
                 self.constraints.push(Constraint::new(field_access.span(), ConstraintTyp::FieldAccess(initial_var, field_names, type_var)));
             }
-            Integer(_) => {
-                self.constraints.push(Constraint::new(expr_outer.span(), ConstraintTyp::Type(type_var, Type::Specific(SpecificType::Integer))));
-                self.restrictions.push((type_var, vec![SpecificType::Integer]));
-            },
-            Float(_) => {
-                self.constraints.push(Constraint::new(expr_outer.span(), ConstraintTyp::Type(type_var, Type::Specific(SpecificType::Float))));
-                self.restrictions.push((type_var, vec![SpecificType::Float]));
-            },
-            Bool(_) => {
-                self.constraints.push(Constraint::new(expr_outer.span(), ConstraintTyp::Type(type_var, Type::Specific(SpecificType::Bool))));
-                self.restrictions.push((type_var, vec![SpecificType::Bool]));
-            },
-            String(_) => {
-                self.constraints.push(Constraint::new(expr_outer.span(), ConstraintTyp::Type(type_var, Type::Specific(SpecificType::String))));
-                self.restrictions.push((type_var, vec![SpecificType::String]));
-            },
             FormatString(ExprFormatString { parts, .. }) => {
                 for part in parts {
                     match part {
@@ -240,6 +250,23 @@ impl<'a, 'i> ConstraintCreator<'a, 'i> {
                         self.constraints.push(Constraint::new(span, ConstraintTyp::Type(var, Type::Specific(SpecificType::Unit))));
                         self.restrictions.push((var, vec![SpecificType::Unit]));
                     }
+                }
+            }
+            Match(ExprMatch { expr, arms, .. }) => {
+                let expr_type_var = self.get_type(expr);
+                for (pattern, _arrow, arm_expr) in arms {
+                    let pattern_type_var = match pattern {
+                        ExprMatchPattern::Literal(lit) => self.get_literal_type(lit),
+                        ExprMatchPattern::Wildcard(wildcard) => {
+                            let type_var = TypeVar::new(wildcard.span());
+                            self.constraints.push(Constraint::new(wildcard.span(), ConstraintTyp::Type(type_var, Type::Top)));
+                            type_var
+                        }
+                        ExprMatchPattern::Binding(binding) => TypeVar::new(binding.ident.span()),
+                    };
+                    let arm_expr_type_var = self.get_type(arm_expr);
+                    self.constraints.push(Constraint::new(arm_expr.span(), ConstraintTyp::Eq(type_var, arm_expr_type_var)));
+                    self.constraints.push(Constraint::new(pattern.span(), ConstraintTyp::Eq(expr_type_var, pattern_type_var)));
                 }
             }
             While(ExprWhile { condition, block, .. }) => {

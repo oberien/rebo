@@ -1,14 +1,16 @@
+mod pattern;
+mod helper;
+pub use pattern::{ExprPattern, ExprPatternTyped, ExprPatternUntyped, ExprMatchPattern, ExprMatchPatternVariant};
+
 use std::fmt::{self, Write, Display, Formatter, Debug};
-
 use derive_more::Display;
-
 use crate::scope::BindingId;
 use crate::util::PadFmt;
-use crate::lexer::{TokenOpenParen, TokenCloseParen, TokenIdent, TokenInteger, TokenFloat, TokenBool, TokenDqString, TokenType, TokenStringType, TokenIntType, TokenFloatType, TokenBoolType, Token, TokenLet, TokenColon, TokenMut, TokenAssign, TokenOpenCurly, TokenCloseCurly, TokenComma, TokenArrow, TokenFn, TokenBang, TokenPlus, TokenMinus, TokenStar, TokenSlash, TokenDoubleAmp, TokenDoublePipe, TokenLessThan, TokenLessEquals, TokenEquals, TokenNotEquals, TokenGreaterEquals, TokenGreaterThan, TokenStruct, TokenDot, TokenIf, TokenElse, TokenWhile, TokenFormatString, TokenFormatStringPart, Lexer};
+use crate::lexer::{TokenOpenParen, TokenCloseParen, TokenIdent, TokenInteger, TokenFloat, TokenBool, TokenDqString, TokenType, TokenStringType, TokenIntType, TokenFloatType, TokenBoolType, Token, TokenLet, TokenColon, TokenMut, TokenAssign, TokenOpenCurly, TokenCloseCurly, TokenComma, TokenArrow, TokenFn, TokenBang, TokenPlus, TokenMinus, TokenStar, TokenSlash, TokenDoubleAmp, TokenDoublePipe, TokenLessThan, TokenLessEquals, TokenEquals, TokenNotEquals, TokenGreaterEquals, TokenGreaterThan, TokenStruct, TokenDot, TokenIf, TokenElse, TokenWhile, TokenFormatString, TokenFormatStringPart, Lexer, TokenMatch, TokenFatArrow};
 use crate::parser::{Parse, InternalError, Parser, Expected};
 use crate::error_codes::ErrorCode;
 use std::borrow::Cow;
-use crate::parser::parse::{Separated, Spanned};
+use crate::parser::parse::{Separated, Spanned, Scoped};
 use crate::parser::precedence::{BooleanExpr, Math};
 use diagnostic::Span;
 use itertools::Itertools;
@@ -63,13 +65,13 @@ impl<'i> Spanned for Binding<'i> {
 }
 impl<'i> Display for Binding<'i> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.ident.ident)
+        write!(f, "{}[{}]", self.ident.ident, self.id)
     }
 }
 
-#[derive(Debug, Display, rebo_derive::Functions)]
-#[function(fn span(&self) -> Span = expr => expr.span())]
-pub enum Expr<'a, 'i> {
+#[derive(Debug, Clone, Display)]
+pub enum ExprLiteral {
+    /// ()
     Unit(ExprUnit),
     /// 0
     Integer(ExprInteger),
@@ -79,6 +81,48 @@ pub enum Expr<'a, 'i> {
     Bool(ExprBool),
     /// "foo"
     String(ExprString),
+}
+impl<'a, 'i> Parse<'a, 'i> for ExprLiteral {
+    fn parse_marked(parser: &mut Parser<'a, '_, 'i>, depth: Depth) -> Result<Self, InternalError> {
+        let err1 = match ExprUnit::parse(parser, depth.next()) {
+            Ok(unit) => return Ok(ExprLiteral::Unit(unit)),
+            Err(e) => e,
+        };
+        let err2 = match ExprInteger::parse(parser, depth.next()) {
+            Ok(int) => return Ok(ExprLiteral::Integer(int)),
+            Err(e) => e,
+        };
+        let err3 = match ExprFloat::parse(parser, depth.next()) {
+            Ok(float) => return Ok(ExprLiteral::Float(float)),
+            Err(e) => e,
+        };
+        let err4 = match ExprBool::parse(parser, depth.next()) {
+            Ok(boolean) => return Ok(ExprLiteral::Bool(boolean)),
+            Err(e) => e,
+        };
+        let err5 = match ExprString::parse(parser, depth.next()) {
+            Ok(string) => return Ok(ExprLiteral::String(string)),
+            Err(e) => e,
+        };
+        Err(helper::last_error(&[err1, err2, err3, err4, err5]))
+    }
+}
+impl Spanned for ExprLiteral {
+    fn span(&self) -> Span {
+        match self {
+            ExprLiteral::Unit(e) => e.span(),
+            ExprLiteral::Integer(e) => e.span(),
+            ExprLiteral::Float(e) => e.span(),
+            ExprLiteral::Bool(e) => e.span(),
+            ExprLiteral::String(e) => e.span(),
+        }
+    }
+}
+
+#[derive(Debug, Display, rebo_derive::Functions)]
+#[function(fn span(&self) -> Span = expr => expr.span())]
+pub enum Expr<'a, 'i> {
+    Literal(ExprLiteral),
     /// f"abc {expr} def"
     FormatString(ExprFormatString<'a, 'i>),
     /// let ident = expr
@@ -124,6 +168,8 @@ pub enum Expr<'a, 'i> {
     Parenthesized(ExprParenthesized<'a, 'i>),
     /// if expr {...} else if {...} else if {...} else {...}
     IfElse(ExprIfElse<'a, 'i>),
+    /// match expr { pat => expr, pat => expr, ... }
+    Match(ExprMatch<'a, 'i>),
     /// while expr {...}
     While(ExprWhile<'a, 'i>),
     /// ident(expr, expr, ...)
@@ -172,6 +218,7 @@ impl<'a, 'i> Expr<'a, 'i> {
         let others: &[ParseFn<'a, '_, 'i>] = &[
             |parser: &mut Parser<'a, '_, 'i>, depth| Ok(parser.arena.alloc(Expr::StructInitialization(ExprStructInitialization::parse(parser, depth)?))),
             |parser: &mut Parser<'a, '_, 'i>, depth| Ok(parser.arena.alloc(Expr::IfElse(ExprIfElse::parse(parser, depth)?))),
+            |parser: &mut Parser<'a, '_, 'i>, depth| Ok(parser.arena.alloc(Expr::Match(ExprMatch::parse(parser, depth)?))),
             |parser: &mut Parser<'a, '_, 'i>, depth| Ok(parser.arena.alloc(Expr::While(ExprWhile::parse(parser, depth)?))),
             |parser: &mut Parser<'a, '_, 'i>, depth| Ok(parser.arena.alloc(Expr::Parenthesized(ExprParenthesized::parse(parser, depth)?))),
             |parser: &mut Parser<'a, '_, 'i>, depth| Ok(parser.arena.alloc(Expr::Block(ExprBlock::parse(parser, depth)?))),
@@ -179,11 +226,7 @@ impl<'a, 'i> Expr<'a, 'i> {
             |parser: &mut Parser<'a, '_, 'i>, depth| Ok(parser.arena.alloc(Expr::Bind(ExprBind::parse(parser, depth)?))),
             |parser: &mut Parser<'a, '_, 'i>, depth| Ok(parser.arena.alloc(Expr::Assign(ExprAssign::parse(parser, depth)?))),
             |parser: &mut Parser<'a, '_, 'i>, depth| Ok(parser.arena.alloc(Expr::FunctionCall(ExprFunctionCall::parse(parser, depth)?))),
-            |parser: &mut Parser<'a, '_, 'i>, depth| Ok(parser.arena.alloc(Expr::Unit(ExprUnit::parse(parser, depth)?))),
-            |parser: &mut Parser<'a, '_, 'i>, depth| Ok(parser.arena.alloc(Expr::Integer(ExprInteger::parse(parser, depth)?))),
-            |parser: &mut Parser<'a, '_, 'i>, depth| Ok(parser.arena.alloc(Expr::Float(ExprFloat::parse(parser, depth)?))),
-            |parser: &mut Parser<'a, '_, 'i>, depth| Ok(parser.arena.alloc(Expr::Bool(ExprBool::parse(parser, depth)?))),
-            |parser: &mut Parser<'a, '_, 'i>, depth| Ok(parser.arena.alloc(Expr::String(ExprString::parse(parser, depth)?))),
+            |parser: &mut Parser<'a, '_, 'i>, depth| Ok(parser.arena.alloc(Expr::Literal(ExprLiteral::parse(parser, depth)?))),
             |parser: &mut Parser<'a, '_, 'i>, depth| Ok(parser.arena.alloc(Expr::FormatString(ExprFormatString::parse(parser, depth)?))),
             |parser: &mut Parser<'a, '_, 'i>, depth| Ok(parser.arena.alloc(Expr::FieldAccess(ExprFieldAccess::parse(parser, depth)?))),
             |parser: &mut Parser<'a, '_, 'i>, depth| Ok(parser.arena.alloc(Expr::Variable(ExprVariable::parse(parser, depth)?))),
@@ -335,92 +378,6 @@ impl<'i> Display for ExprType<'i> {
 }
 
 #[derive(Debug, Clone, Display)]
-pub enum ExprPattern<'i> {
-    Typed(ExprPatternTyped<'i>),
-    Untyped(ExprPatternUntyped<'i>),
-}
-impl<'a, 'i> Parse<'a, 'i> for ExprPattern<'i> {
-    fn parse_marked(parser: &mut Parser<'a, '_, 'i>, depth: Depth) -> Result<Self, InternalError> {
-        let err1 = match ExprPatternTyped::parse(parser, depth.next()) {
-            Ok(typed) => return Ok(ExprPattern::Typed(typed)),
-            Err(e) => e,
-        };
-        let err2 = match ExprPatternUntyped::parse(parser, depth.last()) {
-            Ok(untyped) => return Ok(ExprPattern::Untyped(untyped)),
-            Err(e) => e,
-        };
-        match (err1, err2) {
-            (InternalError::Error(_), err2) => Err(err2),
-            (err1, InternalError::Error(_)) => Err(err1),
-            (InternalError::Backtrack(span1, ex1), InternalError::Backtrack(span2, ex2)) => if span1 >= span2 {
-                Err(InternalError::Backtrack(span1, ex1))
-            } else {
-                Err(InternalError::Backtrack(span2, ex2))
-            }
-        }
-    }
-}
-impl<'i> Spanned for ExprPattern<'i> {
-    fn span(&self) -> Span {
-        match self {
-            ExprPattern::Typed(t) => t.span(),
-            ExprPattern::Untyped(t) => t.span(),
-        }
-    }
-}
-#[derive(Debug, Clone)]
-pub struct ExprPatternUntyped<'i> {
-    pub binding: Binding<'i>,
-}
-impl<'a, 'i> Parse<'a, 'i> for ExprPatternUntyped<'i> {
-    fn parse_marked(parser: &mut Parser<'a, '_, 'i>, depth: Depth) -> Result<Self, InternalError> {
-        let binding = Binding::parse_new(parser, depth.last())?;
-        Ok(ExprPatternUntyped { binding })
-    }
-}
-impl<'i> Spanned for ExprPatternUntyped<'i> {
-    fn span(&self) -> Span {
-        self.binding.span()
-    }
-}
-impl<'i> Display for ExprPatternUntyped<'i> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        if self.binding.mutable.is_some() {
-            write!(f, "mut ")?;
-        }
-        write!(f, "{}", self.binding.ident.ident)?;
-        Ok(())
-    }
-}
-#[derive(Debug, Clone)]
-pub struct ExprPatternTyped<'i> {
-    pub pattern: ExprPatternUntyped<'i>,
-    pub colon_token: TokenColon,
-    pub typ: ExprType<'i>,
-}
-impl<'a, 'i> Parse<'a, 'i> for ExprPatternTyped<'i> {
-    fn parse_marked(parser: &mut Parser<'a, '_, 'i>, depth: Depth) -> Result<Self, InternalError> {
-        Ok(ExprPatternTyped {
-            pattern: parser.parse(depth.next())?,
-            colon_token: parser.parse(depth.next())?,
-            typ: parser.parse(depth.last())?,
-        })
-    }
-}
-impl<'i> Spanned for ExprPatternTyped<'i> {
-    fn span(&self) -> Span {
-        let first = self.pattern.span();
-        let last = self.typ.span();
-        Span::new(first.file, first.start, last.end)
-    }
-}
-impl<'i> Display for ExprPatternTyped<'i> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "{}: {}", self.pattern, self.typ)
-    }
-}
-
-#[derive(Debug, Clone, Display)]
 #[display(fmt = "()")]
 pub struct ExprUnit {
     pub open: TokenOpenParen,
@@ -562,12 +519,10 @@ impl<'a, 'i> Parse<'a, 'i> for ExprFormatString<'a, 'i> {
                     let part_end = part_start + s.len();
                     let part_lexer = Lexer::new_in(parser.diagnostics, fmtstr.span.file, part_start, part_end);
                     let old_lexer = std::mem::replace(&mut parser.lexer, part_lexer);
-                    parser.push_scope();
 
-                    let expr = parser.parse(depth.next())?;
+                    let expr = parser.parse_scoped(depth.next())?;
                     parts.push(ExprFormatStringPart::FmtArg(expr));
 
-                    parser.pop_scope();
                     let part_lexer = std::mem::replace(&mut parser.lexer, old_lexer);
                     let next = part_lexer.next();
                     if !matches!(next, Ok(Token::Eof(_))) {
@@ -692,15 +647,7 @@ impl<'a, 'i> Parse<'a, 'i> for ExprAssignLhs<'a, 'i> {
             Ok(variable) => return Ok(ExprAssignLhs::Variable(variable)),
             Err(e) => e,
         };
-        match (err1, err2) {
-            (InternalError::Error(_), err2) => Err(err2),
-            (err1, InternalError::Error(_)) => Err(err1),
-            (InternalError::Backtrack(span1, ex1), InternalError::Backtrack(span2, ex2)) => if span1 >= span2 {
-                Err(InternalError::Backtrack(span1, ex1))
-            } else {
-                Err(InternalError::Backtrack(span2, ex2))
-            }
-        }
+        Err(helper::last_error(&[err1, err2]))
     }
 }
 impl<'a, 'i> Spanned for ExprAssignLhs<'a, 'i> {
@@ -847,9 +794,7 @@ impl<'a, 'i> Parse<'a, 'i> for ExprBlock<'a, 'i> {
         //     .with_error_label(span, "unclosed block")
         //     .emit();
         let open = parser.parse(depth.next())?;
-        parser.push_scope();
-        let body = parser.parse(depth.next())?;
-        parser.pop_scope();
+        let body = parser.parse_scoped(depth.next())?;
         let close = parser.parse(depth.last())?;
         Ok(ExprBlock { open, body, close })
     }
@@ -921,11 +866,12 @@ impl<'a, 'i> Parse<'a, 'i> for BlockBody<'a, 'i> {
                 last = Last::Terminated;
             } else {
                 last = match expr {
-                    Expr::FunctionDefinition(_) => Last::Terminated,
-                    Expr::StructDefinition(_) => Last::Terminated,
-                    Expr::IfElse(_) => Last::Terminated,
-                    Expr::While(_) => Last::Terminated,
-                    Expr::Block(_) => Last::Terminated,
+                    Expr::FunctionDefinition(_)
+                    | Expr::StructDefinition(_)
+                    | Expr::IfElse(_)
+                    | Expr::Match(_)
+                    | Expr::While(_)
+                    | Expr::Block(_) => Last::Terminated,
                     _ => Last::Unterminated(expr.span()),
                 };
             }
@@ -1016,6 +962,55 @@ fn check_condition_parens(parser: &mut Parser, condition: &Expr) {
             .with_info_label(condition.span(), "in this condition")
             .with_note("remove the parenthesis")
             .emit();
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct ExprMatch<'a, 'i> {
+    pub match_token: TokenMatch,
+    pub expr: &'a Expr<'a, 'i>,
+    pub open: TokenOpenCurly,
+    pub arms: Vec<(ExprMatchPattern<'i>, TokenFatArrow, &'a Expr<'a, 'i>)>,
+    pub close: TokenCloseCurly,
+}
+impl<'a, 'i> Parse<'a, 'i> for ExprMatch<'a, 'i> {
+    fn parse_marked(parser: &mut Parser<'a, '_, 'i>, depth: Depth) -> Result<Self, InternalError> {
+        let match_token: TokenMatch = parser.parse(depth.next())?;
+        let expr = parser.parse(depth.next())?;
+        let open = parser.parse(depth.next())?;
+        let arms: Separated<'a, 'i, Scoped<(ExprMatchPattern<'i>, TokenFatArrow, &'a Expr<'a, 'i>)>, TokenComma> = parser.parse(depth.next())?;
+        let close: TokenCloseCurly = parser.parse(depth.last())?;
+
+        if arms.is_empty() {
+            let span = Span::new(match_token.span.file, match_token.span.start, close.span.end);
+            parser.diagnostics.error(ErrorCode::EmptyMatch)
+                .with_error_label(span, "this match has an empty body")
+                .emit();
+        }
+
+        Ok(ExprMatch {
+            match_token,
+            expr,
+            open,
+            arms: arms.into_iter().map(|Scoped((pattern, arrow, expr))| (pattern, arrow, expr)).collect(),
+            close,
+        })
+    }
+}
+impl<'a, 'i> Spanned for ExprMatch<'a, 'i> {
+    fn span(&self) -> Span {
+        Span::new(self.match_token.span.file, self.match_token.span.start, self.close.span.end)
+    }
+}
+impl<'a, 'i> Display for ExprMatch<'a, 'i> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        writeln!(f, "match {} {{", self.expr)?;
+        let mut padded = PadFmt::new(&mut *f);
+        for (pat, _, expr) in &self.arms {
+            writeln!(padded, "{} => {},", pat, expr)?;
+        }
+        writeln!(f, "}}")?;
+        Ok(())
     }
 }
 
@@ -1116,8 +1111,10 @@ impl<'a, 'i> Parse<'a, 'i> for ExprFunctionDefinition<'a, 'i> {
         for &ExprPatternTyped { pattern: ExprPatternUntyped { binding }, .. } in &args {
             scope.idents.insert(binding.ident.ident, binding);
         }
-        let body = parser.parse(depth.last())?;
+        // defer result resolution until after scope was popped
+        let body = parser.parse(depth.last());
         parser.pop_scope();
+        let body = body?;
 
         Ok(ExprFunctionDefinition { fn_token, binding, open, args, close, ret_type, body })
     }

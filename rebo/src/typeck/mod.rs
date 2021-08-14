@@ -77,7 +77,7 @@ impl<'a, 'b, 'i> Typechecker<'a, 'b, 'i> {
         debug!("got solve: {:#?}", stringified);
 
         let c = Checker::new(&self.diagnostics, solved, restrictions);
-        c.check();
+        c.check(exprs);
     }
 }
 

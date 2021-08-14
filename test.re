@@ -68,3 +68,9 @@ print(fib_iter(90));
 
 let foo = 4;
 print(f"{foo * 10 + 2} is the answer ");
+
+print(match 1 {
+    0 => 21,
+    1 => 1337,
+    _ => 42,
+} == 1337)

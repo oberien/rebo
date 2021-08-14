@@ -33,6 +33,12 @@ pub trait Parse<'a, 'i>: Sized {
         drop(mark);
         res
     }
+    fn parse_scoped(parser: &mut Parser<'a, '_, 'i>, depth: Depth) -> Result<Self, InternalError> {
+        parser.push_scope();
+        let res = Self::parse(parser, depth);
+        parser.pop_scope();
+        res
+    }
     fn parse_marked(parser: &mut Parser<'a, '_, 'i>, depth: Depth) -> Result<Self, InternalError>;
 }
 impl<'a, 'i, T: Parse<'a, 'i>> Parse<'a, 'i> for Option<T> {
@@ -61,6 +67,15 @@ impl<'a, T: Spanned> Spanned for &'a T {
         <T as Spanned>::span(self)
     }
 }
+
+#[derive(Debug, Clone)]
+pub struct Scoped<T>(pub T);
+impl<'a, 'i, T: Parse<'a, 'i>> Parse<'a, 'i> for Scoped<T> {
+    fn parse_marked(parser: &mut Parser<'a, '_, 'i>, depth: Depth) -> Result<Self, InternalError> {
+        Ok(Scoped(parser.parse_scoped(depth)?))
+    }
+}
+
 
 #[derive(Debug, Clone)]
 pub struct Separated<'a, 'i, T: 'a, D: 'a> {
@@ -193,7 +208,10 @@ impl_for_tokens! {
     // keywords
     Let, TokenLet;
     Mut, TokenMut;
+    Struct, TokenStruct;
+    Enum, TokenEnum;
     Fn, TokenFn;
+    Match, TokenMatch;
     If, TokenIf;
     Else, TokenElse;
     While, TokenWhile;
@@ -226,10 +244,12 @@ impl_for_tokens! {
     Comma, TokenComma;
     Semicolon, TokenSemicolon;
     Colon, TokenColon;
+    DoubleColon, TokenDoubleColon;
     Arrow, TokenArrow;
+    FatArrow, TokenFatArrow;
     Dot, TokenDot;
+    Underscore, TokenUnderscore;
     LineComment<'i>, TokenLineComment;
     BlockComment<'i>, TokenBlockComment;
     Eof, TokenEof;
-    Struct, TokenStruct;
 }

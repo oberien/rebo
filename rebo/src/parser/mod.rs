@@ -1,6 +1,6 @@
 use std::fmt;
 use std::borrow::Cow;
-use std::collections::HashMap;
+use std::collections::{HashMap, BTreeMap, btree_map::Entry};
 
 use typed_arena::Arena;
 use diagnostic::{Span, Diagnostics, DiagnosticBuilder, FileId};
@@ -19,12 +19,12 @@ use crate::common::{PreInfo, SpecificType, FunctionType, Type, Value, FunctionIm
 use indexmap::map::IndexMap;
 use itertools::Itertools;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Error {
     /// Parsing encountered an unrecoverable error and a diagnostic was emitted. Abort.
     Abort,
 }
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum InternalError {
     /// We can't recover, return error to caller
     Error(Error),
@@ -93,7 +93,8 @@ pub struct Parser<'a, 'b, 'i> {
     pre_parsed: HashMap<(FileId, usize), &'a Expr<'a, 'i>>,
     /// stack of scopes with bindings that are still live
     scopes: Vec<Scope<'i>>,
-    memoization: IndexMap<(FileId, usize), (&'a Expr<'a, 'i>, ParseUntil)>
+    memoization: IndexMap<(FileId, usize), (&'a Expr<'a, 'i>, ParseUntil)>,
+    binding_memoization: BTreeMap<Span, Binding<'i>>,
 }
 
 struct Scope<'i> {
@@ -112,6 +113,7 @@ impl<'a, 'b, 'i> Parser<'a, 'b, 'i> {
             pre_parsed: HashMap::new(),
             scopes: vec![Scope { idents: IndexMap::new() }],
             memoization: IndexMap::new(),
+            binding_memoization: BTreeMap::new(),
         };
         parser.first_pass();
         // make existing bindings known to parser
@@ -212,9 +214,16 @@ impl<'a, 'b, 'i> Parser<'a, 'b, 'i> {
         self.add_binding_internal(ident, mutable, true)
     }
     fn add_binding_internal(&mut self, ident: TokenIdent<'i>, mutable: Option<TokenMut>, rogue: bool) -> Binding<'i> {
-        let id = BindingId::unique();
-        let name = ident.ident;
-        let binding = Binding { id, ident, mutable, rogue };
+        let (name, binding) = match self.binding_memoization.entry(ident.span()) {
+            Entry::Vacant(vacant) => {
+                let id = BindingId::unique();
+                let name = ident.ident;
+                let binding = Binding { id, ident, mutable, rogue };
+                vacant.insert(binding);
+                (name, binding)
+            }
+            Entry::Occupied(occupied) => (occupied.get().ident.ident, *occupied.get())
+        };
         self.scopes.last_mut().unwrap().idents.insert(name, binding);
         binding
     }
@@ -257,6 +266,9 @@ impl<'a, 'b, 'i> Parser<'a, 'b, 'i> {
 
     pub(in crate::parser) fn parse<T: Parse<'a, 'i>>(&mut self, depth: Depth) -> Result<T, InternalError> {
         T::parse(self, depth)
+    }
+    pub(in crate::parser) fn parse_scoped<T: Parse<'a, 'i>>(&mut self, depth: Depth) -> Result<T, InternalError> {
+        T::parse_scoped(self, depth)
     }
 
     fn similar_ident(&self, ident: &'i str) -> Option<&'i str> {

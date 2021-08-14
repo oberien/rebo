@@ -44,7 +44,6 @@ impl Scopes {
     pub fn push_scope(&mut self, scope: Scope) {
         self.scopes.push(scope);
     }
-    #[allow(dead_code)]
     pub fn pop_scope(&mut self) {
         self.scopes.pop().unwrap();
     }

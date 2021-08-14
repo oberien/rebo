@@ -35,6 +35,12 @@ pub enum ErrorCode {
     UnterminatedFormatStringArg,
     UnescapedFormatStringCurlyParen,
     InvalidFormatString,
+    EmptyMatch,
+    UnreachableMatchArm,
+    FloatMatch,
+    MatchNoCatchall,
+    StructMatch,
+    NonExhaustiveMatch,
 }
 use ErrorCode::*;
 
@@ -76,6 +82,12 @@ impl diagnostic::ErrorCode for ErrorCode {
             UnterminatedFormatStringArg => "0034",
             UnescapedFormatStringCurlyParen => "0035",
             InvalidFormatString => "0036",
+            EmptyMatch => "0037",
+            UnreachableMatchArm => "0038",
+            FloatMatch => "0039",
+            MatchNoCatchall => "0040",
+            StructMatch => "0041",
+            NonExhaustiveMatch => "0042",
         }.to_string()
     }
 
@@ -116,6 +128,12 @@ impl diagnostic::ErrorCode for ErrorCode {
             UnterminatedFormatStringArg => "unterminated format string argument",
             UnescapedFormatStringCurlyParen => "unescaped `}` in format string",
             InvalidFormatString => "invalid format string",
+            EmptyMatch => "empty match statement",
+            UnreachableMatchArm => "unreachable match arm",
+            FloatMatch => "can't match on a float",
+            MatchNoCatchall => "match statement doesn't have a catchall pattern",
+            StructMatch => "can't match a struct",
+            NonExhaustiveMatch => "non-exhaustive match",
         }.to_string()
     }
 }

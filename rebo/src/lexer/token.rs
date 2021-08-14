@@ -104,6 +104,8 @@ gen_tokens! {
     Mut, TokenMut, "mut", {}, (fmt = "mut "), (Copy, Eq, Hash);
     Fn, TokenFn, "fn", {}, (fmt = "fn "), (Copy, Eq, Hash);
     Struct, TokenStruct, "struct", {}, (fmt = "struct "), (Copy, Eq, Hash);
+    Enum, TokenEnum, "enum", {}, (fmt = "enum "), (Copy, Eq, Hash);
+    Match, TokenMatch, "match", {}, (fmt = "match "), (Copy, Eq, Hash);
     If, TokenIf, "if", {}, (fmt = "if "), (Copy, Eq, Hash);
     Else, TokenElse, "else", {}, (fmt = "else "), (Copy, Eq, Hash);
     While, TokenWhile, "while", {}, (fmt = "while "), (Copy, Eq, Hash);
@@ -112,7 +114,7 @@ gen_tokens! {
     IntType, TokenIntType, "int", {}, (fmt = "int "), (Copy, Eq, Hash);
     FloatType, TokenFloatType, "float", {}, (fmt = "float "), (Copy, Eq, Hash);
     BoolType, TokenBoolType, "bool", {}, (fmt = "bool "), (Copy, Eq, Hash);
-    // symbolgerades
+    // symbols
     Assign, TokenAssign, "=", {}, (fmt = "= "), (Copy, Eq, Hash);
     LessThan, TokenLessThan, "<", {}, (fmt = "< "), (Copy, Eq, Hash);
     LessEquals, TokenLessEquals, "<=", {}, (fmt = "<= "), (Copy, Eq, Hash);
@@ -136,8 +138,11 @@ gen_tokens! {
     Comma, TokenComma, ",", {}, (fmt = ", "), (Copy, Eq, Hash);
     Semicolon, TokenSemicolon, ";", {}, (fmt = ";\n"), (Copy, Eq, Hash);
     Colon, TokenColon, ":", {}, (fmt = ": "), (Copy, Eq, Hash);
+    DoubleColon, TokenDoubleColon, "::", {}, (fmt = ":: "), (Copy, Eq, Hash);
     Arrow, TokenArrow, "->", {}, (fmt = "-> "), (Copy, Eq, Hash);
+    FatArrow, TokenFatArrow, "=>", {}, (fmt = "=> "), (Copy, Eq, Hash);
     Dot, TokenDot, ".", {}, (fmt = ". "), (Copy, Eq, Hash);
+    Underscore, TokenUnderscore, "_", {}, (fmt = "_ "), (Copy, Eq, Hash);
     LineComment<'i>, TokenLineComment, "//", {comment: &'i str,}, (fmt = "{}", comment), (Copy, Eq, Hash), #[doc = "Line Comment including starting `//` and ending newline"];
     BlockComment<'i>, TokenBlockComment, "/* */", {comment: &'i str,}, (fmt = "{}", comment), (Copy, Eq, Hash), #[doc = "/// Block Comment including starting `/*` and ending `*/`"];
     Eof, TokenEof, "EOF", {}, (fmt = "EOF");

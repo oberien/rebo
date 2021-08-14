@@ -163,6 +163,43 @@ fn if_else_diagnostics() {
     "#.to_string()), ReturnValue::Diagnostics(8));
 }
 #[test]
+fn match_usage() {
+    let _ = env_logger::builder().is_test(true).try_init();
+    assert_eq!(rebo::run("test".to_string(), r#"
+        assert(match true { true => (), false => panic("") } == ());
+        assert(match false { true => panic(""), _ => () } == ());
+        assert(match false { true => panic(""), foo => assert(!foo) } == ());
+        assert(match true { true => (), _ => panic("") } == ());
+        assert(match true { true => (), foo => panic("") } == ());
+        assert(match 1 { 1 => (), _ => panic("") } == ());
+        match 1 { 0 => panic(""), foo => assert(foo == 1) };
+        assert(match "uiae" { "uiae" => (), _ => panic("") } == ());
+        assert(match "uiae" { "foo" => panic(""), _ => () } == ());
+        assert(match () { () => () } == ());
+        assert(match () { _ => () } == ());
+        assert(match () { () => 1337 } == 1337);
+    "#.to_string()), ReturnValue::Ok);
+}
+#[test]
+fn match_diagnostics() {
+    let _ = env_logger::builder().is_test(true).try_init();
+    assert_eq!(rebo::run("test".to_string(), r#"
+        // empty body + non-exhaustive
+        match true {}
+        // unreachable
+        match true { _ => (), foo => {} }
+        // float match
+        match 1.0 { _ => () }
+        // missing catchall
+        match 1 { 1 => () }
+        // struct match
+        struct Foo {}
+        match Foo {} { _ => () }
+        // non-exhaustive
+        match true { true => (), }
+    "#.to_string()), ReturnValue::Diagnostics(7));
+}
+#[test]
 fn while_usage() {
     let _ = env_logger::builder().is_test(true).try_init();
     assert_eq!(rebo::run("test".to_string(), r#"

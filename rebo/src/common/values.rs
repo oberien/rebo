@@ -9,6 +9,7 @@ use std::ops::{Add, Sub, Mul, Div};
 use std::cmp::Ordering;
 use parking_lot::ReentrantMutex;
 use std::cell::RefCell;
+use crate::parser::{ExprLiteral, ExprInteger, ExprFloat, ExprBool, ExprString};
 
 pub trait FromValues {
     fn from_values(values: impl Iterator<Item = Value>) -> Self;
@@ -111,6 +112,19 @@ impl Display for Value {
                 }
                 write!(f, " }}")
             },
+        }
+    }
+}
+
+impl PartialEq<ExprLiteral> for Value {
+    fn eq(&self, other: &ExprLiteral) -> bool {
+        match (self, other) {
+            (Value::Unit, ExprLiteral::Unit(_)) => true,
+            (Value::Integer(i), ExprLiteral::Integer(ExprInteger { int })) => *i == int.value,
+            (Value::Float(f), ExprLiteral::Float(ExprFloat { float })) => *f == FuzzyFloat(float.value),
+            (Value::Bool(val), ExprLiteral::Bool(ExprBool { b })) => *val == b.value,
+            (Value::String(val), ExprLiteral::String(ExprString { string })) => val == &string.string,
+            _ => false,
         }
     }
 }
