@@ -6,7 +6,7 @@ use std::fmt::{self, Write, Display, Formatter, Debug};
 use derive_more::Display;
 use crate::scope::BindingId;
 use crate::util::PadFmt;
-use crate::lexer::{TokenOpenParen, TokenCloseParen, TokenIdent, TokenInteger, TokenFloat, TokenBool, TokenDqString, TokenType, TokenStringType, TokenIntType, TokenFloatType, TokenBoolType, Token, TokenLet, TokenColon, TokenMut, TokenAssign, TokenOpenCurly, TokenCloseCurly, TokenComma, TokenArrow, TokenFn, TokenBang, TokenPlus, TokenMinus, TokenStar, TokenSlash, TokenDoubleAmp, TokenDoublePipe, TokenLessThan, TokenLessEquals, TokenEquals, TokenNotEquals, TokenGreaterEquals, TokenGreaterThan, TokenStruct, TokenDot, TokenIf, TokenElse, TokenWhile, TokenFormatString, TokenFormatStringPart, Lexer, TokenMatch, TokenFatArrow};
+use crate::lexer::{TokenOpenParen, TokenCloseParen, TokenIdent, TokenInteger, TokenFloat, TokenBool, TokenDqString, TokenType, TokenStringType, TokenIntType, TokenFloatType, TokenBoolType, Token, TokenLet, TokenColon, TokenMut, TokenAssign, TokenOpenCurly, TokenCloseCurly, TokenComma, TokenArrow, TokenFn, TokenBang, TokenPlus, TokenMinus, TokenStar, TokenSlash, TokenDoubleAmp, TokenDoublePipe, TokenLessThan, TokenLessEquals, TokenEquals, TokenNotEquals, TokenGreaterEquals, TokenGreaterThan, TokenStruct, TokenDot, TokenIf, TokenElse, TokenWhile, TokenFormatString, TokenFormatStringPart, Lexer, TokenMatch, TokenFatArrow, TokenEnum, TokenDoubleColon};
 use crate::parser::{Parse, InternalError, Parser, Expected};
 use crate::error_codes::ErrorCode;
 use std::borrow::Cow;
@@ -180,6 +180,10 @@ pub enum Expr<'a, 'i> {
     StructDefinition(ExprStructDefinition<'a, 'i>),
     /// ident { ident: expr, ident: expr, ... }
     StructInitialization(ExprStructInitialization<'a, 'i>),
+    // /// enum ident { ident, ident(typ, typ, ...), ... }
+    // EnumDefinition(ExprEnumDefinition<'a, 'i>),
+    // /// ident::ident(expr, ...)
+    // EnumInitialization(ExprEnumInitialization<'a, 'i>),
 }
 impl<'a, 'i> Spanned for Expr<'a, 'i> {
     fn span(&self) -> Span {
@@ -322,6 +326,7 @@ pub enum ExprType<'i> {
     Bool(TokenBoolType),
     Unit(TokenOpenParen, TokenCloseParen),
     Struct(TokenIdent<'i>),
+    // Enum(TokenIdent<'i>),
 }
 impl<'a, 'i> Parse<'a, 'i> for ExprType<'i> {
     fn parse_marked(parser: &mut Parser<'a, '_, 'i>, _depth: Depth) -> Result<Self, InternalError> {
@@ -1236,5 +1241,94 @@ impl<'a, 'i> Display for ExprStructInitialization<'a, 'i> {
             write!(f, "{}: {}, ", name.ident, expr)?;
         }
         write!(f, "}}")
+    }
+}
+
+pub struct ExprEnumDefinition<'a, 'i> {
+    pub enum_token: TokenEnum,
+    pub name: TokenIdent<'i>,
+    pub open: TokenOpenCurly,
+    pub variants: Separated<'a, 'i, ExprEnumVariant<'a, 'i>, TokenComma>,
+    pub close: TokenCloseCurly,
+}
+impl<'a, 'i> Parse<'a, 'i> for ExprEnumDefinition<'a, 'i> {
+    fn parse_marked(parser: &mut Parser<'a, '_, 'i>, depth: Depth) -> Result<Self, InternalError> {
+        Ok(ExprEnumDefinition {
+            enum_token: parser.parse(depth.next())?,
+            name: parser.parse(depth.next())?,
+            open: parser.parse(depth.next())?,
+            variants: parser.parse(depth.next())?,
+            close: parser.parse(depth.last())?,
+        })
+    }
+}
+impl<'a, 'i> Spanned for ExprEnumDefinition<'a, 'i> {
+    fn span(&self) -> Span {
+        Span::new(self.enum_token.span.file, self.enum_token.span.start, self.close.span.end)
+    }
+}
+impl<'a, 'i> Display for ExprEnumDefinition<'a, 'i> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        writeln!(f, "enum {} {{", self.name.ident)?;
+        let mut padded = PadFmt::new(&mut *f);
+        for variant in &self.variants {
+            writeln!(padded, "{}", variant)?;
+        }
+        writeln!(f, "}}")
+    }
+}
+pub struct ExprEnumVariant<'a, 'i> {
+    pub name: TokenIdent<'i>,
+    pub fields: Option<(TokenOpenParen, Separated<'a, 'i, ExprType<'i>, TokenComma>, TokenCloseParen)>,
+}
+impl<'a, 'i> Parse<'a, 'i> for ExprEnumVariant<'a, 'i> {
+    fn parse_marked(parser: &mut Parser<'a, '_, 'i>, depth: Depth) -> Result<Self, InternalError> {
+        Ok(ExprEnumVariant {
+            name: parser.parse(depth.next())?,
+            fields: parser.parse(depth.last())?,
+        })
+    }
+}
+impl<'a, 'i> Display for ExprEnumVariant<'a, 'i> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.name.ident)?;
+        if let Some((_open, fields, _close)) = &self.fields {
+            let joined = fields.iter().map(|typ| typ.to_string()).join(", ");
+            write!(f, "({})", joined)?;
+        }
+        Ok(())
+    }
+}
+pub struct ExprEnumInitialization<'a, 'i> {
+    pub enum_name: TokenIdent<'i>,
+    pub double_colon: TokenDoubleColon,
+    pub variant_name: TokenIdent<'i>,
+    pub fields: Option<(TokenOpenParen, Separated<'a, 'i, &'a Expr<'a, 'i>, TokenComma>, TokenCloseParen)>,
+}
+impl<'a, 'i> Parse<'a, 'i> for ExprEnumInitialization<'a, 'i> {
+    fn parse_marked(parser: &mut Parser<'a, '_, 'i>, depth: Depth) -> Result<Self, InternalError> {
+        Ok(ExprEnumInitialization {
+            enum_name: parser.parse(depth.next())?,
+            double_colon: parser.parse(depth.next())?,
+            variant_name: parser.parse(depth.next())?,
+            fields: parser.parse(depth.last())?,
+        })
+    }
+}
+impl<'a, 'i> Spanned for ExprEnumInitialization<'a, 'i> {
+    fn span(&self) -> Span {
+        let end = self.fields.as_ref().map(|(_open, _fields, close)| close.span.end)
+            .unwrap_or(self.variant_name.span.end);
+        Span::new(self.enum_name.span.file, self.enum_name.span.start, end)
+    }
+}
+impl<'a, 'i> Display for ExprEnumInitialization<'a, 'i> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "{}::{}", self.enum_name.ident, self.variant_name.ident)?;
+        if let Some((_open, fields, _close)) = &self.fields {
+            let joined = fields.iter().map(|expr| expr.to_string()).join(", ");
+            write!(f, "({})", joined)?;
+        }
+        Ok(())
     }
 }

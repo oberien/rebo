@@ -23,6 +23,8 @@ pub enum SpecificType {
     Function(Box<FunctionType>),
     /// struct name
     Struct(String),
+    // /// enum name
+    // Enum(String),
 }
 #[derive(Debug, Clone, PartialOrd, Ord, PartialEq, Eq, Hash)]
 pub struct FunctionType {
@@ -43,6 +45,7 @@ impl From<&ExprType<'_>> for SpecificType {
             ExprType::Bool(_) => SpecificType::Bool,
             ExprType::Unit(_, _) => SpecificType::Unit,
             ExprType::Struct(s) => SpecificType::Struct(s.ident.to_string()),
+            // ExprType::Enum(s) => SpecificType::Enum(s.ident.to_string()),
         }
     }
 }

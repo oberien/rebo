@@ -141,7 +141,7 @@ pub struct ExprMatchPatternVariant<'a, 'i> {
     pub enum_name: TokenIdent<'i>,
     pub double_colon: TokenDoubleColon,
     pub variant_name: TokenIdent<'i>,
-    pub fields: Option<(TokenOpenParen, Separated<'a, 'i, ExprPatternUntyped<'i>, TokenComma>, TokenCloseParen)>,
+    pub fields: Option<(TokenOpenParen, Separated<'a, 'i, ExprMatchPattern<'i>, TokenComma>, TokenCloseParen)>,
 }
 impl<'a, 'i> Parse<'a, 'i> for ExprMatchPatternVariant<'a, 'i> {
     fn parse_marked(parser: &mut Parser<'a, '_, 'i>, depth: Depth) -> Result<Self, InternalError> {
@@ -164,7 +164,7 @@ impl<'a, 'i> Display for ExprMatchPatternVariant<'a, 'i> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "{}::{}", self.enum_name.ident, self.variant_name.ident)?;
         if let Some((_, sep, _)) = &self.fields {
-            let joined = sep.iter().map(|pat| pat.binding.ident).join(", ");
+            let joined = sep.iter().map(|pat| pat.to_string()).join(", ");
             write!(f, "{}", joined)?;
         }
         Ok(())
