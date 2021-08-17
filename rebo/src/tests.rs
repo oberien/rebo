@@ -352,3 +352,42 @@ fn struct_diagnostics() {
         bar.i = 42;
     "#.to_string()), ReturnValue::Diagnostics(9));
 }
+
+#[test]
+fn associated_functions() {
+    let _ = env_logger::builder().is_test(true).try_init();
+    assert_eq!(rebo::run("test".to_string(), r#"
+        struct Foo {
+            a: int,
+            b: string,
+        }
+        impl Foo {
+            fn new(a: int, b: string) -> Foo {
+                Foo { a: a, b: b }
+            }
+
+            fn foo(a: int) -> int {
+                a + 10
+            }
+        }
+        assert(Foo::new(42, "uiae") == Foo { a: 42, b: "uiae", });
+        assert(Foo::foo(42) == 52);
+    "#.to_string()), ReturnValue::Ok);
+}
+#[test]
+fn associated_function_diagnostics() {
+    let _ = env_logger::builder().is_test(true).try_init();
+    assert_eq!(rebo::run("test".to_string(), r#"
+        struct Foo {}
+        impl Foo {}
+    "#.to_string()), ReturnValue::Diagnostics(1));
+}
+#[test]
+fn associated_function_diagnostics2() {
+    let _ = env_logger::builder().is_test(true).try_init();
+    assert_eq!(rebo::run("test".to_string(), r#"
+        impl Foo {
+            fn foo() {}
+        }
+    "#.to_string()), ReturnValue::Diagnostics(1));
+}

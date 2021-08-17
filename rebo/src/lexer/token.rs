@@ -105,6 +105,7 @@ gen_tokens! {
     Fn, TokenFn, "fn", {}, (fmt = "fn "), (Copy, Eq, Hash);
     Struct, TokenStruct, "struct", {}, (fmt = "struct "), (Copy, Eq, Hash);
     Enum, TokenEnum, "enum", {}, (fmt = "enum "), (Copy, Eq, Hash);
+    Impl, TokenImpl, "impl", {}, (fmt = "impl "), (Copy, Eq, Hash);
     Match, TokenMatch, "match", {}, (fmt = "match "), (Copy, Eq, Hash);
     If, TokenIf, "if", {}, (fmt = "if "), (Copy, Eq, Hash);
     Else, TokenElse, "else", {}, (fmt = "else "), (Copy, Eq, Hash);

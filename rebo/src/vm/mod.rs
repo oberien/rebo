@@ -11,15 +11,16 @@ use std::cell::RefCell;
 pub struct Vm<'a, 'i> {
     scopes: Scopes,
     rebo_functions: IndexMap<BindingId, &'a ExprFunctionDefinition<'a, 'i>>,
+    rebo_associated_functions: IndexMap<BindingId, (&'a TokenIdent<'i>, &'a ExprFunctionDefinition<'a, 'i>)>,
     structs: IndexMap<&'i str, (StructType, Span)>,
 }
 
 impl<'a, 'i> Vm<'a, 'i> {
     pub fn new(pre_info: PreInfo<'a, 'i>) -> Self {
-        let PreInfo { bindings: _, rebo_functions, structs, root_scope } = pre_info;
+        let PreInfo { bindings: _, rebo_functions, rebo_associated_functions, structs, root_scope } = pre_info;
         let mut scopes = Scopes::new();
         scopes.push_scope(root_scope);
-        Vm { scopes, rebo_functions, structs }
+        Vm { scopes, rebo_functions, rebo_associated_functions, structs }
     }
 
     pub fn run(mut self, ast: &[&Expr]) -> Value {
@@ -222,6 +223,7 @@ impl<'a, 'i> Vm<'a, 'i> {
                     fields: field_values,
                 })))})
             }
+            Expr::ImplBlock(_) => Value::Unit,
         }
     }
 
@@ -252,7 +254,10 @@ impl<'a, 'i> Vm<'a, 'i> {
                     self.scopes.push_scope(scope);
 
                     let mut last = None;
-                    for expr in &self.rebo_functions[&binding_id].body.body.exprs {
+                    let fun = self.rebo_functions.get(&binding_id)
+                        .or_else(|| self.rebo_associated_functions.get(&binding_id).map(|(_name, fun)| fun))
+                        .unwrap();
+                    for expr in &fun.body.body.exprs {
                         last = Some(self.eval_expr(expr, depth.next()));
                     }
 

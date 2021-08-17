@@ -6,7 +6,7 @@ use std::fmt::{self, Write, Display, Formatter, Debug};
 use derive_more::Display;
 use crate::scope::BindingId;
 use crate::util::PadFmt;
-use crate::lexer::{TokenOpenParen, TokenCloseParen, TokenIdent, TokenInteger, TokenFloat, TokenBool, TokenDqString, TokenType, TokenStringType, TokenIntType, TokenFloatType, TokenBoolType, Token, TokenLet, TokenColon, TokenMut, TokenAssign, TokenOpenCurly, TokenCloseCurly, TokenComma, TokenArrow, TokenFn, TokenBang, TokenPlus, TokenMinus, TokenStar, TokenSlash, TokenDoubleAmp, TokenDoublePipe, TokenLessThan, TokenLessEquals, TokenEquals, TokenNotEquals, TokenGreaterEquals, TokenGreaterThan, TokenStruct, TokenDot, TokenIf, TokenElse, TokenWhile, TokenFormatString, TokenFormatStringPart, Lexer, TokenMatch, TokenFatArrow, TokenEnum, TokenDoubleColon};
+use crate::lexer::{TokenOpenParen, TokenCloseParen, TokenIdent, TokenInteger, TokenFloat, TokenBool, TokenDqString, TokenType, TokenStringType, TokenIntType, TokenFloatType, TokenBoolType, Token, TokenLet, TokenColon, TokenMut, TokenAssign, TokenOpenCurly, TokenCloseCurly, TokenComma, TokenArrow, TokenFn, TokenBang, TokenPlus, TokenMinus, TokenStar, TokenSlash, TokenDoubleAmp, TokenDoublePipe, TokenLessThan, TokenLessEquals, TokenEquals, TokenNotEquals, TokenGreaterEquals, TokenGreaterThan, TokenStruct, TokenDot, TokenIf, TokenElse, TokenWhile, TokenFormatString, TokenFormatStringPart, Lexer, TokenMatch, TokenFatArrow, TokenEnum, TokenDoubleColon, TokenImpl};
 use crate::parser::{Parse, InternalError, Parser, Expected};
 use crate::error_codes::ErrorCode;
 use std::borrow::Cow;
@@ -54,6 +54,21 @@ impl<'i> Binding<'i> {
             Some(binding) => binding,
             None => parser.diagnostic_unknown_identifier(ident, |d| d.with_info_label(ident.span, format!("use `let {} = ...` to create a new binding", ident))),
         };
+        Ok((binding, ident.span))
+    }
+    /// Return an existing pathed binding like `Foo::bar`
+    fn parse_existing_pathed<'a>(parser: &mut Parser<'a, '_, 'i>, depth: Depth) -> Result<(Binding<'i>, Span), InternalError> {
+        trace!("{} Binding::parse_existing_pathed        ({:?})", depth, parser.peek_token(0));
+        let mark = parser.lexer.mark();
+        let name: TokenIdent = parser.parse(depth.next())?;
+        let _dcolon: TokenDoubleColon = parser.parse(depth.next())?;
+        let ident: TokenIdent = parser.parse(depth.last())?;
+        let path = format!("{}::{}", name.ident, ident.ident);
+        let binding = match parser.get_binding(&path) {
+            Some(binding) => binding,
+            None => parser.diagnostic_unknown_identifier(ident, |d| d),
+        };
+        mark.apply();
         Ok((binding, ident.span))
     }
 }
@@ -184,6 +199,8 @@ pub enum Expr<'a, 'i> {
     // EnumDefinition(ExprEnumDefinition<'a, 'i>),
     // /// ident::ident(expr, ...)
     // EnumInitialization(ExprEnumInitialization<'a, 'i>),
+    /// impl name { fn foo(...) {...} fn bar(self, ...) {...} }
+    ImplBlock(ExprImplBlock<'a, 'i>),
 }
 impl<'a, 'i> Spanned for Expr<'a, 'i> {
     fn span(&self) -> Span {
@@ -228,10 +245,10 @@ impl<'a, 'i> Expr<'a, 'i> {
             |parser: &mut Parser<'a, '_, 'i>, depth| Ok(parser.arena.alloc(Expr::Block(ExprBlock::parse(parser, depth)?))),
             |parser: &mut Parser<'a, '_, 'i>, depth| Ok(parser.arena.alloc(Expr::BoolNot(ExprBoolNot::parse(parser, depth)?))),
             |parser: &mut Parser<'a, '_, 'i>, depth| Ok(parser.arena.alloc(Expr::Bind(ExprBind::parse(parser, depth)?))),
-            |parser: &mut Parser<'a, '_, 'i>, depth| Ok(parser.arena.alloc(Expr::Assign(ExprAssign::parse(parser, depth)?))),
             |parser: &mut Parser<'a, '_, 'i>, depth| Ok(parser.arena.alloc(Expr::FunctionCall(ExprFunctionCall::parse(parser, depth)?))),
             |parser: &mut Parser<'a, '_, 'i>, depth| Ok(parser.arena.alloc(Expr::Literal(ExprLiteral::parse(parser, depth)?))),
             |parser: &mut Parser<'a, '_, 'i>, depth| Ok(parser.arena.alloc(Expr::FormatString(ExprFormatString::parse(parser, depth)?))),
+            |parser: &mut Parser<'a, '_, 'i>, depth| Ok(parser.arena.alloc(Expr::Assign(ExprAssign::parse(parser, depth)?))),
             |parser: &mut Parser<'a, '_, 'i>, depth| Ok(parser.arena.alloc(Expr::FieldAccess(ExprFieldAccess::parse(parser, depth)?))),
             |parser: &mut Parser<'a, '_, 'i>, depth| Ok(parser.arena.alloc(Expr::Variable(ExprVariable::parse(parser, depth)?))),
         ];
@@ -405,7 +422,7 @@ impl Spanned for ExprUnit {
 #[derive(Debug, Clone)]
 pub struct ExprVariable<'i> {
     pub binding: Binding<'i>,
-    // The binding span is from the definition site.
+    // The binding's span is from the definition site.
     // Variables are used for usage sites, where we need to store the span as well.
     span: Span,
 }
@@ -413,6 +430,19 @@ impl<'a, 'i> Parse<'a, 'i> for ExprVariable<'i> {
     fn parse_marked(parser: &mut Parser<'a, '_, 'i>, depth: Depth) -> Result<Self, InternalError> {
         let (binding, span) = Binding::parse_existing(parser, depth.last())?;
         Ok(ExprVariable { binding, span })
+    }
+}
+impl<'i> ExprVariable<'i> {
+    fn parse_maybe_pathed(parser: &mut Parser<'_, '_, 'i>, depth: Depth) -> Result<Self, InternalError> {
+        let err1 = match Binding::parse_existing_pathed(parser, depth.next()) {
+            Ok((binding, span)) => return Ok(ExprVariable { binding, span }),
+            Err(e) => e,
+        };
+        let err2 = match Binding::parse_existing(parser, depth.last()) {
+            Ok((binding, span)) => return Ok(ExprVariable { binding, span }),
+            Err(e) => e,
+        };
+        Err(helper::last_error(&[err1, err2]))
     }
 }
 impl<'i> Spanned for ExprVariable<'i> {
@@ -873,6 +903,7 @@ impl<'a, 'i> Parse<'a, 'i> for BlockBody<'a, 'i> {
                 last = match expr {
                     Expr::FunctionDefinition(_)
                     | Expr::StructDefinition(_)
+                    | Expr::ImplBlock(_)
                     | Expr::IfElse(_)
                     | Expr::Match(_)
                     | Expr::While(_)
@@ -1057,7 +1088,7 @@ pub struct ExprFunctionCall<'a, 'i> {
 }
 impl<'a, 'i> Parse<'a, 'i> for ExprFunctionCall<'a, 'i> {
     fn parse_marked(parser: &mut Parser<'a, '_, 'i>, depth: Depth) -> Result<Self, InternalError> {
-        let variable = parser.parse(depth.next())?;
+        let variable = ExprVariable::parse_maybe_pathed(parser, depth.next())?;
         let open = parser.parse(depth.next())?;
         let args = parser.parse(depth.next())?;
         let close = parser.parse(depth.last())?;
@@ -1114,7 +1145,7 @@ impl<'a, 'i> Parse<'a, 'i> for ExprFunctionDefinition<'a, 'i> {
 
         let scope = parser.push_scope();
         for &ExprPatternTyped { pattern: ExprPatternUntyped { binding }, .. } in &args {
-            scope.idents.insert(binding.ident.ident, binding);
+            scope.idents.insert(Cow::Borrowed(binding.ident.ident), binding);
         }
         // defer result resolution until after scope was popped
         let body = parser.parse(depth.last());
@@ -1330,5 +1361,50 @@ impl<'a, 'i> Display for ExprEnumInitialization<'a, 'i> {
             write!(f, "({})", joined)?;
         }
         Ok(())
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct ExprImplBlock<'a, 'i> {
+    pub impl_token: TokenImpl,
+    pub name: TokenIdent<'i>,
+    pub open: TokenOpenCurly,
+    pub functions: Vec<ExprFunctionDefinition<'a, 'i>>,
+    pub close: TokenCloseCurly,
+}
+impl<'a, 'i> Parse<'a, 'i> for ExprImplBlock<'a, 'i> {
+    fn parse_marked(parser: &mut Parser<'a, '_, 'i>, depth: Depth) -> Result<Self, InternalError> {
+        let impl_token: TokenImpl = parser.parse(depth.next())?;
+        let name = parser.parse(depth.next())?;
+        let open = parser.parse(depth.next())?;
+        let functions: Vec<ExprFunctionDefinition<'a, 'i>> = parser.parse(depth.next())?;
+        let close: TokenCloseCurly = parser.parse(depth.last())?;
+        if functions.is_empty() {
+            parser.diagnostics.warning(ErrorCode::EmptyImplBlock)
+                .with_error_label(Span::new(impl_token.span.file, impl_token.span.start, close.span.end), "this impl is empty")
+                .emit();
+        }
+        Ok(ExprImplBlock {
+            impl_token,
+            name,
+            open,
+            functions,
+            close,
+        })
+    }
+}
+impl<'a, 'i> Spanned for ExprImplBlock<'a, 'i> {
+    fn span(&self) -> Span {
+        Span::new(self.impl_token.span.file, self.impl_token.span.start, self.close.span.end)
+    }
+}
+impl<'a, 'i> Display for ExprImplBlock<'a, 'i> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "impl {} {{", self.name.ident)?;
+        let mut padded = PadFmt::new(&mut *f);
+        for function in &self.functions {
+            writeln!(padded, "{}", function)?;
+        }
+        writeln!(f, "}}")
     }
 }

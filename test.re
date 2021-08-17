@@ -29,6 +29,13 @@ print(foo.a, foo.b);
 foo.b = "dtrn";
 print(foo, foo2, foo == foo2);
 
+impl Foo {
+    fn new(a: int, b: string) -> Foo {
+        Foo { a: a, b: b }
+    }
+}
+print(Foo::new(42, "uiae"));
+
 print(if true { 1337 } else { panic("F") } + 5);
 
 let mut i = 0;

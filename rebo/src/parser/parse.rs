@@ -210,6 +210,7 @@ impl_for_tokens! {
     Mut, TokenMut;
     Struct, TokenStruct;
     Enum, TokenEnum;
+    Impl, TokenImpl;
     Fn, TokenFn;
     Match, TokenMatch;
     If, TokenIf;

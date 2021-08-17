@@ -41,6 +41,8 @@ pub enum ErrorCode {
     MatchNoCatchall,
     StructMatch,
     NonExhaustiveMatch,
+    EmptyImplBlock,
+    UnknownImplBlockTarget,
 }
 use ErrorCode::*;
 
@@ -88,6 +90,8 @@ impl diagnostic::ErrorCode for ErrorCode {
             MatchNoCatchall => "0040",
             StructMatch => "0041",
             NonExhaustiveMatch => "0042",
+            EmptyImplBlock => "0043",
+            UnknownImplBlockTarget => "0044",
         }.to_string()
     }
 
@@ -134,6 +138,8 @@ impl diagnostic::ErrorCode for ErrorCode {
             MatchNoCatchall => "match statement doesn't have a catchall pattern",
             StructMatch => "can't match a struct",
             NonExhaustiveMatch => "non-exhaustive match",
+            EmptyImplBlock => "empty impl block",
+            UnknownImplBlockTarget => "unknown impl block target",
         }.to_string()
     }
 }

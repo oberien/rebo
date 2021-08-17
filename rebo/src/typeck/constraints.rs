@@ -1,4 +1,4 @@
-use crate::parser::{Expr, Spanned, ExprBind, ExprAssign, ExprPattern, ExprPatternUntyped, ExprPatternTyped, ExprVariable, ExprAdd, ExprSub, ExprMul, ExprDiv, ExprBoolAnd, ExprBoolOr, ExprBoolNot, ExprLessThan, ExprGreaterEquals, ExprLessEquals, ExprGreaterThan, ExprEquals, ExprNotEquals, ExprBlock, ExprParenthesized, ExprFunctionCall, ExprFunctionDefinition, BlockBody, ExprStructDefinition, ExprType, ExprStructDefFields, ExprStructInitialization, ExprAssignLhs, ExprIfElse, ExprWhile, ExprFormatString, ExprFormatStringPart, ExprLiteral, ExprMatch, ExprMatchPattern};
+use crate::parser::{Expr, Spanned, ExprBind, ExprAssign, ExprPattern, ExprPatternUntyped, ExprPatternTyped, ExprVariable, ExprAdd, ExprSub, ExprMul, ExprDiv, ExprBoolAnd, ExprBoolOr, ExprBoolNot, ExprLessThan, ExprGreaterEquals, ExprLessEquals, ExprGreaterThan, ExprEquals, ExprNotEquals, ExprBlock, ExprParenthesized, ExprFunctionCall, ExprFunctionDefinition, BlockBody, ExprStructDefinition, ExprType, ExprStructDefFields, ExprStructInitialization, ExprAssignLhs, ExprIfElse, ExprWhile, ExprFormatString, ExprFormatStringPart, ExprLiteral, ExprMatch, ExprMatchPattern, ExprImplBlock};
 use crate::typeck::{Constraint, TypeVar, ConstraintTyp};
 use crate::common::{SpecificType, Type, PreInfo};
 use itertools::{Either, Itertools};
@@ -24,7 +24,7 @@ impl<'a, 'i> ConstraintCreator<'a, 'i> {
         }
     }
     /// Iterate over the AST, returning a set of type inference constraints.
-    pub fn get_constraints(mut self, exprs: &[&Expr<'a, 'i>]) -> (Vec<Constraint>, Vec<(TypeVar, Vec<SpecificType>)>) {
+    pub fn get_constraints(mut self, exprs: &[&'a Expr<'a, 'i>]) -> (Vec<Constraint>, Vec<(TypeVar, Vec<SpecificType>)>) {
         for expr in exprs {
             let val_type_var = self.get_type(expr);
             self.constraints.push(Constraint::new(expr.span(), ConstraintTyp::Type(val_type_var, Type::Top)));
@@ -61,7 +61,7 @@ impl<'a, 'i> ConstraintCreator<'a, 'i> {
     }
 
     #[must_use]
-    fn get_type(&mut self, expr_outer: &Expr<'a, 'i>) -> TypeVar {
+    fn get_type(&mut self, expr_outer: &'a Expr<'a, 'i>) -> TypeVar {
         use Expr::*;
         let type_var = TypeVar::new(expr_outer.span());
         match expr_outer {
@@ -326,27 +326,8 @@ impl<'a, 'i> ConstraintCreator<'a, 'i> {
                     self.restrictions.push((type_var, vec![ret.clone()]));
                 }
             },
-            FunctionDefinition(ExprFunctionDefinition { binding, ret_type, body: ExprBlock { body: BlockBody { exprs, terminated }, .. }, .. }) => {
-                let ret_type = match ret_type {
-                    Some((_arrow, typ)) => SpecificType::from(typ),
-                    None => SpecificType::Unit,
-                };
-                if exprs.is_empty() && ret_type != SpecificType::Unit {
-                    self.diagnostics.error(ErrorCode::EmptyFunctionBody)
-                        .with_error_label(binding.span(), format!("this function returns {} but has an empty body", ret_type))
-                        .emit();
-                }
-                let mut last = None;
-                for expr in exprs {
-                    last = Some((expr.span(), self.get_type(expr)));
-                }
-                match (terminated, last) {
-                    (false, Some((span, last))) => self.constraints.push(Constraint::new(span, ConstraintTyp::Type(last, Type::Specific(ret_type.clone())))),
-                    (false, None) | (true, _) => {
-                        self.constraints.push(Constraint::new(expr_outer.span(), ConstraintTyp::Type(type_var, Type::Specific(SpecificType::Unit))));
-                        self.restrictions.push((type_var, vec![SpecificType::Unit]));
-                    }
-                }
+            FunctionDefinition(function_definition) => {
+                self.get_function_definition_type(function_definition);
             }
             StructDefinition(ExprStructDefinition { name, fields, .. }) => {
                 self.check_struct_fields(name, fields);
@@ -373,8 +354,49 @@ impl<'a, 'i> ConstraintCreator<'a, 'i> {
                     self.restrictions.push((field_typ_var, vec![expected_typ.clone()]))
                 }
             }
+            ImplBlock(ExprImplBlock { name, functions, .. }) => {
+                if self.pre_info.structs.get(name.ident).is_none() {
+                    let similar = crate::util::similar_name(name.ident, self.pre_info.structs.keys());
+                    let mut diag = self.diagnostics.error(ErrorCode::UnknownImplBlockTarget)
+                        .with_error_label(name.span, "can't find this type");
+                    if let Some(similar) = similar {
+                        diag = diag.with_info_label(name.span, format!("did you mean `{}`", similar));
+                    }
+                    diag.emit();
+                }
+                for function_definition in functions {
+                    self.get_function_definition_type(function_definition);
+                }
+                self.constraints.push(Constraint::new(expr_outer.span(), ConstraintTyp::Type(type_var, Type::Specific(SpecificType::Unit))));
+                self.restrictions.push((type_var, vec![SpecificType::Unit]))
+            }
         }
         type_var
+    }
+
+    fn get_function_definition_type(&mut self, function_definition: &'a ExprFunctionDefinition<'a, 'i>) {
+        let ExprFunctionDefinition { binding, ret_type, body: ExprBlock { body: BlockBody { exprs, terminated }, .. }, .. } = function_definition;
+        let type_var = TypeVar::new(function_definition.span());
+        let ret_type = match ret_type {
+            Some((_arrow, typ)) => SpecificType::from(typ),
+            None => SpecificType::Unit,
+        };
+        if exprs.is_empty() && ret_type != SpecificType::Unit {
+            self.diagnostics.error(ErrorCode::EmptyFunctionBody)
+                .with_error_label(binding.span(), format!("this function returns {} but has an empty body", ret_type))
+                .emit();
+        }
+        let mut last = None;
+        for expr in exprs {
+            last = Some((expr.span(), self.get_type(expr)));
+        }
+        match (terminated, last) {
+            (false, Some((span, last))) => self.constraints.push(Constraint::new(span, ConstraintTyp::Type(last, Type::Specific(ret_type.clone())))),
+            (false, None) | (true, _) => {
+                self.constraints.push(Constraint::new(function_definition.span(), ConstraintTyp::Type(type_var, Type::Specific(SpecificType::Unit))));
+                self.restrictions.push((type_var, vec![SpecificType::Unit]));
+            }
+        }
     }
 
     fn check_struct_fields(&self, name: &TokenIdent, fields: &ExprStructDefFields) {

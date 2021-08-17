@@ -130,6 +130,7 @@ impl<'i> Checker<'i> {
                     self.check_match_variants(expr);
                 }
             }
+            Expr::ImplBlock(_) => (),
         }
     }
 

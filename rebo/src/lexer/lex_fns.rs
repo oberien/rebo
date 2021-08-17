@@ -78,6 +78,9 @@ pub fn try_lex_token<'i>(diagnostics: &Diagnostics, file: FileId, s: &'i str, in
     if s[index..].starts_with("enum") {
         return Ok(MaybeToken::Token(Token::Enum(TokenEnum { span: Span::new(file, index, index+4) })));
     }
+    if s[index..].starts_with("impl") {
+        return Ok(MaybeToken::Token(Token::Impl(TokenImpl { span: Span::new(file, index, index+4) })));
+    }
     if s[index..].starts_with("match") {
         return Ok(MaybeToken::Token(Token::Match(TokenMatch { span: Span::new(file, index, index+5) })));
     }

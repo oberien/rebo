@@ -8,6 +8,7 @@ use indexmap::map::IndexMap;
 use diagnostic::Span;
 use crate::parser::{Binding, ExprFunctionDefinition};
 use crate::scope::{Scope, BindingId};
+use crate::lexer::TokenIdent;
 
 /// Info needed before parsing / before typechecking
 pub struct PreInfo<'a, 'i> {
@@ -15,6 +16,8 @@ pub struct PreInfo<'a, 'i> {
     pub bindings: IndexMap<Binding<'i>, SpecificType>,
     /// functions found in the code
     pub rebo_functions: IndexMap<BindingId, &'a ExprFunctionDefinition<'a, 'i>>,
+    /// associated functions found in the code
+    pub rebo_associated_functions: IndexMap<BindingId, (&'a TokenIdent<'i>, &'a ExprFunctionDefinition<'a, 'i>)>,
     /// struct definitions found in the code
     pub structs: IndexMap<&'i str, (StructType, Span)>,
     pub root_scope: Scope,
@@ -24,6 +27,7 @@ impl<'a, 'i> PreInfo<'a, 'i> {
         PreInfo {
             bindings: IndexMap::new(),
             rebo_functions: IndexMap::new(),
+            rebo_associated_functions: IndexMap::new(),
             structs: IndexMap::new(),
             root_scope: Scope::new(),
         }
