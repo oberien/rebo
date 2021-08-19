@@ -378,7 +378,17 @@ impl<'a, 'i> ConstraintCreator<'a, 'i> {
     }
 
     fn get_function_definition_type(&mut self, function_definition: &'a ExprFunctionDefinition<'a, 'i>) {
-        let ExprFunctionDefinition { name, ret_type, body: ExprBlock { body: BlockBody { exprs, terminated }, .. }, .. } = function_definition;
+        let ExprFunctionDefinition { name, ret_type, body: ExprBlock { body: BlockBody { exprs, terminated }, .. }, args, .. } = function_definition;
+
+        // arg types
+        for arg in args {
+            let ExprPatternTyped { pattern: ExprPatternUntyped { binding }, typ, .. } = arg;
+            let arg_type_var = TypeVar::new(binding.ident.span);
+            let typ = SpecificType::from(typ);
+            self.constraints.push(Constraint::new(arg.span(), ConstraintTyp::Type(arg_type_var, Type::Specific(typ.clone()))));
+            self.restrictions.push((arg_type_var, vec![typ]));
+        }
+
         let type_var = TypeVar::new(function_definition.span());
         let ret_type = match ret_type {
             Some((_arrow, typ)) => SpecificType::from(typ),

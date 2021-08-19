@@ -108,8 +108,12 @@ fn functions() {
         fn baz() {}
         assert(baz() == ());
 
+        // allow usage before definition
         fn a() { b() }
         fn b() {}
+        
+        // infer argument types correctly
+        fn c(x: int) { print(x) }
     "#.to_string()), ReturnValue::Ok);
 }
 #[test]
