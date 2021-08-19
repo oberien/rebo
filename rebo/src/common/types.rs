@@ -20,7 +20,6 @@ pub enum SpecificType {
     Float,
     Bool,
     String,
-    Function(Box<FunctionType>),
     /// struct name
     Struct(String),
     // /// enum name
@@ -67,17 +66,6 @@ impl Type {
             (t @ Type::Specific(SpecificType::Float), Type::Specific(SpecificType::Float)) => Ok(Either::Left(t.clone())),
             (t @ Type::Specific(SpecificType::Bool), Type::Specific(SpecificType::Bool)) => Ok(Either::Left(t.clone())),
             (t @ Type::Specific(SpecificType::String), Type::Specific(SpecificType::String)) => Ok(Either::Left(t.clone())),
-            (Type::Specific(SpecificType::Function(a)), Type::Specific(SpecificType::Function(b))) => {
-                let FunctionType { args: args_a, ret: ret_a } = &**a;
-                let FunctionType { args: args_b, ret: ret_b } = &**b;
-                let same_args = args_a.iter().zip(args_b.iter()).all(|(a, b)| a == b);
-                let same_ret = ret_a == ret_b;
-                if same_args && same_ret {
-                    Ok(Either::Left(Type::Specific(SpecificType::Function(a.clone()))))
-                } else {
-                    Err(())
-                }
-            },
             (Type::Specific(SpecificType::Struct(a)), Type::Specific(SpecificType::Struct(b))) if a == b => {
                 Ok(Either::Left(Type::Specific(SpecificType::Struct(a.clone()))))
             }
@@ -94,14 +82,6 @@ impl fmt::Display for SpecificType {
             SpecificType::Float => write!(f, "float"),
             SpecificType::Bool => write!(f, "bool"),
             SpecificType::String => write!(f, "string"),
-            SpecificType::Function(fun) => {
-                let FunctionType { args, ret } = &**fun;
-                write!(f, "fn(")?;
-                for arg in &**args {
-                    write!(f, "{}, ", arg)?;
-                }
-                write!(f, ") -> {}", ret)
-            },
             SpecificType::Struct(name) => write!(f, "{}", name),
         }
     }

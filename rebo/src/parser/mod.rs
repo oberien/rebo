@@ -15,7 +15,7 @@ mod parse;
 
 pub use expr::*;
 pub use parse::{Parse, Spanned, Separated};
-use crate::common::{PreInfo, SpecificType, FunctionType, Type, Value, FunctionImpl, Depth, StructType};
+use crate::common::{PreInfo, SpecificType, Depth, StructType};
 use indexmap::map::IndexMap;
 use itertools::Itertools;
 
@@ -98,7 +98,7 @@ pub struct Parser<'a, 'b, 'i> {
 }
 
 struct Scope<'i> {
-    idents: IndexMap<Cow<'i, str>, Binding<'i>>
+    idents: IndexMap<&'i str, Binding<'i>>
 }
 
 /// All expression parsing function consume whitespace and comments before tokens, but not after.
@@ -118,10 +118,7 @@ impl<'a, 'b, 'i> Parser<'a, 'b, 'i> {
         parser.first_pass();
         // make existing bindings known to parser
         for &binding in parser.pre_info.bindings.keys() {
-            let name = parser.pre_info.rebo_associated_functions.get(&binding.id)
-                .map(|(name, fun)| Cow::Owned(format!("{}::{}", name.ident, fun.binding.ident.ident)))
-                .unwrap_or_else(|| Cow::Borrowed(binding.ident.ident));
-            if let Some(old) = parser.scopes.last_mut().unwrap().idents.insert(name, binding) {
+            if let Some(old) = parser.scopes.last_mut().unwrap().idents.insert(binding.ident.ident, binding) {
                 let mut spans = [old.span(), binding.span()];
                 spans.sort();
                 parser.diagnostics.error(ErrorCode::DuplicateGlobal)
@@ -154,15 +151,8 @@ impl<'a, 'b, 'i> Parser<'a, 'b, 'i> {
                 };
                 match expr {
                     Expr::FunctionDefinition(fun) => {
-                        let typ = SpecificType::Function(Box::new(FunctionType {
-                            args: fun.args.iter().map(|pattern| Type::Specific(SpecificType::from(&pattern.typ))).collect(),
-                            ret: Type::Specific(fun.ret_type.as_ref().map(|(_, typ)| SpecificType::from(typ)).unwrap_or(SpecificType::Unit)),
-                        }));
                         trace!("{} found {}", Depth::start(), fun);
-                        self.pre_info.bindings.insert(fun.binding, typ);
-                        self.pre_info.rebo_functions.insert(fun.binding.id, fun);
-                        let arg_binding_ids = fun.args.iter().map(|ExprPatternTyped { pattern: ExprPatternUntyped { binding }, .. }| binding.id).collect();
-                        self.pre_info.root_scope.create(fun.binding.id, Value::Function(FunctionImpl::Rebo(fun.binding.id, arg_binding_ids)));
+                        self.pre_info.add_function(self.diagnostics, Cow::Borrowed(fun.name.ident), fun);
                     }
                     Expr::StructDefinition(struct_def) => {
                         let typ = StructType {
@@ -183,15 +173,9 @@ impl<'a, 'b, 'i> Parser<'a, 'b, 'i> {
                     }
                     Expr::ImplBlock(impl_block) => {
                         for fun in &impl_block.functions {
-                            let typ = SpecificType::Function(Box::new(FunctionType {
-                                args: fun.args.iter().map(|pattern| Type::Specific(SpecificType::from(&pattern.typ))).collect(),
-                                ret: Type::Specific(fun.ret_type.as_ref().map(|(_, typ)| SpecificType::from(typ)).unwrap_or(SpecificType::Unit)),
-                            }));
-                            trace!("{} found {}::{}", Depth::start(), impl_block.name.ident, fun);
-                            self.pre_info.bindings.insert(fun.binding, typ);
-                            self.pre_info.rebo_associated_functions.insert(fun.binding.id, (&impl_block.name, fun));
-                            let arg_binding_ids = fun.args.iter().map(|ExprPatternTyped { pattern: ExprPatternUntyped { binding }, .. }| binding.id).collect();
-                            self.pre_info.root_scope.create(fun.binding.id, Value::Function(FunctionImpl::Rebo(fun.binding.id, arg_binding_ids)));
+                            let path = format!("{}::{}", impl_block.name.ident, fun.name.ident);
+                            trace!("{} found {}", Depth::start(), path);
+                            self.pre_info.add_function(self.diagnostics, Cow::Owned(path), fun);
                         }
                     }
                     _ => unreachable!("we just parsed you"),
@@ -248,7 +232,7 @@ impl<'a, 'b, 'i> Parser<'a, 'b, 'i> {
             }
             Entry::Occupied(occupied) => (occupied.get().ident.ident, *occupied.get())
         };
-        self.scopes.last_mut().unwrap().idents.insert(Cow::Borrowed(name), binding);
+        self.scopes.last_mut().unwrap().idents.insert(name, binding);
         binding
     }
     fn get_binding(&mut self, ident: &str) -> Option<Binding<'i>> {
@@ -296,7 +280,7 @@ impl<'a, 'b, 'i> Parser<'a, 'b, 'i> {
     }
 
     fn similar_ident(&self, ident: &'i str) -> Option<&str> {
-        crate::util::similar_name(ident, self.scopes.iter().flat_map(|scope| scope.idents.keys()).map(|cow| cow.as_ref()))
+        crate::util::similar_name(ident, self.scopes.iter().flat_map(|scope| scope.idents.keys()))
     }
 
     fn diagnostic_unknown_identifier(&mut self, ident: TokenIdent<'i>, f: impl for<'d> FnOnce(DiagnosticBuilder<'d, ErrorCode>) -> DiagnosticBuilder<'d, ErrorCode>) -> Binding<'i> {

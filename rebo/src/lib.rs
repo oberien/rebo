@@ -31,7 +31,7 @@ use itertools::Itertools;
 
 const EXTERNAL_SOURCE: &str = "defined externally";
 lazy_static::lazy_static! {
-    static ref EXTERNAL_SPAN: Mutex<Option<Span>> = Mutex::new(None);
+    pub static ref EXTERNAL_SPAN: Mutex<Option<Span>> = Mutex::new(None);
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -55,7 +55,7 @@ pub fn run(filename: String, code: String) -> ReturnValue {
     info!("TOKENS:\n{}\n", lexer.iter().map(|token| token.to_string()).join(""));
 
     let mut pre_info = PreInfo::new();
-    stdlib::add_to_scope(&mut pre_info);
+    stdlib::add_to_scope(&diagnostics, &mut pre_info);
 
     let time = Instant::now();
     let arena = Arena::new();

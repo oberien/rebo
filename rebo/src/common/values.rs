@@ -75,7 +75,6 @@ pub enum Value {
     Float(FuzzyFloat),
     Bool(bool),
     String(String),
-    Function(FunctionImpl),
     Struct(StructArc),
 }
 
@@ -102,7 +101,6 @@ impl Display for Value {
             Value::Float(float) => Display::fmt(float, f),
             Value::Bool(b) => Display::fmt(b, f),
             Value::String(s) => Display::fmt(s, f),
-            Value::Function(_f) => todo!("function print representation"),
             Value::Struct(s) => {
                 let s = s.s.lock();
                 let s = s.borrow();
@@ -182,10 +180,11 @@ pub struct Function {
     pub imp: FunctionImpl,
 }
 
+pub type RustFunction = fn(&mut Scopes, Vec<Value>) -> Value;
 #[derive(Clone)]
 pub enum FunctionImpl {
-    Rust(fn(&mut Scopes, Vec<Value>) -> Value),
-    Rebo(BindingId, Vec<BindingId>),
+    Rust(RustFunction),
+    Rebo(String, Vec<BindingId>),
 }
 impl fmt::Debug for FunctionImpl {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -244,7 +243,6 @@ impl From<&'_ Value> for SpecificType {
             Value::Float(_) => SpecificType::Float,
             Value::Bool(_) => SpecificType::Bool,
             Value::String(_) => SpecificType::String,
-            Value::Function(_) => todo!(),
             Value::Struct(s) => SpecificType::Struct(s.s.lock().borrow().name.clone()),
         }
     }
@@ -290,4 +288,3 @@ impl_from_into!(i64, Integer);
 impl_from_into!(FuzzyFloat, Float);
 impl_from_into!(bool, Bool);
 impl_from_into!(String, String);
-// impl_from_into!(Function, Function);

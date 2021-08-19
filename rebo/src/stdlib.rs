@@ -3,24 +3,25 @@ use crate::scope::Scopes;
 use crate as rebo;
 use std::borrow::Cow;
 use itertools::Itertools;
+use diagnostic::Diagnostics;
 
-pub fn add_to_scope(pre_info: &mut PreInfo<'_, '_>) {
-    pre_info.bindings.extend([pre_info.root_scope.add_external_function("print", Function {
+pub fn add_to_scope(diagnostics: &Diagnostics, pre_info: &mut PreInfo<'_, '_>) {
+    pre_info.add_external_function(diagnostics, "print", Function {
         typ: FunctionType {
             args: Cow::Borrowed(&[Type::Varargs]),
             ret: Type::Specific(SpecificType::Unit),
         },
         imp: FunctionImpl::Rust(print),
-    })]);
-    pre_info.bindings.extend([pre_info.root_scope.add_external_function("add_one", add_one)]);
-    pre_info.bindings.extend([pre_info.root_scope.add_external_function("assert", assert)]);
-    pre_info.bindings.extend([pre_info.root_scope.add_external_function("panic", Function {
+    });
+    pre_info.add_external_function(diagnostics, "add_one", add_one);
+    pre_info.add_external_function(diagnostics, "assert", assert);
+    pre_info.add_external_function(diagnostics, "panic", Function {
         typ: FunctionType {
             args: Cow::Borrowed(&[Type::Specific(SpecificType::String)]),
             ret: Type::Bottom,
         },
         imp: FunctionImpl::Rust(panic),
-    })]);
+    });
 }
 
 fn print(_scopes: &mut Scopes, values: Vec<Value>) -> Value {

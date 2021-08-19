@@ -201,9 +201,6 @@ impl<'i> Checker<'i> {
                     }
                 }
             }
-            SpecificType::Function(_) => {
-                todo!()
-            }
             SpecificType::Struct(_name) => {
                 self.diagnostics.error(ErrorCode::StructMatch)
                     .with_error_label(match_span, "")

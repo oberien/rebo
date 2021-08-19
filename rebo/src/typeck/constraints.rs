@@ -1,6 +1,6 @@
 use crate::parser::{Expr, Spanned, ExprBind, ExprAssign, ExprPattern, ExprPatternUntyped, ExprPatternTyped, ExprVariable, ExprAdd, ExprSub, ExprMul, ExprDiv, ExprBoolAnd, ExprBoolOr, ExprBoolNot, ExprLessThan, ExprGreaterEquals, ExprLessEquals, ExprGreaterThan, ExprEquals, ExprNotEquals, ExprBlock, ExprParenthesized, ExprFunctionCall, ExprFunctionDefinition, BlockBody, ExprStructDefinition, ExprType, ExprStructDefFields, ExprStructInitialization, ExprAssignLhs, ExprIfElse, ExprWhile, ExprFormatString, ExprFormatStringPart, ExprLiteral, ExprMatch, ExprMatchPattern, ExprImplBlock};
 use crate::typeck::{Constraint, TypeVar, ConstraintTyp};
-use crate::common::{SpecificType, Type, PreInfo};
+use crate::common::{SpecificType, Type, PreInfo, Function};
 use itertools::{Either, Itertools};
 use diagnostic::{Diagnostics, Span};
 use crate::error_codes::ErrorCode;
@@ -278,16 +278,19 @@ impl<'a, 'i> ConstraintCreator<'a, 'i> {
                     let _ = self.get_type(expr);
                 }
             }
-            FunctionCall(ExprFunctionCall { variable, args, open, close }) => {
+            FunctionCall(ExprFunctionCall { name, args, open, close }) => {
                 let args_span = args.span().unwrap_or_else(|| Span::new(open.span.file, open.span.start, close.span.end));
                 let passed_arg_type_vars: Vec<_> = args.iter().map(|expr| (expr.span(), self.get_type(expr))).collect();
-                let fun = match &self.pre_info.bindings.get(&variable.binding) {
-                    Some(SpecificType::Function(f)) => f,
+                let fun = match &self.pre_info.functions.get(name.ident) {
+                    Some(Function { typ, imp: _ }) => typ,
                     _ => {
-                        self.diagnostics.error(ErrorCode::NotAFunction)
-                            .with_error_label(variable.span(), "this is not a function")
-                            .with_info_label(variable.binding.span(), "defined here")
-                            .emit();
+                        let similar = crate::util::similar_name(name.ident, self.pre_info.rebo_functions.keys());
+                        let mut diag = self.diagnostics.error(ErrorCode::UnknownFunction)
+                            .with_error_label(name.span, "can't find function with this same");
+                        if let Some(similar) = similar {
+                            diag = diag.with_info_label(name.span, format!("did you mean `{}`", similar));
+                        }
+                        diag.emit();
                         return type_var;
                     },
                 };
@@ -306,7 +309,7 @@ impl<'a, 'i> ConstraintCreator<'a, 'i> {
                     let expected = if varargs { fun.args.len() - 1 } else { fun.args.len() };
                     self.diagnostics.error(ErrorCode::InvalidNumberOfArguments)
                         .with_error_label(args_span, format!("found {} arguments", args.len()))
-                        .with_info_label(variable.binding.span(), format!("expected {}{} arguments", expected_str, expected))
+                        .with_info_label(name.span, format!("expected {}{} arguments", expected_str, expected))
                         .emit();
                 }
 
@@ -375,7 +378,7 @@ impl<'a, 'i> ConstraintCreator<'a, 'i> {
     }
 
     fn get_function_definition_type(&mut self, function_definition: &'a ExprFunctionDefinition<'a, 'i>) {
-        let ExprFunctionDefinition { binding, ret_type, body: ExprBlock { body: BlockBody { exprs, terminated }, .. }, .. } = function_definition;
+        let ExprFunctionDefinition { name, ret_type, body: ExprBlock { body: BlockBody { exprs, terminated }, .. }, .. } = function_definition;
         let type_var = TypeVar::new(function_definition.span());
         let ret_type = match ret_type {
             Some((_arrow, typ)) => SpecificType::from(typ),
@@ -383,7 +386,7 @@ impl<'a, 'i> ConstraintCreator<'a, 'i> {
         };
         if exprs.is_empty() && ret_type != SpecificType::Unit {
             self.diagnostics.error(ErrorCode::EmptyFunctionBody)
-                .with_error_label(binding.span(), format!("this function returns {} but has an empty body", ret_type))
+                .with_error_label(name.span, format!("this function returns {} but has an empty body", ret_type))
                 .emit();
         }
         let mut last = None;
@@ -429,7 +432,6 @@ impl<'a, 'i> ConstraintCreator<'a, 'i> {
             SpecificType::Float => return,
             SpecificType::Bool => return,
             SpecificType::Unit => return,
-            SpecificType::Function(..) => return,
             SpecificType::Struct(s) => s,
         };
         if outer_name.ident == inner_name {

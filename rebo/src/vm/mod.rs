@@ -1,26 +1,27 @@
 use crate::parser::{Expr, Binding, ExprVariable, ExprInteger, ExprFloat, ExprBool, ExprString, ExprAssign, ExprBind, ExprPattern, ExprPatternTyped, ExprPatternUntyped, ExprLessThan, ExprLessEquals, ExprEquals, ExprNotEquals, ExprGreaterEquals, ExprGreaterThan, ExprAdd, ExprSub, ExprMul, ExprDiv, ExprBoolNot, ExprBoolAnd, ExprBoolOr, ExprParenthesized, ExprBlock, ExprFunctionCall, Separated, ExprFunctionDefinition, BlockBody, ExprStructDefinition, ExprStructInitialization, ExprAssignLhs, ExprFieldAccess, ExprIfElse, ExprWhile, ExprFormatString, ExprFormatStringPart, ExprLiteral, ExprMatch, ExprMatchPattern};
-use crate::common::{Value, FunctionImpl, PreInfo, Depth, Struct, StructType, FuzzyFloat, StructArc};
-use crate::scope::{Scopes, BindingId, Scope};
+use crate::common::{Value, FunctionImpl, PreInfo, Depth, Struct, StructType, FuzzyFloat, StructArc, Function};
+use crate::scope::{Scopes, Scope};
 use crate::lexer::{TokenInteger, TokenFloat, TokenBool, TokenDqString, TokenComma, TokenIdent};
 use indexmap::map::IndexMap;
 use std::sync::Arc;
 use diagnostic::Span;
 use parking_lot::ReentrantMutex;
 use std::cell::RefCell;
+use std::borrow::Cow;
 
 pub struct Vm<'a, 'i> {
     scopes: Scopes,
-    rebo_functions: IndexMap<BindingId, &'a ExprFunctionDefinition<'a, 'i>>,
-    rebo_associated_functions: IndexMap<BindingId, (&'a TokenIdent<'i>, &'a ExprFunctionDefinition<'a, 'i>)>,
+    functions: IndexMap<Cow<'i, str>, Function>,
+    rebo_functions: IndexMap<Cow<'i, str>, &'a ExprFunctionDefinition<'a, 'i>>,
     structs: IndexMap<&'i str, (StructType, Span)>,
 }
 
 impl<'a, 'i> Vm<'a, 'i> {
     pub fn new(pre_info: PreInfo<'a, 'i>) -> Self {
-        let PreInfo { bindings: _, rebo_functions, rebo_associated_functions, structs, root_scope } = pre_info;
+        let PreInfo { bindings: _, functions, rebo_functions, structs, root_scope } = pre_info;
         let mut scopes = Scopes::new();
         scopes.push_scope(root_scope);
-        Vm { scopes, rebo_functions, rebo_associated_functions, structs }
+        Vm { scopes, functions, rebo_functions, structs }
     }
 
     pub fn run(mut self, ast: &[&Expr]) -> Value {
@@ -206,7 +207,7 @@ impl<'a, 'i> Vm<'a, 'i> {
                 }
                 Value::Unit
             }
-            Expr::FunctionCall(ExprFunctionCall { variable: ExprVariable { binding, .. }, args, .. }) => self.call_function(binding, args, depth.last()),
+            Expr::FunctionCall(ExprFunctionCall { name, args, .. }) => self.call_function(name, args, depth.last()),
             // ignore function definitions as we have those handled already
             Expr::FunctionDefinition(ExprFunctionDefinition { .. }) => Value::Unit,
             Expr::StructDefinition(ExprStructDefinition { .. }) => Value::Unit,
@@ -240,32 +241,27 @@ impl<'a, 'i> Vm<'a, 'i> {
             val
         }
     }
-    fn call_function(&mut self, binding: &Binding, args: &Separated<&Expr<'_, '_>, TokenComma>, depth: Depth) -> Value {
-        trace!("{}call_function: {}({:?})", depth, binding.ident.ident, args);
+    fn call_function(&mut self, name: &TokenIdent<'_>, args: &Separated<&Expr<'_, '_>, TokenComma>, depth: Depth) -> Value {
+        trace!("{}call_function: {}({:?})", depth, name.ident, args);
         let args = args.iter().map(|expr| self.eval_expr(expr, depth.next())).collect();
-        match self.load_binding(&binding, depth.next()) {
-            Value::Function(imp) => match imp {
-                FunctionImpl::Rust(f) => f(&mut self.scopes, args),
-                FunctionImpl::Rebo(binding_id, arg_binding_ids) => {
-                    let mut scope = Scope::new();
-                    for (id, val) in arg_binding_ids.into_iter().zip(args) {
-                        scope.create(id, val);
-                    }
-                    self.scopes.push_scope(scope);
-
-                    let mut last = None;
-                    let fun = self.rebo_functions.get(&binding_id)
-                        .or_else(|| self.rebo_associated_functions.get(&binding_id).map(|(_name, fun)| fun))
-                        .unwrap();
-                    for expr in &fun.body.body.exprs {
-                        last = Some(self.eval_expr(expr, depth.next()));
-                    }
-
-                    self.scopes.pop_scope();
-                    last.unwrap_or(Value::Unit)
+        match &self.functions[name.ident].imp {
+            FunctionImpl::Rust(f) => f(&mut self.scopes, args),
+            FunctionImpl::Rebo(name, arg_binding_ids) => {
+                let mut scope = Scope::new();
+                for (&id, val) in arg_binding_ids.iter().zip(args) {
+                    scope.create(id, val);
                 }
-            },
-            _ => unreachable!("call_function called with a binding that isn't a function"),
+                self.scopes.push_scope(scope);
+
+                let mut last = None;
+                let fun = self.rebo_functions[name.as_str()];
+                for expr in &fun.body.body.exprs {
+                    last = Some(self.eval_expr(expr, depth.next()));
+                }
+
+                self.scopes.pop_scope();
+                last.unwrap_or(Value::Unit)
+            }
         }
     }
 }

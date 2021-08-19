@@ -56,21 +56,6 @@ impl<'i> Binding<'i> {
         };
         Ok((binding, ident.span))
     }
-    /// Return an existing pathed binding like `Foo::bar`
-    fn parse_existing_pathed<'a>(parser: &mut Parser<'a, '_, 'i>, depth: Depth) -> Result<(Binding<'i>, Span), InternalError> {
-        trace!("{} Binding::parse_existing_pathed        ({:?})", depth, parser.peek_token(0));
-        let mark = parser.lexer.mark();
-        let name: TokenIdent = parser.parse(depth.next())?;
-        let _dcolon: TokenDoubleColon = parser.parse(depth.next())?;
-        let ident: TokenIdent = parser.parse(depth.last())?;
-        let path = format!("{}::{}", name.ident, ident.ident);
-        let binding = match parser.get_binding(&path) {
-            Some(binding) => binding,
-            None => parser.diagnostic_unknown_identifier(ident, |d| d),
-        };
-        mark.apply();
-        Ok((binding, ident.span))
-    }
 }
 impl<'i> Spanned for Binding<'i> {
     fn span(&self) -> Span {
@@ -430,19 +415,6 @@ impl<'a, 'i> Parse<'a, 'i> for ExprVariable<'i> {
     fn parse_marked(parser: &mut Parser<'a, '_, 'i>, depth: Depth) -> Result<Self, InternalError> {
         let (binding, span) = Binding::parse_existing(parser, depth.last())?;
         Ok(ExprVariable { binding, span })
-    }
-}
-impl<'i> ExprVariable<'i> {
-    fn parse_maybe_pathed(parser: &mut Parser<'_, '_, 'i>, depth: Depth) -> Result<Self, InternalError> {
-        let err1 = match Binding::parse_existing_pathed(parser, depth.next()) {
-            Ok((binding, span)) => return Ok(ExprVariable { binding, span }),
-            Err(e) => e,
-        };
-        let err2 = match Binding::parse_existing(parser, depth.last()) {
-            Ok((binding, span)) => return Ok(ExprVariable { binding, span }),
-            Err(e) => e,
-        };
-        Err(helper::last_error(&[err1, err2]))
     }
 }
 impl<'i> Spanned for ExprVariable<'i> {
@@ -1081,14 +1053,39 @@ impl<'a, 'i> Display for ExprWhile<'a, 'i> {
 
 #[derive(Debug, Clone)]
 pub struct ExprFunctionCall<'a, 'i> {
-    pub variable: ExprVariable<'i>,
+    pub name: TokenIdent<'i>,
     pub open: TokenOpenParen,
     pub args: Separated<'a, 'i, &'a Expr<'a, 'i>, TokenComma>,
     pub close: TokenCloseParen,
 }
 impl<'a, 'i> Parse<'a, 'i> for ExprFunctionCall<'a, 'i> {
     fn parse_marked(parser: &mut Parser<'a, '_, 'i>, depth: Depth) -> Result<Self, InternalError> {
-        let variable = ExprVariable::parse_maybe_pathed(parser, depth.next())?;
+        let name = (|| {
+            let pathed = (|| {
+                let mark = parser.lexer.mark();
+                let name: TokenIdent = parser.parse(depth.next())?;
+                let _dcolon: TokenDoubleColon = parser.parse(depth.next())?;
+                let ident: TokenIdent = parser.parse(depth.last())?;
+                let span = Span::new(name.span.file, name.span.start, ident.span.end);
+                let full = TokenIdent {
+                    span,
+                    ident: parser.diagnostics.resolve_span(span),
+                };
+                mark.apply();
+                Ok(full)
+            })();
+
+            let err1 = match pathed {
+                Ok(pathed) => return Ok(pathed),
+                Err(e) => e,
+            };
+            let err2 = match TokenIdent::parse(parser, depth.last()) {
+                Ok(ident) => return Ok(ident),
+                Err(e) => e,
+            };
+            Err(helper::last_error(&[err1, err2]))
+        })()?;
+
         let open = parser.parse(depth.next())?;
         let args = parser.parse(depth.next())?;
         let close = parser.parse(depth.last())?;
@@ -1110,24 +1107,24 @@ impl<'a, 'i> Parse<'a, 'i> for ExprFunctionCall<'a, 'i> {
         //         Consumed::InstantEof => break open_paren_span,
         //     }
         // }
-        Ok(ExprFunctionCall { variable, open, args, close })
+        Ok(ExprFunctionCall { name, open, args, close })
     }
 }
 impl<'a, 'i> Spanned for ExprFunctionCall<'a, 'i> {
     fn span(&self) -> Span {
-        Span::new(self.variable.span().file, self.variable.span().start, self.close.span.end)
+        Span::new(self.name.span.file, self.name.span.start, self.close.span.end)
     }
 }
 impl<'a, 'i> Display for ExprFunctionCall<'a, 'i> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "{}({})", self.variable.binding.ident.ident, self.args)
+        write!(f, "{}({})", self.name.ident, self.args)
     }
 }
 
 #[derive(Debug, Clone)]
 pub struct ExprFunctionDefinition<'a, 'i> {
     pub fn_token: TokenFn,
-    pub binding: Binding<'i>,
+    pub name: TokenIdent<'i>,
     pub open: TokenOpenParen,
     pub args: Separated<'a, 'i, ExprPatternTyped<'i>, TokenComma>,
     pub close: TokenCloseParen,
@@ -1137,7 +1134,7 @@ pub struct ExprFunctionDefinition<'a, 'i> {
 impl<'a, 'i> Parse<'a, 'i> for ExprFunctionDefinition<'a, 'i> {
     fn parse_marked(parser: &mut Parser<'a, '_, 'i>, depth: Depth) -> Result<Self, InternalError> {
         let fn_token = parser.parse(depth.next())?;
-        let binding = Binding::parse_new(parser, depth.next())?;
+        let name = parser.parse(depth.next())?;
         let open = parser.parse(depth.next())?;
         let args = parser.parse(depth.next())?;
         let close = parser.parse(depth.next())?;
@@ -1145,14 +1142,14 @@ impl<'a, 'i> Parse<'a, 'i> for ExprFunctionDefinition<'a, 'i> {
 
         let scope = parser.push_scope();
         for &ExprPatternTyped { pattern: ExprPatternUntyped { binding }, .. } in &args {
-            scope.idents.insert(Cow::Borrowed(binding.ident.ident), binding);
+            scope.idents.insert(binding.ident.ident, binding);
         }
         // defer result resolution until after scope was popped
         let body = parser.parse(depth.last());
         parser.pop_scope();
         let body = body?;
 
-        Ok(ExprFunctionDefinition { fn_token, binding, open, args, close, ret_type, body })
+        Ok(ExprFunctionDefinition { fn_token, name, open, args, close, ret_type, body })
     }
 }
 impl<'a, 'i> Spanned for ExprFunctionDefinition<'a, 'i> {
@@ -1162,7 +1159,7 @@ impl<'a, 'i> Spanned for ExprFunctionDefinition<'a, 'i> {
 }
 impl<'a, 'i> Display for ExprFunctionDefinition<'a, 'i> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "fn {}({}) ", self.binding, self.args)?;
+        write!(f, "fn {}({}) ", self.name.ident, self.args)?;
         if let Some((_arrow, ret_type)) = &self.ret_type {
             write!(f, "-> {} ", ret_type)?;
         }

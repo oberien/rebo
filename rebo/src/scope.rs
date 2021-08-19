@@ -1,9 +1,7 @@
 use std::collections::HashMap;
 use std::fmt;
-use crate::common::{Value, Function, SpecificType};
+use crate::common::Value;
 use std::sync::atomic::{AtomicU32, Ordering};
-use crate::parser::Binding;
-use crate::lexer::TokenIdent;
 
 #[derive(Debug, Clone, Copy, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub struct BindingId(u32);
@@ -81,21 +79,6 @@ impl Scope {
         Scope {
             variables: HashMap::new(),
         }
-    }
-
-    pub fn add_external_function(&mut self, name: &'static str, f: Function) -> (Binding<'static>, SpecificType) {
-        let binding_id = BindingId::unique();
-        let binding = Binding {
-            id: binding_id,
-            ident: TokenIdent {
-                span: crate::EXTERNAL_SPAN.lock().unwrap().unwrap(),
-                ident: name,
-            },
-            mutable: None,
-            rogue: false,
-        };
-        self.create(binding_id, Value::Function(f.imp));
-        (binding, SpecificType::Function(Box::new(f.typ)))
     }
 
     // runtime functions

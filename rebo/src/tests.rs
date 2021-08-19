@@ -107,6 +107,9 @@ fn functions() {
         assert(bar(5) == 5);
         fn baz() {}
         assert(baz() == ());
+
+        fn a() { b() }
+        fn b() {}
     "#.to_string()), ReturnValue::Ok);
 }
 #[test]
@@ -114,20 +117,26 @@ fn function_diagnostics() {
     let _ = env_logger::builder().is_test(true).try_init();
     assert_eq!(rebo::run("test".to_string(), r#"
         fn takes_int(x: int) {}
+        // wrong arg type (float instead of int) (twice currently because meh)
         takes_int(2.0);
 
+        // overwrite external function
         fn add_one() -> () {}
+
+        // empty body but returns int
         fn foo() -> int {}
+        // overwrite existing function
         fn foo(mut x: int, mut y: int) -> int {
             x = x + 10;
             y = y + 20;
             x + y
         }
+        // wrong returned type
         fn bar() -> int { 2.0 }
-        print(foo(10, 20));
+        // wrong number of arguments
         print(foo(5));
-        let bar = 5;
-        bar(5);
+        // unknown function baz
+        baz(5);
     "#.to_string()), ReturnValue::Diagnostics(8));
 }
 #[test]
