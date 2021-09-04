@@ -1,5 +1,5 @@
 use crate::parser::{Expr, Binding, ExprVariable, ExprInteger, ExprFloat, ExprBool, ExprString, ExprAssign, ExprBind, ExprPattern, ExprPatternTyped, ExprPatternUntyped, ExprLessThan, ExprLessEquals, ExprEquals, ExprNotEquals, ExprGreaterEquals, ExprGreaterThan, ExprAdd, ExprSub, ExprMul, ExprDiv, ExprBoolNot, ExprBoolAnd, ExprBoolOr, ExprParenthesized, ExprBlock, ExprFunctionCall, Separated, ExprFunctionDefinition, BlockBody, ExprStructDefinition, ExprStructInitialization, ExprAssignLhs, ExprFieldAccess, ExprIfElse, ExprWhile, ExprFormatString, ExprFormatStringPart, ExprLiteral, ExprMatch, ExprMatchPattern};
-use crate::common::{Value, FunctionImpl, PreInfo, Depth, Struct, StructType, FuzzyFloat, StructArc, Function};
+use crate::common::{Value, FunctionImpl, MetaInfo, Depth, Struct, StructType, FuzzyFloat, StructArc, Function};
 use crate::scope::{Scopes, Scope};
 use crate::lexer::{TokenInteger, TokenFloat, TokenBool, TokenDqString, TokenComma, TokenIdent};
 use indexmap::map::IndexMap;
@@ -17,9 +17,10 @@ pub struct Vm<'a, 'i> {
 }
 
 impl<'a, 'i> Vm<'a, 'i> {
-    pub fn new(pre_info: PreInfo<'a, 'i>) -> Self {
-        let PreInfo { bindings: _, functions, rebo_functions, structs, root_scope } = pre_info;
+    pub fn new(meta_info: MetaInfo<'a, 'i>) -> Self {
+        let MetaInfo { bindings: _, functions, rebo_functions, structs, types: _ } = meta_info;
         let mut scopes = Scopes::new();
+        let root_scope = Scope::new();
         scopes.push_scope(root_scope);
         Vm { scopes, functions, rebo_functions, structs }
     }

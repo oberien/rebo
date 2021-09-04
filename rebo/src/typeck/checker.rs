@@ -29,7 +29,8 @@ impl<'i> Checker<'i> {
         // check restrictions
         for (var, restrictions) in self.restrictions {
             let (span, solved) = &self.solved[&var];
-            if !restrictions.iter().any(|r| solved.try_unify(&Type::Specific(r.clone())).is_ok()) {
+            // order here is irrelevant as this is a strict equality check and not a subtyping check
+            if !restrictions.iter().any(|r| solved.try_unify_similar(&Type::Specific(r.clone())).is_ok()) {
                 let one_of = if restrictions.len() == 1 { "" } else { "one of " };
                 self.diagnostics.error(ErrorCode::TypeConflict)
                     .with_error_label(*span, format!("inferred type is {}", solved))
@@ -98,7 +99,7 @@ impl<'i> Checker<'i> {
                 let expr_type_var = TypeVar::new(expr.span());
                 let (_typ_span, typ) = self.solved.get(&expr_type_var).unwrap_or_else(|| panic!("no type found for `{}`", self.diagnostics.resolve_span(expr.span())));
                 match typ {
-                    Type::Bottom | Type::Varargs | Type::Top => unreachable!("expr type not inferred correctly"),
+                    Type::Bottom | Type::Varargs(_) | Type::Top => unreachable!("expr type not inferred correctly"),
                     Type::Specific(specific) => {
                         let pattern_iter = arms.iter().map(|(pattern, _arrow, _expr)| pattern);
                         self.check_specific_type_match_variants(expr.span(), specific, pattern_iter);
@@ -201,7 +202,7 @@ impl<'i> Checker<'i> {
                     }
                 }
             }
-            SpecificType::Struct(_name) => {
+            SpecificType::Struct(_mutability, _name) => {
                 self.diagnostics.error(ErrorCode::StructMatch)
                     .with_error_label(match_span, "")
                     .emit();

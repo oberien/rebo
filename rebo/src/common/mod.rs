@@ -2,43 +2,57 @@ mod values;
 mod types;
 
 pub use values::{Value, Function, FunctionImpl, IntoValue, FromValues, FromValue, Struct, StructArc, FuzzyFloat};
-pub use types::{Type, SpecificType, FunctionType, StructType};
+pub use types::{Type, SpecificType, FunctionType, StructType, Mutability, UnificationError};
 use std::fmt::{self, Display, Formatter};
 use indexmap::map::IndexMap;
 use diagnostic::{Span, Diagnostics};
 use crate::parser::{Binding, ExprFunctionDefinition, ExprPatternTyped, ExprPatternUntyped};
-use crate::scope::Scope;
 use std::borrow::Cow;
 use crate::error_codes::ErrorCode;
 use crate::EXTERNAL_SPAN;
+use crate::typeck2::TypeVar;
 
-/// Info needed before parsing / before typechecking
-pub struct PreInfo<'a, 'i> {
+/// Metadata / information needed before and/or during static analyses
+pub struct MetaInfo<'a, 'i> {
     /// types of bindings of the root scope / stdlib and function definitions of the first parser pass
+    ///
+    /// Available after the parser's first-pass.
     pub bindings: IndexMap<Binding<'i>, SpecificType>,
     /// map of all functions or associated functions for function resolution
+    ///
+    /// Available after the parser's first-pass.
     pub functions: IndexMap<Cow<'i, str>, Function>,
     /// functions or associated functions found in the code
+    ///
+    /// Available after the parser's first-pass.
     pub rebo_functions: IndexMap<Cow<'i, str>, &'a ExprFunctionDefinition<'a, 'i>>,
     /// struct definitions found in the code
+    ///
+    /// Available after the parser's first-pass.
     pub structs: IndexMap<&'i str, (StructType, Span)>,
-    pub root_scope: Scope,
+    /// resolved types
+    ///
+    /// Available after typeck.
+    pub types: IndexMap<TypeVar, Type>,
 }
-impl<'a, 'i> PreInfo<'a, 'i> {
+impl<'a, 'i> MetaInfo<'a, 'i> {
     pub fn new() -> Self {
-        PreInfo {
+        MetaInfo {
             bindings: IndexMap::new(),
             functions: IndexMap::new(),
             rebo_functions: IndexMap::new(),
             structs: IndexMap::new(),
-            root_scope: Scope::new(),
+            types: IndexMap::new(),
         }
     }
 
     pub fn add_function(&mut self, diagnostics: &Diagnostics, name: Cow<'i, str>, fun: &'a ExprFunctionDefinition<'a, 'i>) {
         let typ = FunctionType {
-            args: fun.args.iter().map(|pattern| Type::Specific(SpecificType::from(&pattern.typ))).collect(),
-            ret: Type::Specific(fun.ret_type.as_ref().map(|(_, typ)| SpecificType::from(typ)).unwrap_or(SpecificType::Unit)),
+            args: fun.args.iter().map(|pattern| {
+                let mutability = Mutability::from(pattern.pattern.binding.mutable.is_some());
+                Type::Specific(SpecificType::from(mutability, &pattern.typ))
+            }).collect(),
+            ret: Type::Specific(fun.ret_type.as_ref().map(|(_, typ)| SpecificType::from(Mutability::Mutable, typ)).unwrap_or(SpecificType::Unit)),
         };
         let arg_binding_ids = fun.args.iter().map(|ExprPatternTyped { pattern: ExprPatternUntyped { binding }, .. }| binding.id).collect();
         let function = Function {

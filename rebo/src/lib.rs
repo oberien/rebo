@@ -13,7 +13,9 @@ use crate::vm::Vm;
 mod error_codes;
 mod lexer;
 mod parser;
-mod typeck;
+// mod typeck;
+mod typeck2;
+mod lints;
 mod vm;
 mod scope;
 mod stdlib;
@@ -23,8 +25,8 @@ mod common;
 mod tests;
 
 pub use rebo_derive::function;
-use crate::typeck::Typechecker;
-use crate::common::PreInfo;
+// use crate::typeck::Typechecker;
+use crate::common::MetaInfo;
 use std::time::Instant;
 use crate::lexer::Lexer;
 use itertools::Itertools;
@@ -54,20 +56,25 @@ pub fn run(filename: String, code: String) -> ReturnValue {
     info!("Lexing took {}μs", time.elapsed().as_micros());
     info!("TOKENS:\n{}\n", lexer.iter().map(|token| token.to_string()).join(""));
 
-    let mut pre_info = PreInfo::new();
-    stdlib::add_to_scope(&diagnostics, &mut pre_info);
+    let mut meta_info = MetaInfo::new();
+    stdlib::add_to_scope(&diagnostics, &mut meta_info);
 
     let time = Instant::now();
     let arena = Arena::new();
-    let parser = Parser::new(&arena, lexer, &diagnostics, &mut pre_info);
+    let parser = Parser::new(&arena, lexer, &diagnostics, &mut meta_info);
     let ast = parser.parse_ast().unwrap();
     info!("Parsing took {}μs", time.elapsed().as_micros());
     info!("AST:\n{}\n", ast);
     let Ast { exprs, bindings: _ } = ast;
 
     let time = Instant::now();
-    Typechecker::new(&diagnostics, &mut pre_info).typeck(&exprs);
+    // Typechecker::new(&diagnostics, &mut meta_info).typeck(&exprs);
+    typeck2::typeck(&diagnostics, &mut meta_info, &exprs);
     info!("Typechecking took {}μs", time.elapsed().as_micros());
+
+    let time = Instant::now();
+    lints::lint(&diagnostics, &meta_info, &exprs);
+    info!("Linting took {}μs", time.elapsed().as_micros());
 
     let errors = diagnostics.errors_printed();
     let diags = diagnostics.bugs_printed()
@@ -81,12 +88,12 @@ pub fn run(filename: String, code: String) -> ReturnValue {
     }
 
     let time = Instant::now();
-    let vm = Vm::new(pre_info);
+    let vm = Vm::new(meta_info);
     let result = vm.run(&exprs);
     info!("Execution took {}μs", time.elapsed().as_micros());
     println!("RESULT: {:?}", result);
     if diags > 0 {
-        return ReturnValue::Diagnostics(diags);
+        ReturnValue::Diagnostics(diags)
     } else {
         ReturnValue::Ok
     }

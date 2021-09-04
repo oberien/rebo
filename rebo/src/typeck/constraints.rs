@@ -1,26 +1,29 @@
 use crate::parser::{Expr, Spanned, ExprBind, ExprAssign, ExprPattern, ExprPatternUntyped, ExprPatternTyped, ExprVariable, ExprAdd, ExprSub, ExprMul, ExprDiv, ExprBoolAnd, ExprBoolOr, ExprBoolNot, ExprLessThan, ExprGreaterEquals, ExprLessEquals, ExprGreaterThan, ExprEquals, ExprNotEquals, ExprBlock, ExprParenthesized, ExprFunctionCall, ExprFunctionDefinition, BlockBody, ExprStructDefinition, ExprType, ExprStructDefFields, ExprStructInitialization, ExprAssignLhs, ExprIfElse, ExprWhile, ExprFormatString, ExprFormatStringPart, ExprLiteral, ExprMatch, ExprMatchPattern, ExprImplBlock};
-use crate::typeck::{Constraint, TypeVar, ConstraintTyp};
-use crate::common::{SpecificType, Type, PreInfo, Function};
+use crate::typeck::{Constraint, TypeVar, ConstraintTyp, MyConstraint, Constraints};
+use crate::common::{SpecificType, Type, PreInfo, Function, Mutability};
 use itertools::{Either, Itertools};
 use diagnostic::{Diagnostics, Span};
 use crate::error_codes::ErrorCode;
 use crate::lexer::TokenIdent;
-use std::collections::VecDeque;
+use std::collections::{VecDeque, BTreeMap};
+use petgraph::graphmap::GraphMap;
 
 pub struct ConstraintCreator<'a, 'i> {
     diagnostics: &'a Diagnostics,
-    pre_info: &'a PreInfo<'a, 'i>,
+    meta_info: &'a PreInfo<'a, 'i>,
     constraints: Vec<Constraint>,
     restrictions: Vec<(TypeVar, Vec<SpecificType>)>,
+    my_constraints: Constraints<'a>,
 }
 
 impl<'a, 'i> ConstraintCreator<'a, 'i> {
-    pub fn new(diagnostics: &'a Diagnostics, pre_info: &'a PreInfo<'a, 'i>) -> ConstraintCreator<'a, 'i> {
+    pub fn new(diagnostics: &'a Diagnostics, meta_info: &'a PreInfo<'a, 'i>) -> ConstraintCreator<'a, 'i> {
         ConstraintCreator {
             diagnostics,
-            pre_info,
+            meta_info,
             constraints: Vec::new(),
             restrictions: Vec::new(),
+            my_constraints: Constraints::new(diagnostics),
         }
     }
     /// Iterate over the AST, returning a set of type inference constraints.
@@ -38,22 +41,27 @@ impl<'a, 'i> ConstraintCreator<'a, 'i> {
         match lit {
             ExprLiteral::Unit(_) => {
                 self.constraints.push(Constraint::new(lit.span(), ConstraintTyp::Type(type_var, Type::Specific(SpecificType::Unit))));
+                self.my_constraints.add_inital_type(type_var, li.span(), Type::Specific(SpecificType::Unit)),
                 self.restrictions.push((type_var, vec![SpecificType::Unit]));
             },
             ExprLiteral::Integer(_) => {
                 self.constraints.push(Constraint::new(lit.span(), ConstraintTyp::Type(type_var, Type::Specific(SpecificType::Integer))));
+                self.my_constraints.add_inital_type(type_var, li.span(), Type::Specific(SpecificType::Integer)),
                 self.restrictions.push((type_var, vec![SpecificType::Integer]));
             },
             ExprLiteral::Float(_) => {
                 self.constraints.push(Constraint::new(lit.span(), ConstraintTyp::Type(type_var, Type::Specific(SpecificType::Float))));
+                self.my_constraints.add_inital_type(type_var, li.span(), Type::Specific(SpecificType::Float)),
                 self.restrictions.push((type_var, vec![SpecificType::Float]));
             },
             ExprLiteral::Bool(_) => {
                 self.constraints.push(Constraint::new(lit.span(), ConstraintTyp::Type(type_var, Type::Specific(SpecificType::Bool))));
                 self.restrictions.push((type_var, vec![SpecificType::Bool]));
+                self.my_constraints.add_inital_type(type_var, li.span(), Type::Specific(SpecificType::Bool)),
             },
             ExprLiteral::String(_) => {
                 self.constraints.push(Constraint::new(lit.span(), ConstraintTyp::Type(type_var, Type::Specific(SpecificType::String))));
+                self.my_constraints.add_inital_type(type_var, li.span(), Type::Specific(SpecificType::String)),
                 self.restrictions.push((type_var, vec![SpecificType::String]));
             },
         }
@@ -68,12 +76,14 @@ impl<'a, 'i> ConstraintCreator<'a, 'i> {
             Literal(lit) => { let _ = self.get_literal_type(lit); },
             Variable(variable) => {
                 let binding_type_var = TypeVar::new(variable.binding.ident.span());
-                self.constraints.push(Constraint::new(expr_outer.span(), ConstraintTyp::Eq(binding_type_var, type_var)));
+                self.constraints.push(Constraint::new(expr_outer.span(), ConstraintTyp::SubEq(binding_type_var, type_var)));
+                self.my_constraints.add_constraint(binding_type_var, type_var, expr_outer.span(), MyConstraint::SubEq)
             },
             FieldAccess(field_access) => {
                 let initial_var = TypeVar::new(field_access.variable.binding.ident.span());
                 let field_names = field_access.fields.iter().map(|f| f.ident.to_string()).collect();
-                self.constraints.push(Constraint::new(field_access.span(), ConstraintTyp::FieldAccess(initial_var, field_names, type_var)));
+                self.constraints.push(Constraint::new(field_access.span(), ConstraintTyp::FieldAccess(initial_var, field_names.clone(), type_var)));
+                self.my_constraints.add_constraint(initial_var, type_var, field_access.span(), MyConstraint::FieldAccess(field_names));
             }
             FormatString(ExprFormatString { parts, .. }) => {
                 for part in parts {
@@ -86,39 +96,47 @@ impl<'a, 'i> ConstraintCreator<'a, 'i> {
                     }
                 }
                 self.constraints.push(Constraint::new(expr_outer.span(), ConstraintTyp::Type(type_var, Type::Specific(SpecificType::String))));
+                self.my_constraints.add_inital_type(type_var, expr_outer.span(), Type::Specific(SpecificType::String));
                 self.restrictions.push((type_var, vec![SpecificType::String]));
             },
             Bind(ExprBind { pattern, expr, .. }) => {
-                let left = match pattern {
+                let binding_type_var = match pattern {
                     ExprPattern::Untyped(ExprPatternUntyped { binding }) => TypeVar::new(binding.ident.span()),
                     ExprPattern::Typed(typed) => {
                         let pattern_span = typed.span();
                         let ExprPatternTyped { pattern: ExprPatternUntyped { binding }, typ, .. } = typed;
                         let left = TypeVar::new(binding.ident.span());
-                        self.constraints.push(Constraint::new(pattern_span, ConstraintTyp::Type(left, Type::Specific(SpecificType::from(typ)))));
-                        self.restrictions.push((type_var, vec![SpecificType::from(typ)]));
+                        let mutability = Mutability::from(typed.pattern.binding.mutable.is_some());
+                        self.constraints.push(Constraint::new(pattern_span, ConstraintTyp::Type(left, Type::Specific(SpecificType::from(mutability, typ.clone())))));
+                        self.my_constraints.add_inital_type(left, pattern_span, Type::Specific(SpecificType::from(mutability, typ)));
+                        self.restrictions.push((type_var, vec![SpecificType::from(mutability, typ)]));
                         left
                     }
                 };
-                let right = self.get_type(expr);
-                self.constraints.push(Constraint::new(expr_outer.span(), ConstraintTyp::Eq(left, right)));
+                let value_type_var = self.get_type(expr);
+                self.constraints.push(Constraint::new(expr_outer.span(), ConstraintTyp::SubEq(binding_type_var, value_type_var)));
                 self.constraints.push(Constraint::new(expr_outer.span(), ConstraintTyp::Type(type_var, Type::Specific(SpecificType::Unit))));
+                self.my_constraints.add_constraint(binding_type_var, value_type_var, expr_outer.span(), MyConstraint::SubEq);
+                self.my_constraints.add_initial_type(type_var, expr_outer.span(), Type::Specific(SpecificType::Unit));
                 self.restrictions.push((type_var, vec![SpecificType::Unit]));
             }
             Assign(ExprAssign { lhs, expr, .. }) => {
-                let left = match lhs {
+                let binding_type_var = match lhs {
                     ExprAssignLhs::Variable(ExprVariable { binding, .. }) => TypeVar::new(binding.ident.span()),
                     ExprAssignLhs::FieldAccess(field_access) => {
                         let initial_var = TypeVar::new(field_access.variable.binding.ident.span());
                         let field_type_var = TypeVar::new(field_access.span());
                         let field_names = field_access.fields.iter().map(|f| f.ident.to_string()).collect();
-                        self.constraints.push(Constraint::new(field_access.span(), ConstraintTyp::FieldAccess(initial_var, field_names, field_type_var)));
+                        self.constraints.push(Constraint::new(field_access.span(), ConstraintTyp::FieldAccess(initial_var, field_names.clone(), field_type_var)));
+                        self.my_constraints.add_constraint(initial_var, field_type_var, field_access.span(), MyConstraint::FieldAccess(field_names));
                         field_type_var
                     }
                 };
-                let right = self.get_type(expr);
-                self.constraints.push(Constraint::new(expr_outer.span(), ConstraintTyp::Eq(left, right)));
+                let value_type_var = self.get_type(expr);
+                self.constraints.push(Constraint::new(expr_outer.span(), ConstraintTyp::SubEq(binding_type_var, value_type_var)));
                 self.constraints.push(Constraint::new(expr_outer.span(), ConstraintTyp::Type(type_var, Type::Specific(SpecificType::Unit))));
+                self.my_constraints.add_constraint(binding_type_var, value_type_var, expr_outer.span(), MyConstraint::SubEq);
+                self.my_constraints.add_inital_type(type_var, expr_outer.span(), Type::Specific(SpecificType::Unit));
                 self.restrictions.push((type_var, vec![SpecificType::Unit]));
             },
             Add(ExprAdd { a, b, .. })
@@ -127,8 +145,10 @@ impl<'a, 'i> ConstraintCreator<'a, 'i> {
             | Div(ExprDiv { a, b, .. }) => {
                 let left = self.get_type(a);
                 let right = self.get_type(b);
-                self.constraints.push(Constraint::new(expr_outer.span(), ConstraintTyp::Eq(type_var, left)));
-                self.constraints.push(Constraint::new(expr_outer.span(), ConstraintTyp::Eq(type_var, right)));
+                self.constraints.push(Constraint::new(expr_outer.span(), ConstraintTyp::Similar(type_var, left)));
+                self.constraints.push(Constraint::new(expr_outer.span(), ConstraintTyp::Similar(type_var, right)));
+                self.my_constraints.add_constraint(type_var, left, expr_outer.span(), MyConstraint::Eq);
+                self.my_constraints.add_constraint(type_var, right, expr_outer.span(), MyConstraint::Eq);
                 self.restrictions.push((left, vec![SpecificType::Integer, SpecificType::Float]));
                 self.restrictions.push((right, vec![SpecificType::Integer, SpecificType::Float]));
                 self.restrictions.push((type_var, vec![SpecificType::Integer, SpecificType::Float]));
@@ -140,6 +160,9 @@ impl<'a, 'i> ConstraintCreator<'a, 'i> {
                 self.constraints.push(Constraint::new(expr_outer.span(), ConstraintTyp::Type(left, Type::Specific(SpecificType::Bool))));
                 self.constraints.push(Constraint::new(expr_outer.span(), ConstraintTyp::Type(right, Type::Specific(SpecificType::Bool))));
                 self.constraints.push(Constraint::new(expr_outer.span(), ConstraintTyp::Type(type_var, Type::Specific(SpecificType::Bool))));
+                self.my_constraints.add_inital_type(left, expr_outer.span(), Type::Specific(SpecificType::Bool));
+                self.my_constraints.add_inital_type(right, expr_outer.span(), Type::Specific(SpecificType::Bool));
+                self.my_constraints.add_inital_type(type_varr, expr_outer.span(), Type::Specific(SpecificType::Bool));
                 self.restrictions.push((left, vec![SpecificType::Bool]));
                 self.restrictions.push((right, vec![SpecificType::Bool]));
                 self.restrictions.push((type_var, vec![SpecificType::Bool]));
@@ -148,6 +171,8 @@ impl<'a, 'i> ConstraintCreator<'a, 'i> {
                 let val_type_var = self.get_type(expr);
                 self.constraints.push(Constraint::new(expr_outer.span(), ConstraintTyp::Type(val_type_var, Type::Specific(SpecificType::Bool))));
                 self.constraints.push(Constraint::new(expr_outer.span(), ConstraintTyp::Type(type_var, Type::Specific(SpecificType::Bool))));
+                self.my_constraints.add_inital_type(val_type_var, expr_outer.span(), Type::Specific(SpecificType::Bool));
+                self.my_constraints.add_inital_type(type_var, expr_outer.span(), Type::Specific(SpecificType::Bool));
                 self.restrictions.push((val_type_var, vec![SpecificType::Bool]));
                 self.restrictions.push((type_var, vec![SpecificType::Bool]));
             }
@@ -157,7 +182,7 @@ impl<'a, 'i> ConstraintCreator<'a, 'i> {
             | GreaterThan(ExprGreaterThan { a, b, .. }) => {
                 let left = self.get_type(a);
                 let right = self.get_type(b);
-                self.constraints.push(Constraint::new(expr_outer.span(), ConstraintTyp::Eq(left, right)));
+                self.constraints.push(Constraint::new(expr_outer.span(), ConstraintTyp::Similar(left, right)));
                 self.constraints.push(Constraint::new(expr_outer.span(), ConstraintTyp::Type(type_var, Type::Specific(SpecificType::Bool))));
                 self.restrictions.push((type_var, vec![SpecificType::Bool]));
             },
@@ -165,7 +190,7 @@ impl<'a, 'i> ConstraintCreator<'a, 'i> {
             | NotEquals(ExprNotEquals { a, b, .. }) => {
                 let left = self.get_type(a);
                 let right = self.get_type(b);
-                self.constraints.push(Constraint::new(expr_outer.span(), ConstraintTyp::Eq(left, right)));
+                self.constraints.push(Constraint::new(expr_outer.span(), ConstraintTyp::Similar(left, right)));
                 self.constraints.push(Constraint::new(expr_outer.span(), ConstraintTyp::Type(type_var, Type::Specific(SpecificType::Bool))));
                 self.restrictions.push((type_var, vec![SpecificType::Bool]));
             },
@@ -176,7 +201,7 @@ impl<'a, 'i> ConstraintCreator<'a, 'i> {
                 }
                 match (terminated, last) {
                     (false, Some(last_type_var)) => {
-                        self.constraints.push(Constraint::new(expr_outer.span(), ConstraintTyp::Eq(type_var, last_type_var)));
+                        self.constraints.push(Constraint::new(expr_outer.span(), ConstraintTyp::SubEq(type_var, last_type_var)));
                     },
                     (true, _) | (false, None) => {
                         self.constraints.push(Constraint::new(expr_outer.span(), ConstraintTyp::Type(type_var, Type::Specific(SpecificType::Unit))));
@@ -186,7 +211,7 @@ impl<'a, 'i> ConstraintCreator<'a, 'i> {
             },
             Parenthesized(ExprParenthesized { expr, .. }) => {
                 let val_type_var = self.get_type(expr);
-                self.constraints.push(Constraint::new(expr_outer.span(), ConstraintTyp::Eq(type_var, val_type_var)));
+                self.constraints.push(Constraint::new(expr_outer.span(), ConstraintTyp::SubEq(type_var, val_type_var)));
             },
             IfElse(ifelse) => {
                 let ifelse_span = ifelse.span();
@@ -197,14 +222,6 @@ impl<'a, 'i> ConstraintCreator<'a, 'i> {
                 let else_if_with_value = else_ifs.iter().any(|(_, _, _, block)| !block.body.terminated);
                 let else_with_value = els.iter().any(|(_, block)| !block.body.terminated);
                 let with_value = then_with_value || else_if_with_value || else_with_value;
-
-                if with_value && els.is_none() {
-                    self.diagnostics.error(ErrorCode::MissingElse)
-                        .with_error_label(ifelse_span, "missing else-branch in this if")
-                        .with_note("if the `if` should return a value, all branches must return a value")
-                        .with_note("if the `if` should not return a value, all branches must be terminated with a `;`")
-                        .emit();
-                }
 
                 let branches = ::std::iter::once((Some(condition), then))
                     .chain(else_ifs.iter().map(|(_, _, cond, block)| (Some(cond), block)))
@@ -224,27 +241,11 @@ impl<'a, 'i> ConstraintCreator<'a, 'i> {
                         last = Some((expr.span(), self.get_type(expr)));
                     }
                     branch_type_vars.extend(last);
-
-                    // if returns value but block is empty
-                    if with_value && block.body.exprs.is_empty() {
-                        self.diagnostics.error(ErrorCode::MissingBranchBody)
-                            .with_error_label(block.span(), "this branch body is expected to evaluate to a value")
-                            .with_info_label(ifelse_span, "all branches in this if must evaluate to a value")
-                            .with_note("if not all branches are terminated with a `;` an if-expression evalutes to a value")
-                            .emit();
-                    // if returns value but block is terminated
-                    } else if with_value && block.body.terminated {
-                        self.diagnostics.error(ErrorCode::MissingBranchValue)
-                            .with_error_label(block.span(), "this block doesn't evaluate to a value")
-                            .with_info_label(ifelse_span, "all branches in this if must evaluate to a value")
-                            .with_note("if not all branches are terminated with a `;` an if-expression evalutes to a value")
-                            .emit();
-                    }
                 }
 
                 if with_value {
                     for (span, var) in branch_type_vars {
-                        self.constraints.push(Constraint::new(span, ConstraintTyp::Eq(type_var, var)));
+                        self.constraints.push(Constraint::new(span, ConstraintTyp::SubEq(type_var, var)));
                     }
                 } else {
                     for (span, var) in branch_type_vars.into_iter().chain(Some((expr_outer.span(), type_var))) {
@@ -266,8 +267,8 @@ impl<'a, 'i> ConstraintCreator<'a, 'i> {
                         ExprMatchPattern::Binding(binding) => TypeVar::new(binding.ident.span()),
                     };
                     let arm_expr_type_var = self.get_type(arm_expr);
-                    self.constraints.push(Constraint::new(arm_expr.span(), ConstraintTyp::Eq(type_var, arm_expr_type_var)));
-                    self.constraints.push(Constraint::new(pattern.span(), ConstraintTyp::Eq(expr_type_var, pattern_type_var)));
+                    self.constraints.push(Constraint::new(arm_expr.span(), ConstraintTyp::SubEq(type_var, arm_expr_type_var)));
+                    self.constraints.push(Constraint::new(pattern.span(), ConstraintTyp::SubEq(pattern_type_var, expr_type_var)));
                 }
             }
             While(ExprWhile { condition, block, .. }) => {
@@ -281,10 +282,10 @@ impl<'a, 'i> ConstraintCreator<'a, 'i> {
             FunctionCall(ExprFunctionCall { name, args, open, close }) => {
                 let args_span = args.span().unwrap_or_else(|| Span::new(open.span.file, open.span.start, close.span.end));
                 let passed_arg_type_vars: Vec<_> = args.iter().map(|expr| (expr.span(), self.get_type(expr))).collect();
-                let fun = match &self.pre_info.functions.get(name.ident) {
+                let fun = match &self.meta_info.functions.get(name.ident) {
                     Some(Function { typ, imp: _ }) => typ,
                     _ => {
-                        let similar = crate::util::similar_name(name.ident, self.pre_info.rebo_functions.keys());
+                        let similar = crate::util::similar_name(name.ident, self.meta_info.rebo_functions.keys());
                         let mut diag = self.diagnostics.error(ErrorCode::UnknownFunction)
                             .with_error_label(name.span, "can't find function with this same");
                         if let Some(similar) = similar {
@@ -294,14 +295,14 @@ impl<'a, 'i> ConstraintCreator<'a, 'i> {
                         return type_var;
                     },
                 };
-                let expected_arg_types = if fun.args.last() == Some(&Type::Varargs) {
-                    Either::Left(fun.args.iter().chain(std::iter::repeat(&Type::Varargs)))
+                let expected_arg_types = if let Some(typ @ &Type::Varargs(_)) = fun.args.last() {
+                    Either::Left(fun.args.iter().chain(std::iter::repeat(typ)))
                 } else {
                     Either::Right(fun.args.iter())
                 };
 
                 // check number of arguments
-                let varargs = fun.args.last() == Some(&Type::Varargs);
+                let varargs = matches!(fun.args.last(), Some(&Type::Varargs(_)));
                 let correct_number_of_args = args.len() == fun.args.len()
                     || varargs && args.len() >= fun.args.len() - 1;
                 if !correct_number_of_args {
@@ -317,7 +318,7 @@ impl<'a, 'i> ConstraintCreator<'a, 'i> {
                     match expected_type {
                         Type::Top => unreachable!("function argument type is Top"),
                         Type::Bottom => unreachable!("function argument type is Bottom"),
-                        Type::Varargs => self.constraints.push(Constraint::new(span, ConstraintTyp::Type(passed_type_var, Type::Varargs))),
+                        t @ Type::Varargs(_) => self.constraints.push(Constraint::new(span, ConstraintTyp::Type(passed_type_var, t.clone()))),
                         Type::Specific(typ) => {
                             self.constraints.push(Constraint::new(span, ConstraintTyp::Type(passed_type_var, Type::Specific(typ.clone()))));
                             self.restrictions.push((passed_type_var, vec![typ.clone()]));
@@ -338,9 +339,9 @@ impl<'a, 'i> ConstraintCreator<'a, 'i> {
                 self.restrictions.push((type_var, vec![SpecificType::Unit]));
             },
             StructInitialization(ExprStructInitialization { name, fields, .. }) => {
-                self.constraints.push(Constraint::new(expr_outer.span(), ConstraintTyp::Type(type_var, Type::Specific(SpecificType::Struct(name.ident.to_string())))));
-                self.restrictions.push((type_var, vec![SpecificType::Struct(name.ident.to_string())]));
-                let typ = match self.pre_info.structs.get(name.ident) {
+                self.constraints.push(Constraint::new(expr_outer.span(), ConstraintTyp::Type(type_var, Type::Specific(SpecificType::Struct(Mutability::Mutable, name.ident.to_string())))));
+                self.restrictions.push((type_var, vec![SpecificType::Struct(Mutability::Mutable, name.ident.to_string())]));
+                let typ = match self.meta_info.structs.get(name.ident) {
                     Some((typ, _span)) => typ,
                     None => return type_var,
                 };
@@ -358,8 +359,8 @@ impl<'a, 'i> ConstraintCreator<'a, 'i> {
                 }
             }
             ImplBlock(ExprImplBlock { name, functions, .. }) => {
-                if self.pre_info.structs.get(name.ident).is_none() {
-                    let similar = crate::util::similar_name(name.ident, self.pre_info.structs.keys());
+                if self.meta_info.structs.get(name.ident).is_none() {
+                    let similar = crate::util::similar_name(name.ident, self.meta_info.structs.keys());
                     let mut diag = self.diagnostics.error(ErrorCode::UnknownImplBlockTarget)
                         .with_error_label(name.span, "can't find this type");
                     if let Some(similar) = similar {
@@ -384,21 +385,12 @@ impl<'a, 'i> ConstraintCreator<'a, 'i> {
         for arg in args {
             let ExprPatternTyped { pattern: ExprPatternUntyped { binding }, typ, .. } = arg;
             let arg_type_var = TypeVar::new(binding.ident.span);
-            let typ = SpecificType::from(typ);
+            let typ = SpecificType::from(Mutability::from(binding.mutable.is_some()), typ);
             self.constraints.push(Constraint::new(arg.span(), ConstraintTyp::Type(arg_type_var, Type::Specific(typ.clone()))));
             self.restrictions.push((arg_type_var, vec![typ]));
         }
 
         let type_var = TypeVar::new(function_definition.span());
-        let ret_type = match ret_type {
-            Some((_arrow, typ)) => SpecificType::from(typ),
-            None => SpecificType::Unit,
-        };
-        if exprs.is_empty() && ret_type != SpecificType::Unit {
-            self.diagnostics.error(ErrorCode::EmptyFunctionBody)
-                .with_error_label(name.span, format!("this function returns {} but has an empty body", ret_type))
-                .emit();
-        }
         let mut last = None;
         for expr in exprs {
             last = Some((expr.span(), self.get_type(expr)));
@@ -409,57 +401,6 @@ impl<'a, 'i> ConstraintCreator<'a, 'i> {
                 self.constraints.push(Constraint::new(function_definition.span(), ConstraintTyp::Type(type_var, Type::Specific(SpecificType::Unit))));
                 self.restrictions.push((type_var, vec![SpecificType::Unit]));
             }
-        }
-    }
-
-    fn check_struct_fields(&self, name: &TokenIdent, fields: &ExprStructDefFields) {
-        // check existence of field types
-        for (field, _colon, typ) in fields {
-            match typ {
-                ExprType::String(_) => (),
-                ExprType::Int(_) => (),
-                ExprType::Float(_) => (),
-                ExprType::Bool(_) => (),
-                ExprType::Unit(_, _) => (),
-                ExprType::Struct(s) => if self.pre_info.structs.get(s.ident).is_none() {
-                    let mut diag = self.diagnostics.error(ErrorCode::TypeNotFound)
-                        .with_error_label(typ.span(), "can't find type");
-                    if let Some(similar) = crate::util::similar_name(s.ident, self.pre_info.structs.keys().copied()) {
-                        diag = diag.with_info_label(typ.span(), format!("did you mean `{}`", similar));
-                    }
-                    diag.emit()
-                }
-            }
-            // check for (mutual) recursion
-            let specific_typ = SpecificType::from(typ);
-            self.check_struct_recursion(name, &specific_typ, vec![field.ident]);
-        }
-    }
-    fn check_struct_recursion(&self, outer_name: &TokenIdent, field_typ: &SpecificType, field_stack: Vec<&str>) {
-        let inner_name = match field_typ {
-            SpecificType::String => return,
-            SpecificType::Integer => return,
-            SpecificType::Float => return,
-            SpecificType::Bool => return,
-            SpecificType::Unit => return,
-            SpecificType::Struct(s) => s,
-        };
-        if outer_name.ident == inner_name {
-            let path = field_stack.iter().join(".");
-            self.diagnostics.error(ErrorCode::RecursiveStruct)
-                .with_error_label(outer_name.span, format!("this struct is recursive via `{}.{}`", outer_name.ident, path))
-                .with_note("recursive structs can never be initialized")
-                .emit();
-            return
-        }
-        let typ = match self.pre_info.structs.get(&**inner_name) {
-            Some((typ, _span)) => typ,
-            None => return,
-        };
-        for (field, typ) in &typ.fields {
-            let mut stack = field_stack.clone();
-            stack.push(field);
-            self.check_struct_recursion(outer_name, typ, stack);
         }
     }
 }

@@ -1,5 +1,5 @@
 use proc_macro_error::{proc_macro_error, abort};
-use syn::{ItemFn, Signature, FnArg, PatType, Ident, ReturnType, Type, DeriveInput, Token, parse_macro_input, Expr, Result, Attribute, Data, DataUnion, DataStruct, Visibility};
+use syn::{ItemFn, Signature, FnArg, PatType, Ident, ReturnType, Type, DeriveInput, Token, parse_macro_input, Expr, Result, Attribute, Data, DataUnion, DataStruct, Visibility, Pat, PatIdent};
 use proc_macro::TokenStream;
 use syn::parse::{Parse, ParseStream};
 use syn::token::{Union, Struct};
@@ -33,6 +33,7 @@ pub fn function(_args: TokenStream, input: TokenStream) -> TokenStream {
     let workaround_ident = format!("{}_workaround_issue_86672", ident);
     let workaround_ident = Ident::new(&workaround_ident, ident.span());
     let mut input_pats = Vec::new();
+    let mut input_muts = Vec::new();
     let mut input_types = Vec::new();
 
     for arg in inputs {
@@ -41,6 +42,14 @@ pub fn function(_args: TokenStream, input: TokenStream) -> TokenStream {
             FnArg::Typed(PatType { attrs, pat, colon_token: _, ty }) => {
                 if !attrs.is_empty() {
                     abort!(attrs[0], "argument attributes are not supported for static rebo functions");
+                }
+                if let Pat::Ident(PatIdent { mutability, .. }) = &*pat {
+                    match mutability {
+                        Some(_) => input_muts.push(quote::quote!(::rebo::common::Mutability::Mutable)),
+                        None => input_muts.push(quote::quote!(::rebo::common::Mutability::Immutable)),
+                    }
+                } else {
+                    abort!(pat, "arguments must be identifiers for static rebo functions");
                 }
                 input_pats.push(pat);
                 input_types.push(ty);
@@ -65,7 +74,8 @@ pub fn function(_args: TokenStream, input: TokenStream) -> TokenStream {
         }
 
         #[allow(non_upper_case_globals)]
-        const #workaround_ident: &'static [::rebo::common::Type] = &[#(::rebo::common::Type::Specific(<#input_types as ::rebo::common::FromValue>::TYPE)),*];
+        const #workaround_ident: &'static [::rebo::common::Type] =
+            &[#(::rebo::common::Type::Specific(<#input_types as ::rebo::common::FromValue>::TYPE)),*];
         #[allow(non_upper_case_globals)]
         const #ident: ::rebo::common::Function = ::rebo::common::Function {
             typ: ::rebo::common::FunctionType {

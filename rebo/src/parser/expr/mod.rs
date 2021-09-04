@@ -162,7 +162,7 @@ pub enum Expr<'a, 'i> {
     Block(ExprBlock<'a, 'i>),
     /// foo
     Variable(ExprVariable<'i>),
-    // foo.bar.baz
+    /// foo.bar.baz
     FieldAccess(ExprFieldAccess<'a, 'i>),
     /// (expr)
     Parenthesized(ExprParenthesized<'a, 'i>),
@@ -615,17 +615,6 @@ impl<'a, 'i> Parse<'a, 'i> for ExprAssign<'a, 'i> {
         let assign = parser.parse(depth.next())?;
         let expr = parser.parse(depth.last())?;
         // check mutability
-        let variable = match &lhs {
-            ExprAssignLhs::Variable(variable) => variable,
-            ExprAssignLhs::FieldAccess(ExprFieldAccess { variable, .. }) => variable,
-        };
-        if variable.binding.mutable.is_none() {
-            parser.diagnostics.error(ErrorCode::ImmutableAssign)
-                .with_error_label(variable.span, format!("variable `{}` is assigned to even though it's not declared as mutable", variable.binding.ident.ident))
-                .with_info_label(variable.binding.ident.span, format!("`{}` defined here", variable.binding.ident.ident))
-                .with_info_label(variable.binding.ident.span, format!("help: try using `mut {}` here", variable.binding.ident.ident))
-                .emit();
-        }
         Ok(ExprAssign { lhs, assign, expr })
     }
 }
@@ -929,11 +918,17 @@ pub struct ExprIfElse<'a, 'i> {
     pub else_ifs: Vec<(TokenElse, TokenIf, &'a Expr<'a, 'i>, ExprBlock<'a, 'i>)>,
     pub els: Option<(TokenElse, ExprBlock<'a, 'i>)>,
 }
+impl<'a, 'i> ExprIfElse<'a, 'i> {
+    pub fn iter_branches(&self) -> impl Iterator<Item = (Option<&'a Expr<'a, 'i>>, &ExprBlock<'a, 'i>)> {
+        ::std::iter::once((Some(self.condition), &self.then))
+            .chain(self.else_ifs.iter().map(|(_, _, cond, block)| (Some(*cond), block)))
+            .chain(self.els.iter().map(|(_, block)| (None, block)))
+    }
+}
 impl<'a, 'i> Parse<'a, 'i> for ExprIfElse<'a, 'i> {
     fn parse_marked(parser: &mut Parser<'a, '_, 'i>, depth: Depth) -> Result<Self, InternalError> {
         let if_token = parser.parse(depth.next())?;
         let condition = Expr::try_parse_until_including(parser, ParseUntil::All, depth.next())?;
-        check_condition_parens(parser, condition);
         Ok(ExprIfElse {
             if_token,
             condition,
@@ -964,15 +959,6 @@ impl<'a, 'i> Display for ExprIfElse<'a, 'i> {
     }
 }
 
-fn check_condition_parens(parser: &mut Parser, condition: &Expr) {
-    if let Expr::Parenthesized(_) = condition {
-        parser.diagnostics.warning(ErrorCode::UnnecessaryIfConditionParenthesis)
-            .with_info_label(condition.span(), "in this condition")
-            .with_note("remove the parenthesis")
-            .emit();
-    }
-}
-
 #[derive(Debug, Clone)]
 pub struct ExprMatch<'a, 'i> {
     pub match_token: TokenMatch,
@@ -988,13 +974,6 @@ impl<'a, 'i> Parse<'a, 'i> for ExprMatch<'a, 'i> {
         let open = parser.parse(depth.next())?;
         let arms: Separated<'a, 'i, Scoped<(ExprMatchPattern<'i>, TokenFatArrow, &'a Expr<'a, 'i>)>, TokenComma> = parser.parse(depth.next())?;
         let close: TokenCloseCurly = parser.parse(depth.last())?;
-
-        if arms.is_empty() {
-            let span = Span::new(match_token.span.file, match_token.span.start, close.span.end);
-            parser.diagnostics.error(ErrorCode::EmptyMatch)
-                .with_error_label(span, "this match has an empty body")
-                .emit();
-        }
 
         Ok(ExprMatch {
             match_token,
@@ -1032,7 +1011,6 @@ impl<'a, 'i> Parse<'a, 'i> for ExprWhile<'a, 'i> {
     fn parse_marked(parser: &mut Parser<'a, '_, 'i>, depth: Depth) -> Result<Self, InternalError> {
         let while_token = parser.parse(depth.next())?;
         let condition = Expr::try_parse_until_including(parser, ParseUntil::All, depth.next())?;
-        check_condition_parens(parser, condition);
         Ok(ExprWhile {
             while_token,
             condition,
@@ -1216,39 +1194,6 @@ impl<'a, 'i> Parse<'a, 'i> for ExprStructInitialization<'a, 'i> {
         let open = parser.parse(depth.next())?;
         let fields: ExprStructInitFields = parser.parse(depth.next())?;
         let close: TokenCloseCurly = parser.parse(depth.next())?;
-        match parser.pre_info.structs.get(name.ident) {
-            None => {
-                let similar = crate::util::similar_name(name.ident, parser.pre_info.structs.keys());
-                let mut diag = parser.diagnostics.error(ErrorCode::UnknownStruct)
-                    .with_error_label(name.span, "this struct doesn't exist");
-                if let Some(similar) = similar {
-                    diag = diag.with_info_label(name.span, format!("did you mean `{}`", similar));
-                }
-                diag.emit();
-            }
-            Some((typ, def_span)) => {
-                let mut expected_fields: IndexSet<_> = typ.fields.iter().map(|(name, _typ)| name.as_str()).collect();
-                for (field, _colon, _expr) in &fields {
-                    if !expected_fields.remove(field.ident) {
-                        let similar = crate::util::similar_name(field.ident, expected_fields.iter());
-                        let mut diag = parser.diagnostics.error(ErrorCode::UnknownFieldInit)
-                            .with_error_label(field.span, format!("unknown field `{}`", field.ident))
-                            .with_info_label(*def_span, "defined here");
-                        if let Some(similar) = similar {
-                            diag = diag.with_info_label(field.span, format!("did you mean `{}`", similar));
-                        }
-                        diag.emit();
-                    }
-                }
-                if !expected_fields.is_empty() {
-                    let mut diag = parser.diagnostics.error(ErrorCode::MissingField);
-                    for field in expected_fields {
-                        diag = diag.with_error_label(name.span, format!("missing field `{}`", field));
-                    }
-                    diag.emit();
-                }
-            },
-        };
         Ok(ExprStructInitialization {
             name,
             open,

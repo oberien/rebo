@@ -235,18 +235,18 @@ pub struct Struct {
     pub fields: Vec<(String, Value)>,
 }
 
-impl From<&'_ Value> for SpecificType {
-    fn from(val: &Value) -> Self {
-        match val {
-            Value::Unit => SpecificType::Unit,
-            Value::Integer(_) => SpecificType::Integer,
-            Value::Float(_) => SpecificType::Float,
-            Value::Bool(_) => SpecificType::Bool,
-            Value::String(_) => SpecificType::String,
-            Value::Struct(s) => SpecificType::Struct(s.s.lock().borrow().name.clone()),
-        }
-    }
-}
+// impl From<&'_ Value> for SpecificType {
+//     fn from(val: &Value) -> Self {
+//         match val {
+//             Value::Unit => SpecificType::Unit,
+//             Value::Integer(_) => SpecificType::Integer,
+//             Value::Float(_) => SpecificType::Float,
+//             Value::Bool(_) => SpecificType::Bool,
+//             Value::String(_) => SpecificType::String,
+//             Value::Struct(s) => SpecificType::Struct(s.s.lock().borrow().name.clone()),
+//         }
+//     }
+// }
 
 macro_rules! impl_from_into {
     ($ty:ty, $name:ident) => {

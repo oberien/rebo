@@ -43,6 +43,9 @@ pub enum ErrorCode {
     NonExhaustiveMatch,
     EmptyImplBlock,
     UnknownImplBlockTarget,
+    UnknownStructFieldType,
+    UnnecessaryWhileConditionParenthesis,
+    UnnecessaryMatchTargetParenthesis,
 }
 use ErrorCode::*;
 
@@ -92,6 +95,9 @@ impl diagnostic::ErrorCode for ErrorCode {
             NonExhaustiveMatch => "0042",
             EmptyImplBlock => "0043",
             UnknownImplBlockTarget => "0044",
+            UnknownStructFieldType => "0045",
+            UnnecessaryWhileConditionParenthesis => "0046",
+            UnnecessaryMatchTargetParenthesis => "0047",
         }.to_string()
     }
 
@@ -140,6 +146,9 @@ impl diagnostic::ErrorCode for ErrorCode {
             NonExhaustiveMatch => "non-exhaustive match",
             EmptyImplBlock => "empty impl block",
             UnknownImplBlockTarget => "unknown impl block target",
+            UnknownStructFieldType => "unknown type of struct field",
+            UnnecessaryWhileConditionParenthesis => "unnecessary parenthesis around while condition",
+            UnnecessaryMatchTargetParenthesis => "unnecessary parenthesis around match target"
         }.to_string()
     }
 }

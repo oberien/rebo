@@ -1,6 +1,15 @@
 use crate::ReturnValue;
 
 #[test]
+fn other_stuff_diagnostics() {
+    let _ = env_logger::builder().is_test(true).try_init();
+    assert_eq!(rebo::run("test".to_string(), r#"
+        let foo = 1;
+        foo = 42;
+    "#.to_string()), ReturnValue::Diagnostics(1));
+}
+
+#[test]
 fn boolean_short_circuiting() {
     let _ = env_logger::builder().is_test(true).try_init();
     assert_eq!(rebo::run("test".to_string(), r#"
@@ -111,9 +120,20 @@ fn functions() {
         // allow usage before definition
         fn a() { b() }
         fn b() {}
-        
+
         // infer argument types correctly
         fn c(x: int) { print(x) }
+
+        // pass by value with references
+        struct Foo { x: int }
+        let mut foo = Foo { x: 1 };
+        fn change(mut foo: Foo) {
+            foo.x = 2;
+            foo = Foo { x: 3 };
+        }
+        assert(foo.x == 1);
+        change(foo);
+        assert(foo.x == 2);
     "#.to_string()), ReturnValue::Ok);
 }
 #[test]
@@ -141,6 +161,17 @@ fn function_diagnostics() {
         print(foo(5));
         // unknown function baz
         baz(5);
+
+        struct Foo { x: int }
+        // assignment to immutable variable
+        fn change_broken(foo: Foo) {
+            foo.x = 42;
+        }
+        fn change(mut foo: Foo) {
+            foo.x = 42;
+        }
+        let foo = Foo { x: 1337 };
+        change(foo);
     "#.to_string()), ReturnValue::Diagnostics(8));
 }
 #[test]
@@ -167,13 +198,20 @@ fn if_else_usage() {
 fn if_else_diagnostics() {
     let _ = env_logger::builder().is_test(true).try_init();
     assert_eq!(rebo::run("test".to_string(), r#"
-        if true { 1337 } else { "" }
+        // unnecessary parens
         if (true) {} else {}
+        // mismatched types
+        if true { 1337 } else { "" }
+        // missing else branch
         if true { 1337 }
+        // missing branch body
         if true { 1337 } else {}
+        // missing branch value
         if true { 1337 } else { 42; }
+        // type conflict between int & bool
+        // expected bool
         if 1337 {}
-    "#.to_string()), ReturnValue::Diagnostics(8));
+    "#.to_string()), ReturnValue::Diagnostics(7));
 }
 #[test]
 fn match_usage() {
@@ -235,7 +273,10 @@ fn while_usage() {
 fn while_diagnostics() {
     let _ = env_logger::builder().is_test(true).try_init();
     assert_eq!(rebo::run("test".to_string(), r#"
+        // unnecessary parens
         while (true) {}
+        // type conflict between bool & int
+        // expected int
         while 1337 {}
     "#.to_string()), ReturnValue::Diagnostics(3));
 }
@@ -337,6 +378,7 @@ fn struct_diagnostics() {
         struct Foo2 {
             foo: Foo3,
         }
+        // mutual recursive struct definition
         struct Foo3 {
             foo: Foo2,
         }

@@ -15,7 +15,7 @@ mod parse;
 
 pub use expr::*;
 pub use parse::{Parse, Spanned, Separated};
-use crate::common::{PreInfo, SpecificType, Depth, StructType};
+use crate::common::{MetaInfo, SpecificType, Depth, StructType, Mutability};
 use indexmap::map::IndexMap;
 use itertools::Itertools;
 
@@ -88,7 +88,7 @@ pub struct Parser<'a, 'b, 'i> {
     /// finished bindings that aren't live anymore
     bindings: Vec<Binding<'i>>,
     /// pre-info to add first-pass definitions to
-    pre_info: &'b mut PreInfo<'a, 'i>,
+    meta_info: &'b mut MetaInfo<'a, 'i>,
     /// already parsed expressions in the first-pass, to be consumed by the second pass
     pre_parsed: HashMap<(FileId, usize), &'a Expr<'a, 'i>>,
     /// stack of scopes with bindings that are still live
@@ -103,13 +103,13 @@ struct Scope<'i> {
 
 /// All expression parsing function consume whitespace and comments before tokens, but not after.
 impl<'a, 'b, 'i> Parser<'a, 'b, 'i> {
-    pub fn new(arena: &'a Arena<Expr<'a, 'i>>, lexer: Lexer<'i>, diagnostics: &'i Diagnostics, pre_info: &'b mut PreInfo<'a, 'i>) -> Self {
+    pub fn new(arena: &'a Arena<Expr<'a, 'i>>, lexer: Lexer<'i>, diagnostics: &'i Diagnostics, meta_info: &'b mut MetaInfo<'a, 'i>) -> Self {
         let mut parser = Parser {
             arena,
             lexer,
             diagnostics,
             bindings: Vec::new(),
-            pre_info,
+            meta_info,
             pre_parsed: HashMap::new(),
             scopes: vec![Scope { idents: IndexMap::new() }],
             memoization: IndexMap::new(),
@@ -117,7 +117,7 @@ impl<'a, 'b, 'i> Parser<'a, 'b, 'i> {
         };
         parser.first_pass();
         // make existing bindings known to parser
-        for &binding in parser.pre_info.bindings.keys() {
+        for &binding in parser.meta_info.bindings.keys() {
             if let Some(old) = parser.scopes.last_mut().unwrap().idents.insert(binding.ident.ident, binding) {
                 let mut spans = [old.span(), binding.span()];
                 spans.sort();
@@ -152,17 +152,17 @@ impl<'a, 'b, 'i> Parser<'a, 'b, 'i> {
                 match expr {
                     Expr::FunctionDefinition(fun) => {
                         trace!("{} found {}", Depth::start(), fun);
-                        self.pre_info.add_function(self.diagnostics, Cow::Borrowed(fun.name.ident), fun);
+                        self.meta_info.add_function(self.diagnostics, Cow::Borrowed(fun.name.ident), fun);
                     }
                     Expr::StructDefinition(struct_def) => {
                         let typ = StructType {
                             name: struct_def.name.ident.to_string(),
                             fields: struct_def.fields.iter()
-                                .map(|(name, _, typ)| (name.ident.to_string(), SpecificType::from(typ)))
+                                .map(|(name, _, typ)| (name.ident.to_string(), SpecificType::from(Mutability::Mutable, typ)))
                                 .collect(),
                         };
                         trace!("{} found {} ({:?}, {})", Depth::start(), struct_def, struct_def.span().file, struct_def.span().start);
-                        if let Some((_old_typ, old_span)) = self.pre_info.structs.insert(struct_def.name.ident, (typ, struct_def.name.span())) {
+                        if let Some((_old_typ, old_span)) = self.meta_info.structs.insert(struct_def.name.ident, (typ, struct_def.name.span())) {
                             let mut spans = [old_span, struct_def.name.span()];
                             spans.sort();
                             self.diagnostics.error(ErrorCode::DuplicateGlobal)
@@ -175,7 +175,7 @@ impl<'a, 'b, 'i> Parser<'a, 'b, 'i> {
                         for fun in &impl_block.functions {
                             let path = format!("{}::{}", impl_block.name.ident, fun.name.ident);
                             trace!("{} found {}", Depth::start(), path);
-                            self.pre_info.add_function(self.diagnostics, Cow::Owned(path), fun);
+                            self.meta_info.add_function(self.diagnostics, Cow::Owned(path), fun);
                         }
                     }
                     _ => unreachable!("we just parsed you"),
@@ -222,17 +222,16 @@ impl<'a, 'b, 'i> Parser<'a, 'b, 'i> {
         self.add_binding_internal(ident, mutable, true)
     }
     fn add_binding_internal(&mut self, ident: TokenIdent<'i>, mutable: Option<TokenMut>, rogue: bool) -> Binding<'i> {
-        let (name, binding) = match self.binding_memoization.entry(ident.span()) {
+        let binding = match self.binding_memoization.entry(ident.span()) {
             Entry::Vacant(vacant) => {
                 let id = BindingId::unique();
-                let name = ident.ident;
-                let binding = Binding { id, ident, mutable, rogue };
+                let binding = Binding { id, mutable, ident, rogue };
                 vacant.insert(binding);
-                (name, binding)
+                binding
             }
-            Entry::Occupied(occupied) => (occupied.get().ident.ident, *occupied.get())
+            Entry::Occupied(occupied) => *occupied.get(),
         };
-        self.scopes.last_mut().unwrap().idents.insert(name, binding);
+        self.scopes.last_mut().unwrap().idents.insert(binding.ident.ident, binding);
         binding
     }
     fn get_binding(&mut self, ident: &str) -> Option<Binding<'i>> {
