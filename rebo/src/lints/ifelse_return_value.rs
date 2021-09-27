@@ -22,6 +22,7 @@ impl Visitor for IfElseReturnValue {
 
             return;
             // unsure if these are needed later on
+            #[allow(unreachable_code)]
             for (_cond, block) in ifelse.iter_branches() {
                 // if returns value but block is empty
                 if block.body.exprs.is_empty() {
@@ -32,7 +33,7 @@ impl Visitor for IfElseReturnValue {
                         .emit();
                     // if returns value but block is terminated
                 }
-                if block.body.terminated {
+                if block.body.terminated_with_semicolon {
                     diagnostics.error(ErrorCode::MissingBranchValue)
                         .with_error_label(block.span(), "this block doesn't evaluate to a value")
                         .with_info_label(ifelse.span(), "all branches in this if must evaluate to a value")

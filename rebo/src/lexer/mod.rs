@@ -112,7 +112,6 @@ impl<'i> Lexer<'i> {
 }
 impl<'i> LexerInner<'i> {
     fn get(&mut self, i: usize) -> Result<Token<'i>, Error> {
-        trace!("get {}", i);
         while self.tokens.len() <= i {
             match lex_fns::lex_next(self.diagnostics, self.file, self.source, self.lex_index)? {
                 token @ Token::Eof(_) => {

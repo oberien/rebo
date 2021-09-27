@@ -1,6 +1,12 @@
+mod graph;
+mod create_graph;
+mod solver;
+mod checker;
+
 use diagnostic::{Diagnostics, Span};
 use crate::common::MetaInfo;
 use crate::parser::Expr;
+use log::Level;
 
 /// A type variable.
 ///
@@ -18,5 +24,13 @@ impl TypeVar {
 }
 
 pub fn typeck(diagnostics: &Diagnostics, meta_info: &mut MetaInfo<'_, '_>, exprs: &[&Expr<'_, '_>]) {
-
+    let mut graph = create_graph::create_graph(meta_info, exprs);
+    if Level::Trace <= log::max_level() {
+        graph.dot(diagnostics);
+    }
+    solver::solve(&mut graph, meta_info);
+    if Level::Trace <= log::max_level() {
+        graph.dot(diagnostics);
+    }
+    checker::check(diagnostics, &graph, meta_info);
 }

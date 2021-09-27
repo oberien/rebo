@@ -2,7 +2,6 @@ use std::fmt;
 
 use crate::scope::{Scopes, BindingId};
 use crate::common::{SpecificType, FunctionType};
-use itertools::Itertools;
 use std::sync::Arc;
 use std::fmt::{Display, Formatter, Debug};
 use std::ops::{Add, Sub, Mul, Div};
@@ -10,6 +9,9 @@ use std::cmp::Ordering;
 use parking_lot::ReentrantMutex;
 use std::cell::RefCell;
 use crate::parser::{ExprLiteral, ExprInteger, ExprFloat, ExprBool, ExprString};
+use diagnostic::Span;
+use crate::EXTERNAL_SPAN;
+use itertools::Itertools;
 
 pub trait FromValues {
     fn from_values(values: impl Iterator<Item = Value>) -> Self;
@@ -179,18 +181,26 @@ pub struct Function {
     pub typ: FunctionType,
     pub imp: FunctionImpl,
 }
+impl Function {
+    pub fn span(&self) -> Span {
+        match &self.imp {
+            FunctionImpl::Rebo(_name, _args, span) => *span,
+            FunctionImpl::Rust(_) => EXTERNAL_SPAN.lock().unwrap().unwrap(),
+        }
+    }
+}
 
 pub type RustFunction = fn(&mut Scopes, Vec<Value>) -> Value;
 #[derive(Clone)]
 pub enum FunctionImpl {
     Rust(RustFunction),
-    Rebo(String, Vec<BindingId>),
+    Rebo(String, Vec<BindingId>, Span),
 }
 impl fmt::Debug for FunctionImpl {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             FunctionImpl::Rust(_) => write!(f, "FunctionImpl::Rust(_)"),
-            FunctionImpl::Rebo(id, arg_ids) => write!(f, "FunctionImpl::Rebo({}({}))", id, arg_ids.iter().join(", ")),
+            FunctionImpl::Rebo(id, arg_ids, _) => write!(f, "FunctionImpl::Rebo({}({}))", id, arg_ids.iter().join(", ")),
         }
     }
 }
@@ -200,7 +210,7 @@ impl PartialOrd for FunctionImpl {
         match (self, other) {
             (FunctionImpl::Rust(_), _) => None,
             (_, FunctionImpl::Rust(_)) => None,
-            (FunctionImpl::Rebo(a, _), FunctionImpl::Rebo(b, _)) => Some(a.cmp(b)),
+            (FunctionImpl::Rebo(a, _, _), FunctionImpl::Rebo(b, _, _)) => Some(a.cmp(b)),
         }
     }
 }
@@ -210,7 +220,7 @@ impl PartialEq for FunctionImpl {
         match (self, other) {
             (FunctionImpl::Rust(_), _) => false,
             (_, FunctionImpl::Rust(_)) => false,
-            (FunctionImpl::Rebo(a, _), FunctionImpl::Rebo(b, _)) => a.eq(b),
+            (FunctionImpl::Rebo(a, _, _), FunctionImpl::Rebo(b, _, _)) => a.eq(b),
         }
     }
 }

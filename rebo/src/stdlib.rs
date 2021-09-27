@@ -1,4 +1,4 @@
-use crate::common::{Value, Function, FunctionImpl, FunctionType, SpecificType, Type, MetaInfo, Mutability};
+use crate::common::{Value, Function, FunctionImpl, FunctionType, SpecificType, Type, MetaInfo};
 use crate::scope::Scopes;
 use crate as rebo;
 use std::borrow::Cow;
@@ -8,7 +8,7 @@ use diagnostic::Diagnostics;
 pub fn add_to_scope(diagnostics: &Diagnostics, meta_info: &mut MetaInfo<'_, '_>) {
     meta_info.add_external_function(diagnostics, "print", Function {
         typ: FunctionType {
-            args: Cow::Borrowed(&[Type::Varargs(Mutability::Immutable)]),
+            args: Cow::Borrowed(&[Type::Varargs]),
             ret: Type::Specific(SpecificType::Unit),
         },
         imp: FunctionImpl::Rust(print),

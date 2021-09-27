@@ -15,7 +15,7 @@ mod parse;
 
 pub use expr::*;
 pub use parse::{Parse, Spanned, Separated};
-use crate::common::{MetaInfo, SpecificType, Depth, StructType, Mutability};
+use crate::common::{MetaInfo, SpecificType, Depth, StructType};
 use indexmap::map::IndexMap;
 use itertools::Itertools;
 
@@ -158,7 +158,7 @@ impl<'a, 'b, 'i> Parser<'a, 'b, 'i> {
                         let typ = StructType {
                             name: struct_def.name.ident.to_string(),
                             fields: struct_def.fields.iter()
-                                .map(|(name, _, typ)| (name.ident.to_string(), SpecificType::from(Mutability::Mutable, typ)))
+                                .map(|(name, _, typ)| (name.ident.to_string(), SpecificType::from(typ)))
                                 .collect(),
                         };
                         trace!("{} found {} ({:?}, {})", Depth::start(), struct_def, struct_def.span().file, struct_def.span().start);

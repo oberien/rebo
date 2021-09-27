@@ -141,13 +141,14 @@ fn function_diagnostics() {
     let _ = env_logger::builder().is_test(true).try_init();
     assert_eq!(rebo::run("test".to_string(), r#"
         fn takes_int(x: int) {}
-        // wrong arg type (float instead of int) (twice currently because meh)
+        // wrong arg type (float instead of int)
         takes_int(2.0);
 
         // overwrite external function
         fn add_one() -> () {}
 
         // empty body but returns int
+        // unable to infer type ({} is not int)
         fn foo() -> int {}
         // overwrite existing function
         fn foo(mut x: int, mut y: int) -> int {
@@ -172,14 +173,14 @@ fn function_diagnostics() {
         }
         let foo = Foo { x: 1337 };
         change(foo);
-    "#.to_string()), ReturnValue::Diagnostics(8));
+    "#.to_string()), ReturnValue::Diagnostics(9));
 }
 #[test]
 fn pre_parsed() {
     let _ = env_logger::builder().is_test(true).try_init();
     assert_eq!(rebo::run("test".to_string(), r#"
         2 + fn foo() {} && true
-    "#.to_string()), ReturnValue::Diagnostics(6));
+    "#.to_string()), ReturnValue::Diagnostics(2));
 }
 #[test]
 fn if_else_usage() {
@@ -208,10 +209,9 @@ fn if_else_diagnostics() {
         if true { 1337 } else {}
         // missing branch value
         if true { 1337 } else { 42; }
-        // type conflict between int & bool
         // expected bool
         if 1337 {}
-    "#.to_string()), ReturnValue::Diagnostics(7));
+    "#.to_string()), ReturnValue::Diagnostics(6));
 }
 #[test]
 fn match_usage() {
@@ -276,9 +276,8 @@ fn while_diagnostics() {
         // unnecessary parens
         while (true) {}
         // type conflict between bool & int
-        // expected int
         while 1337 {}
-    "#.to_string()), ReturnValue::Diagnostics(3));
+    "#.to_string()), ReturnValue::Diagnostics(2));
 }
 #[test]
 fn format_strings() {
@@ -405,7 +404,7 @@ fn struct_diagnostics() {
 
         // mutable access to non-mutable variable
         bar.i = 42;
-    "#.to_string()), ReturnValue::Diagnostics(9));
+    "#.to_string()), ReturnValue::Diagnostics(8));
 }
 
 #[test]

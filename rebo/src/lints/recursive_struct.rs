@@ -1,6 +1,6 @@
 use crate::lints::visitor::Visitor;
 use diagnostic::Diagnostics;
-use crate::common::{MetaInfo, SpecificType, Mutability};
+use crate::common::{MetaInfo, SpecificType};
 use crate::parser::ExprStructDefinition;
 use crate::error_codes::ErrorCode;
 use crate::lexer::TokenIdent;
@@ -12,14 +12,14 @@ impl Visitor for RecursiveStruct {
     fn visit_struct_definition(&self, diagnostics: &Diagnostics, meta_info: &MetaInfo, def: &ExprStructDefinition) {
         let ExprStructDefinition { name, fields, .. } = def;
         for (ident, _colon, typ) in fields {
-            check_struct_recursion(diagnostics, meta_info, name, &SpecificType::from(Mutability::Mutable, typ), vec![ident.ident]);
+            check_struct_recursion(diagnostics, meta_info, name, &SpecificType::from(typ), vec![ident.ident]);
         }
     }
 }
 
 fn check_struct_recursion(diagnostics: &Diagnostics, meta_info: &MetaInfo, struct_name: &TokenIdent, field_typ: &SpecificType, field_path: Vec<&str>) {
     let field_struct_name = match &field_typ {
-        SpecificType::Struct(_, s) => s.as_str(),
+        SpecificType::Struct(s) => s.as_str(),
         _ => return,
     };
     // As we check every single struct, we only need to check if any recursive field is of the

@@ -806,7 +806,7 @@ impl<'a, 'i> Display for ExprBlock<'a, 'i> {
         let mut padded = PadFmt::new(&mut *f);
         for (i, expr) in self.body.exprs.iter().enumerate() {
             write!(&mut padded, "{}", expr)?;
-            if i == self.body.exprs.len() - 1 && !self.body.terminated {
+            if i == self.body.exprs.len() - 1 && !self.body.terminated_with_semicolon {
                 writeln!(padded)?;
             } else {
                 writeln!(padded, ";")?;
@@ -819,17 +819,18 @@ impl<'a, 'i> Display for ExprBlock<'a, 'i> {
 #[derive(Debug, Clone)]
 pub struct BlockBody<'a, 'i> {
     pub exprs: Vec<&'a Expr<'a, 'i>>,
-    pub terminated: bool,
+    pub terminated_with_semicolon: bool,
 }
 impl<'a, 'i> Parse<'a, 'i> for BlockBody<'a, 'i> {
     fn parse_marked(parser: &mut Parser<'a, '_, 'i>, depth: Depth) -> Result<Self, InternalError> {
         enum Last {
             Terminated,
+            TerminatedWithSemicolon,
             Unterminated(Span),
         }
 
         let mut exprs = Vec::new();
-        let mut last = Last::Terminated;
+        let mut last = Last::TerminatedWithSemicolon;
 
         while !parser.lexer.is_empty() && parser.peek_token(0).unwrap().typ() != TokenType::Eof && parser.peek_token(0).unwrap().typ() != TokenType::CloseCurly {
             // TODO: recover
@@ -853,13 +854,13 @@ impl<'a, 'i> Parse<'a, 'i> for BlockBody<'a, 'i> {
 
             // handle missing semicolon
             match last {
-                Last::Terminated => (),
+                Last::Terminated | Last::TerminatedWithSemicolon => (),
                 Last::Unterminated(span) => parser.diagnostics.error(ErrorCode::MissingSemicolon)
                     .with_info_label(Span::new(span.file, span.end, span.end), "try adding a semicolon here")
                     .emit(),
             }
             if trailing_semicolon {
-                last = Last::Terminated;
+                last = Last::TerminatedWithSemicolon;
             } else {
                 last = match expr {
                     Expr::FunctionDefinition(_)
@@ -875,7 +876,10 @@ impl<'a, 'i> Parse<'a, 'i> for BlockBody<'a, 'i> {
 
             exprs.push(expr);
         }
-        Ok(BlockBody { exprs, terminated: matches!(last, Last::Terminated) })
+        Ok(BlockBody {
+            exprs,
+            terminated_with_semicolon: matches!(last, Last::TerminatedWithSemicolon),
+        })
     }
 }
 

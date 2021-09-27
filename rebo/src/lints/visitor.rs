@@ -1,4 +1,4 @@
-use crate::parser::{ExprLiteral, ExprFormatString, ExprBind, ExprAssign, ExprBoolNot, ExprAdd, ExprSub, ExprMul, ExprDiv, ExprBoolAnd, ExprBoolOr, ExprLessThan, ExprLessEquals, ExprEquals, ExprNotEquals, ExprGreaterEquals, ExprGreaterThan, ExprBlock, ExprVariable, ExprFieldAccess, ExprParenthesized, ExprIfElse, ExprMatch, ExprWhile, ExprFunctionCall, ExprFunctionDefinition, ExprStructDefinition, ExprStructInitialization, ExprImplBlock, Expr};
+use crate::parser::{ExprLiteral, ExprFormatString, ExprBind, ExprAssign, ExprBoolNot, ExprAdd, ExprSub, ExprMul, ExprDiv, ExprBoolAnd, ExprBoolOr, ExprLessThan, ExprLessEquals, ExprEquals, ExprNotEquals, ExprGreaterEquals, ExprGreaterThan, ExprBlock, ExprVariable, ExprFieldAccess, ExprParenthesized, ExprIfElse, ExprMatch, ExprWhile, ExprFunctionCall, ExprFunctionDefinition, ExprStructDefinition, ExprStructInitialization, ExprImplBlock, Expr, ExprFormatStringPart};
 use diagnostic::Diagnostics;
 use crate::common::MetaInfo;
 
@@ -40,18 +40,12 @@ pub trait Visitor {
     fn visit_impl_block(&self, _: &Diagnostics, _: &MetaInfo, _: &ExprImplBlock) {}
 }
 
-macro_rules! gen_visit_fn {
-    ($($variant:ident => $function:ident,)*) => {
-        fn visit_expr(&self, expr: &'a Expr<'a, 'i>) {
-            match expr {
-                $(
-                    Expr::$variant(expr) => for visitor in &self.visitors {
-                        visitor.$function(self.diagnostics, self.meta_info, expr);
-                    }
-                )*
-            }
+macro_rules! visit {
+    ($self:ident, $function:ident, $var: expr) => {{
+        for visitor in &$self.visitors {
+            visitor.$function($self.diagnostics, $self.meta_info, $var);
         }
-    }
+    }}
 }
 
 impl<'a, 'b, 'i, 'v> VisitorDriver<'a, 'b, 'i, 'v> {
@@ -76,35 +70,144 @@ impl<'a, 'b, 'i, 'v> VisitorDriver<'a, 'b, 'i, 'v> {
             self.visit_expr(expr);
         }
     }
-    gen_visit_fn! {
-        Literal => visit_literal,
-        FormatString => visit_format_string,
-        Bind => visit_bind,
-        Assign => visit_assign,
-        BoolNot => visit_bool_not,
-        Add => visit_add,
-        Sub => visit_sub,
-        Mul => visit_mul,
-        Div => visit_div,
-        BoolAnd => visit_bool_and,
-        BoolOr => visit_bool_or,
-        LessThan => visit_less_than,
-        LessEquals => visit_less_equals,
-        Equals => visit_equals,
-        NotEquals => visit_not_equals,
-        GreaterEquals => visit_greater_equals,
-        GreaterThan => visit_greater_than,
-        Block => visit_block,
-        Variable => visit_variable,
-        FieldAccess => visit_field_access,
-        Parenthesized => visit_parenthesized,
-        IfElse => visit_if_else,
-        Match => visit_match,
-        While => visit_while,
-        FunctionCall => visit_function_call,
-        FunctionDefinition => visit_function_definition,
-        StructDefinition => visit_struct_definition,
-        StructInitialization => visit_struct_initialization,
-        ImplBlock => visit_impl_block,
+    fn visit_expr(&self, expr: &'a Expr<'a, 'i>) {
+        match expr {
+            Expr::Literal(lit) => visit!(self, visit_literal, lit),
+            Expr::FormatString(fs) => {
+                visit!(self, visit_format_string, fs);
+                for part in &fs.parts {
+                    match part {
+                        ExprFormatStringPart::Str(_) | ExprFormatStringPart::Escaped(_) => (),
+                        ExprFormatStringPart::FmtArg(expr) => self.visit_expr(expr),
+                    }
+                }
+            }
+            Expr::Bind(bind) => {
+                visit!(self, visit_bind, bind);
+                self.visit_expr(bind.expr);
+            }
+            Expr::Assign(assign) => {
+                visit!(self, visit_assign, assign);
+                self.visit_expr(assign.expr);
+            }
+            Expr::BoolNot(bool_not) => {
+                visit!(self, visit_bool_not, bool_not);
+                self.visit_expr(bool_not.expr);
+            }
+            Expr::Add(add) => {
+                visit!(self, visit_add, add);
+                self.visit_expr(add.a);
+                self.visit_expr(add.b);
+            }
+            Expr::Sub(sub) => {
+                visit!(self, visit_sub, sub);
+                self.visit_expr(sub.a);
+                self.visit_expr(sub.b);
+            }
+            Expr::Mul(mul) => {
+                visit!(self, visit_mul, mul);
+                self.visit_expr(mul.a);
+                self.visit_expr(mul.b);
+            }
+            Expr::Div(div) => {
+                visit!(self, visit_div, div);
+                self.visit_expr(div.a);
+                self.visit_expr(div.b);
+            }
+            Expr::BoolAnd(bool_and) => {
+                visit!(self, visit_bool_and, bool_and);
+                self.visit_expr(bool_and.a);
+                self.visit_expr(bool_and.b);
+            }
+            Expr::BoolOr(bool_or) => {
+                visit!(self, visit_bool_or, bool_or);
+                self.visit_expr(bool_or.a);
+                self.visit_expr(bool_or.b);
+            }
+            Expr::LessThan(less_than) => {
+                visit!(self, visit_less_than, less_than);
+                self.visit_expr(less_than.a);
+                self.visit_expr(less_than.b);
+            }
+            Expr::LessEquals(less_equals) => {
+                visit!(self, visit_less_equals, less_equals);
+                self.visit_expr(less_equals.a);
+                self.visit_expr(less_equals.b);
+            }
+            Expr::Equals(equals) => {
+                visit!(self, visit_equals, equals);
+                self.visit_expr(equals.a);
+                self.visit_expr(equals.b);
+            }
+            Expr::NotEquals(not_equals) => {
+                visit!(self, visit_not_equals, not_equals);
+                self.visit_expr(not_equals.a);
+                self.visit_expr(not_equals.b);
+            }
+            Expr::GreaterEquals(greater_equals) => {
+                visit!(self, visit_greater_equals, greater_equals);
+                self.visit_expr(greater_equals.a);
+                self.visit_expr(greater_equals.b);
+            }
+            Expr::GreaterThan(greater_than) => {
+                visit!(self, visit_greater_than, greater_than);
+                self.visit_expr(greater_than.a);
+                self.visit_expr(greater_than.b);
+            }
+            Expr::Block(block) => {
+                visit!(self, visit_block, block);
+                self.visit_exprs(&block.body.exprs);
+            }
+            Expr::Variable(var) => visit!(self, visit_variable, var),
+            Expr::FieldAccess(fa) => visit!(self, visit_field_access, fa),
+            Expr::Parenthesized(par) => {
+                visit!(self, visit_parenthesized, par);
+                self.visit_expr(par.expr);
+            }
+            Expr::IfElse(ifelse) => {
+                visit!(self, visit_if_else, ifelse);
+                for (cond, block) in ifelse.iter_branches() {
+                    if let Some(cond) = cond {
+                        self.visit_expr(cond);
+                    }
+                    self.visit_exprs(&block.body.exprs);
+                }
+            }
+            Expr::Match(mat) => {
+                visit!(self, visit_match, mat);
+                for (_pat, _arrow, expr) in &mat.arms {
+                    self.visit_expr(expr);
+                }
+            }
+            Expr::While(wh) => {
+                visit!(self, visit_while, wh);
+                self.visit_expr(wh.condition);
+                self.visit_exprs(&wh.block.body.exprs);
+            }
+            Expr::FunctionCall(fc) => {
+                visit!(self, visit_function_call, fc);
+                for arg in &fc.args {
+                    self.visit_expr(arg);
+                }
+            }
+            Expr::FunctionDefinition(fd) => {
+                visit!(self, visit_function_definition, fd);
+                self.visit_exprs(&fd.body.body.exprs);
+            }
+            Expr::StructDefinition(sd) => visit!(self, visit_struct_definition, sd),
+            Expr::StructInitialization(si) => {
+                visit!(self, visit_struct_initialization, si);
+                for (_ident, _colon, expr) in &si.fields {
+                    self.visit_expr(expr);
+                }
+            }
+            Expr::ImplBlock(impl_block) => {
+                visit!(self, visit_impl_block, impl_block);
+                for fd in &impl_block.functions {
+                    visit!(self, visit_function_definition, fd);
+                    self.visit_exprs(&fd.body.body.exprs);
+                }
+            }
+        }
     }
 }

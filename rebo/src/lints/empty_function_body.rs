@@ -1,6 +1,6 @@
 use crate::lints::visitor::Visitor;
 use diagnostic::Diagnostics;
-use crate::common::{MetaInfo, SpecificType, Mutability};
+use crate::common::{MetaInfo, SpecificType};
 use crate::parser::{ExprFunctionDefinition, ExprBlock, BlockBody};
 use crate::error_codes::ErrorCode;
 
@@ -10,7 +10,7 @@ impl Visitor for EmptyFunctionBody {
     fn visit_function_definition(&self, diagnostics: &Diagnostics, _: &MetaInfo, def: &ExprFunctionDefinition) {
         let ExprFunctionDefinition { name, ret_type, body: ExprBlock { body: BlockBody { exprs, .. }, .. }, .. } = def;
         let ret_type = match ret_type {
-            Some((_arrow, typ)) => SpecificType::from(Mutability::Mutable, typ),
+            Some((_arrow, typ)) => SpecificType::from(typ),
             None => SpecificType::Unit,
         };
         if exprs.is_empty() && ret_type != SpecificType::Unit {

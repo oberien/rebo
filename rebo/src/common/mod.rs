@@ -2,11 +2,11 @@ mod values;
 mod types;
 
 pub use values::{Value, Function, FunctionImpl, IntoValue, FromValues, FromValue, Struct, StructArc, FuzzyFloat};
-pub use types::{Type, SpecificType, FunctionType, StructType, Mutability, UnificationError};
+pub use types::{Type, SpecificType, SpecificTypeDiscriminants, FunctionType, StructType};
 use std::fmt::{self, Display, Formatter};
 use indexmap::map::IndexMap;
 use diagnostic::{Span, Diagnostics};
-use crate::parser::{Binding, ExprFunctionDefinition, ExprPatternTyped, ExprPatternUntyped};
+use crate::parser::{Binding, ExprFunctionDefinition, ExprPatternTyped, ExprPatternUntyped, Spanned};
 use std::borrow::Cow;
 use crate::error_codes::ErrorCode;
 use crate::EXTERNAL_SPAN;
@@ -49,15 +49,14 @@ impl<'a, 'i> MetaInfo<'a, 'i> {
     pub fn add_function(&mut self, diagnostics: &Diagnostics, name: Cow<'i, str>, fun: &'a ExprFunctionDefinition<'a, 'i>) {
         let typ = FunctionType {
             args: fun.args.iter().map(|pattern| {
-                let mutability = Mutability::from(pattern.pattern.binding.mutable.is_some());
-                Type::Specific(SpecificType::from(mutability, &pattern.typ))
+                Type::Specific(SpecificType::from(&pattern.typ))
             }).collect(),
-            ret: Type::Specific(fun.ret_type.as_ref().map(|(_, typ)| SpecificType::from(Mutability::Mutable, typ)).unwrap_or(SpecificType::Unit)),
+            ret: Type::Specific(fun.ret_type.as_ref().map(|(_, typ)| SpecificType::from(typ)).unwrap_or(SpecificType::Unit)),
         };
         let arg_binding_ids = fun.args.iter().map(|ExprPatternTyped { pattern: ExprPatternUntyped { binding }, .. }| binding.id).collect();
         let function = Function {
             typ,
-            imp: FunctionImpl::Rebo(name.to_string(), arg_binding_ids),
+            imp: FunctionImpl::Rebo(name.to_string(), arg_binding_ids, fun.span()),
         };
         if self.check_existing_function(diagnostics, &name, fun.name.span) {
             return;
@@ -74,7 +73,7 @@ impl<'a, 'i> MetaInfo<'a, 'i> {
     fn check_existing_function(&self, diagnostics: &Diagnostics, name: &str, span: Span) -> bool {
         if let Some(existing) = self.functions.get(name) {
             match &existing.imp {
-                FunctionImpl::Rebo(existing_name, _) => {
+                FunctionImpl::Rebo(existing_name, _, _) => {
                     let mut spans = [self.rebo_functions[existing_name.as_str()].name.span, span];
                     spans.sort();
                     diagnostics.error(ErrorCode::DuplicateGlobal)

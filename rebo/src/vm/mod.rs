@@ -229,14 +229,14 @@ impl<'a, 'i> Vm<'a, 'i> {
         }
     }
 
-    fn eval_block(&mut self, ExprBlock { body: BlockBody { exprs, terminated }, .. }: &ExprBlock, depth: Depth) -> Value {
+    fn eval_block(&mut self, ExprBlock { body: BlockBody { exprs, terminated_with_semicolon }, .. }: &ExprBlock, depth: Depth) -> Value {
         self.scopes.push_scope(Scope::new());
         let mut val = Value::Unit;
         for expr in exprs {
             val = self.eval_expr(expr, depth.next());
         }
         self.scopes.pop_scope();
-        if *terminated {
+        if *terminated_with_semicolon {
             Value::Unit
         } else {
             val
@@ -247,7 +247,7 @@ impl<'a, 'i> Vm<'a, 'i> {
         let args = args.iter().map(|expr| self.eval_expr(expr, depth.next())).collect();
         match &self.functions[name.ident].imp {
             FunctionImpl::Rust(f) => f(&mut self.scopes, args),
-            FunctionImpl::Rebo(name, arg_binding_ids) => {
+            FunctionImpl::Rebo(name, arg_binding_ids, _) => {
                 let mut scope = Scope::new();
                 for (&id, val) in arg_binding_ids.iter().zip(args) {
                     scope.create(id, val);
