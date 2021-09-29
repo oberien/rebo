@@ -1,7 +1,7 @@
-use crate::typeck2::graph::{Graph, Constraint, UnifyResult};
+use crate::typeck::graph::{Graph, Constraint, UnifyResult};
 use crate::common::{MetaInfo, SpecificType};
 use std::collections::{VecDeque, HashSet};
-use crate::typeck2::TypeVar;
+use crate::typeck::TypeVar;
 use std::iter::FromIterator;
 
 struct WorkQueue {

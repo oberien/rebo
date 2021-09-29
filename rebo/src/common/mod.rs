@@ -10,7 +10,7 @@ use crate::parser::{Binding, ExprFunctionDefinition, ExprPatternTyped, ExprPatte
 use std::borrow::Cow;
 use crate::error_codes::ErrorCode;
 use crate::EXTERNAL_SPAN;
-use crate::typeck2::TypeVar;
+use crate::typeck::TypeVar;
 
 /// Metadata / information needed before and/or during static analyses
 pub struct MetaInfo<'a, 'i> {

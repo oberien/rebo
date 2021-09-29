@@ -1,5 +1,5 @@
 use petgraph::prelude::{DiGraph, NodeIndex, EdgeRef};
-use crate::typeck2::TypeVar;
+use crate::typeck::TypeVar;
 use crate::common::{SpecificType, SpecificTypeDiscriminants, MetaInfo};
 use strum::IntoEnumIterator;
 use std::process::{Command, Stdio};

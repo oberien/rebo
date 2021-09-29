@@ -1,5 +1,5 @@
 use diagnostic::Diagnostics;
-use crate::typeck2::graph::{Graph, Constraint, PossibleTypes};
+use crate::typeck::graph::{Graph, Constraint, PossibleTypes};
 use crate::common::{MetaInfo, Type};
 use crate::error_codes::ErrorCode;
 use itertools::Itertools;

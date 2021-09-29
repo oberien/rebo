@@ -2,7 +2,7 @@ use crate::lints::visitor::Visitor;
 use diagnostic::Diagnostics;
 use crate::common::{MetaInfo, Type, SpecificType};
 use crate::parser::{ExprIfElse, Spanned};
-use crate::typeck2::TypeVar;
+use crate::typeck::TypeVar;
 use crate::error_codes::ErrorCode;
 
 pub struct IfElseReturnValue;

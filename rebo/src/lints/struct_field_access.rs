@@ -3,7 +3,7 @@ use diagnostic::Diagnostics;
 use crate::common::{MetaInfo, Type, SpecificType};
 use crate::parser::{ExprFieldAccess, ExprAssign, ExprAssignLhs, Spanned};
 use crate::error_codes::ErrorCode;
-use crate::typeck2::TypeVar;
+use crate::typeck::TypeVar;
 
 pub struct StructFieldAccess;
 

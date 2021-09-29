@@ -14,7 +14,7 @@ mod error_codes;
 mod lexer;
 mod parser;
 // mod typeck;
-mod typeck2;
+mod typeck;
 mod lints;
 mod vm;
 mod scope;
@@ -69,7 +69,7 @@ pub fn run(filename: String, code: String) -> ReturnValue {
 
     let time = Instant::now();
     // Typechecker::new(&diagnostics, &mut meta_info).typeck(&exprs);
-    typeck2::typeck(&diagnostics, &mut meta_info, &exprs);
+    typeck::typeck(&diagnostics, &mut meta_info, &exprs);
     info!("Typechecking took {}μs", time.elapsed().as_micros());
 
     let time = Instant::now();
