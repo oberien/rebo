@@ -74,7 +74,7 @@ print(fib(10));
 print(fib_iter(90));
 
 let foo = 4;
-print(f"{foo * 10 + 2} is the answer ");
+print(f"{foo * 10 + 2} is the answer");
 
 print(match 1 {
     0 => 21,

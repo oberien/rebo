@@ -7,6 +7,7 @@ use diagnostic::{Diagnostics, Span};
 use crate::common::MetaInfo;
 use crate::parser::Expr;
 use log::Level;
+use std::borrow::Borrow;
 
 /// A type variable.
 ///
@@ -20,6 +21,11 @@ pub struct TypeVar {
 impl TypeVar {
     pub fn new(span: Span) -> TypeVar {
         TypeVar { span }
+    }
+}
+impl Borrow<Span> for TypeVar {
+    fn borrow(&self) -> &Span {
+        &self.span
     }
 }
 
