@@ -97,7 +97,7 @@ impl<'a, 'i, T, D> Separated<'a, 'i, T, D> {
     pub fn from<U>(other: Separated<'a, 'i, U, D>) -> Self where T: From<U> {
         Separated {
             inner: other.inner.into_iter().map(|(u, d)| (T::from(u), d)).collect(),
-            last: other.last.map(|u| T::from(u)),
+            last: other.last.map(T::from),
             marker: other.marker,
         }
     }
@@ -125,7 +125,7 @@ impl<'b, 'a: 'b, 'i: 'b, T: 'a, D: 'a> Separated<'a, 'i, T, D> {
 impl<'a, 'i, T: Spanned + 'a, D: 'a> Separated<'a, 'i, T, D> {
     pub fn span(&self) -> Option<Span> {
         let first = self.iter().next();
-        let last = self.last.as_ref().or(self.inner.iter().last().map(|(t, _d)| t));
+        let last = self.last.as_ref().or_else(|| self.inner.iter().last().map(|(t, _d)| t));
         match (first, last) {
             (Some(first), None) => Some(first.span()),
             (None, Some(last)) => Some(last.span()),
@@ -156,7 +156,7 @@ impl<'a, 'i, T: Display, D: Display> Display for Separated<'a, 'i, T, D> {
             .map(|(t, d)| format!("{}{}", t, d))
             .chain(self.last.iter().map(|t| t.to_string()))
             .collect();
-        if joined.ends_with(" ") {
+        if joined.ends_with(' ') {
             joined.pop();
         }
         write!(f, "{}", joined)

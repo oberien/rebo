@@ -277,14 +277,14 @@ impl Graph {
     pub fn incoming(&self, var: TypeVar) -> Vec<(Constraint, TypeVar)> {
         let ix = self.graph_indices[&var];
         self.graph.edges_directed(ix, Direction::Incoming)
-            .map(|edge| (edge.weight().clone(), self.graph.node_weight(edge.source()).unwrap().clone()))
+            .map(|edge| (edge.weight().clone(), *self.graph.node_weight(edge.source()).unwrap()))
             .collect()
     }
 
     pub fn outgoing_neighbors(&self, var: TypeVar) -> impl Iterator<Item = TypeVar> + '_ {
         let ix = self.graph_indices[&var];
         self.graph.neighbors_directed(ix, Direction::Outgoing)
-            .map(move |ix| self.graph.node_weight(ix).unwrap().clone())
+            .map(move |ix| *self.graph.node_weight(ix).unwrap())
     }
 
     pub fn dot(&self, diagnosics: &Diagnostics) {

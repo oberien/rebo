@@ -104,7 +104,7 @@ struct Scope<'i> {
 /// All expression parsing function consume whitespace and comments before tokens, but not after.
 impl<'a, 'b, 'i> Parser<'a, 'b, 'i> {
     pub fn new(arena: &'a Arena<Expr<'a, 'i>>, lexer: Lexer<'i>, diagnostics: &'i Diagnostics, meta_info: &'b mut MetaInfo<'a, 'i>) -> Self {
-        let parser = Parser {
+        Parser {
             arena,
             lexer,
             diagnostics,
@@ -114,8 +114,7 @@ impl<'a, 'b, 'i> Parser<'a, 'b, 'i> {
             scopes: vec![Scope { idents: IndexMap::new() }],
             memoization: IndexMap::new(),
             binding_memoization: BTreeMap::new(),
-        };
-        parser
+        }
     }
 
     pub fn parse_ast(mut self) -> Result<Ast<'a, 'i>, Error> {

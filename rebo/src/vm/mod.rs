@@ -114,7 +114,7 @@ impl<'a, 'i> Vm<'a, 'i> {
                                 match field_value {
                                     Value::Struct(s) => s.clone(),
                                     var => {
-                                        *var = value.clone();
+                                        *var = value;
                                         break;
                                     },
                                 }

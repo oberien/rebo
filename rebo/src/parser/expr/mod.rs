@@ -1029,7 +1029,7 @@ impl<'a, 'i> Parse<'a, 'i> for ExprIfElse<'a, 'i> {
 impl<'a, 'i> Spanned for ExprIfElse<'a, 'i> {
     fn span(&self) -> Span {
         let end = self.els.as_ref().map(|(_, block)| block.span().end)
-            .or(self.else_ifs.last().map(|(_, _, _, block)| block.span().end))
+            .or_else(|| self.else_ifs.last().map(|(_, _, _, block)| block.span().end))
             .unwrap_or(self.then.span().end);
         Span::new(self.if_token.span.file, self.if_token.span.start, end)
     }

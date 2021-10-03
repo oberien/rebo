@@ -243,12 +243,10 @@ fn visit_expr(graph: &mut Graph, diagnostics: &Diagnostics, meta_info: &MetaInfo
                             .zip(expected_field_types);
                         for (field_binding, expected_type) in iter {
                             let field_binding_type_var = TypeVar::new(field_binding.ident.span);
+                            // always add all field type-vars even for unknown enums / variants
                             graph.add_type_var(field_binding_type_var);
-                            match expected_type {
-                                Type::Specific(specific) => {
-                                    graph.add_reduce_constraint(pat_type_var, field_binding_type_var, vec![specific.clone()])
-                                },
-                                _ => (),
+                            if let Type::Specific(specific) = expected_type {
+                                graph.add_reduce_constraint(pat_type_var, field_binding_type_var, vec![specific.clone()])
                             }
                         }
                     }
