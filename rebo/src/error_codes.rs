@@ -47,6 +47,9 @@ pub enum ErrorCode {
     UnnecessaryWhileConditionParenthesis,
     UnnecessaryMatchTargetParenthesis,
     UnknownType,
+    UnknownEnum,
+    UnknownEnumVariant,
+    MissingEnumFields,
 }
 use ErrorCode::*;
 
@@ -100,6 +103,9 @@ impl diagnostic::ErrorCode for ErrorCode {
             UnnecessaryWhileConditionParenthesis => "0046",
             UnnecessaryMatchTargetParenthesis => "0047",
             UnknownType => "0048",
+            UnknownEnum => "0049",
+            UnknownEnumVariant => "0050",
+            MissingEnumFields => "0051",
         }.to_string()
     }
 
@@ -152,6 +158,9 @@ impl diagnostic::ErrorCode for ErrorCode {
             UnnecessaryWhileConditionParenthesis => "unnecessary parenthesis around while condition",
             UnnecessaryMatchTargetParenthesis => "unnecessary parenthesis around match target",
             UnknownType => "unknown type",
+            UnknownEnum => "unknown enum",
+            UnknownEnumVariant => "unknown enum variant",
+            MissingEnumFields => "enum variant initializer is missing fields",
         }.to_string()
     }
 }
