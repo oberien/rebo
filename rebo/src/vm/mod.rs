@@ -1,28 +1,28 @@
-use crate::parser::{Expr, Binding, ExprVariable, ExprInteger, ExprFloat, ExprBool, ExprString, ExprAssign, ExprBind, ExprPattern, ExprPatternTyped, ExprPatternUntyped, ExprLessThan, ExprLessEquals, ExprEquals, ExprNotEquals, ExprGreaterEquals, ExprGreaterThan, ExprAdd, ExprSub, ExprMul, ExprDiv, ExprBoolNot, ExprBoolAnd, ExprBoolOr, ExprParenthesized, ExprBlock, ExprFunctionCall, Separated, ExprFunctionDefinition, BlockBody, ExprStructDefinition, ExprStructInitialization, ExprAssignLhs, ExprFieldAccess, ExprIfElse, ExprWhile, ExprFormatString, ExprFormatStringPart, ExprLiteral, ExprMatch, ExprMatchPattern};
-use crate::common::{Value, FunctionImpl, MetaInfo, Depth, Struct, StructType, FuzzyFloat, StructArc, Function};
+use crate::parser::{Expr, Binding, ExprVariable, ExprInteger, ExprFloat, ExprBool, ExprString, ExprAssign, ExprBind, ExprPattern, ExprPatternTyped, ExprPatternUntyped, ExprLessThan, ExprLessEquals, ExprEquals, ExprNotEquals, ExprGreaterEquals, ExprGreaterThan, ExprAdd, ExprSub, ExprMul, ExprDiv, ExprBoolNot, ExprBoolAnd, ExprBoolOr, ExprParenthesized, ExprBlock, ExprFunctionCall, Separated, ExprFunctionDefinition, BlockBody, ExprStructDefinition, ExprStructInitialization, ExprAssignLhs, ExprFieldAccess, ExprIfElse, ExprWhile, ExprFormatString, ExprFormatStringPart, ExprLiteral, ExprMatch, ExprMatchPattern, ExprEnumDefinition, ExprEnumInitialization};
+use crate::common::{Value, MetaInfo, Depth, Struct, FuzzyFloat, StructArc, Function, EnumArc, Enum};
 use crate::scope::{Scopes, Scope};
 use crate::lexer::{TokenInteger, TokenFloat, TokenBool, TokenDqString, TokenComma, TokenIdent};
 use indexmap::map::IndexMap;
 use std::sync::Arc;
-use diagnostic::Span;
 use parking_lot::ReentrantMutex;
 use std::cell::RefCell;
 use std::borrow::Cow;
+use crate::typeck::types::StructType;
 
 pub struct Vm<'a, 'i> {
     scopes: Scopes,
     functions: IndexMap<Cow<'i, str>, Function>,
     rebo_functions: IndexMap<Cow<'i, str>, &'a ExprFunctionDefinition<'a, 'i>>,
-    structs: IndexMap<&'i str, (StructType, Span)>,
+    struct_types: IndexMap<&'i str, StructType>,
 }
 
 impl<'a, 'i> Vm<'a, 'i> {
     pub fn new(meta_info: MetaInfo<'a, 'i>) -> Self {
-        let MetaInfo { bindings: _, functions, rebo_functions, structs, types: _ } = meta_info;
+        let MetaInfo { functions, rebo_functions, user_types: _, function_types: _, struct_types, enum_types: _, types: _ } = meta_info;
         let mut scopes = Scopes::new();
         let root_scope = Scope::new();
         scopes.push_scope(root_scope);
-        Vm { scopes, functions, rebo_functions, structs }
+        Vm { scopes, functions, rebo_functions, struct_types }
     }
 
     pub fn run(mut self, ast: &[&Expr]) -> Value {
@@ -218,11 +218,19 @@ impl<'a, 'i> Vm<'a, 'i> {
                     field_values.push((field.ident.to_string(), self.eval_expr(expr, depth.next())));
                 }
                 // TODO: O(n²log(n)) probably isn't the best but we need the correct order of the type-definition for comparisons
-                let (typ, _) = &self.structs[name.ident];
+                let typ = &self.struct_types[name.ident];
                 field_values.sort_by_key(|(field, _)| typ.fields.iter().position(|(name, _)| field == name));
                 Value::Struct(StructArc { s: Arc::new(ReentrantMutex::new(RefCell::new(Struct {
                     name: name.ident.to_string(),
                     fields: field_values,
+                })))})
+            }
+            Expr::EnumDefinition(ExprEnumDefinition { .. }) => Value::Unit,
+            Expr::EnumInitialization(ExprEnumInitialization { enum_name, variant_name, .. }) => {
+                Value::Enum(EnumArc { e: Arc::new(ReentrantMutex::new(RefCell::new(Enum {
+                    name: enum_name.ident.to_string(),
+                    variant: variant_name.ident.to_string(),
+                    fields: vec![],
                 })))})
             }
             Expr::ImplBlock(_) => Value::Unit,
@@ -245,9 +253,9 @@ impl<'a, 'i> Vm<'a, 'i> {
     fn call_function(&mut self, name: &TokenIdent<'_>, args: &Separated<&Expr<'_, '_>, TokenComma>, depth: Depth) -> Value {
         trace!("{}call_function: {}({:?})", depth, name.ident, args);
         let args = args.iter().map(|expr| self.eval_expr(expr, depth.next())).collect();
-        match &self.functions[name.ident].imp {
-            FunctionImpl::Rust(f) => f(&mut self.scopes, args),
-            FunctionImpl::Rebo(name, arg_binding_ids, _) => {
+        match &self.functions[name.ident] {
+            Function::Rust(f) => f(&mut self.scopes, args),
+            Function::Rebo(name, arg_binding_ids) => {
                 let mut scope = Scope::new();
                 for (&id, val) in arg_binding_ids.iter().zip(args) {
                     scope.create(id, val);
@@ -262,6 +270,13 @@ impl<'a, 'i> Vm<'a, 'i> {
 
                 self.scopes.pop_scope();
                 last.unwrap_or(Value::Unit)
+            }
+            Function::EnumInitializer(enum_name, variant_name) => {
+                Value::Enum(EnumArc { e: Arc::new(ReentrantMutex::new(RefCell::new(Enum {
+                    name: enum_name.clone(),
+                    variant: variant_name.clone(),
+                    fields: args,
+                })))})
             }
         }
     }

@@ -1,10 +1,11 @@
 use crate::lints::visitor::Visitor;
 use diagnostic::Diagnostics;
-use crate::common::{MetaInfo, SpecificType};
+use crate::common::MetaInfo;
 use crate::parser::ExprStructDefinition;
 use crate::error_codes::ErrorCode;
 use crate::lexer::TokenIdent;
 use itertools::Itertools;
+use crate::typeck::types::{SpecificType, Type};
 
 pub struct RecursiveStruct;
 
@@ -12,14 +13,15 @@ impl Visitor for RecursiveStruct {
     fn visit_struct_definition(&self, diagnostics: &Diagnostics, meta_info: &MetaInfo, def: &ExprStructDefinition) {
         let ExprStructDefinition { name, fields, .. } = def;
         for (ident, _colon, typ) in fields {
-            check_struct_recursion(diagnostics, meta_info, name, &SpecificType::from(typ), vec![ident.ident]);
+            let field_typ = Type::from_expr_type(typ, diagnostics, meta_info);
+            check_struct_recursion(diagnostics, meta_info, name, &field_typ, vec![ident.ident]);
         }
     }
 }
 
-fn check_struct_recursion(diagnostics: &Diagnostics, meta_info: &MetaInfo, struct_name: &TokenIdent, field_typ: &SpecificType, field_path: Vec<&str>) {
+fn check_struct_recursion(diagnostics: &Diagnostics, meta_info: &MetaInfo, struct_name: &TokenIdent, field_typ: &Type, field_path: Vec<&str>) {
     let field_struct_name = match &field_typ {
-        SpecificType::Struct(s) => s.as_str(),
+        Type::Specific(SpecificType::Struct(s)) => s.as_str(),
         _ => return,
     };
     // As we check every single struct, we only need to check if any recursive field is of the
@@ -34,8 +36,8 @@ fn check_struct_recursion(diagnostics: &Diagnostics, meta_info: &MetaInfo, struc
             .emit();
         return
     }
-    let typ = match meta_info.structs.get(field_struct_name) {
-        Some((typ, _span)) => typ,
+    let typ = match meta_info.struct_types.get(field_struct_name) {
+        Some(typ) => typ,
         None => return,
     };
     for (name, typ) in &typ.fields {

@@ -15,7 +15,7 @@ mod parse;
 
 pub use expr::*;
 pub use parse::{Parse, Spanned, Separated};
-use crate::common::{MetaInfo, SpecificType, Depth, StructType};
+use crate::common::{MetaInfo, Depth};
 use indexmap::map::IndexMap;
 use itertools::Itertools;
 
@@ -104,7 +104,7 @@ struct Scope<'i> {
 /// All expression parsing function consume whitespace and comments before tokens, but not after.
 impl<'a, 'b, 'i> Parser<'a, 'b, 'i> {
     pub fn new(arena: &'a Arena<Expr<'a, 'i>>, lexer: Lexer<'i>, diagnostics: &'i Diagnostics, meta_info: &'b mut MetaInfo<'a, 'i>) -> Self {
-        let mut parser = Parser {
+        let parser = Parser {
             arena,
             lexer,
             diagnostics,
@@ -115,83 +115,7 @@ impl<'a, 'b, 'i> Parser<'a, 'b, 'i> {
             memoization: IndexMap::new(),
             binding_memoization: BTreeMap::new(),
         };
-        parser.first_pass();
-        // make existing bindings known to parser
-        for &binding in parser.meta_info.bindings.keys() {
-            if let Some(old) = parser.scopes.last_mut().unwrap().idents.insert(binding.ident.ident, binding) {
-                let mut spans = [old.span(), binding.span()];
-                spans.sort();
-                parser.diagnostics.error(ErrorCode::DuplicateGlobal)
-                    .with_info_label(spans[0], "first defined here")
-                    .with_error_label(spans[1], "also defined here")
-                    .emit();
-            }
-        }
         parser
-    }
-
-    /// Parse function, struct and enum definitions
-    fn first_pass(&mut self) {
-        trace!("first_pass");
-        // create rogue scopes
-        let old_scopes = ::std::mem::replace(&mut self.scopes, vec![Scope { idents: IndexMap::new() }]);
-        let mark = self.lexer.mark();
-        let functions: &[for<'x> fn(&'x mut Parser<'a, 'b, 'i>, _) -> Result<_, InternalError>] = &[
-            |parser, depth: Depth| Ok(Expr::FunctionDefinition(ExprFunctionDefinition::parse_reset(parser, depth.next())?)),
-            |parser, depth: Depth| Ok(Expr::StructDefinition(ExprStructDefinition::parse_reset(parser, depth.next())?)),
-            |parser, depth: Depth| Ok(Expr::ImplBlock(ExprImplBlock::parse_reset(parser, depth.next())?)),
-        ];
-        while self.peek_token(0).is_ok() && !matches!(self.peek_token(0).unwrap(), Token::Eof(_)) {
-            let depth = Depth::start();
-            trace!("{} first_pass", depth);
-            for function in functions {
-                let expr = match function(&mut *self, depth.next()) {
-                    Ok(expr) => &*self.arena.alloc(expr),
-                    Err(_) => continue,
-                };
-                match expr {
-                    Expr::FunctionDefinition(fun) => {
-                        trace!("{} found {}", Depth::start(), fun);
-                        self.meta_info.add_function(self.diagnostics, Cow::Borrowed(fun.name.ident), fun);
-                    }
-                    Expr::StructDefinition(struct_def) => {
-                        let typ = StructType {
-                            name: struct_def.name.ident.to_string(),
-                            fields: struct_def.fields.iter()
-                                .map(|(name, _, typ)| (name.ident.to_string(), SpecificType::from(typ)))
-                                .collect(),
-                        };
-                        trace!("{} found {} ({:?}, {})", Depth::start(), struct_def, struct_def.span().file, struct_def.span().start);
-                        if let Some((_old_typ, old_span)) = self.meta_info.structs.insert(struct_def.name.ident, (typ, struct_def.name.span())) {
-                            let mut spans = [old_span, struct_def.name.span()];
-                            spans.sort();
-                            self.diagnostics.error(ErrorCode::DuplicateGlobal)
-                                .with_info_label(spans[0], "first defined here")
-                                .with_error_label(spans[1], "also defined here")
-                                .emit();
-                        }
-                    }
-                    Expr::ImplBlock(impl_block) => {
-                        for fun in &impl_block.functions {
-                            let path = format!("{}::{}", impl_block.name.ident, fun.name.ident);
-                            trace!("{} found {}", Depth::start(), path);
-                            self.meta_info.add_function(self.diagnostics, Cow::Owned(path), fun);
-                        }
-                    }
-                    _ => unreachable!("we just parsed you"),
-                }
-                self.pre_parsed.insert((expr.span().file, expr.span().start), expr);
-                // consume tokens except last one as that's consumed after the for loop
-                while self.peek_token(0).unwrap().span().end < expr.span().end {
-                    drop(self.next_token());
-                }
-                break;
-            }
-            drop(self.next_token())
-        }
-        // reset token lookahead
-        drop(mark);
-        self.scopes = old_scopes;
     }
 
     pub fn parse_ast(mut self) -> Result<Ast<'a, 'i>, Error> {

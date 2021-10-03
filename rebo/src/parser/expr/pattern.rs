@@ -65,7 +65,7 @@ impl<'i> Display for ExprPatternUntyped<'i> {
         if self.binding.mutable.is_some() {
             write!(f, "mut ")?;
         }
-        write!(f, "{}", self.binding.ident.ident)?;
+        write!(f, "{}", self.binding)?;
         Ok(())
     }
 }

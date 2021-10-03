@@ -1,9 +1,10 @@
 use crate::lints::visitor::Visitor;
 use diagnostic::Diagnostics;
-use crate::common::{MetaInfo, Type, SpecificType};
+use crate::common::MetaInfo;
 use crate::parser::{ExprIfElse, Spanned};
 use crate::typeck::TypeVar;
 use crate::error_codes::ErrorCode;
+use crate::typeck::types::{Type, SpecificType};
 
 pub struct IfElseReturnValue;
 

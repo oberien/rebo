@@ -1,6 +1,7 @@
 use petgraph::prelude::{DiGraph, NodeIndex, EdgeRef};
 use crate::typeck::TypeVar;
-use crate::common::{SpecificType, SpecificTypeDiscriminants, MetaInfo};
+use crate::common::MetaInfo;
+use crate::typeck::types::{SpecificType, SpecificTypeDiscriminants, Type};
 use strum::IntoEnumIterator;
 use std::process::{Command, Stdio};
 use petgraph::dot::{Dot, Config};
@@ -58,6 +59,8 @@ impl PossibleTypes {
                 // There can never be a struct named "struct" as it's a keyword.
                 // That's why we use it meaning "any struct".
                 SpecificTypeDiscriminants::Struct => possible_types.push(SpecificType::Struct("struct".to_string())),
+                // Similarly to above, we use "enum" as any enum.
+                SpecificTypeDiscriminants::Enum => possible_types.push(SpecificType::Enum("enum".to_string())),
             }
         }
         PossibleTypes(possible_types)
@@ -72,6 +75,10 @@ impl PossibleTypes {
                 .any(|typ| matches!(typ, SpecificType::Struct(_))),
             SpecificType::Struct(name) => self.0.iter()
                 .any(|typ| matches!(typ, SpecificType::Struct(n) if n == name || n == "struct")),
+            SpecificType::Enum(name) if name == "enum" => self.0.iter()
+                .any(|typ| matches!(typ, SpecificType::Enum(_))),
+            SpecificType::Enum(name) => self.0.iter()
+                .any(|typ| matches!(typ, SpecificType::Enum(n) if n == name || n == "enum")),
             _ => self.0.contains(typ),
         }
     }
@@ -86,42 +93,48 @@ impl PossibleTypes {
         if reduce.is_empty() {
             return UnifyResult::Unchanged;
         }
-        let mut changed = UnifyResult::Unchanged;
-        let mut new_struct = None;
-        self.0.retain(|typ| {
-            let retain = match typ {
+        let res = self.0.iter().filter_map(|typ| {
+            match typ {
                 SpecificType::Unit
                 | SpecificType::Bool
                 | SpecificType::Float
                 | SpecificType::Integer
-                | SpecificType::String => reduce.contains(typ),
-                SpecificType::Struct(name) if name == "struct" => {
+                | SpecificType::String => if reduce.contains(typ) { Some(typ.clone()) } else { None }
+                SpecificType::Struct(name) => {
                     let reduce_struct = reduce.iter()
                         .filter_map(|typ| match typ {
-                            SpecificType::Struct(name) => Some(name),
+                            SpecificType::Struct(name) => Some(name.as_str()),
                             _ => None,
                         }).next();
-                    match reduce_struct {
-                        None => false,
-                        Some(name) if name == "struct" => true,
-                        Some(name) => {
-                            new_struct = Some(SpecificType::Struct(name.clone()));
-                            false
-                        }
+                    match (name.as_str(), reduce_struct) {
+                        (_, None) => None,
+                        ("struct", Some(name))
+                        | (name, Some("struct")) => Some(SpecificType::Struct(name.to_string())),
+                        (a, Some(b)) if a == b => Some(SpecificType::Struct(a.to_string())),
+                        (_, _) => None,
                     }
                 }
-                SpecificType::Struct(name) => reduce.iter()
-                    .any(|typ| matches!(typ, SpecificType::Struct(n) if n == "struct" || n == name)),
-            };
-            if !retain {
-                changed = UnifyResult::Changed;
+                SpecificType::Enum(name) => {
+                    let reduce_enum = reduce.iter()
+                        .filter_map(|typ| match typ {
+                            SpecificType::Enum(name) => Some(name.as_str()),
+                            _ => None,
+                        }).next();
+                    match (name.as_str(), reduce_enum) {
+                        (_, None) => None,
+                        ("enum", Some(name))
+                        | (name, Some("enum")) => Some(SpecificType::Enum(name.to_string())),
+                        (a, Some(b)) if a == b => Some(SpecificType::Enum(a.to_string())),
+                        (_, _) => None,
+                    }
+                }
             }
-            retain
-        });
-        if let Some(new_struct) = new_struct {
-            self.0.push(new_struct);
+        }).collect();
+        let old = std::mem::replace(&mut self.0, res);
+        match old == self.0 {
+            true => UnifyResult::Unchanged,
+            false => UnifyResult::Changed,
         }
-        changed
     }
 
     pub fn unify_assign(&mut self, other: &PossibleTypes) -> UnifyResult {
@@ -244,15 +257,15 @@ impl Graph {
         let mut typ = &possible_types.0[0];
         for field in fields {
             let struct_typ = match typ {
-                SpecificType::Struct(name) => match meta_info.structs.get(name.as_str()) {
-                    Some((struct_typ, _span)) => struct_typ,
+                SpecificType::Struct(name) => match meta_info.struct_types.get(name.as_str()) {
+                    Some(struct_typ) => struct_typ,
                     None => return res,
                 }
                 _ => return res,
             };
             typ = match struct_typ.get_field(field) {
-                Some(typ) => typ,
-                None => return res,
+                Some(Type::Specific(typ)) => typ,
+                _ => return res,
             }
         }
         let typ = typ.clone();

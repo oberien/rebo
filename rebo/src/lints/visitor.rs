@@ -1,4 +1,4 @@
-use crate::parser::{ExprLiteral, ExprFormatString, ExprBind, ExprAssign, ExprBoolNot, ExprAdd, ExprSub, ExprMul, ExprDiv, ExprBoolAnd, ExprBoolOr, ExprLessThan, ExprLessEquals, ExprEquals, ExprNotEquals, ExprGreaterEquals, ExprGreaterThan, ExprBlock, ExprVariable, ExprFieldAccess, ExprParenthesized, ExprIfElse, ExprMatch, ExprWhile, ExprFunctionCall, ExprFunctionDefinition, ExprStructDefinition, ExprStructInitialization, ExprImplBlock, Expr, ExprFormatStringPart};
+use crate::parser::{ExprLiteral, ExprFormatString, ExprBind, ExprAssign, ExprBoolNot, ExprAdd, ExprSub, ExprMul, ExprDiv, ExprBoolAnd, ExprBoolOr, ExprLessThan, ExprLessEquals, ExprEquals, ExprNotEquals, ExprGreaterEquals, ExprGreaterThan, ExprBlock, ExprVariable, ExprFieldAccess, ExprParenthesized, ExprIfElse, ExprMatch, ExprWhile, ExprFunctionCall, ExprFunctionDefinition, ExprStructDefinition, ExprStructInitialization, ExprImplBlock, Expr, ExprFormatStringPart, ExprEnumDefinition, ExprEnumInitialization};
 use diagnostic::Diagnostics;
 use crate::common::MetaInfo;
 
@@ -37,6 +37,8 @@ pub trait Visitor {
     fn visit_function_definition(&self, _: &Diagnostics, _: &MetaInfo, _: &ExprFunctionDefinition) {}
     fn visit_struct_definition(&self, _: &Diagnostics, _: &MetaInfo, _: &ExprStructDefinition) {}
     fn visit_struct_initialization(&self, _: &Diagnostics, _: &MetaInfo, _: &ExprStructInitialization) {}
+    fn visit_enum_definition(&self, _: &Diagnostics, _: &MetaInfo, _: &ExprEnumDefinition) {}
+    fn visit_enum_initialization(&self, _: &Diagnostics, _: &MetaInfo, _: &ExprEnumInitialization) {}
     fn visit_impl_block(&self, _: &Diagnostics, _: &MetaInfo, _: &ExprImplBlock) {}
 }
 
@@ -201,6 +203,8 @@ impl<'a, 'b, 'i, 'v> VisitorDriver<'a, 'b, 'i, 'v> {
                     self.visit_expr(expr);
                 }
             }
+            Expr::EnumDefinition(ed) => visit!(self, visit_enum_definition, ed),
+            Expr::EnumInitialization(ei) => visit!(self, visit_enum_initialization, ei),
             Expr::ImplBlock(impl_block) => {
                 visit!(self, visit_impl_block, impl_block);
                 for fd in &impl_block.functions {

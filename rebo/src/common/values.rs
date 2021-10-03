@@ -1,7 +1,6 @@
 use std::fmt;
 
 use crate::scope::{Scopes, BindingId};
-use crate::common::{SpecificType, FunctionType};
 use std::sync::Arc;
 use std::fmt::{Display, Formatter, Debug};
 use std::ops::{Add, Sub, Mul, Div};
@@ -12,6 +11,9 @@ use crate::parser::{ExprLiteral, ExprInteger, ExprFloat, ExprBool, ExprString};
 use diagnostic::Span;
 use crate::EXTERNAL_SPAN;
 use itertools::Itertools;
+use crate::typeck::types::{SpecificType, FunctionType};
+use crate::common::MetaInfo;
+use crate::parser::Spanned;
 
 pub trait FromValues {
     fn from_values(values: impl Iterator<Item = Value>) -> Self;
@@ -78,6 +80,7 @@ pub enum Value {
     Bool(bool),
     String(String),
     Struct(StructArc),
+    Enum(EnumArc),
 }
 
 impl Value {
@@ -112,6 +115,15 @@ impl Display for Value {
                 }
                 write!(f, " }}")
             },
+            Value::Enum(e) => {
+                let e = e.e.lock();
+                let e = e.borrow();
+                write!(f, "{}::{}", e.name, e.variant)?;
+                if !e.fields.is_empty() {
+                    write!(f, "({})", e.fields.iter().join(", "))?;
+                }
+                Ok(())
+            }
         }
     }
 }
@@ -176,51 +188,63 @@ impl Display for FuzzyFloat {
     }
 }
 
-#[derive(Debug, Clone, PartialOrd, PartialEq)]
-pub struct Function {
+pub struct ExternalFunction {
     pub typ: FunctionType,
-    pub imp: FunctionImpl,
-}
-impl Function {
-    pub fn span(&self) -> Span {
-        match &self.imp {
-            FunctionImpl::Rebo(_name, _args, span) => *span,
-            FunctionImpl::Rust(_) => EXTERNAL_SPAN.lock().unwrap().unwrap(),
-        }
-    }
+    pub imp: RustFunction,
 }
 
 pub type RustFunction = fn(&mut Scopes, Vec<Value>) -> Value;
 #[derive(Clone)]
-pub enum FunctionImpl {
+pub enum Function {
     Rust(RustFunction),
-    Rebo(String, Vec<BindingId>, Span),
+    /// function name, argument binding ids, definition span
+    Rebo(String, Vec<BindingId>),
+    /// enum name, variant name, variant definition span
+    EnumInitializer(String, String)
 }
-impl fmt::Debug for FunctionImpl {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl Function {
+    pub fn span(&self, meta_info: &MetaInfo) -> Span {
         match self {
-            FunctionImpl::Rust(_) => write!(f, "FunctionImpl::Rust(_)"),
-            FunctionImpl::Rebo(id, arg_ids, _) => write!(f, "FunctionImpl::Rebo({}({}))", id, arg_ids.iter().join(", ")),
+            Function::Rebo(name, _args) => meta_info.rebo_functions[name.as_str()].span(),
+            Function::Rust(_) => EXTERNAL_SPAN.lock().unwrap().unwrap(),
+            Function::EnumInitializer(enum_name, variant_name) => meta_info.user_types[enum_name.as_str()].variant_initializer_span(variant_name).unwrap(),
         }
     }
 }
-impl PartialOrd for FunctionImpl {
+impl fmt::Debug for Function {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Function::Rust(_) => write!(f, "FunctionImpl::Rust(_)"),
+            Function::Rebo(id, arg_ids) => write!(f, "FunctionImpl::Rebo({}({}))", id, arg_ids.iter().join(", ")),
+            Function::EnumInitializer(enum_name, variant_name) => write!(f, "FunctionImpl::EnumInitializer({}::{})", enum_name, variant_name),
+        }
+    }
+}
+impl PartialOrd for Function {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         // TODO: make rust functions comparable
         match (self, other) {
-            (FunctionImpl::Rust(_), _) => None,
-            (_, FunctionImpl::Rust(_)) => None,
-            (FunctionImpl::Rebo(a, _, _), FunctionImpl::Rebo(b, _, _)) => Some(a.cmp(b)),
+            (Function::Rust(_), _) => None,
+            (_, Function::Rust(_)) => None,
+            (Function::Rebo(a, _), Function::Rebo(b, _)) => a.partial_cmp(b),
+            (Function::EnumInitializer(enum1, variant1), Function::EnumInitializer(enum2, variant2)) => (enum1, variant1).partial_cmp(&(enum2, variant2)),
+            (Function::EnumInitializer(enum_name, variant), Function::Rebo(name, _)) => format!("{}::{}", enum_name, variant).partial_cmp(name),
+            (Function::Rebo(name, _), Function::EnumInitializer(enum_name, variant)) => name.partial_cmp(&format!("{}::{}", enum_name, variant)),
         }
     }
 }
-impl PartialEq for FunctionImpl {
+impl PartialEq for Function {
     fn eq(&self, other: &Self) -> bool {
         // TODO: make rust functions comparable
         match (self, other) {
-            (FunctionImpl::Rust(_), _) => false,
-            (_, FunctionImpl::Rust(_)) => false,
-            (FunctionImpl::Rebo(a, _, _), FunctionImpl::Rebo(b, _, _)) => a.eq(b),
+            (Function::Rust(_), _) => false,
+            (_, Function::Rust(_)) => false,
+            (Function::Rebo(a, _), Function::Rebo(b, _)) => a.eq(b),
+            (Function::EnumInitializer(enum1, variant1), Function::EnumInitializer(enum2, variant2)) => (enum1, variant1).eq(&(enum2, variant2)),
+            (Function::EnumInitializer(enum_name, variant), Function::Rebo(name, _))
+            | (Function::Rebo(name, _), Function::EnumInitializer(enum_name, variant)) => {
+                format!("{}::{}", enum_name, variant).eq(name)
+            }
         }
     }
 }
@@ -245,18 +269,26 @@ pub struct Struct {
     pub fields: Vec<(String, Value)>,
 }
 
-// impl From<&'_ Value> for SpecificType {
-//     fn from(val: &Value) -> Self {
-//         match val {
-//             Value::Unit => SpecificType::Unit,
-//             Value::Integer(_) => SpecificType::Integer,
-//             Value::Float(_) => SpecificType::Float,
-//             Value::Bool(_) => SpecificType::Bool,
-//             Value::String(_) => SpecificType::String,
-//             Value::Struct(s) => SpecificType::Struct(s.s.lock().borrow().name.clone()),
-//         }
-//     }
-// }
+#[derive(Debug, Clone)]
+pub struct EnumArc {
+    pub e: Arc<ReentrantMutex<RefCell<Enum>>>,
+}
+impl PartialOrd for EnumArc {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        self.e.lock().borrow().partial_cmp(&other.e.lock().borrow())
+    }
+}
+impl PartialEq for EnumArc {
+    fn eq(&self, other: &Self) -> bool {
+        self.e.lock().borrow().eq(&other.e.lock().borrow())
+    }
+}
+#[derive(Debug, Clone, PartialOrd, PartialEq)]
+pub struct Enum {
+    pub name: String,
+    pub variant: String,
+    pub fields: Vec<Value>,
+}
 
 macro_rules! impl_from_into {
     ($ty:ty, $name:ident) => {

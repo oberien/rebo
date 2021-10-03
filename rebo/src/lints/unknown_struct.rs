@@ -9,8 +9,8 @@ pub struct UnknownStruct;
 impl Visitor for UnknownStruct {
     fn visit_struct_initialization(&self, diagnostics: &Diagnostics, meta_info: &MetaInfo, init: &ExprStructInitialization) {
         let ExprStructInitialization { name, .. } = init;
-        if meta_info.structs.get(name.ident).is_none() {
-            let similar = crate::util::similar_name(name.ident, meta_info.structs.keys());
+        if meta_info.struct_types.get(name.ident).is_none() {
+            let similar = crate::util::similar_name(name.ident, meta_info.struct_types.keys());
             let mut diag = diagnostics.error(ErrorCode::UnknownStruct)
                 .with_error_label(name.span, "this struct doesn't exist");
             if let Some(similar) = similar {

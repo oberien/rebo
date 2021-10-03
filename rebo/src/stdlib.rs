@@ -1,26 +1,27 @@
-use crate::common::{Value, Function, FunctionImpl, FunctionType, SpecificType, Type, MetaInfo};
+use crate::common::{Value, MetaInfo, ExternalFunction};
 use crate::scope::Scopes;
 use crate as rebo;
 use std::borrow::Cow;
 use itertools::Itertools;
 use diagnostic::Diagnostics;
+use crate::typeck::types::{FunctionType, Type, SpecificType};
 
 pub fn add_to_scope(diagnostics: &Diagnostics, meta_info: &mut MetaInfo<'_, '_>) {
-    meta_info.add_external_function(diagnostics, "print", Function {
+    meta_info.add_external_function(diagnostics, "print", ExternalFunction {
         typ: FunctionType {
             args: Cow::Borrowed(&[Type::Varargs]),
             ret: Type::Specific(SpecificType::Unit),
         },
-        imp: FunctionImpl::Rust(print),
+        imp: print,
     });
     meta_info.add_external_function(diagnostics, "add_one", add_one);
     meta_info.add_external_function(diagnostics, "assert", assert);
-    meta_info.add_external_function(diagnostics, "panic", Function {
+    meta_info.add_external_function(diagnostics, "panic", ExternalFunction {
         typ: FunctionType {
             args: Cow::Borrowed(&[Type::Specific(SpecificType::String)]),
             ret: Type::Bottom,
         },
-        imp: FunctionImpl::Rust(panic),
+        imp: panic,
     });
 }
 

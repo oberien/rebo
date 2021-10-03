@@ -44,6 +44,7 @@ impl<'i> Binding<'i> {
         let ident: TokenIdent = parser.parse(depth.last())?;
         mark.apply();
         let binding = parser.add_binding(ident, mut_token);
+        trace!("{} got binding {}", depth, binding);
         Ok(binding)
     }
     /// Return the existing binding and the usage-span
@@ -54,6 +55,7 @@ impl<'i> Binding<'i> {
             Some(binding) => binding,
             None => parser.diagnostic_unknown_identifier(ident, |d| d.with_info_label(ident.span, format!("use `let {} = ...` to create a new binding", ident))),
         };
+        trace!("{} got binding {}", depth, binding);
         Ok((binding, ident.span))
     }
 }
@@ -172,7 +174,7 @@ pub enum Expr<'a, 'i> {
     Match(ExprMatch<'a, 'i>),
     /// while expr {...}
     While(ExprWhile<'a, 'i>),
-    /// ident(expr, expr, ...)
+    /// (ident::)*ident(expr, expr, ...)
     FunctionCall(ExprFunctionCall<'a, 'i>),
     /// fn ident(ident: typ, ident: typ, ...) -> typ { expr... }
     FunctionDefinition(ExprFunctionDefinition<'a, 'i>),
@@ -180,10 +182,11 @@ pub enum Expr<'a, 'i> {
     StructDefinition(ExprStructDefinition<'a, 'i>),
     /// ident { ident: expr, ident: expr, ... }
     StructInitialization(ExprStructInitialization<'a, 'i>),
-    // /// enum ident { ident, ident(typ, typ, ...), ... }
-    // EnumDefinition(ExprEnumDefinition<'a, 'i>),
-    // /// ident::ident(expr, ...)
-    // EnumInitialization(ExprEnumInitialization<'a, 'i>),
+    /// enum ident { ident, ident(typ, typ, ...), ... }
+    EnumDefinition(ExprEnumDefinition<'a, 'i>),
+    // enum tuple-variant initialization is handled with an associated function
+    /// C-Like enum variants: ident::ident
+    EnumInitialization(ExprEnumInitialization<'i>),
     /// impl name { fn foo(...) {...} fn bar(self, ...) {...} }
     ImplBlock(ExprImplBlock<'a, 'i>),
 }
@@ -222,6 +225,56 @@ impl<'a, 'i> Expr<'a, 'i> {
             fns.push(Self::try_parse_precedence::<Math>);
         }
         let others: &[ParseFn<'a, '_, 'i>] = &[
+            |parser: &mut Parser<'a, '_, 'i>, depth| {
+                let fun = &*parser.arena.alloc(Expr::FunctionDefinition(ExprFunctionDefinition::parse(parser, depth)?));
+                match fun {
+                    Expr::FunctionDefinition(fun) => {
+                        parser.meta_info.add_function(parser.diagnostics, Cow::Borrowed(fun.name.ident), fun);
+                    },
+                    _ => unreachable!("we just created you"),
+                }
+                Ok(fun)
+            },
+            |parser: &mut Parser<'a, '_, 'i>, depth| {
+                let struct_def = &*parser.arena.alloc(Expr::StructDefinition(ExprStructDefinition::parse(parser, depth)?));
+                match struct_def {
+                    Expr::StructDefinition(struct_def) => {
+                        parser.meta_info.add_struct(parser.diagnostics, struct_def);
+                    },
+                    _ => unreachable!("we just created you"),
+                }
+                Ok(struct_def)
+            },
+            |parser: &mut Parser<'a, '_, 'i>, depth| {
+                let enum_def = &*parser.arena.alloc(Expr::EnumDefinition(ExprEnumDefinition::parse(parser, depth)?));
+                match enum_def {
+                    Expr::EnumDefinition(enum_def) => {
+                        parser.meta_info.add_enum(parser.diagnostics, enum_def);
+                        for variant in enum_def.variants.iter() {
+                            if variant.fields.is_some() {
+                                let enum_name = enum_def.name.ident.to_string();
+                                let variant_name = variant.name.ident.to_string();
+                                parser.meta_info.add_enum_initializer_function(parser.diagnostics, enum_name, variant_name);
+                            }
+                        }
+                    },
+                    _ => unreachable!("we just created you"),
+                }
+                Ok(enum_def)
+            },
+            |parser: &mut Parser<'a, '_, 'i>, depth| {
+                let impl_block = &*parser.arena.alloc(Expr::ImplBlock(ExprImplBlock::parse(parser, depth)?));
+                match impl_block {
+                    Expr::ImplBlock(impl_block) => {
+                        for fun in &impl_block.functions {
+                            let path = format!("{}::{}", impl_block.name.ident, fun.name.ident);
+                            parser.meta_info.add_function(parser.diagnostics, Cow::Owned(path), fun);
+                        }
+                    }
+                    _ => unreachable!("we just created you"),
+                }
+                Ok(impl_block)
+            },
             |parser: &mut Parser<'a, '_, 'i>, depth| Ok(parser.arena.alloc(Expr::StructInitialization(ExprStructInitialization::parse(parser, depth)?))),
             |parser: &mut Parser<'a, '_, 'i>, depth| Ok(parser.arena.alloc(Expr::IfElse(ExprIfElse::parse(parser, depth)?))),
             |parser: &mut Parser<'a, '_, 'i>, depth| Ok(parser.arena.alloc(Expr::Match(ExprMatch::parse(parser, depth)?))),
@@ -231,6 +284,7 @@ impl<'a, 'i> Expr<'a, 'i> {
             |parser: &mut Parser<'a, '_, 'i>, depth| Ok(parser.arena.alloc(Expr::BoolNot(ExprBoolNot::parse(parser, depth)?))),
             |parser: &mut Parser<'a, '_, 'i>, depth| Ok(parser.arena.alloc(Expr::Bind(ExprBind::parse(parser, depth)?))),
             |parser: &mut Parser<'a, '_, 'i>, depth| Ok(parser.arena.alloc(Expr::FunctionCall(ExprFunctionCall::parse(parser, depth)?))),
+            |parser: &mut Parser<'a, '_, 'i>, depth| Ok(parser.arena.alloc(Expr::EnumInitialization(ExprEnumInitialization::parse(parser, depth)?))),
             |parser: &mut Parser<'a, '_, 'i>, depth| Ok(parser.arena.alloc(Expr::Literal(ExprLiteral::parse(parser, depth)?))),
             |parser: &mut Parser<'a, '_, 'i>, depth| Ok(parser.arena.alloc(Expr::FormatString(ExprFormatString::parse(parser, depth)?))),
             |parser: &mut Parser<'a, '_, 'i>, depth| Ok(parser.arena.alloc(Expr::Assign(ExprAssign::parse(parser, depth)?))),
@@ -327,8 +381,8 @@ pub enum ExprType<'i> {
     Float(TokenFloatType),
     Bool(TokenBoolType),
     Unit(TokenOpenParen, TokenCloseParen),
-    Struct(TokenIdent<'i>),
-    // Enum(TokenIdent<'i>),
+    // struct, enum, typedef, ...
+    UserType(TokenIdent<'i>),
 }
 impl<'a, 'i> Parse<'a, 'i> for ExprType<'i> {
     fn parse_marked(parser: &mut Parser<'a, '_, 'i>, _depth: Depth) -> Result<Self, InternalError> {
@@ -349,7 +403,7 @@ impl<'a, 'i> Parse<'a, 'i> for ExprType<'i> {
             }
             // defer struct type resolution until the typechecker
             // otherwise using struct B as field struct A won't work if B is defined after A
-            Token::Ident(i) => ExprType::Struct(i),
+            Token::Ident(i) => ExprType::UserType(i),
             _ => return Err(InternalError::Backtrack(
                 parser.lexer.next_span(),
                 Cow::Borrowed(&[Expected::Type])
@@ -367,7 +421,7 @@ impl<'i> Spanned for ExprType<'i> {
             ExprType::Float(t) => t.span(),
             ExprType::Bool(t) => t.span(),
             ExprType::Unit(o, c) => Span::new(o.span.file, o.span.start, c.span.end),
-            ExprType::Struct(s) => s.span(),
+            ExprType::UserType(ut) => ut.span(),
         }
     }
 }
@@ -379,7 +433,7 @@ impl<'i> Display for ExprType<'i> {
             ExprType::Float(_) => write!(f, "float"),
             ExprType::Bool(_) => write!(f, "bool"),
             ExprType::Unit(_, _) => write!(f, "()"),
-            ExprType::Struct(s) => write!(f, "{}", s.ident),
+            ExprType::UserType(ut) => write!(f, "{}", ut.ident),
         }
     }
 }
@@ -865,6 +919,7 @@ impl<'a, 'i> Parse<'a, 'i> for BlockBody<'a, 'i> {
                 last = match expr {
                     Expr::FunctionDefinition(_)
                     | Expr::StructDefinition(_)
+                    | Expr::EnumDefinition(_)
                     | Expr::ImplBlock(_)
                     | Expr::IfElse(_)
                     | Expr::Match(_)
@@ -1118,12 +1173,12 @@ impl<'a, 'i> Parse<'a, 'i> for ExprFunctionDefinition<'a, 'i> {
         let fn_token = parser.parse(depth.next())?;
         let name = parser.parse(depth.next())?;
         let open = parser.parse(depth.next())?;
-        let args = parser.parse(depth.next())?;
+        let args: Scoped<_> = parser.parse(depth.next())?;
         let close = parser.parse(depth.next())?;
         let ret_type = parser.parse(depth.next())?;
 
         let scope = parser.push_scope();
-        for &ExprPatternTyped { pattern: ExprPatternUntyped { binding }, .. } in &args {
+        for &ExprPatternTyped { pattern: ExprPatternUntyped { binding }, .. } in &args.0 {
             scope.idents.insert(binding.ident.ident, binding);
         }
         // defer result resolution until after scope was popped
@@ -1131,7 +1186,7 @@ impl<'a, 'i> Parse<'a, 'i> for ExprFunctionDefinition<'a, 'i> {
         parser.pop_scope();
         let body = body?;
 
-        Ok(ExprFunctionDefinition { fn_token, name, open, args, close, ret_type, body })
+        Ok(ExprFunctionDefinition { fn_token, name, open, args: args.0, close, ret_type, body })
     }
 }
 impl<'a, 'i> Spanned for ExprFunctionDefinition<'a, 'i> {
@@ -1221,6 +1276,7 @@ impl<'a, 'i> Display for ExprStructInitialization<'a, 'i> {
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct ExprEnumDefinition<'a, 'i> {
     pub enum_token: TokenEnum,
     pub name: TokenIdent<'i>,
@@ -1254,6 +1310,7 @@ impl<'a, 'i> Display for ExprEnumDefinition<'a, 'i> {
         writeln!(f, "}}")
     }
 }
+#[derive(Debug, Clone)]
 pub struct ExprEnumVariant<'a, 'i> {
     pub name: TokenIdent<'i>,
     pub fields: Option<(TokenOpenParen, Separated<'a, 'i, ExprType<'i>, TokenComma>, TokenCloseParen)>,
@@ -1276,37 +1333,30 @@ impl<'a, 'i> Display for ExprEnumVariant<'a, 'i> {
         Ok(())
     }
 }
-pub struct ExprEnumInitialization<'a, 'i> {
+
+#[derive(Debug, Clone)]
+pub struct ExprEnumInitialization<'i> {
     pub enum_name: TokenIdent<'i>,
     pub double_colon: TokenDoubleColon,
     pub variant_name: TokenIdent<'i>,
-    pub fields: Option<(TokenOpenParen, Separated<'a, 'i, &'a Expr<'a, 'i>, TokenComma>, TokenCloseParen)>,
 }
-impl<'a, 'i> Parse<'a, 'i> for ExprEnumInitialization<'a, 'i> {
+impl<'a, 'i> Parse<'a, 'i> for ExprEnumInitialization<'i> {
     fn parse_marked(parser: &mut Parser<'a, '_, 'i>, depth: Depth) -> Result<Self, InternalError> {
         Ok(ExprEnumInitialization {
             enum_name: parser.parse(depth.next())?,
             double_colon: parser.parse(depth.next())?,
             variant_name: parser.parse(depth.next())?,
-            fields: parser.parse(depth.last())?,
         })
     }
 }
-impl<'a, 'i> Spanned for ExprEnumInitialization<'a, 'i> {
+impl<'i> Spanned for ExprEnumInitialization<'i> {
     fn span(&self) -> Span {
-        let end = self.fields.as_ref().map(|(_open, _fields, close)| close.span.end)
-            .unwrap_or(self.variant_name.span.end);
-        Span::new(self.enum_name.span.file, self.enum_name.span.start, end)
+        Span::new(self.enum_name.span.file, self.enum_name.span.start, self.variant_name.span.end)
     }
 }
-impl<'a, 'i> Display for ExprEnumInitialization<'a, 'i> {
+impl<'i> Display for ExprEnumInitialization<'i> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "{}::{}", self.enum_name.ident, self.variant_name.ident)?;
-        if let Some((_open, fields, _close)) = &self.fields {
-            let joined = fields.iter().map(|expr| expr.to_string()).join(", ");
-            write!(f, "({})", joined)?;
-        }
-        Ok(())
+        write!(f, "{}::{}", self.enum_name.ident, self.variant_name.ident)
     }
 }
 

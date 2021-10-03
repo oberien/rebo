@@ -1,6 +1,6 @@
 use crate::lints::visitor::Visitor;
 use diagnostic::{Diagnostics, Span};
-use crate::common::{MetaInfo, Type, SpecificType};
+use crate::common::MetaInfo;
 use crate::parser::{ExprMatch, Spanned, ExprMatchPattern, ExprLiteral, ExprInteger, ExprBool, ExprString};
 use crate::error_codes::ErrorCode;
 use std::fmt::Debug;
@@ -9,6 +9,7 @@ use indexmap::map::{IndexMap, Entry};
 use std::hash::Hash;
 use crate::lexer::{TokenInteger, TokenBool, TokenDqString};
 use itertools::Itertools;
+use crate::typeck::types::{Type, SpecificType};
 
 pub struct MatchLints;
 
@@ -97,6 +98,21 @@ impl Visitor for MatchLints {
                             checker.catchall(pattern.span());
                         }
                         ExprMatchPattern::Literal(_) => (),
+                    }
+                }
+            }
+            Type::Specific(SpecificType::Enum(name)) => {
+                let variants: Vec<_> = meta_info.enum_types[name.as_str()].variants.iter()
+                    .map(|(name, _)| name)
+                    .collect();
+                let mut checker = VariantChecker::new(diagnostics, match_span, Some(&variants));
+                for (pattern, _arrow, _expr) in arms {
+                    match pattern {
+                        ExprMatchPattern::Literal(_) => (),
+                        ExprMatchPattern::Binding(_)
+                        | ExprMatchPattern::Wildcard(_) => {
+                            checker.catchall(pattern.span());
+                        }
                     }
                 }
             }

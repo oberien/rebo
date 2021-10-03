@@ -1,9 +1,10 @@
 use crate::lints::visitor::Visitor;
 use diagnostic::Diagnostics;
-use crate::common::{MetaInfo, Type, SpecificType};
+use crate::common::MetaInfo;
 use crate::parser::{ExprFieldAccess, ExprAssign, ExprAssignLhs, Spanned};
 use crate::error_codes::ErrorCode;
 use crate::typeck::TypeVar;
+use crate::typeck::types::{Type, SpecificType};
 
 pub struct StructFieldAccess;
 
@@ -33,11 +34,11 @@ fn check_non_struct_field_access(diagnostics: &Diagnostics, meta_info: &MetaInfo
                 return
             }
         };
-        let struct_type = &meta_info.structs[struct_name.as_str()].0;
+        let struct_type = &meta_info.struct_types[struct_name.as_str()];
         let field_type = struct_type.get_field(field.ident);
         match field_type {
             Some(field_typ) => {
-                typ = Type::Specific(field_typ.clone());
+                typ = field_typ.clone();
                 span = field.span;
             }
             None => diagnostics.error(ErrorCode::UnknownFieldAccess)

@@ -74,15 +74,15 @@ pub fn function(_args: TokenStream, input: TokenStream) -> TokenStream {
         }
 
         #[allow(non_upper_case_globals)]
-        const #workaround_ident: &'static [::rebo::common::Type] =
-            &[#(::rebo::common::Type::Specific(<#input_types as ::rebo::common::FromValue>::TYPE)),*];
+        const #workaround_ident: &'static [::rebo::typeck::types::Type] =
+            &[#(::rebo::typeck::types::Type::Specific(<#input_types as ::rebo::common::FromValue>::TYPE)),*];
         #[allow(non_upper_case_globals)]
-        const #ident: ::rebo::common::Function = ::rebo::common::Function {
-            typ: ::rebo::common::FunctionType {
+        const #ident: ::rebo::common::ExternalFunction = ::rebo::common::ExternalFunction {
+            typ: ::rebo::typeck::types::FunctionType {
                 args: ::std::borrow::Cow::Borrowed(#workaround_ident),
-                ret: ::rebo::common::Type::Specific(<#output as ::rebo::common::FromValue>::TYPE),
+                ret: ::rebo::typeck::types::Type::Specific(<#output as ::rebo::common::FromValue>::TYPE),
             },
-            imp: ::rebo::common::FunctionImpl::Rust(#fn_ident),
+            imp: #fn_ident,
         };
     }.into();
     // eprintln!("{}", res);

@@ -1,8 +1,9 @@
 use diagnostic::Diagnostics;
 use crate::typeck::graph::{Graph, Constraint, PossibleTypes};
-use crate::common::{MetaInfo, Type};
+use crate::common::MetaInfo;
 use crate::error_codes::ErrorCode;
 use itertools::Itertools;
+use crate::typeck::types::Type;
 
 pub fn check(diagnostics: &Diagnostics, graph: &Graph, meta_info: &mut MetaInfo) {
     for node in graph.type_vars() {

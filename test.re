@@ -86,3 +86,14 @@ match 1 {
   0 => print("it was a 0"),
   foo => print(f"it was something else: {foo}"),
 }
+
+enum Value {
+    Unit,
+    Integer(int),
+    Float(float),
+}
+
+let unit = Value::Unit;
+let i = Value::Integer(1337);
+let f = Value::Float(42.);
+print(unit, i, f);
