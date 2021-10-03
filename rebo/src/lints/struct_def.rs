@@ -6,12 +6,26 @@ use crate::error_codes::ErrorCode;
 use crate::lexer::TokenIdent;
 use itertools::Itertools;
 use crate::typeck::types::{SpecificType, Type};
+use indexmap::IndexMap;
 
-pub struct RecursiveStruct;
+pub struct StructDefLints;
 
-impl Visitor for RecursiveStruct {
+impl Visitor for StructDefLints {
     fn visit_struct_definition(&self, diagnostics: &Diagnostics, meta_info: &MetaInfo, def: &ExprStructDefinition) {
         let ExprStructDefinition { name, fields, .. } = def;
+
+        // check duplicate field
+        let mut map = IndexMap::new();
+        for (name, _colon, _typ) in fields {
+            if let Some(old_span) = map.insert(name.ident, name.span) {
+                diagnostics.error(ErrorCode::DuplicateStructField)
+                    .with_error_label(name.span, "duplicate struct field")
+                    .with_info_label(old_span, "previously defined here")
+                    .emit()
+            }
+        }
+
+        // check struct recursion
         for (ident, _colon, typ) in fields {
             let field_typ = Type::from_expr_type(typ, diagnostics, meta_info);
             check_struct_recursion(diagnostics, meta_info, name, &field_typ, vec![ident.ident]);

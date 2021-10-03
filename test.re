@@ -96,8 +96,7 @@ fn print_value(value: Value) {
     match value {
         Value::Unit => print("unit"),
         Value::Integer(i) => print(f"integer: {i}"),
-        Value::Float(f) => print(f"float: {f}"),
-        _ => print("something different"),
+        _ => print("something else"),
     }
 }
 

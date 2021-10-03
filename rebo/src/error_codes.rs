@@ -50,6 +50,8 @@ pub enum ErrorCode {
     UnknownEnum,
     UnknownEnumVariant,
     InvalidNumberOfEnumVariantFields,
+    DuplicateEnumVariant,
+    DuplicateStructField,
 }
 use ErrorCode::*;
 
@@ -106,6 +108,8 @@ impl diagnostic::ErrorCode for ErrorCode {
             UnknownEnum => "0049",
             UnknownEnumVariant => "0050",
             InvalidNumberOfEnumVariantFields => "0051",
+            DuplicateEnumVariant => "0052",
+            DuplicateStructField => "0053",
         }.to_string()
     }
 
@@ -161,6 +165,8 @@ impl diagnostic::ErrorCode for ErrorCode {
             UnknownEnum => "unknown enum",
             UnknownEnumVariant => "unknown enum variant",
             InvalidNumberOfEnumVariantFields => "invalid number of fields in enum variant",
+            DuplicateEnumVariant => "duplicate enum variant",
+            DuplicateStructField => "duplicate struct field",
         }.to_string()
     }
 }
