@@ -1,4 +1,4 @@
-use crate::parser::{Parse, Parser, InternalError, Spanned, Binding, ExprType, Separated, ExprLiteral};
+use crate::parser::{Parse, Parser, InternalError, Spanned, Binding, ExprType, Separated, ExprLiteral, expr::NewBinding};
 use crate::common::Depth;
 use diagnostic::Span;
 use std::fmt::{self, Display, Formatter};
@@ -99,18 +99,18 @@ impl<'i> Display for ExprPatternTyped<'i> {
 }
 
 #[derive(Debug, Clone, Display)]
-pub enum ExprMatchPattern<'i> {
+pub enum ExprMatchPattern<'a, 'i> {
     Literal(ExprLiteral),
+    Variant(ExprMatchPatternVariant<'a, 'i>),
     Binding(Binding<'i>),
-    // Variant(ExprMatchPatternVariant<'a, 'i>),
     Wildcard(TokenUnderscore),
 }
-impl<'a, 'i> Parse<'a, 'i> for ExprMatchPattern<'i> {
+impl<'a, 'i> Parse<'a, 'i> for ExprMatchPattern<'a, 'i> {
     fn parse_marked(parser: &mut Parser<'a, '_, 'i>, depth: Depth) -> Result<Self, InternalError> {
-        // let err1 = match ExprMatchPatternVariant::parse(parser, depth.next()) {
-        //     Ok(variant) => return Ok(ExprMatchPattern::Variant(variant)),
-        //     Err(e) => e,
-        // };
+        let err1 = match ExprMatchPatternVariant::parse(parser, depth.next()) {
+            Ok(variant) => return Ok(ExprMatchPattern::Variant(variant)),
+            Err(e) => e,
+        };
         let err2 = match ExprLiteral::parse(parser, depth.next()) {
             Ok(literal) => return Ok(ExprMatchPattern::Literal(literal)),
             Err(e) => e,
@@ -123,13 +123,14 @@ impl<'a, 'i> Parse<'a, 'i> for ExprMatchPattern<'i> {
             Ok(token) => return Ok(ExprMatchPattern::Wildcard(token)),
             Err(e) => e,
         };
-        Err(helper::last_error(&[err2, err3, err4]))
+        Err(helper::last_error(&[err1, err2, err3, err4]))
     }
 }
-impl<'i> Spanned for ExprMatchPattern<'i> {
+impl<'a, 'i> Spanned for ExprMatchPattern<'a, 'i> {
     fn span(&self) -> Span {
         match self {
             ExprMatchPattern::Literal(lit) => lit.span(),
+            ExprMatchPattern::Variant(variant) => variant.span(),
             ExprMatchPattern::Binding(binding) => binding.span(),
             ExprMatchPattern::Wildcard(wildcard) => wildcard.span(),
         }
@@ -141,15 +142,19 @@ pub struct ExprMatchPatternVariant<'a, 'i> {
     pub enum_name: TokenIdent<'i>,
     pub double_colon: TokenDoubleColon,
     pub variant_name: TokenIdent<'i>,
-    pub fields: Option<(TokenOpenParen, Separated<'a, 'i, ExprMatchPattern<'i>, TokenComma>, TokenCloseParen)>,
+    pub fields: Option<(TokenOpenParen, Separated<'a, 'i, Binding<'i>, TokenComma>, TokenCloseParen)>,
 }
 impl<'a, 'i> Parse<'a, 'i> for ExprMatchPatternVariant<'a, 'i> {
     fn parse_marked(parser: &mut Parser<'a, '_, 'i>, depth: Depth) -> Result<Self, InternalError> {
+        let enum_name = parser.parse(depth.next())?;
+        let double_colon = parser.parse(depth.next())?;
+        let variant_name = parser.parse(depth.next())?;
+        let fields: Option<(TokenOpenParen, Separated<'a, 'i, NewBinding<'i>, TokenComma>, TokenCloseParen)> = parser.parse(depth.next())?;
         Ok(ExprMatchPatternVariant {
-            enum_name: parser.parse(depth.next())?,
-            double_colon: parser.parse(depth.next())?,
-            variant_name: parser.parse(depth.next())?,
-            fields: parser.parse(depth.last())?,
+            enum_name,
+            double_colon,
+            variant_name,
+            fields: fields.map(|(open, sep, close)| (open, Separated::from(sep), close)),
         })
     }
 }

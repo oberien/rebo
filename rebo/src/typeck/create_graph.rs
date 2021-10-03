@@ -218,6 +218,40 @@ fn visit_expr(graph: &mut Graph, diagnostics: &Diagnostics, meta_info: &MetaInfo
                         graph.set_exact_type(pat_type_var, SpecificType::from(lit));
                         graph.add_eq_constraint(expr_type_var, pat_type_var);
                     }
+                    ExprMatchPattern::Variant(variant) => {
+                        let pat_type_var = TypeVar::new(pat.span());
+                        graph.add_type_var(pat_type_var);
+                        graph.set_exact_type(pat_type_var, SpecificType::Enum(variant.enum_name.ident.to_string()));
+                        graph.add_eq_constraint(expr_type_var, pat_type_var);
+
+                        let repeat_top = std::iter::repeat(&Type::Top);
+                        let variant_type = meta_info.enum_types.get(variant.enum_name.ident)
+                            .iter()
+                            .flat_map(|enum_def| &enum_def.variants)
+                            .find(|(name, _variant)| name == variant.variant_name.ident)
+                            .map(|(_name, variant)| variant);
+
+                        let expected_field_types = match variant_type {
+                            Some(EnumTypeVariant::TupleVariant(fields)) => {
+                                Either::Left(fields.iter().chain(repeat_top))
+                            }
+                            Some(EnumTypeVariant::CLike) | None => Either::Right(repeat_top),
+                        };
+
+                        let iter = variant.fields.iter()
+                            .flat_map(|(_open, fields, _close)| fields)
+                            .zip(expected_field_types);
+                        for (field_binding, expected_type) in iter {
+                            let field_binding_type_var = TypeVar::new(field_binding.ident.span);
+                            graph.add_type_var(field_binding_type_var);
+                            match expected_type {
+                                Type::Specific(specific) => {
+                                    graph.add_reduce_constraint(pat_type_var, field_binding_type_var, vec![specific.clone()])
+                                },
+                                _ => (),
+                            }
+                        }
+                    }
                     ExprMatchPattern::Binding(binding) => {
                         let binding_type_var = TypeVar::new(binding.ident.span);
                         graph.add_type_var(binding_type_var);

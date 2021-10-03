@@ -92,8 +92,19 @@ enum Value {
     Integer(int),
     Float(float),
 }
+fn print_value(value: Value) {
+    match value {
+        Value::Unit => print("unit"),
+        Value::Integer(i) => print(f"integer: {i}"),
+        Value::Float(f) => print(f"float: {f}"),
+        _ => print("something different"),
+    }
+}
 
 let unit = Value::Unit;
 let i = Value::Integer(1337);
 let f = Value::Float(42.);
 print(unit, i, f);
+print_value(unit);
+print_value(i);
+print_value(f);

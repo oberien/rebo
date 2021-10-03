@@ -179,12 +179,38 @@ impl<'a, 'i> Vm<'a, 'i> {
                 let mut val = None;
                 for (pattern, _arrow, expr) in arms {
                     match pattern {
-                        ExprMatchPattern::Wildcard(_) => {
+                        ExprMatchPattern::Literal(lit) => if &to_match == lit {
                             self.scopes.push_scope(Scope::new());
                             val = Some(self.eval_expr(expr, depth.last()));
                             self.scopes.pop_scope();
                             break;
-                        },
+                        }
+                        ExprMatchPattern::Variant(variant) => {
+                            // lock and release enum value before evaluating the match arm
+                            {
+                                let enum_value = match &to_match {
+                                    Value::Enum(enum_value) => enum_value,
+                                    _ => unreachable!(),
+                                };
+                                let enum_value = enum_value.e.lock();
+                                let enum_value = enum_value.borrow();
+
+                                assert_eq!(enum_value.name, variant.enum_name.ident);
+                                if enum_value.variant != variant.variant_name.ident {
+                                    continue;
+                                }
+
+                                self.scopes.push_scope(Scope::new());
+                                if let Some((_open, fields, _close)) = &variant.fields {
+                                    for (binding, value) in fields.iter().zip(&enum_value.fields) {
+                                        self.scopes.create(binding.id, value.clone());
+                                    }
+                                }
+                            }
+                            val = Some(self.eval_expr(expr, depth.last()));
+                            self.scopes.pop_scope();
+                            break;
+                        }
                         ExprMatchPattern::Binding(binding) => {
                             self.scopes.push_scope(Scope::new());
                             self.scopes.create(binding.id, to_match);
@@ -192,12 +218,12 @@ impl<'a, 'i> Vm<'a, 'i> {
                             self.scopes.pop_scope();
                             break;
                         }
-                        ExprMatchPattern::Literal(lit) => if &to_match == lit {
+                        ExprMatchPattern::Wildcard(_) => {
                             self.scopes.push_scope(Scope::new());
                             val = Some(self.eval_expr(expr, depth.last()));
                             self.scopes.pop_scope();
                             break;
-                        }
+                        },
                     }
                 }
                 val.unwrap()

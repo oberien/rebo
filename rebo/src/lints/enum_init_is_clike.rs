@@ -39,7 +39,7 @@ impl Visitor for EnumInitIsClike {
             }
         };
         if let Some(fields) = &variant.fields {
-            diagnostics.error(ErrorCode::MissingEnumFields)
+            diagnostics.error(ErrorCode::InvalidNumberOfEnumVariantFields)
                 .with_error_label(variant_name.span, format!("expected {} fields but got none", fields.1.len()))
                 .with_info_label(variant.name.span, "enum variant defined here")
                 .emit();

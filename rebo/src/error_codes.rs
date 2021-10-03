@@ -49,7 +49,7 @@ pub enum ErrorCode {
     UnknownType,
     UnknownEnum,
     UnknownEnumVariant,
-    MissingEnumFields,
+    InvalidNumberOfEnumVariantFields,
 }
 use ErrorCode::*;
 
@@ -105,7 +105,7 @@ impl diagnostic::ErrorCode for ErrorCode {
             UnknownType => "0048",
             UnknownEnum => "0049",
             UnknownEnumVariant => "0050",
-            MissingEnumFields => "0051",
+            InvalidNumberOfEnumVariantFields => "0051",
         }.to_string()
     }
 
@@ -160,7 +160,7 @@ impl diagnostic::ErrorCode for ErrorCode {
             UnknownType => "unknown type",
             UnknownEnum => "unknown enum",
             UnknownEnumVariant => "unknown enum variant",
-            MissingEnumFields => "enum variant initializer is missing fields",
+            InvalidNumberOfEnumVariantFields => "invalid number of fields in enum variant",
         }.to_string()
     }
 }

@@ -173,7 +173,13 @@ fn function_diagnostics() {
         }
         let foo = Foo { x: 1337 };
         change(foo);
-    "#.to_string()), ReturnValue::Diagnostics(9));
+        
+        // functions must be parsed in their own scope
+        let foo = ();
+        fn qux() {
+            foo
+        }
+    "#.to_string()), ReturnValue::Diagnostics(10));
 }
 #[test]
 fn pre_parsed() {

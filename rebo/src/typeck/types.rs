@@ -57,6 +57,14 @@ pub enum EnumTypeVariant {
     CLike,
     TupleVariant(Vec<Type>),
 }
+impl EnumTypeVariant {
+    pub fn num_fields(&self) -> usize {
+        match self {
+            EnumTypeVariant::CLike => 0,
+            EnumTypeVariant::TupleVariant(fields) => fields.len(),
+        }
+    }
+}
 impl Type {
     pub fn from_expr_type(typ: &ExprType, diagnostics: &Diagnostics, meta_info: &MetaInfo) -> Self {
         match typ {

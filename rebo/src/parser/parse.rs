@@ -93,6 +93,15 @@ impl<'a, 'i, T: Parse<'a, 'i>, D: Parse<'a, 'i>> Parse<'a, 'i> for Separated<'a,
         })
     }
 }
+impl<'a, 'i, T, D> Separated<'a, 'i, T, D> {
+    pub fn from<U>(other: Separated<'a, 'i, U, D>) -> Self where T: From<U> {
+        Separated {
+            inner: other.inner.into_iter().map(|(u, d)| (T::from(u), d)).collect(),
+            last: other.last.map(|u| T::from(u)),
+            marker: other.marker,
+        }
+    }
+}
 impl<'b, 'a: 'b, 'i: 'b, T: 'a, D: 'a> Separated<'a, 'i, T, D> {
     pub fn len(&self) -> usize {
         self.inner.len() + (self.last.is_some() as usize)

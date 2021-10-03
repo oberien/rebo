@@ -146,6 +146,7 @@ impl PossibleTypes {
 pub enum Constraint {
     Eq,
     Reduce(Vec<SpecificType>),
+    /// field names of access path
     FieldAccess(Vec<String>),
     /// Reverse-Edge of FieldAccess, indicating that a variable must be a struct
     Struct,

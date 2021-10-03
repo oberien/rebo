@@ -70,6 +70,29 @@ impl<'i> Display for Binding<'i> {
         write!(f, "{}[{}]", self.ident.ident, self.id)
     }
 }
+struct NewBinding<'i> {
+    b: Binding<'i>,
+}
+impl<'i> From<NewBinding<'i>> for Binding<'i> {
+    fn from(n: NewBinding<'i>) -> Self {
+        n.b
+    }
+}
+impl<'a, 'i> Parse<'a, 'i> for NewBinding<'i> {
+    fn parse_marked(parser: &mut Parser<'a, '_, 'i>, depth: Depth) -> Result<Self, InternalError> {
+        Binding::parse_new(parser, depth).map(|b| NewBinding { b })
+    }
+}
+impl<'i> Spanned for NewBinding<'i> {
+    fn span(&self) -> Span {
+        self.b.span()
+    }
+}
+impl<'i> Display for NewBinding<'i> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        Display::fmt(&self.b, f)
+    }
+}
 
 #[derive(Debug, Clone, Display)]
 pub enum ExprLiteral {
@@ -226,7 +249,13 @@ impl<'a, 'i> Expr<'a, 'i> {
         }
         let others: &[ParseFn<'a, '_, 'i>] = &[
             |parser: &mut Parser<'a, '_, 'i>, depth| {
-                let fun = &*parser.arena.alloc(Expr::FunctionDefinition(ExprFunctionDefinition::parse(parser, depth)?));
+                // functions must be parsed in their own scope
+                let old_scopes = std::mem::replace(&mut parser.scopes, vec![]);
+                parser.push_scope();
+                let result = ExprFunctionDefinition::parse(parser, depth);
+                parser.scopes = old_scopes;
+
+                let fun = &*parser.arena.alloc(Expr::FunctionDefinition(result?));
                 match fun {
                     Expr::FunctionDefinition(fun) => {
                         parser.meta_info.add_function(parser.diagnostics, Cow::Borrowed(fun.name.ident), fun);
@@ -1023,7 +1052,7 @@ pub struct ExprMatch<'a, 'i> {
     pub match_token: TokenMatch,
     pub expr: &'a Expr<'a, 'i>,
     pub open: TokenOpenCurly,
-    pub arms: Vec<(ExprMatchPattern<'i>, TokenFatArrow, &'a Expr<'a, 'i>)>,
+    pub arms: Vec<(ExprMatchPattern<'a, 'i>, TokenFatArrow, &'a Expr<'a, 'i>)>,
     pub close: TokenCloseCurly,
 }
 impl<'a, 'i> Parse<'a, 'i> for ExprMatch<'a, 'i> {
@@ -1031,7 +1060,7 @@ impl<'a, 'i> Parse<'a, 'i> for ExprMatch<'a, 'i> {
         let match_token: TokenMatch = parser.parse(depth.next())?;
         let expr = parser.parse(depth.next())?;
         let open = parser.parse(depth.next())?;
-        let arms: Separated<'a, 'i, Scoped<(ExprMatchPattern<'i>, TokenFatArrow, &'a Expr<'a, 'i>)>, TokenComma> = parser.parse(depth.next())?;
+        let arms: Separated<'a, 'i, Scoped<(ExprMatchPattern<'a, 'i>, TokenFatArrow, &'a Expr<'a, 'i>)>, TokenComma> = parser.parse(depth.next())?;
         let close: TokenCloseCurly = parser.parse(depth.last())?;
 
         Ok(ExprMatch {

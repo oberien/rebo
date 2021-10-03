@@ -1,9 +1,9 @@
 use crate::lints::visitor::Visitor;
 use diagnostic::{Diagnostics, Span};
-use crate::common::MetaInfo;
+use crate::common::{MetaInfo, UserType};
 use crate::parser::{ExprMatch, Spanned, ExprMatchPattern, ExprLiteral, ExprInteger, ExprBool, ExprString};
 use crate::error_codes::ErrorCode;
-use std::fmt::Debug;
+use std::fmt::{Debug, Formatter};
 use indexmap::set::IndexSet;
 use indexmap::map::{IndexMap, Entry};
 use std::hash::Hash;
@@ -52,7 +52,8 @@ impl Visitor for MatchLints {
                         | ExprMatchPattern::Wildcard(_) => {
                             checker.catchall(pattern.span());
                         }
-                        ExprMatchPattern::Literal(_) => (),
+                        ExprMatchPattern::Literal(_)
+                        | ExprMatchPattern::Variant(_) => (),
                     }
                 }
             }
@@ -67,7 +68,8 @@ impl Visitor for MatchLints {
                         | ExprMatchPattern::Wildcard(_) => {
                             checker.catchall(pattern.span());
                         }
-                        ExprMatchPattern::Literal(_) => (),
+                        ExprMatchPattern::Literal(_)
+                        | ExprMatchPattern::Variant(_) => (),
                     }
                 }
             }
@@ -82,7 +84,8 @@ impl Visitor for MatchLints {
                         | ExprMatchPattern::Wildcard(_) => {
                             checker.catchall(pattern.span());
                         }
-                        ExprMatchPattern::Literal(_) => (),
+                        ExprMatchPattern::Literal(_)
+                        | ExprMatchPattern::Variant(_) => (),
                     }
                 }
             }
@@ -97,18 +100,70 @@ impl Visitor for MatchLints {
                         | ExprMatchPattern::Wildcard(_) => {
                             checker.catchall(pattern.span());
                         }
-                        ExprMatchPattern::Literal(_) => (),
+                        ExprMatchPattern::Literal(_)
+                        | ExprMatchPattern::Variant(_) => (),
                     }
                 }
             }
             Type::Specific(SpecificType::Enum(name)) => {
                 let variants: Vec<_> = meta_info.enum_types[name.as_str()].variants.iter()
-                    .map(|(name, _)| name)
+                    .map(|(name, _)| RequiredEnumVariant(name.as_str()))
                     .collect();
                 let mut checker = VariantChecker::new(diagnostics, match_span, Some(&variants));
                 for (pattern, _arrow, _expr) in arms {
                     match pattern {
                         ExprMatchPattern::Literal(_) => (),
+                        ExprMatchPattern::Variant(variant) => {
+                            let enum_type = match meta_info.enum_types.get(variant.enum_name.ident) {
+                                Some(enum_type) => enum_type,
+                                None => {
+                                    let similar = crate::util::similar_name(variant.enum_name.ident, meta_info.enum_types.keys());
+                                    let mut diag = diagnostics.error(ErrorCode::UnknownEnum)
+                                        .with_error_label(variant.enum_name.span, "unknown enum in match pattern");
+                                    if let Some(similar) = similar {
+                                        diag = diag.with_info_label(variant.enum_name.span, format!("did you mean `{}`", similar));
+                                    }
+                                    diag.emit();
+                                    continue
+                                },
+                            };
+                            let variant_field_num = enum_type.variants.iter()
+                                .map(|(name, variant)| (name, variant.num_fields()))
+                                .find(|(name, _num_fields)| *name == variant.variant_name.ident)
+                                .map(|(_name, num_fields)| num_fields);
+                            let variant_field_num = match variant_field_num {
+                                Some(num) => num,
+                                None => {
+                                    let variant_names = enum_type.variants.iter().map(|(name, _variant)| name);
+                                    let similar = crate::util::similar_name(variant.variant_name.ident, variant_names);
+                                    let mut diag = diagnostics.error(ErrorCode::UnknownEnumVariant)
+                                        .with_error_label(variant.variant_name.span, "unknown enum variant in match pattern");
+                                    if let Some(similar) = similar {
+                                        diag = diag.with_info_label(variant.variant_name.span, format!("did you mean `{}`", similar));
+                                    }
+                                    diag.emit();
+                                    continue
+                                }
+                            };
+
+                            checker.insert(RequiredEnumVariant(variant.variant_name.ident), variant.variant_name.span);
+                            let actual_field_num = variant.fields.as_ref()
+                                .map(|(_open, fields, _close)| fields.len())
+                                .unwrap_or(0);
+                            if actual_field_num != variant_field_num {
+                                let enum_def = match &meta_info.user_types[variant.enum_name.ident] {
+                                    UserType::Enum(enum_def) => enum_def,
+                                    _ => unreachable!(),
+                                };
+                                let variant_def = enum_def.variants.iter()
+                                    .find(|v| v.name.ident == variant.variant_name.ident)
+                                    .unwrap();
+                                diagnostics.error(ErrorCode::InvalidNumberOfEnumVariantFields)
+                                    .with_error_label(variant.variant_name.span, format!("expected {} fields but got {}", variant_field_num, actual_field_num))
+                                    .with_info_label(variant_def.name.span, "variant defined here")
+                                    .emit()
+                            }
+                        }
                         ExprMatchPattern::Binding(_)
                         | ExprMatchPattern::Wildcard(_) => {
                             checker.catchall(pattern.span());
@@ -117,6 +172,14 @@ impl Visitor for MatchLints {
                 }
             }
         }
+    }
+}
+
+#[derive(Clone, Hash, Ord, PartialOrd, Eq, PartialEq)]
+struct RequiredEnumVariant<'i>(&'i str);
+impl<'i> Debug for RequiredEnumVariant<'i> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
     }
 }
 
@@ -157,6 +220,11 @@ impl<'i, T: Clone + Hash + Eq + Debug> VariantChecker<'i, T> {
     fn catchall(&mut self, catchall_span: Span) {
         if let Some(previous_span) = self.catchall {
             self.diag(catchall_span, previous_span);
+        } else if self.had_required && self.required.is_empty() {
+            self.diagnostics.warning(ErrorCode::UnreachableMatchArm)
+                .with_error_label(catchall_span, "this pattern is unreachable")
+                .with_info_label(catchall_span, "all possible cases are already covered")
+                .emit();
         } else {
             self.catchall = Some(catchall_span);
             self.required.clear();
