@@ -33,8 +33,17 @@ impl Foo {
     fn new(a: int, b: string) -> Foo {
         Foo { a: a, b: b }
     }
+    fn a(self) -> int {
+        self.a
+    }
+    fn b(self) -> string {
+        self.b
+    }
 }
-print(Foo::new(42, "uiae"));
+let foo = Foo::new(42, "uiae");
+print(foo);
+//print(foo.a(), foo.b());
+print(Foo::a(foo), Foo::b(foo));
 
 print(if true { 1337 } else { panic("F") } + 5);
 

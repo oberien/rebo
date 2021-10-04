@@ -191,7 +191,8 @@ impl Graph {
     }
 
     pub fn set_exact_type(&mut self, var: TypeVar, typ: SpecificType) {
-        self.possible_types.get_mut(&var).unwrap().set_exact_type(typ);
+        self.possible_types.get_mut(&var).unwrap().set_exact_type(typ.clone());
+        self.add_reduce_constraint(var, var, vec![typ])
     }
 
     pub fn add_eq_constraint(&mut self, from: TypeVar, to: TypeVar) {

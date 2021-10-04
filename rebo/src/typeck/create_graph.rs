@@ -280,7 +280,7 @@ fn visit_expr(graph: &mut Graph, diagnostics: &Diagnostics, meta_info: &MetaInfo
             };
             for (passed_type_var, expected) in passed_args.into_iter().zip(expected_args) {
                 match expected {
-                    Type::Top => unreachable!("function argument type is Top"),
+                    Type::Top => (),
                     Type::Bottom => unreachable!("function argument type is Bottom"),
                     Type::Varargs => (),
                     Type::Specific(specific) => {

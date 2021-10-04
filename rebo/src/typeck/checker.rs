@@ -3,7 +3,7 @@ use crate::typeck::graph::{Graph, Constraint, PossibleTypes};
 use crate::common::MetaInfo;
 use crate::error_codes::ErrorCode;
 use itertools::Itertools;
-use crate::typeck::types::Type;
+use crate::typeck::types::{Type, SpecificType};
 
 pub fn check(diagnostics: &Diagnostics, graph: &Graph, meta_info: &mut MetaInfo) {
     for node in graph.type_vars() {
@@ -33,7 +33,22 @@ pub fn check(diagnostics: &Diagnostics, graph: &Graph, meta_info: &mut MetaInfo)
                     let prefix = if reduce.len() == 1 { "" } else { "one of " };
                     format!("this means it can only be {}`{}`", prefix, reduce.iter().join(", "))
                 },
-                Constraint::FieldAccess(_) => "".to_string(), // TODO
+                Constraint::FieldAccess(fields) => {
+                    let struct_typ = graph.possible_types(incoming);
+                    if struct_typ.len() != 1 {
+                        "can't infer this struct type".to_string()
+                    } else {
+                        match &struct_typ[0] {
+                            SpecificType::Struct(name) => {
+                                match meta_info.struct_types[name.as_str()].get_field_path(meta_info, &fields) {
+                                    Ok(Type::Specific(typ)) => format!("this says the field has type `{}`", typ),
+                                    _ => format!("can't find fields starting from `{}`", struct_typ[0]),
+                                }
+                            },
+                            _ => "can't infer this struct type".to_string(),
+                        }
+                    }
+                }
             };
             diag = diag.with_info_label(incoming.span, msg);
         }

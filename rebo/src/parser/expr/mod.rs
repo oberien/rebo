@@ -39,9 +39,26 @@ impl<'i> Binding<'i> {
     /// Return the newly created binding
     fn parse_new<'a>(parser: &mut Parser<'a, '_, 'i>, depth: Depth) -> Result<Binding<'i>, InternalError> {
         trace!("{} Binding::parse_new        ({:?})", depth, parser.peek_token(0));
+        Binding::parse_new_internal(parser, false, depth)
+    }
+    /// Return the newly created binding, allowing `self` as name
+    fn parse_self<'a>(parser: &mut Parser<'a, '_, 'i>, depth: Depth) -> Result<Binding<'i>, InternalError> {
+        trace!("{} Binding::parse_self        ({:?})", depth, parser.peek_token(0));
+        Binding::parse_new_internal(parser, true, depth)
+    }
+    fn parse_new_internal<'a>(parser: &mut Parser<'a, '_, 'i>, require_self: bool, depth: Depth) -> Result<Binding<'i>, InternalError> {
         let mark = parser.lexer.mark();
         let mut_token: Option<TokenMut> = parser.parse(depth.next())?;
         let ident: TokenIdent = parser.parse(depth.last())?;
+        if !require_self && ident.ident == "self" {
+            parser.diagnostics.error(ErrorCode::SelfBinding)
+                .with_error_label(ident.span, "using `self` as variable is not allowed here")
+                .with_note("note: `self` is only allowed as first parameter of methods")
+                .emit();
+        }
+        if require_self && ident.ident != "self" {
+            return Err(InternalError::Backtrack(ident.span, Cow::Borrowed(&[Expected::Token(TokenType::Ident)])));
+        }
         mark.apply();
         let binding = parser.add_binding(ident, mut_token);
         trace!("{} got binding {}", depth, binding);
@@ -89,6 +106,29 @@ impl<'i> Spanned for NewBinding<'i> {
     }
 }
 impl<'i> Display for NewBinding<'i> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        Display::fmt(&self.b, f)
+    }
+}
+struct SelfBinding<'i> {
+    b: Binding<'i>,
+}
+impl<'i> From<SelfBinding<'i>> for Binding<'i> {
+    fn from(n: SelfBinding<'i>) -> Self {
+        n.b
+    }
+}
+impl<'a, 'i> Parse<'a, 'i> for SelfBinding<'i> {
+    fn parse_marked(parser: &mut Parser<'a, '_, 'i>, depth: Depth) -> Result<Self, InternalError> {
+        Binding::parse_self(parser, depth).map(|b| SelfBinding { b })
+    }
+}
+impl<'i> Spanned for SelfBinding<'i> {
+    fn span(&self) -> Span {
+        self.b.span()
+    }
+}
+impl<'i> Display for SelfBinding<'i> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         Display::fmt(&self.b, f)
     }
@@ -254,8 +294,16 @@ impl<'a, 'i> Expr<'a, 'i> {
                 parser.push_scope();
                 let result = ExprFunctionDefinition::parse(parser, depth);
                 parser.scopes = old_scopes;
+                let expr = result?;
 
-                let fun = &*parser.arena.alloc(Expr::FunctionDefinition(result?));
+                if let Some(self_arg) = &expr.self_arg {
+                    parser.diagnostics.error(ErrorCode::SelfBinding)
+                        .with_error_label(self_arg.span(), "self-argument not allowed here")
+                        .with_info_label(self_arg.span(), "self-argument is only allowed in methods")
+                        .emit();
+                }
+
+                let fun = &*parser.arena.alloc(Expr::FunctionDefinition(expr));
                 match fun {
                     Expr::FunctionDefinition(fun) => {
                         parser.meta_info.add_function(parser.diagnostics, Cow::Borrowed(fun.name.ident), fun);
@@ -1192,6 +1240,8 @@ pub struct ExprFunctionDefinition<'a, 'i> {
     pub fn_token: TokenFn,
     pub name: TokenIdent<'i>,
     pub open: TokenOpenParen,
+    pub self_arg: Option<Binding<'i>>,
+    pub self_arg_comma: Option<TokenComma>,
     pub args: Separated<'a, 'i, ExprPatternTyped<'i>, TokenComma>,
     pub close: TokenCloseParen,
     pub ret_type: Option<(TokenArrow, ExprType<'i>)>,
@@ -1202,12 +1252,22 @@ impl<'a, 'i> Parse<'a, 'i> for ExprFunctionDefinition<'a, 'i> {
         let fn_token = parser.parse(depth.next())?;
         let name = parser.parse(depth.next())?;
         let open = parser.parse(depth.next())?;
-        let args: Scoped<_> = parser.parse(depth.next())?;
+        let all_args: Scoped<Option<(SelfBinding<'i>, Option<(TokenComma, Separated<'a, 'i, ExprPatternTyped<'i>, TokenComma>)>)>> = parser.parse(depth.next())?;
+        let (self_arg, self_arg_comma, args) = match all_args.0 {
+            Some((self_binding, rest)) => match rest {
+                Some((comma, args)) => (Some(self_binding.b), Some(comma), args),
+                None => (Some(self_binding.b), None, Separated::default()),
+            }
+            None => (None, None, parser.parse(depth.next())?),
+        };
         let close = parser.parse(depth.next())?;
         let ret_type = parser.parse(depth.next())?;
 
         let scope = parser.push_scope();
-        for &ExprPatternTyped { pattern: ExprPatternUntyped { binding }, .. } in &args.0 {
+        if let Some(self_binding) = self_arg {
+            scope.idents.insert(self_binding.ident.ident, self_binding);
+        }
+        for &ExprPatternTyped { pattern: ExprPatternUntyped { binding }, .. } in &args {
             scope.idents.insert(binding.ident.ident, binding);
         }
         // defer result resolution until after scope was popped
@@ -1215,7 +1275,7 @@ impl<'a, 'i> Parse<'a, 'i> for ExprFunctionDefinition<'a, 'i> {
         parser.pop_scope();
         let body = body?;
 
-        Ok(ExprFunctionDefinition { fn_token, name, open, args: args.0, close, ret_type, body })
+        Ok(ExprFunctionDefinition { fn_token, name, open, self_arg, self_arg_comma, args, close, ret_type, body })
     }
 }
 impl<'a, 'i> Spanned for ExprFunctionDefinition<'a, 'i> {
@@ -1400,15 +1460,35 @@ pub struct ExprImplBlock<'a, 'i> {
 impl<'a, 'i> Parse<'a, 'i> for ExprImplBlock<'a, 'i> {
     fn parse_marked(parser: &mut Parser<'a, '_, 'i>, depth: Depth) -> Result<Self, InternalError> {
         let impl_token: TokenImpl = parser.parse(depth.next())?;
-        let name = parser.parse(depth.next())?;
+        let name: TokenIdent = parser.parse(depth.next())?;
         let open = parser.parse(depth.next())?;
-        let functions: Vec<ExprFunctionDefinition<'a, 'i>> = parser.parse(depth.next())?;
+        let mut functions: Vec<ExprFunctionDefinition<'a, 'i>> = parser.parse(depth.next())?;
         let close: TokenCloseCurly = parser.parse(depth.last())?;
         if functions.is_empty() {
             parser.diagnostics.warning(ErrorCode::EmptyImplBlock)
                 .with_error_label(Span::new(impl_token.span.file, impl_token.span.start, close.span.end), "this impl is empty")
                 .emit();
         }
+
+        // desugar self-args: insert self-args into args
+        for fun in &mut functions {
+            if let Some(self_arg) = fun.self_arg {
+                let typed = ExprPatternTyped {
+                    pattern: ExprPatternUntyped {
+                        binding: self_arg,
+                    },
+                    colon_token: TokenColon {
+                        span: Span::new(self_arg.ident.span.file, self_arg.ident.span.end, self_arg.ident.span.end),
+                    },
+                    typ: ExprType::UserType(TokenIdent {
+                        ident: name.ident,
+                        span: self_arg.ident.span,
+                    }),
+                };
+                fun.args.prepend(typed, fun.self_arg_comma);
+            }
+        }
+
         Ok(ExprImplBlock {
             impl_token,
             name,

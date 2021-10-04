@@ -84,6 +84,16 @@ pub struct Separated<'a, 'i, T: 'a, D: 'a> {
     marker: PhantomData<&'a Expr<'a, 'i>>,
 }
 
+impl<'a, 'i, T, D> Default for Separated<'a, 'i, T, D> {
+    fn default() -> Self {
+        Separated {
+            inner: Vec::new(),
+            last: None,
+            marker: PhantomData,
+        }
+    }
+}
+
 impl<'a, 'i, T: Parse<'a, 'i>, D: Parse<'a, 'i>> Parse<'a, 'i> for Separated<'a, 'i, T, D> {
     fn parse_marked(parser: &mut Parser<'a, '_, 'i>, depth: Depth) -> Result<Self, InternalError> {
         Ok(Separated {
@@ -120,6 +130,17 @@ impl<'b, 'a: 'b, 'i: 'b, T: 'a, D: 'a> Separated<'a, 'i, T, D> {
     }
     pub fn is_terminated(&self) -> bool {
         self.last.is_none()
+    }
+    /// Prepend an element to the separated list. If it's the only element in the list, the delimiter
+    /// can be None, otherwise it panics if delimiter is None.
+    pub fn prepend(&mut self, element: T, delimiter: Option<D>) {
+        match delimiter {
+            Some(delimiter) => self.inner.insert(0, (element, delimiter)),
+            None => {
+                assert!(self.inner.is_empty() && self.last.is_none());
+                self.last = Some(element);
+            }
+        }
     }
 }
 impl<'a, 'i, T: Spanned + 'a, D: 'a> Separated<'a, 'i, T, D> {

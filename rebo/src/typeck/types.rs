@@ -46,6 +46,22 @@ impl StructType {
             .map(|(_name, typ)| typ)
             .next()
     }
+    pub fn get_field_path(&self, meta_info: &MetaInfo, fields: impl IntoIterator<Item = impl AsRef<str>>) -> Result<Type, usize> {
+        let mut typ = Type::Specific(SpecificType::Struct(self.name.clone()));
+        for (i, field) in fields.into_iter().enumerate() {
+            let struct_name = match &typ {
+                Type::Specific(SpecificType::Struct(name)) => name,
+                _ => return Err(i),
+            };
+            let struct_type = &meta_info.struct_types[struct_name.as_str()];
+            let field_type = struct_type.get_field(field.as_ref());
+            match field_type {
+                Some(field_typ) => typ = field_typ.clone(),
+                None => return Err(i),
+            }
+        }
+        Ok(typ)
+    }
 }
 #[derive(Debug, Clone, PartialOrd, PartialEq, Hash)]
 pub struct EnumType {

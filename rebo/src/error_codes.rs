@@ -52,6 +52,7 @@ pub enum ErrorCode {
     InvalidNumberOfEnumVariantFields,
     DuplicateEnumVariant,
     DuplicateStructField,
+    SelfBinding,
 }
 use ErrorCode::*;
 
@@ -110,6 +111,7 @@ impl diagnostic::ErrorCode for ErrorCode {
             InvalidNumberOfEnumVariantFields => "0051",
             DuplicateEnumVariant => "0052",
             DuplicateStructField => "0053",
+            SelfBinding => "0054",
         }.to_string()
     }
 
@@ -167,6 +169,7 @@ impl diagnostic::ErrorCode for ErrorCode {
             InvalidNumberOfEnumVariantFields => "invalid number of fields in enum variant",
             DuplicateEnumVariant => "duplicate enum variant",
             DuplicateStructField => "duplicate struct field",
+            SelfBinding => "self binding not allowed",
         }.to_string()
     }
 }
