@@ -345,22 +345,22 @@ fn struct_definitions() {
         foo.foo = 42;
         assert(foo.foo == 42);
 
-        // // impl block
-        // impl Foo {
-        //     fn new(foo: int) -> Foo {
-        //         Foo { foo: foo }
-        //     }
-        //     fn foo(self) -> int {
-        //         self.foo
-        //     }
-        //     fn bar(self) -> int {
-        //         self.foo
-        //     }
-        // }
+        // impl block
+        impl Foo {
+            fn new(foo: int) -> Foo {
+                Foo { foo: foo }
+            }
+            // fn foo(self) -> int {
+            //     self.foo
+            // }
+            // fn bar(self) -> int {
+            //     self.foo
+            // }
+        }
 
-        // // method call
-        // let foo = Foo::new(42);
-        // assert(foo.foo == 42);
+        // method and associated function call
+        let foo = Foo::new(42);
+        assert(foo.foo == 42);
         // assert(foo.foo() == 42);
         // assert(foo.bar() == 42);
         // assert(Foo::foo(foo) == 42);
@@ -410,7 +410,114 @@ fn struct_diagnostics() {
 
         // mutable access to non-mutable variable
         bar.i = 42;
-    "#.to_string()), ReturnValue::Diagnostics(8));
+
+        // duplicate field
+        struct Quux {
+            foo: int,
+            foo: float,
+        }
+    "#.to_string()), ReturnValue::Diagnostics(9));
+}
+
+#[test]
+fn enum_definitions() {
+    let _ = env_logger::builder().is_test(true).try_init();
+    assert_eq!(rebo::run("test".to_string(), r#"
+        // enum definition
+        enum Never {}
+        enum Foo {
+            Foo(int),
+        }
+        enum Bar {
+            Foo(int),
+            Bar(bool),
+        }
+
+        // initialization
+        let mut foo = Foo::Foo(1337);
+        let foo2 = Foo::Foo(1337);
+        assert(foo == foo2);
+        foo = Foo::Foo(42);
+        assert(foo != foo2);
+        let bar = Bar::Foo(1337);
+        let bar2 = Bar::Bar(true);
+        let bar3 = Bar::Bar(true);
+        assert(bar != bar2);
+        assert(bar2 == bar3);
+
+        // match
+        match Foo::Foo(42) {
+            Foo::Foo(i) => assert(i == 42)
+        }
+        match Bar::Foo(1337) {
+            Bar::Foo(i) => assert(i == 1337),
+            _ => panic(""),
+        }
+
+        // impl block
+        impl Foo {
+            fn new(foo: int) -> Foo {
+                Foo::Foo(foo)
+            }
+        //     fn foo(self) -> int {
+        //         self.foo
+        //     }
+        //     fn bar(self) -> int {
+        //         self.foo
+        //     }
+        }
+
+        // method and associated function call
+        let foo = Foo::new(42);
+        assert(match foo { Foo::Foo(i) => i == 42 });
+        // assert(foo.foo() == 42);
+        // assert(foo.bar() == 42);
+        // assert(Foo::foo(foo) == 42);
+        // assert(Foo::bar(foo) == 42);
+    "#.to_string()), ReturnValue::Ok);
+}
+
+#[test]
+fn enum_diagnostics() {
+    let _ = env_logger::builder().is_test(true).try_init();
+    assert_eq!(rebo::run("test".to_string(), r#"
+        // duplicate enum name
+        enum Foo {}
+        // // recursive enum definition
+        enum Foo {
+            // Foo(Foo),
+        }
+
+        // // mutual recursive enum definition
+        // enum Foo2 {
+        //     Foo(Foo3),
+        // }
+        // // mutual recursive enum definition
+        // enum Foo3 {
+        //     Foo(Foo2)
+        // }
+
+        enum Bar {
+            Bar(int),
+        }
+
+        // missing enum field
+        let bar = Bar::Bar;
+        // wrong number of enum fields (arguments)
+        let bar = Bar::Bar();
+        // wrong number of enum fields (arguments)
+        let bar = Bar::Bar(42, true);
+
+        // unknown enum variant
+        Bar::Foo;
+
+        // compare between different struct types
+        enum Baz { Baz }
+        enum Qux { Qux }
+        let baz = Baz::Baz;
+        let qux = Qux::Qux;
+        baz == qux;
+    "#.to_string()), ReturnValue::Diagnostics(6));
 }
 
 #[test]

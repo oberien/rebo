@@ -356,6 +356,7 @@ trait CmpOp {
     fn bool(a: bool, b: bool) -> bool;
     fn string(a: &str, b: &str) -> bool;
     fn structs(a: StructArc, b: StructArc) -> bool;
+    fn enums(a: EnumArc, b: EnumArc) -> bool;
     fn str() -> &'static str;
 }
 
@@ -374,6 +375,7 @@ impl CmpOp for Lt {
     fn bool(a: bool, b: bool) -> bool { a < b }
     fn string(a: &str, b: &str) -> bool { a < b }
     fn structs(a: StructArc, b: StructArc) -> bool { a < b }
+    fn enums(a: EnumArc, b: EnumArc) -> bool { a < b }
     fn str() -> &'static str { "<" }
 }
 impl CmpOp for Le {
@@ -383,6 +385,7 @@ impl CmpOp for Le {
     fn bool(a: bool, b: bool) -> bool { a <= b }
     fn string(a: &str, b: &str) -> bool { a <= b }
     fn structs(a: StructArc, b: StructArc) -> bool { a <= b }
+    fn enums(a: EnumArc, b: EnumArc) -> bool { a <= b }
     fn str() -> &'static str { "<=" }
 }
 impl CmpOp for Eq {
@@ -392,6 +395,7 @@ impl CmpOp for Eq {
     fn bool(a: bool, b: bool) -> bool { a == b }
     fn string(a: &str, b: &str) -> bool { a == b }
     fn structs(a: StructArc, b: StructArc) -> bool { a == b }
+    fn enums(a: EnumArc, b: EnumArc) -> bool { a == b }
     fn str() -> &'static str { "==" }
 }
 impl CmpOp for Neq {
@@ -401,6 +405,7 @@ impl CmpOp for Neq {
     fn bool(a: bool, b: bool) -> bool { a != b }
     fn string(a: &str, b: &str) -> bool { a != b }
     fn structs(a: StructArc, b: StructArc) -> bool { a != b }
+    fn enums(a: EnumArc, b: EnumArc) -> bool { a != b }
     fn str() -> &'static str { "!=" }
 }
 impl CmpOp for Ge {
@@ -410,6 +415,7 @@ impl CmpOp for Ge {
     fn bool(a: bool, b: bool) -> bool { a >= b }
     fn string(a: &str, b: &str) -> bool { a >= b }
     fn structs(a: StructArc, b: StructArc) -> bool { a >= b }
+    fn enums(a: EnumArc, b: EnumArc) -> bool { a >= b }
     fn str() -> &'static str { ">=" }
 }
 impl CmpOp for Gt {
@@ -420,6 +426,7 @@ impl CmpOp for Gt {
     fn bool(a: bool, b: bool) -> bool { a > b }
     fn string(a: &str, b: &str) -> bool { a > b }
     fn structs(a: StructArc, b: StructArc) -> bool { a > b }
+    fn enums(a: EnumArc, b: EnumArc) -> bool { a > b }
     fn str() -> &'static str { ">" }
 }
 fn cmp<O: CmpOp>(a: Value, b: Value, depth: Depth) -> Value {
@@ -431,6 +438,7 @@ fn cmp<O: CmpOp>(a: Value, b: Value, depth: Depth) -> Value {
         (Value::Bool(a), Value::Bool(b)) => Value::Bool(O::bool(a, b)),
         (Value::String(a), Value::String(b)) => Value::Bool(O::string(&a, &b)),
         (Value::Struct(a), Value::Struct(b)) => Value::Bool(O::structs(a, b)),
+        (Value::Enum(a), Value::Enum(b)) => Value::Bool(O::enums(a, b)),
         _ => todo!("error handling"),
     }
 }

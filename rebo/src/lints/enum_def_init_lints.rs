@@ -18,6 +18,7 @@ impl Visitor for EnumDefInitLints {
                     .emit()
             }
         }
+        // TODO: proper enum recursion recursing into all usertypes (structs, enums, ...)
     }
 
     fn visit_enum_initialization(&self, diagnostics: &Diagnostics, meta_info: &MetaInfo, ei: &ExprEnumInitialization) {
