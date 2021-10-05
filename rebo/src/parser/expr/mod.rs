@@ -1285,6 +1285,11 @@ pub struct ExprFunctionDefinition<'a, 'i> {
     pub ret_type: Option<(TokenArrow, ExprType<'i>)>,
     pub body: ExprBlock<'a, 'i>,
 }
+impl<'a, 'i> ExprFunctionDefinition<'a, 'i> {
+    pub fn arg_span(&self) -> Span {
+        Span::new(self.open.span.file, self.open.span.start, self.close.span.end)
+    }
+}
 impl<'a, 'i> Parse<'a, 'i> for ExprFunctionDefinition<'a, 'i> {
     fn parse_marked(parser: &mut Parser<'a, '_, 'i>, depth: Depth) -> Result<Self, InternalError> {
         let fn_token = parser.parse(depth.next())?;

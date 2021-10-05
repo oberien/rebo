@@ -3,7 +3,7 @@ use crate::parser::{ExprMethodCall, Spanned};
 use crate::common::MetaInfo;
 use diagnostic::{Diagnostics, Span};
 use crate::error_codes::ErrorCode;
-use crate::typeck::types::{Type, SpecificType};
+use crate::typeck::types::Type;
 use crate::typeck::TypeVar;
 
 pub struct UnknownMethod;
@@ -34,6 +34,16 @@ impl Visitor for UnknownMethod {
                 diag = diag.with_info_label(fn_call.name.span, format!("did you mean `{}`", similar));
             }
             diag.emit();
+            return;
+        }
+
+        let fun = &meta_info.rebo_functions[fn_name.as_str()];
+        if fun.self_arg.is_none() {
+            diagnostics.error(ErrorCode::NotAMethod)
+                .with_error_label(fn_call.name.span, format!("`{}` is a function and not a method", fn_name))
+                .with_info_label(fn_call.name.span, "methods must have `self` as first argument")
+                .with_info_label(fun.arg_span(), "this function doesn't have `self` as first argument")
+                .emit();
         }
     }
 }

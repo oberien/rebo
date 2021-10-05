@@ -350,21 +350,21 @@ fn struct_definitions() {
             fn new(foo: int) -> Foo {
                 Foo { foo: foo }
             }
-            // fn foo(self) -> int {
-            //     self.foo
-            // }
-            // fn bar(self) -> int {
-            //     self.foo
-            // }
+            fn foo(self) -> int {
+                self.foo
+            }
+            fn bar(self) -> int {
+                self.foo
+            }
         }
 
         // method and associated function call
         let foo = Foo::new(42);
         assert(foo.foo == 42);
-        // assert(foo.foo() == 42);
-        // assert(foo.bar() == 42);
-        // assert(Foo::foo(foo) == 42);
-        // assert(Foo::bar(foo) == 42);
+        assert(foo.foo() == 42);
+        assert(foo.bar() == 42);
+        assert(Foo::foo(foo) == 42);
+        assert(Foo::bar(foo) == 42);
     "#.to_string()), ReturnValue::Ok);
 }
 
@@ -455,25 +455,32 @@ fn enum_definitions() {
         }
 
         // impl block
-        impl Foo {
-            fn new(foo: int) -> Foo {
-                Foo::Foo(foo)
+        impl Bar {
+            fn new(foo: int) -> Bar {
+                Bar::Foo(foo)
             }
-        //     fn foo(self) -> int {
-        //         self.foo
-        //     }
-        //     fn bar(self) -> int {
-        //         self.foo
-        //     }
+            fn unwrap_foo(self) -> int {
+                match self {
+                    Bar::Foo(i) => i,
+                    _ => panic(f"expected Bar::Foo, got {self}"),
+                }
+            }
+            fn unwrap_bar(self) -> bool {
+                match self {
+                    Bar::Bar(b) => b,
+                    other => panic(f"expected Bar::Bar, got {other}"),
+                }
+            }
         }
 
         // method and associated function call
-        let foo = Foo::new(42);
-        assert(match foo { Foo::Foo(i) => i == 42 });
-        // assert(foo.foo() == 42);
-        // assert(foo.bar() == 42);
-        // assert(Foo::foo(foo) == 42);
-        // assert(Foo::bar(foo) == 42);
+        let foo = Bar::new(42);
+        let bar = Bar::Bar(true);
+        assert(match foo { Bar::Foo(i) => i == 42, Bar::Bar(b) => panic("") });
+        assert(foo.unwrap_foo() == 42);
+        assert(bar.unwrap_bar());
+        assert(Bar::unwrap_foo(foo) == 42);
+        assert(Bar::unwrap_bar(bar));
     "#.to_string()), ReturnValue::Ok);
 }
 
@@ -557,4 +564,29 @@ fn associated_function_diagnostics2() {
             fn foo() {}
         }
     "#.to_string()), ReturnValue::Diagnostics(1));
+}
+
+#[test]
+fn method_diagnostics() {
+    let _ = env_logger::builder().is_test(true).try_init();
+    assert_eq!(rebo::run("test".to_string(), r#"
+        struct Foo {}
+        let foo = Foo {};
+        impl Foo {
+            fn a() {}
+            fn foo(self, a: int, b: string) -> int { a }
+        }
+        // unknown method
+        foo.b();
+        // not a method
+        foo.a();
+        // invalid argument type 0
+        Foo::foo(1337, 42, "uiae");
+        // invalid argument type 1
+        foo.foo("uiae", "uiae");
+        // invalid argument type 2
+        foo.foo(1337, 42);
+        // invalid return type
+        let a: string = foo.foo(1337, "uiae");
+    "#.to_string()), ReturnValue::Diagnostics(6));
 }

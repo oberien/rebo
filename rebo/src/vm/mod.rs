@@ -66,7 +66,11 @@ impl<'a, 'i> Vm<'a, 'i> {
             },
             Expr::MethodCall(ExprMethodCall { variable: ExprVariable { binding, .. }, fields, fn_call: ExprFunctionCall { name, args, .. }, .. }) => {
                 trace!("{}method_call: {}.{}{}({:?})", depth, binding.ident.ident, fields.iter().map(|(i, _)| format!("{}.", i.ident)).join(""), name.ident, args);
-                let field_val = self.field_access(binding, fields.iter().map(|(ident, _dot)| ident.ident), depth.next());
+                let field_val = if fields.is_empty() {
+                    self.load_binding(binding, depth.next())
+                } else {
+                    self.field_access(binding, fields.iter().map(|(ident, _dot)| ident.ident), depth.next())
+                };
                 let fn_name = format!("{}::{}", field_val.type_name(), name.ident);
                 let args = std::iter::once(field_val).chain(args.iter().map(|expr| self.eval_expr(expr, depth.next()))).collect();
                 self.call_function(&fn_name, args, depth)
@@ -304,7 +308,7 @@ impl<'a, 'i> Vm<'a, 'i> {
     fn field_access<'b>(&mut self, binding: &Binding, fields: impl IntoIterator<Item = &'b str>, depth: Depth) -> Value {
         let mut struct_arc = match self.load_binding(binding, depth.last()) {
             Value::Struct(s) => s,
-            _ => unreachable!("typechecker ensures this is a struct"),
+            val => unreachable!("typechecker ensures this is a struct: {:?}", val),
         };
         for field in fields {
             let field_value = struct_arc.s.lock().borrow_mut().fields.iter()

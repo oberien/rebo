@@ -49,8 +49,41 @@ pub fn check(diagnostics: &Diagnostics, graph: &Graph, meta_info: &mut MetaInfo)
                         }
                     }
                 }
-                Constraint::MethodCallArg(method_name, arg_index) => todo!(), // TODO
-                Constraint::MethodCallReturnType(method_name) => todo!(), // TODO
+                Constraint::MethodCallArg(method_name, arg_index) => {
+                    let field_access_typ = graph.possible_types(incoming);
+                    if field_access_typ.len() != 1 {
+                        "can't infer type of this method-call target".to_string()
+                    } else {
+                        let type_name = field_access_typ[0].type_name();
+                        let fn_name = format!("{}::{}", type_name, method_name);
+                        match meta_info.function_types.get(fn_name.as_str()) {
+                            Some(fn_typ) => match fn_typ.args.iter().chain(std::iter::repeat(&Type::Varargs)).nth(arg_index) {
+                                Some(Type::Top | Type::Varargs) => "this says the argument can be of any type".to_string(),
+                                Some(Type::Bottom) => unreachable!("fn arg type is bottom"),
+                                Some(Type::Specific(specific)) => format!("this says the argument must have type {}", specific),
+                                None => unreachable!("iter::repeat ended"),
+                            }
+                            None => format!("can't find function {}", fn_name),
+                        }
+                    }
+                }
+                Constraint::MethodCallReturnType(method_name) => {
+                    let field_access_typ = graph.possible_types(incoming);
+                    if field_access_typ.len() != 1 {
+                        "can't infer type of this method-call target".to_string()
+                    } else {
+                        let type_name = field_access_typ[0].type_name();
+                        let fn_name = format!("{}::{}", type_name, method_name);
+                        match meta_info.function_types.get(fn_name.as_str()) {
+                            Some(fn_typ) => match &fn_typ.ret {
+                                Type::Top | Type::Varargs => unreachable!("fn arg type is bottom"),
+                                Type::Bottom => "this says the return type can be any type".to_string(),
+                                Type::Specific(specific) => format!("this says the return type must be {}", specific),
+                            }
+                            None => format!("can't find function {}", fn_name),
+                        }
+                    }
+                }
             };
             diag = diag.with_info_label(incoming.span, msg);
         }

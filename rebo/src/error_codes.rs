@@ -54,6 +54,7 @@ pub enum ErrorCode {
     DuplicateStructField,
     SelfBinding,
     UnknownMethod,
+    NotAMethod,
 }
 use ErrorCode::*;
 
@@ -114,6 +115,7 @@ impl diagnostic::ErrorCode for ErrorCode {
             DuplicateStructField => "0053",
             SelfBinding => "0054",
             UnknownMethod => "0055",
+            NotAMethod => "0056",
         }.to_string()
     }
 
@@ -173,6 +175,7 @@ impl diagnostic::ErrorCode for ErrorCode {
             DuplicateStructField => "duplicate struct field",
             SelfBinding => "self binding not allowed",
             UnknownMethod => "unknown method",
+            NotAMethod => "not a method",
         }.to_string()
     }
 }
