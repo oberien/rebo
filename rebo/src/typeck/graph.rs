@@ -150,6 +150,10 @@ pub enum Constraint {
     FieldAccess(Vec<String>),
     /// Reverse-Edge of FieldAccess, indicating that a variable must be a struct
     Struct,
+    /// name of the method (not fully qualified yet), arg-index
+    MethodCallArg(String, usize),
+    /// name of the method (not fully qualified yet)
+    MethodCallReturnType(String),
 }
 impl Display for Constraint {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
@@ -162,6 +166,8 @@ impl Display for Constraint {
                 write!(f, ".{}", fields.join("."))
             }
             Constraint::Struct => write!(f, "struct"),
+            Constraint::MethodCallArg(name, arg) => write!(f, "{}({})", name, arg),
+            Constraint::MethodCallReturnType(name) => write!(f, "{}(...) -> ret", name),
         }
     }
 }
@@ -220,6 +226,17 @@ impl Graph {
         self.graph.add_edge(field, struc, Constraint::Struct);
     }
 
+    pub fn add_method_call_arg(&mut self, source: TypeVar, arg: TypeVar, method_name: String, arg_index: usize) {
+        let source = self.graph_indices[&source];
+        let arg = self.graph_indices[&arg];
+        self.graph.add_edge(source, arg, Constraint::MethodCallArg(method_name, arg_index));
+    }
+    pub fn add_method_call_ret(&mut self, source: TypeVar, call_expr: TypeVar, method_name: String) {
+        let source = self.graph_indices[&source];
+        let call_expr = self.graph_indices[&call_expr];
+        self.graph.add_edge(source, call_expr, Constraint::MethodCallReturnType(method_name));
+    }
+
     pub fn type_vars(&self) -> impl Iterator<Item = TypeVar> + '_ {
         assert_eq!(self.graph_indices.len(), self.graph.node_count());
         assert_eq!(self.possible_types.len(), self.graph.node_count());
@@ -274,8 +291,46 @@ impl Graph {
         self.possible_types.get_mut(&field_var).unwrap().reduce(&[typ]);
         res
     }
+    pub fn method_call_arg(&mut self, meta_info: &MetaInfo, field_access: TypeVar, arg: TypeVar, method_name: &str, arg_index: usize) -> UnifyResult {
+        let possible_types = &self.possible_types[&field_access];
+        if possible_types.0.len() != 1 {
+            return UnifyResult::Unchanged;
+        }
+        let type_name = possible_types.0[0].type_name();
+        let fn_name = format!("{}::{}", type_name, method_name);
+        let fn_typ = match meta_info.function_types.get(fn_name.as_str()) {
+            Some(fn_typ) => fn_typ,
+            None => return UnifyResult::Unchanged,
+        };
+        let expected_arg_type = match fn_typ.args.get(arg_index) {
+            Some(typ) => typ,
+            None => &Type::Varargs,
+        };
+        match expected_arg_type {
+            Type::Top | Type::Varargs => UnifyResult::Unchanged,
+            Type::Bottom => unreachable!("fn arg is bottom"),
+            Type::Specific(specific) => self.possible_types.get_mut(&arg).unwrap().reduce(&[specific.clone()]),
+        }
+    }
+    pub fn method_call_ret(&mut self, meta_info: &MetaInfo, field_access: TypeVar, method_call: TypeVar, method_name: &str) -> UnifyResult {
+        let possible_types = &self.possible_types[&field_access];
+        if possible_types.0.len() != 1 {
+            return UnifyResult::Unchanged;
+        }
+        let type_name = possible_types.0[0].type_name();
+        let fn_name = format!("{}::{}", type_name, method_name);
+        let fn_typ = match meta_info.function_types.get(fn_name.as_str()) {
+            Some(fn_typ) => fn_typ,
+            None => return UnifyResult::Unchanged,
+        };
+        match &fn_typ.ret {
+            Type::Top | Type::Varargs => unreachable!("fn ret is Top or Varargs"),
+            Type::Bottom => UnifyResult::Unchanged,
+            Type::Specific(specific) => self.possible_types.get_mut(&method_call).unwrap().reduce(&[specific.clone()]),
+        }
+    }
 
-    pub fn incoming(&self, var: TypeVar) -> Vec<(Constraint, TypeVar)> {
+pub fn incoming(&self, var: TypeVar) -> Vec<(Constraint, TypeVar)> {
         let ix = self.graph_indices[&var];
         self.graph.edges_directed(ix, Direction::Incoming)
             .map(|edge| (edge.weight().clone(), *self.graph.node_weight(edge.source()).unwrap()))

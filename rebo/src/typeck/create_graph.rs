@@ -1,10 +1,10 @@
 use crate::typeck::graph::Graph;
-use crate::parser::{Expr, Spanned, ExprFormatString, ExprFormatStringPart, ExprBind, ExprPattern, ExprPatternTyped, ExprPatternUntyped, ExprAssign, ExprAssignLhs, ExprVariable, ExprFieldAccess, ExprBoolNot, ExprAdd, ExprSub, ExprMul, ExprDiv, ExprBoolAnd, ExprBoolOr, ExprLessThan, ExprLessEquals, ExprEquals, ExprNotEquals, ExprGreaterEquals, ExprGreaterThan, ExprBlock, BlockBody, ExprParenthesized, ExprMatch, ExprMatchPattern, ExprWhile, ExprFunctionCall, ExprFunctionDefinition, ExprStructInitialization, ExprImplBlock};
+use crate::parser::{Expr, Spanned, ExprFormatString, ExprFormatStringPart, ExprBind, ExprPattern, ExprPatternTyped, ExprPatternUntyped, ExprAssign, ExprAssignLhs, ExprVariable, ExprFieldAccess, ExprBoolNot, ExprAdd, ExprSub, ExprMul, ExprDiv, ExprBoolAnd, ExprBoolOr, ExprLessThan, ExprLessEquals, ExprEquals, ExprNotEquals, ExprGreaterEquals, ExprGreaterThan, ExprBlock, BlockBody, ExprParenthesized, ExprMatch, ExprMatchPattern, ExprWhile, ExprFunctionCall, ExprFunctionDefinition, ExprStructInitialization, ExprImplBlock, ExprMethodCall};
 use crate::typeck::TypeVar;
 use crate::common::{MetaInfo, UserType, Function};
 use itertools::Either;
 use crate::typeck::types::{StructType, EnumType, EnumTypeVariant, SpecificType, FunctionType, Type};
-use diagnostic::Diagnostics;
+use diagnostic::{Diagnostics, Span};
 use std::borrow::Cow;
 
 pub fn create_graph(diagnostics: &Diagnostics, meta_info: &mut MetaInfo, exprs: &[&Expr<'_, '_>]) -> Graph {
@@ -190,6 +190,32 @@ fn visit_expr(graph: &mut Graph, diagnostics: &Diagnostics, meta_info: &MetaInfo
             graph.add_unidirectional_eq_constraint(binding_type_var, var_type_var);
             let fields = fields.iter().map(|ident| ident.ident.to_string()).collect();
             graph.add_field_access(binding_type_var, type_var, fields);
+        }
+        Expr::MethodCall(ExprMethodCall { variable, fields, fn_call, .. }) => {
+            // add variable type-vars
+            let var_type_var = TypeVar::new(variable.span());
+            let binding_type_var = TypeVar::new(variable.binding.ident.span);
+            graph.add_type_var(var_type_var);
+            graph.add_type_var(binding_type_var);
+            graph.add_unidirectional_eq_constraint(binding_type_var, var_type_var);
+
+            // add field access type-vars
+            let field_access_type_var = if fields.is_empty() {
+                binding_type_var
+            } else {
+                let field_access_type_var = TypeVar::new(Span::new(variable.span().file, variable.span().start, fields.last().unwrap().0.span().end));
+                let fields = fields.iter().map(|(ident, _dot)| ident.ident.to_string()).collect();
+                graph.add_field_access(binding_type_var, field_access_type_var, fields);
+                field_access_type_var
+            };
+
+            graph.add_method_call_ret(field_access_type_var, type_var, fn_call.name.ident.to_string());
+            for (i, arg_expr) in fn_call.args.iter().enumerate() {
+                let arg_type_var = visit_expr(graph, diagnostics, meta_info, arg_expr);
+                // arg 0 is `self`
+                let arg_index = i+1;
+                graph.add_method_call_arg(field_access_type_var, arg_type_var, fn_call.name.ident.to_string(), arg_index);
+            }
         }
         Expr::Parenthesized(ExprParenthesized { expr, .. }) => {
             let expr_type_var = visit_expr(graph, diagnostics, meta_info, expr);

@@ -49,6 +49,8 @@ pub fn check(diagnostics: &Diagnostics, graph: &Graph, meta_info: &mut MetaInfo)
                         }
                     }
                 }
+                Constraint::MethodCallArg(method_name, arg_index) => todo!(), // TODO
+                Constraint::MethodCallReturnType(method_name) => todo!(), // TODO
             };
             diag = diag.with_info_label(incoming.span, msg);
         }

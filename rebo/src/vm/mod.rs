@@ -1,13 +1,14 @@
-use crate::parser::{Expr, Binding, ExprVariable, ExprInteger, ExprFloat, ExprBool, ExprString, ExprAssign, ExprBind, ExprPattern, ExprPatternTyped, ExprPatternUntyped, ExprLessThan, ExprLessEquals, ExprEquals, ExprNotEquals, ExprGreaterEquals, ExprGreaterThan, ExprAdd, ExprSub, ExprMul, ExprDiv, ExprBoolNot, ExprBoolAnd, ExprBoolOr, ExprParenthesized, ExprBlock, ExprFunctionCall, Separated, ExprFunctionDefinition, BlockBody, ExprStructDefinition, ExprStructInitialization, ExprAssignLhs, ExprFieldAccess, ExprIfElse, ExprWhile, ExprFormatString, ExprFormatStringPart, ExprLiteral, ExprMatch, ExprMatchPattern, ExprEnumDefinition, ExprEnumInitialization};
+use crate::parser::{Expr, Binding, ExprVariable, ExprInteger, ExprFloat, ExprBool, ExprString, ExprAssign, ExprBind, ExprPattern, ExprPatternTyped, ExprPatternUntyped, ExprLessThan, ExprLessEquals, ExprEquals, ExprNotEquals, ExprGreaterEquals, ExprGreaterThan, ExprAdd, ExprSub, ExprMul, ExprDiv, ExprBoolNot, ExprBoolAnd, ExprBoolOr, ExprParenthesized, ExprBlock, ExprFunctionCall, ExprFunctionDefinition, BlockBody, ExprStructDefinition, ExprStructInitialization, ExprAssignLhs, ExprFieldAccess, ExprIfElse, ExprWhile, ExprFormatString, ExprFormatStringPart, ExprLiteral, ExprMatch, ExprMatchPattern, ExprEnumDefinition, ExprEnumInitialization, ExprMethodCall};
 use crate::common::{Value, MetaInfo, Depth, Struct, FuzzyFloat, StructArc, Function, EnumArc, Enum};
 use crate::scope::{Scopes, Scope};
-use crate::lexer::{TokenInteger, TokenFloat, TokenBool, TokenDqString, TokenComma, TokenIdent};
+use crate::lexer::{TokenInteger, TokenFloat, TokenBool, TokenDqString, TokenIdent};
 use indexmap::map::IndexMap;
 use std::sync::Arc;
 use parking_lot::ReentrantMutex;
 use std::cell::RefCell;
 use std::borrow::Cow;
 use crate::typeck::types::StructType;
+use itertools::Itertools;
 
 pub struct Vm<'a, 'i> {
     scopes: Scopes,
@@ -61,23 +62,15 @@ impl<'a, 'i> Vm<'a, 'i> {
             Expr::Literal(ExprLiteral::String(ExprString { string: TokenDqString { string, .. } })) => Value::String(string.clone()),
             Expr::Variable(ExprVariable { binding, .. }) => self.load_binding(binding, depth.last()),
             Expr::FieldAccess(ExprFieldAccess { variable: ExprVariable { binding, .. }, fields, .. }) => {
-                let mut struct_arc = match self.load_binding(binding, depth.last()) {
-                    Value::Struct(s) => s,
-                    _ => unreachable!("typechecker ensures this is a struct"),
-                };
-                for TokenIdent { ident, .. } in fields {
-                    let field_value = struct_arc.s.lock().borrow_mut().fields.iter()
-                        .filter(|(name, _value)| name == ident)
-                        .map(|(_name, value)| value.clone())
-                        .next()
-                        .expect("typechecker ensures all fields exist");
-                    match field_value {
-                        Value::Struct(s) => struct_arc = s,
-                        value => return value,
-                    }
-                }
-                Value::Struct(struct_arc)
+                self.field_access(binding, fields.iter().map(|ident| ident.ident), depth)
             },
+            Expr::MethodCall(ExprMethodCall { variable: ExprVariable { binding, .. }, fields, fn_call: ExprFunctionCall { name, args, .. }, .. }) => {
+                trace!("{}method_call: {}.{}{}({:?})", depth, binding.ident.ident, fields.iter().map(|(i, _)| format!("{}.", i.ident)).join(""), name.ident, args);
+                let field_val = self.field_access(binding, fields.iter().map(|(ident, _dot)| ident.ident), depth.next());
+                let fn_name = format!("{}::{}", field_val.type_name(), name.ident);
+                let args = std::iter::once(field_val).chain(args.iter().map(|expr| self.eval_expr(expr, depth.next()))).collect();
+                self.call_function(&fn_name, args, depth)
+            }
             Expr::FormatString(ExprFormatString { parts, .. }) => {
                 let mut res = String::new();
                 for part in parts {
@@ -234,7 +227,10 @@ impl<'a, 'i> Vm<'a, 'i> {
                 }
                 Value::Unit
             }
-            Expr::FunctionCall(ExprFunctionCall { name, args, .. }) => self.call_function(name, args, depth.last()),
+            Expr::FunctionCall(ExprFunctionCall { name, args, .. }) => {
+                let args = args.iter().map(|expr| self.eval_expr(expr, depth.next())).collect();
+                self.call_function(name.ident, args, depth.last())
+            },
             // ignore function definitions as we have those handled already
             Expr::FunctionDefinition(ExprFunctionDefinition { .. }) => Value::Unit,
             Expr::StructDefinition(ExprStructDefinition { .. }) => Value::Unit,
@@ -276,10 +272,9 @@ impl<'a, 'i> Vm<'a, 'i> {
             val
         }
     }
-    fn call_function(&mut self, name: &TokenIdent<'_>, args: &Separated<&Expr<'_, '_>, TokenComma>, depth: Depth) -> Value {
-        trace!("{}call_function: {}({:?})", depth, name.ident, args);
-        let args = args.iter().map(|expr| self.eval_expr(expr, depth.next())).collect();
-        match &self.functions[name.ident] {
+    fn call_function(&mut self, name: &str, args: Vec<Value>, depth: Depth) -> Value {
+        trace!("{}call_function: {}({:?})", depth, name, args);
+        match &self.functions[name] {
             Function::Rust(f) => f(&mut self.scopes, args),
             Function::Rebo(name, arg_binding_ids) => {
                 let mut scope = Scope::new();
@@ -305,6 +300,24 @@ impl<'a, 'i> Vm<'a, 'i> {
                 })))})
             }
         }
+    }
+    fn field_access<'b>(&mut self, binding: &Binding, fields: impl IntoIterator<Item = &'b str>, depth: Depth) -> Value {
+        let mut struct_arc = match self.load_binding(binding, depth.last()) {
+            Value::Struct(s) => s,
+            _ => unreachable!("typechecker ensures this is a struct"),
+        };
+        for field in fields {
+            let field_value = struct_arc.s.lock().borrow_mut().fields.iter()
+                .filter(|(name, _value)| name == field)
+                .map(|(_name, value)| value.clone())
+                .next()
+                .expect("typechecker ensures all fields exist");
+            match field_value {
+                Value::Struct(s) => struct_arc = s,
+                value => return value,
+            }
+        }
+        Value::Struct(struct_arc)
     }
 }
 

@@ -42,7 +42,7 @@ impl Foo {
 }
 let foo = Foo::new(42, "uiae");
 print(foo);
-//print(foo.a(), foo.b());
+print(foo.a(), foo.b());
 print(Foo::a(foo), Foo::b(foo));
 
 print(if true { 1337 } else { panic("F") } + 5);

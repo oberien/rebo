@@ -96,6 +96,17 @@ impl Value {
             _ => panic!("{}", msg),
         }
     }
+    pub fn type_name(&self) -> String {
+        match self {
+            Value::Unit => "unit".to_string(),
+            Value::Integer(_) => "int".to_string(),
+            Value::Float(_) => "float".to_string(),
+            Value::Bool(_) => "bool".to_string(),
+            Value::String(_) => "string".to_string(),
+            Value::Struct(s) => s.s.lock().borrow().name.clone(),
+            Value::Enum(e) => e.e.lock().borrow().name.clone(),
+        }
+    }
 }
 
 impl Display for Value {

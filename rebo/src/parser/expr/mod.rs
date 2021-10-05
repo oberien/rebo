@@ -229,6 +229,8 @@ pub enum Expr<'a, 'i> {
     Variable(ExprVariable<'i>),
     /// foo.bar.baz
     FieldAccess(ExprFieldAccess<'a, 'i>),
+    /// foo.bar.baz(args...)
+    MethodCall(ExprMethodCall<'a, 'i>),
     /// (expr)
     Parenthesized(ExprParenthesized<'a, 'i>),
     /// if expr {...} else if {...} else if {...} else {...}
@@ -365,6 +367,7 @@ impl<'a, 'i> Expr<'a, 'i> {
             |parser: &mut Parser<'a, '_, 'i>, depth| Ok(parser.arena.alloc(Expr::Literal(ExprLiteral::parse(parser, depth)?))),
             |parser: &mut Parser<'a, '_, 'i>, depth| Ok(parser.arena.alloc(Expr::FormatString(ExprFormatString::parse(parser, depth)?))),
             |parser: &mut Parser<'a, '_, 'i>, depth| Ok(parser.arena.alloc(Expr::Assign(ExprAssign::parse(parser, depth)?))),
+            |parser: &mut Parser<'a, '_, 'i>, depth| Ok(parser.arena.alloc(Expr::MethodCall(ExprMethodCall::parse(parser, depth)?))),
             |parser: &mut Parser<'a, '_, 'i>, depth| Ok(parser.arena.alloc(Expr::FieldAccess(ExprFieldAccess::parse(parser, depth)?))),
             |parser: &mut Parser<'a, '_, 'i>, depth| Ok(parser.arena.alloc(Expr::Variable(ExprVariable::parse(parser, depth)?))),
         ];
@@ -818,6 +821,41 @@ impl<'a, 'i> Spanned for ExprFieldAccess<'a, 'i> {
 impl<'a, 'i> Display for ExprFieldAccess<'a, 'i> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "{}.{}", self.variable, self.fields.iter().map(|f| f.ident).join("."))
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct ExprMethodCall<'a, 'i> {
+    pub variable: ExprVariable<'i>,
+    pub dot: TokenDot,
+    pub fields: Vec<(TokenIdent<'i>, TokenDot)>,
+    pub fn_call: ExprFunctionCall<'a, 'i>,
+}
+impl<'a, 'i> Parse<'a, 'i> for ExprMethodCall<'a, 'i> {
+    fn parse_marked(parser: &mut Parser<'a, '_, 'i>, depth: Depth) -> Result<Self, InternalError> {
+        let variable: ExprVariable = parser.parse(depth.next())?;
+        let dot: TokenDot = parser.parse(depth.next())?;
+        // try to parse function after every field
+        let mut fields = Vec::new();
+        let fn_call = loop {
+            match ExprFunctionCall::parse(parser, depth.next()) {
+                Ok(fn_call) => break fn_call,
+                Err(InternalError::Backtrack(..)) => fields.push(parser.parse(depth.next())?),
+                Err(InternalError::Error(e)) => return Err(InternalError::Error(e)),
+            }
+        };
+        Ok(ExprMethodCall { variable, dot, fields, fn_call })
+    }
+}
+impl<'a, 'i> Spanned for ExprMethodCall<'a, 'i> {
+    fn span(&self) -> Span {
+        Span::new(self.variable.span.file, self.variable.span.start, self.fn_call.span().end)
+    }
+}
+impl<'a, 'i> Display for ExprMethodCall<'a, 'i> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        let fields = self.fields.iter().map(|(f, _)| format!("{}.", f.ident)).join(".");
+        write!(f, "{}.{}{}", self.variable, fields, self.fn_call)
     }
 }
 

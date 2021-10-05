@@ -121,6 +121,20 @@ impl From<&ExprLiteral> for SpecificType {
     }
 }
 
+impl SpecificType {
+    pub fn type_name(&self) -> &str {
+        match self {
+            SpecificType::Unit => "()",
+            SpecificType::Integer => "int",
+            SpecificType::Float => "float",
+            SpecificType::Bool => "bool",
+            SpecificType::String => "string",
+            SpecificType::Struct(name) => name,
+            SpecificType::Enum(name) => name,
+        }
+    }
+}
+
 impl fmt::Display for SpecificType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {

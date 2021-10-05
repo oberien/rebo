@@ -53,6 +53,7 @@ pub enum ErrorCode {
     DuplicateEnumVariant,
     DuplicateStructField,
     SelfBinding,
+    UnknownMethod,
 }
 use ErrorCode::*;
 
@@ -112,6 +113,7 @@ impl diagnostic::ErrorCode for ErrorCode {
             DuplicateEnumVariant => "0052",
             DuplicateStructField => "0053",
             SelfBinding => "0054",
+            UnknownMethod => "0055",
         }.to_string()
     }
 
@@ -170,6 +172,7 @@ impl diagnostic::ErrorCode for ErrorCode {
             DuplicateEnumVariant => "duplicate enum variant",
             DuplicateStructField => "duplicate struct field",
             SelfBinding => "self binding not allowed",
+            UnknownMethod => "unknown method",
         }.to_string()
     }
 }

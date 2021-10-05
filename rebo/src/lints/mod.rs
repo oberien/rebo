@@ -13,6 +13,7 @@ mod ifelse_return_value;
 mod match_lints;
 mod unknown_impl_block_target;
 mod enum_def_init_lints;
+mod unknown_method;
 
 use crate::parser::Expr;
 use crate::common::MetaInfo;
@@ -32,6 +33,7 @@ use crate::lints::ifelse_return_value::IfElseReturnValue;
 use crate::lints::match_lints::MatchLints;
 use crate::lints::unknown_impl_block_target::UnknownImplBlockTarget;
 use crate::lints::enum_def_init_lints::EnumDefInitLints;
+use crate::lints::unknown_method::UnknownMethod;
 
 pub fn lint<'a, 'b, 'i>(diagnostics: &'b Diagnostics, meta_info: &'b MetaInfo<'a, 'i>, exprs: &[&'a Expr<'a, 'i>]) {
     let mut visitor_driver = VisitorDriver::new(diagnostics, meta_info);
@@ -50,6 +52,7 @@ pub fn lint<'a, 'b, 'i>(diagnostics: &'b Diagnostics, meta_info: &'b MetaInfo<'a
         &MatchLints,
         &UnknownImplBlockTarget,
         &EnumDefInitLints,
+        &UnknownMethod,
     ]);
 
     visitor_driver.visit_exprs(exprs);
