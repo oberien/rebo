@@ -5,6 +5,7 @@ fn main() {
         .filter_level(LevelFilter::Info)
         .parse_default_env()
         .init();
-    let code = std::fs::read_to_string("test.re").unwrap();
-    rebo::run("test.re".to_string(), code);
+    let filename = std::env::args().nth(1).unwrap_or_else(|| "test.re".to_string());
+    let code = std::fs::read_to_string(&filename).unwrap();
+    rebo::run(filename, code);
 }
