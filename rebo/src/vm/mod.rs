@@ -1,14 +1,18 @@
-use crate::parser::{Expr, Binding, ExprVariable, ExprInteger, ExprFloat, ExprBool, ExprString, ExprAssign, ExprBind, ExprPattern, ExprPatternTyped, ExprPatternUntyped, ExprLessThan, ExprLessEquals, ExprEquals, ExprNotEquals, ExprGreaterEquals, ExprGreaterThan, ExprAdd, ExprSub, ExprMul, ExprDiv, ExprBoolNot, ExprBoolAnd, ExprBoolOr, ExprParenthesized, ExprBlock, ExprFunctionCall, ExprFunctionDefinition, BlockBody, ExprStructDefinition, ExprStructInitialization, ExprAssignLhs, ExprFieldAccess, ExprIfElse, ExprWhile, ExprFormatString, ExprFormatStringPart, ExprLiteral, ExprMatch, ExprMatchPattern, ExprEnumDefinition, ExprEnumInitialization, ExprMethodCall};
-use crate::common::{Value, MetaInfo, Depth, Struct, FuzzyFloat, StructArc, Function, EnumArc, Enum};
-use crate::scope::{Scopes, Scope};
-use crate::lexer::{TokenInteger, TokenFloat, TokenBool, TokenDqString, TokenIdent};
-use indexmap::map::IndexMap;
-use std::sync::Arc;
-use parking_lot::ReentrantMutex;
-use std::cell::RefCell;
 use std::borrow::Cow;
-use crate::typeck::types::StructType;
+use std::cell::RefCell;
+use std::sync::Arc;
+
+use indexmap::map::IndexMap;
 use itertools::Itertools;
+use parking_lot::ReentrantMutex;
+
+use crate::common::{Depth, Enum, EnumArc, Function, FuzzyFloat, MetaInfo, Struct, StructArc, Value};
+use crate::lexer::{TokenBool, TokenDqString, TokenFloat, TokenIdent, TokenInteger};
+use crate::parser::{Binding, BlockBody, Expr, ExprAdd, ExprAssign, ExprAssignLhs, ExprBind, ExprBlock, ExprBool, ExprBoolAnd, ExprBoolNot, ExprBoolOr, ExprDiv, ExprEnumDefinition, ExprEnumInitialization, ExprEquals, ExprFieldAccess, ExprFloat, ExprFormatString, ExprFormatStringPart, ExprFunctionCall, ExprFunctionDefinition, ExprGreaterEquals, ExprGreaterThan, ExprIfElse, ExprInteger, ExprLessEquals, ExprLessThan, ExprLiteral, ExprMatch, ExprMatchPattern, ExprMethodCall, ExprMul, ExprNotEquals, ExprParenthesized, ExprPattern, ExprPatternTyped, ExprPatternUntyped, ExprString, ExprStructDefinition, ExprStructInitialization, ExprSub, ExprVariable, ExprWhile};
+use crate::typeck::types::StructType;
+pub use crate::vm::scope::{Scopes, Scope};
+
+mod scope;
 
 pub struct Vm<'a, 'i> {
     scopes: Scopes,

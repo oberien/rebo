@@ -1,5 +1,5 @@
 use crate::common::{Value, MetaInfo, ExternalFunction};
-use crate::scope::Scopes;
+use crate::vm::Scopes;
 use crate as rebo;
 use std::borrow::Cow;
 use itertools::Itertools;

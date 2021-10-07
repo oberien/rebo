@@ -1,6 +1,7 @@
 use std::fmt;
 
-use crate::scope::{Scopes, BindingId};
+use crate::vm::Scopes;
+use crate::parser::BindingId;
 use std::sync::Arc;
 use std::fmt::{Display, Formatter, Debug};
 use std::ops::{Add, Sub, Mul, Div};

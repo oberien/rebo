@@ -67,7 +67,7 @@ pub fn function(_args: TokenStream, input: TokenStream) -> TokenStream {
     }
 
     let res = quote::quote! {
-        #vis #constness #asyncness #unsafety #abi fn #fn_ident #generics (scopes: &mut ::rebo::scope::Scopes, args: ::std::vec::Vec<::rebo::common::Value>) -> ::rebo::common::Value {
+        #vis #constness #asyncness #unsafety #abi fn #fn_ident #generics (scopes: &mut ::rebo::vm::Scopes, args: ::std::vec::Vec<::rebo::common::Value>) -> ::rebo::common::Value {
             let (#(#input_pats,)*): (#(#input_types,)*) = ::rebo::common::FromValues::from_values(args.into_iter());
             let res: #output = #block;
             ::rebo::common::IntoValue::into_value(res)

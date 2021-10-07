@@ -7,17 +7,19 @@ use diagnostic::{Span, Diagnostics, DiagnosticBuilder, FileId};
 
 use crate::lexer::{Lexer, Token, TokenType, TokenMut, TokenIdent, TokenOpenCurly, TokenCloseCurly, TokenCloseParen, TokenOpenParen, TokenLineComment, TokenBlockComment};
 use crate::error_codes::ErrorCode;
-use crate::scope::BindingId;
 
 mod expr;
 mod precedence;
 mod parse;
+mod scope;
 
 pub use expr::*;
 pub use parse::{Parse, Spanned, Separated};
+pub use scope::BindingId;
 use crate::common::{MetaInfo, Depth};
 use indexmap::map::IndexMap;
 use itertools::Itertools;
+use crate::parser::scope::Scope;
 
 #[derive(Debug, Clone)]
 pub enum Error {
@@ -95,10 +97,6 @@ pub struct Parser<'a, 'b, 'i> {
     scopes: Vec<Scope<'i>>,
     memoization: IndexMap<(FileId, usize), (&'a Expr<'a, 'i>, ParseUntil)>,
     binding_memoization: BTreeMap<Span, Binding<'i>>,
-}
-
-struct Scope<'i> {
-    idents: IndexMap<&'i str, Binding<'i>>
 }
 
 /// All expression parsing function consume whitespace and comments before tokens, but not after.

@@ -3,11 +3,18 @@ extern crate log;
 extern crate self as rebo;
 
 use std::sync::Mutex;
+use std::time::Instant;
 
-use typed_arena::Arena;
 use diagnostic::{Diagnostics, Span};
+use itertools::Itertools;
+use typed_arena::Arena;
 
-use crate::parser::{Parser, Ast};
+pub use rebo_derive::function;
+
+// use crate::typeck::Typechecker;
+use crate::common::MetaInfo;
+use crate::lexer::Lexer;
+use crate::parser::{Ast, Parser};
 use crate::vm::Vm;
 
 mod error_codes;
@@ -17,19 +24,11 @@ mod parser;
 mod typeck;
 mod lints;
 mod vm;
-mod scope;
 mod stdlib;
 mod util;
 mod common;
 #[cfg(test)]
 mod tests;
-
-pub use rebo_derive::function;
-// use crate::typeck::Typechecker;
-use crate::common::MetaInfo;
-use std::time::Instant;
-use crate::lexer::Lexer;
-use itertools::Itertools;
 
 const EXTERNAL_SOURCE: &str = "defined externally";
 lazy_static::lazy_static! {

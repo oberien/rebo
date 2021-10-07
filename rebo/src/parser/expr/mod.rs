@@ -4,7 +4,7 @@ pub use pattern::{ExprPattern, ExprPatternTyped, ExprPatternUntyped, ExprMatchPa
 
 use std::fmt::{self, Write, Display, Formatter, Debug};
 use derive_more::Display;
-use crate::scope::BindingId;
+use crate::parser::scope::BindingId;
 use crate::util::PadFmt;
 use crate::lexer::{TokenOpenParen, TokenCloseParen, TokenIdent, TokenInteger, TokenFloat, TokenBool, TokenDqString, TokenType, TokenStringType, TokenIntType, TokenFloatType, TokenBoolType, Token, TokenLet, TokenColon, TokenMut, TokenAssign, TokenOpenCurly, TokenCloseCurly, TokenComma, TokenArrow, TokenFn, TokenBang, TokenPlus, TokenMinus, TokenStar, TokenSlash, TokenDoubleAmp, TokenDoublePipe, TokenLessThan, TokenLessEquals, TokenEquals, TokenNotEquals, TokenGreaterEquals, TokenGreaterThan, TokenStruct, TokenDot, TokenIf, TokenElse, TokenWhile, TokenFormatString, TokenFormatStringPart, Lexer, TokenMatch, TokenFatArrow, TokenEnum, TokenDoubleColon, TokenImpl};
 use crate::parser::{Parse, InternalError, Parser, Expected};
