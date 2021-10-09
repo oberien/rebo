@@ -1,6 +1,6 @@
 use std::fmt;
 use std::borrow::Cow;
-use std::collections::{HashMap, BTreeMap, btree_map::Entry};
+use std::collections::{HashMap, BTreeMap, btree_map::Entry, HashSet};
 
 use typed_arena::Arena;
 use diagnostic::{Span, Diagnostics, DiagnosticBuilder, FileId};
@@ -20,6 +20,8 @@ use crate::common::{MetaInfo, Depth};
 use indexmap::map::IndexMap;
 use itertools::Itertools;
 use crate::parser::scope::Scope;
+use std::cell::RefCell;
+use std::rc::Rc;
 
 #[derive(Debug, Clone)]
 pub enum Error {
@@ -94,9 +96,19 @@ pub struct Parser<'a, 'b, 'i> {
     /// already parsed expressions in the first-pass, to be consumed by the second pass
     pre_parsed: HashMap<(FileId, usize), &'a Expr<'a, 'i>>,
     /// stack of scopes with bindings that are still live
-    scopes: Vec<Scope<'i>>,
+    scopes: Rc<RefCell<Vec<Scope<'i>>>>,
     memoization: IndexMap<(FileId, usize), (&'a Expr<'a, 'i>, ParseUntil)>,
     binding_memoization: BTreeMap<Span, Binding<'i>>,
+    generic_memoization: HashSet<Span>,
+}
+
+pub struct ScopeGuard<'i> {
+    scopes: Rc<RefCell<Vec<Scope<'i>>>>,
+}
+impl<'i> Drop for ScopeGuard<'i> {
+    fn drop(&mut self) {
+        self.scopes.borrow_mut().pop().unwrap();
+    }
 }
 
 /// All expression parsing function consume whitespace and comments before tokens, but not after.
@@ -109,9 +121,10 @@ impl<'a, 'b, 'i> Parser<'a, 'b, 'i> {
             bindings: Vec::new(),
             meta_info,
             pre_parsed: HashMap::new(),
-            scopes: vec![Scope { idents: IndexMap::new() }],
+            scopes: Rc::new(RefCell::new(vec![Scope { idents: IndexMap::new(), generics: IndexMap::new() }])),
             memoization: IndexMap::new(),
             binding_memoization: BTreeMap::new(),
+            generic_memoization: HashSet::new(),
         }
     }
 
@@ -152,23 +165,40 @@ impl<'a, 'b, 'i> Parser<'a, 'b, 'i> {
             }
             Entry::Occupied(occupied) => *occupied.get(),
         };
-        self.scopes.last_mut().unwrap().idents.insert(binding.ident.ident, binding);
+        self.scopes.borrow_mut().last_mut().unwrap().idents.insert(binding.ident.ident, binding);
         binding
     }
-    fn get_binding(&mut self, ident: &str) -> Option<Binding<'i>> {
-        self.scopes.iter().rev()
+    fn get_binding(&self, ident: &str) -> Option<Binding<'i>> {
+        self.scopes.borrow().iter().rev()
             .filter_map(|scope| scope.idents.get(ident))
             .cloned()
             .next()
     }
-    fn push_scope(&mut self) -> &mut Scope<'i> {
-        self.scopes.push(Scope { idents: IndexMap::new() });
-        self.scopes.last_mut().unwrap()
+    fn add_generic(&mut self, generic: Generic<'i>) {
+        if self.generic_memoization.contains(&generic.def_ident.span) {
+            return;
+        }
+        self.generic_memoization.insert(generic.def_ident.span);
+        match self.get_generic(generic.ident.ident) {
+            Some(prev) => self.diagnostics.error(ErrorCode::DuplicateGeneric)
+                .with_error_label(generic.ident.span, "this generic has already been defined")
+                .with_info_label(prev.def_ident.span, "previously defined here")
+                .emit(),
+            None => {
+                self.scopes.borrow_mut().last_mut().unwrap().generics.insert(generic.ident.ident, generic);
+            }
+        }
     }
-    fn pop_scope(&mut self) {
-        let scope = self.scopes.pop().unwrap();
-        for (_, binding) in scope.idents.into_iter() {
-            self.bindings.push(binding);
+    fn get_generic(&self, ident: &str) -> Option<Generic<'i>> {
+        self.scopes.borrow().iter().rev()
+            .filter_map(|scope| scope.generics.get(ident))
+            .cloned()
+            .next()
+    }
+    fn push_scope(&self) -> ScopeGuard<'i> {
+        self.scopes.borrow_mut().push(Scope { idents: IndexMap::new(), generics: IndexMap::new() });
+        ScopeGuard {
+            scopes: Rc::clone(&self.scopes)
         }
     }
 
@@ -199,8 +229,8 @@ impl<'a, 'b, 'i> Parser<'a, 'b, 'i> {
         T::parse_scoped(self, depth)
     }
 
-    fn similar_ident(&self, ident: &'i str) -> Option<&str> {
-        crate::util::similar_name(ident, self.scopes.iter().flat_map(|scope| scope.idents.keys()))
+    fn similar_ident(&self, ident: &'i str) -> Option<&'i str> {
+        crate::util::similar_name(ident, self.scopes.borrow().iter().flat_map(|scope| scope.idents.keys().copied()))
     }
 
     fn diagnostic_unknown_identifier(&mut self, ident: TokenIdent<'i>, f: impl for<'d> FnOnce(DiagnosticBuilder<'d, ErrorCode>) -> DiagnosticBuilder<'d, ErrorCode>) -> Binding<'i> {

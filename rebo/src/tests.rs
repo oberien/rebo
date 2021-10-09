@@ -137,13 +137,9 @@ fn functions() {
     "#.to_string()), ReturnValue::Ok);
 }
 #[test]
-fn function_diagnostics() {
+fn free_function_diagnostics() {
     let _ = env_logger::builder().is_test(true).try_init();
     assert_eq!(rebo::run("test".to_string(), r#"
-        fn takes_int(x: int) {}
-        // wrong arg type (float instead of int)
-        takes_int(2.0);
-
         // overwrite external function
         fn add_one() -> () {}
 
@@ -156,6 +152,11 @@ fn function_diagnostics() {
             y = y + 20;
             x + y
         }
+
+        fn takes_int(x: int) {}
+        // wrong arg type (float instead of int)
+        takes_int(2.0);
+
         // wrong returned type
         fn bar() -> int { 2.0 }
         // wrong number of arguments
@@ -588,5 +589,38 @@ fn method_diagnostics() {
         foo.foo(1337, 42);
         // invalid return type
         let a: string = foo.foo(1337, "uiae");
+    "#.to_string()), ReturnValue::Diagnostics(6));
+}
+
+#[test]
+fn generics() {
+    let _ = env_logger::builder().is_test(true).try_init();
+    assert_eq!(rebo::run("test".to_string(), r#"
+        enum Option<T> {
+            Some(T),
+            None,
+        }
+        impl Option<T> {
+            fn unwrap(self) -> T {
+                match self {
+                    Option::Some(t) => t,
+                    Option::None => panic("tried to unwrap a None value"),
+                }
+            }
+        }
+        let a = Option::Some(42);
+        let b = Option::Some("uiae");
+        print(a.unwrap(), b.unwrap());
+
+        struct Foo<T> {
+            t: T,
+        }
+        struct Bar<A, B, C> {
+            a: A,
+            b: B,
+            c: C,
+        }
+
+        fn foo<T>(t: T) -> T { t }
     "#.to_string()), ReturnValue::Diagnostics(6));
 }

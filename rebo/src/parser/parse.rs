@@ -34,9 +34,9 @@ pub trait Parse<'a, 'i>: Sized {
         res
     }
     fn parse_scoped(parser: &mut Parser<'a, '_, 'i>, depth: Depth) -> Result<Self, InternalError> {
-        parser.push_scope();
+        let scope_guard = parser.push_scope();
         let res = Self::parse(parser, depth);
-        parser.pop_scope();
+        drop(scope_guard);
         res
     }
     fn parse_marked(parser: &mut Parser<'a, '_, 'i>, depth: Depth) -> Result<Self, InternalError>;

@@ -55,6 +55,7 @@ pub enum ErrorCode {
     SelfBinding,
     UnknownMethod,
     NotAMethod,
+    DuplicateGeneric,
 }
 use ErrorCode::*;
 
@@ -116,6 +117,7 @@ impl diagnostic::ErrorCode for ErrorCode {
             SelfBinding => "0054",
             UnknownMethod => "0055",
             NotAMethod => "0056",
+            DuplicateGeneric => "0057",
         }.to_string()
     }
 
@@ -176,6 +178,7 @@ impl diagnostic::ErrorCode for ErrorCode {
             SelfBinding => "self binding not allowed",
             UnknownMethod => "unknown method",
             NotAMethod => "not a method",
+            DuplicateGeneric => "duplicate generic type",
         }.to_string()
     }
 }

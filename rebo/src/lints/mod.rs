@@ -11,7 +11,7 @@ mod struct_field_access;
 mod unnecessary_parens;
 mod ifelse_return_value;
 mod match_lints;
-mod unknown_impl_block_target;
+mod impl_blocks;
 mod enum_def_init_lints;
 mod unknown_method;
 
@@ -31,7 +31,7 @@ use crate::lints::struct_initialization_fields::StructInitializationFields;
 use crate::lints::unnecessary_parens::UnnecessaryParens;
 use crate::lints::ifelse_return_value::IfElseReturnValue;
 use crate::lints::match_lints::MatchLints;
-use crate::lints::unknown_impl_block_target::UnknownImplBlockTarget;
+use crate::lints::impl_blocks::ImplBlockLints;
 use crate::lints::enum_def_init_lints::EnumDefInitLints;
 use crate::lints::unknown_method::UnknownMethod;
 
@@ -50,7 +50,7 @@ pub fn lint<'a, 'b, 'i>(diagnostics: &'b Diagnostics, meta_info: &'b MetaInfo<'a
         &UnnecessaryParens,
         &IfElseReturnValue,
         &MatchLints,
-        &UnknownImplBlockTarget,
+        &ImplBlockLints,
         &EnumDefInitLints,
         &UnknownMethod,
     ]);

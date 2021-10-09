@@ -106,6 +106,7 @@ impl Type {
                     }
                 }
             },
+            ExprType::Generic(_) => todo!(),
         }
     }
 }
