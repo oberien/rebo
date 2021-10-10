@@ -58,6 +58,11 @@ impl<'a, 'i, T: Parse<'a, 'i>> Parse<'a, 'i> for Vec<T> {
         Ok(vec)
     }
 }
+impl<'a, 'i, T: Parse<'a, 'i>> Parse<'a, 'i> for Box<T> {
+    fn parse_marked(parser: &mut Parser<'a, '_, 'i>, depth: Depth) -> Result<Self, InternalError> {
+        Ok(Box::new(parser.parse(depth)?))
+    }
+}
 
 pub trait Spanned {
     fn span(&self) -> Span;

@@ -19,11 +19,11 @@ macro_rules! module_path {
 
 
 #[derive(Debug, Clone, Display)]
-pub enum ExprPattern<'i> {
-    Typed(ExprPatternTyped<'i>),
+pub enum ExprPattern<'a, 'i> {
+    Typed(ExprPatternTyped<'a, 'i>),
     Untyped(ExprPatternUntyped<'i>),
 }
-impl<'a, 'i> Parse<'a, 'i> for ExprPattern<'i> {
+impl<'a, 'i> Parse<'a, 'i> for ExprPattern<'a, 'i> {
     fn parse_marked(parser: &mut Parser<'a, '_, 'i>, depth: Depth) -> Result<Self, InternalError> {
         let err1 = match ExprPatternTyped::parse(parser, depth.next()) {
             Ok(typed) => return Ok(ExprPattern::Typed(typed)),
@@ -36,7 +36,7 @@ impl<'a, 'i> Parse<'a, 'i> for ExprPattern<'i> {
         Err(helper::last_error(&[err1, err2]))
     }
 }
-impl<'i> Spanned for ExprPattern<'i> {
+impl<'a, 'i> Spanned for ExprPattern<'a, 'i> {
     fn span(&self) -> Span {
         match self {
             ExprPattern::Typed(t) => t.span(),
@@ -71,12 +71,12 @@ impl<'i> Display for ExprPatternUntyped<'i> {
 }
 
 #[derive(Debug, Clone)]
-pub struct ExprPatternTyped<'i> {
+pub struct ExprPatternTyped<'a, 'i> {
     pub pattern: ExprPatternUntyped<'i>,
     pub colon_token: TokenColon,
-    pub typ: ExprType<'i>,
+    pub typ: ExprType<'a, 'i>,
 }
-impl<'a, 'i> Parse<'a, 'i> for ExprPatternTyped<'i> {
+impl<'a, 'i> Parse<'a, 'i> for ExprPatternTyped<'a, 'i> {
     fn parse_marked(parser: &mut Parser<'a, '_, 'i>, depth: Depth) -> Result<Self, InternalError> {
         Ok(ExprPatternTyped {
             pattern: parser.parse(depth.next())?,
@@ -85,14 +85,14 @@ impl<'a, 'i> Parse<'a, 'i> for ExprPatternTyped<'i> {
         })
     }
 }
-impl<'i> Spanned for ExprPatternTyped<'i> {
+impl<'a, 'i> Spanned for ExprPatternTyped<'a, 'i> {
     fn span(&self) -> Span {
         let first = self.pattern.span();
         let last = self.typ.span();
         Span::new(first.file, first.start, last.end)
     }
 }
-impl<'i> Display for ExprPatternTyped<'i> {
+impl<'a, 'i> Display for ExprPatternTyped<'a, 'i> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "{}: {}", self.pattern, self.typ)
     }

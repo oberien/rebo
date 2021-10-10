@@ -11,7 +11,7 @@ impl Visitor for UnknownStructFieldType {
         let ExprStructDefinition { fields, .. } = def;
 
         for (field, _colon, typ) in fields {
-            if let ExprType::UserType(s) = typ {
+            if let ExprType::UserType(s, _generics) = typ {
                 if meta_info.user_types.get(s.ident).is_none() {
                     let mut diag = diagnostics.error(ErrorCode::UnknownStructFieldType)
                         .with_error_label(typ.span(), format!("unknown type `{}` of field `{}`", s.ident, field.ident));

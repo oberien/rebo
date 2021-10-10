@@ -610,7 +610,8 @@ fn generics() {
         }
         let a = Option::Some(42);
         let b = Option::Some("uiae");
-        print(a.unwrap(), b.unwrap());
+        let c: Option<float> = Option::None;
+        print(a.unwrap(), b.unwrap(), c);
 
         struct Foo<T> {
             t: T,

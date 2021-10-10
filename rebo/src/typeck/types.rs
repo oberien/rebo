@@ -89,7 +89,7 @@ impl Type {
             ExprType::Float(_) => Type::Specific(SpecificType::Float),
             ExprType::Bool(_) => Type::Specific(SpecificType::Bool),
             ExprType::Unit(_, _) => Type::Specific(SpecificType::Unit),
-            ExprType::UserType(ut) => {
+            ExprType::UserType(ut, generics) => {
                 match meta_info.user_types.get(ut.ident) {
                     Some(UserType::Struct(s)) => Type::Specific(SpecificType::Struct(s.name.ident.to_string())),
                     Some(UserType::Enum(e)) => Type::Specific(SpecificType::Enum(e.name.ident.to_string())),

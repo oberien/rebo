@@ -509,18 +509,18 @@ impl<'a, 'i> Parse<'a, 'i> for &'a Expr<'a, 'i> {
 }
 
 #[derive(Debug, Clone)]
-pub enum ExprType<'i> {
+pub enum ExprType<'a, 'i> {
     String(TokenStringType),
     Int(TokenIntType),
     Float(TokenFloatType),
     Bool(TokenBoolType),
     Unit(TokenOpenParen, TokenCloseParen),
     // struct, enum, typedef, ...
-    UserType(TokenIdent<'i>),
+    UserType(TokenIdent<'i>, Option<(TokenLessThan, Box<Separated<'a, 'i, ExprType<'a, 'i>, TokenComma>>, TokenGreaterThan)>),
     Generic(Generic<'i>),
 }
-impl<'a, 'i> Parse<'a, 'i> for ExprType<'i> {
-    fn parse_marked(parser: &mut Parser<'a, '_, 'i>, _depth: Depth) -> Result<Self, InternalError> {
+impl<'a, 'i> Parse<'a, 'i> for ExprType<'a, 'i> {
+    fn parse_marked(parser: &mut Parser<'a, '_, 'i>, depth: Depth) -> Result<Self, InternalError> {
         let res = match parser.peek_token(0)? {
             Token::StringType(t) => ExprType::String(t),
             Token::IntType(t) => ExprType::Int(t),
@@ -542,7 +542,9 @@ impl<'a, 'i> Parse<'a, 'i> for ExprType<'i> {
                 if let Some(generic) = parser.get_generic(i.ident) {
                     ExprType::Generic(generic)
                 } else {
-                    ExprType::UserType(i)
+                    drop(parser.next_token());
+                    let generics = parser.parse(depth.last())?;
+                    return Ok(ExprType::UserType(i, generics))
                 }
             },
             _ => return Err(InternalError::Backtrack(
@@ -554,7 +556,13 @@ impl<'a, 'i> Parse<'a, 'i> for ExprType<'i> {
         Ok(res)
     }
 }
-impl<'i> Spanned for ExprType<'i> {
+impl
+<'a, 'i> From<Generic<'i>> for ExprType<'a, 'i> {
+    fn from(g: Generic<'i>) -> Self {
+        ExprType::Generic(g)
+    }
+}
+impl<'a, 'i> Spanned for ExprType<'a, 'i> {
     fn span(&self) -> Span {
         match self {
             ExprType::String(t) => t.span(),
@@ -562,12 +570,15 @@ impl<'i> Spanned for ExprType<'i> {
             ExprType::Float(t) => t.span(),
             ExprType::Bool(t) => t.span(),
             ExprType::Unit(o, c) => Span::new(o.span.file, o.span.start, c.span.end),
-            ExprType::UserType(ut) => ut.span(),
+            ExprType::UserType(ut, g) => match g {
+                Some((_open, _g, close)) => Span::new(ut.span().file, ut.span().start, close.span.end),
+                None => ut.span()
+            }
             ExprType::Generic(g) => g.span(),
         }
     }
 }
-impl<'i> Display for ExprType<'i> {
+impl<'a, 'i> Display for ExprType<'a, 'i> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             ExprType::String(_) => write!(f, "string"),
@@ -575,7 +586,13 @@ impl<'i> Display for ExprType<'i> {
             ExprType::Float(_) => write!(f, "float"),
             ExprType::Bool(_) => write!(f, "bool"),
             ExprType::Unit(_, _) => write!(f, "()"),
-            ExprType::UserType(ut) => write!(f, "{}", ut.ident),
+            ExprType::UserType(ut, g) => {
+                write!(f, "{}", ut.ident)?;
+                if let Some((_open, g, _close)) = g {
+                    write!(f, "{}", g)?;
+                }
+                Ok(())
+            },
             ExprType::Generic(g) => write!(f, "{}", g.ident.ident),
         }
     }
@@ -597,6 +614,11 @@ impl<'a, 'i> Parse<'a, 'i> for ExprGenerics<'a, 'i> {
             generics: generics.map(Separated::from),
             close,
         })
+    }
+}
+impl<'a, 'i> Display for ExprGenerics<'a, 'i> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "<{}>", self.generics.iter().join(", "))
     }
 }
 
@@ -786,7 +808,7 @@ impl<'a, 'i> Display for ExprFormatString<'a, 'i> {
 #[derive(Debug, Clone)]
 pub struct ExprBind<'a, 'i> {
     pub let_token: TokenLet,
-    pub pattern: ExprPattern<'i>,
+    pub pattern: ExprPattern<'a, 'i>,
     pub assign: TokenAssign,
     pub expr: &'a Expr<'a, 'i>,
 }
@@ -1363,9 +1385,9 @@ pub struct ExprFunctionDefinition<'a, 'i> {
     pub open: TokenOpenParen,
     pub self_arg: Option<Binding<'i>>,
     pub self_arg_comma: Option<TokenComma>,
-    pub args: Separated<'a, 'i, ExprPatternTyped<'i>, TokenComma>,
+    pub args: Separated<'a, 'i, ExprPatternTyped<'a, 'i>, TokenComma>,
     pub close: TokenCloseParen,
-    pub ret_type: Option<(TokenArrow, ExprType<'i>)>,
+    pub ret_type: Option<(TokenArrow, ExprType<'a, 'i>)>,
     pub body: ExprBlock<'a, 'i>,
 }
 impl<'a, 'i> ExprFunctionDefinition<'a, 'i> {
@@ -1381,7 +1403,7 @@ impl<'a, 'i> Parse<'a, 'i> for ExprFunctionDefinition<'a, 'i> {
         let name = parser.parse(depth.next())?;
         let generics = parser.parse(depth.next())?;
         let open = parser.parse(depth.next())?;
-        let self_with_args: Option<(SelfBinding<'i>, Option<(TokenComma, Separated<'a, 'i, ExprPatternTyped<'i>, TokenComma>)>)> = parser.parse(depth.next())?;
+        let self_with_args: Option<(SelfBinding<'i>, Option<(TokenComma, Separated<'a, 'i, ExprPatternTyped<'a, 'i>, TokenComma>)>)> = parser.parse(depth.next())?;
         let (self_arg, self_arg_comma, args) = match self_with_args {
             Some((self_binding, rest)) => match rest {
                 Some((comma, args)) => (Some(self_binding.b), Some(comma), args),
@@ -1411,7 +1433,7 @@ impl<'a, 'i> Display for ExprFunctionDefinition<'a, 'i> {
     }
 }
 
-pub type ExprStructDefFields<'a, 'i> = Separated<'a, 'i, (TokenIdent<'i>, TokenColon, ExprType<'i>), TokenComma>;
+pub type ExprStructDefFields<'a, 'i> = Separated<'a, 'i, (TokenIdent<'i>, TokenColon, ExprType<'a, 'i>), TokenComma>;
 #[derive(Debug, Clone)]
 pub struct ExprStructDefinition<'a, 'i> {
     pub struct_token: TokenStruct,
@@ -1528,7 +1550,7 @@ impl<'a, 'i> Display for ExprEnumDefinition<'a, 'i> {
 #[derive(Debug, Clone)]
 pub struct ExprEnumVariant<'a, 'i> {
     pub name: TokenIdent<'i>,
-    pub fields: Option<(TokenOpenParen, Separated<'a, 'i, ExprType<'i>, TokenComma>, TokenCloseParen)>,
+    pub fields: Option<(TokenOpenParen, Separated<'a, 'i, ExprType<'a, 'i>, TokenComma>, TokenCloseParen)>,
 }
 impl<'a, 'i> Parse<'a, 'i> for ExprEnumVariant<'a, 'i> {
     fn parse_marked(parser: &mut Parser<'a, '_, 'i>, depth: Depth) -> Result<Self, InternalError> {
@@ -1590,7 +1612,7 @@ impl<'a, 'i> Parse<'a, 'i> for ExprImplBlock<'a, 'i> {
         let _scope_guard = parser.push_scope();
         let impl_token = parser.parse(depth.next())?;
         let name: TokenIdent = parser.parse(depth.next())?;
-        let generics = parser.parse(depth.next())?;
+        let generics: Option<ExprGenerics> = parser.parse(depth.next())?;
         let open = parser.parse(depth.next())?;
         let mut functions: Vec<ExprFunctionDefinition<'a, 'i>> = parser.parse(depth.next())?;
         let close = parser.parse(depth.last())?;
@@ -1608,7 +1630,13 @@ impl<'a, 'i> Parse<'a, 'i> for ExprImplBlock<'a, 'i> {
                     typ: ExprType::UserType(TokenIdent {
                         ident: name.ident,
                         span: self_arg.ident.span,
+                    }, match generics.clone() {
+                        Some(ExprGenerics { open, generics: Some(generics), close }) => {
+                            Some((open, Box::new(Separated::from(generics)), close,))
+                        }
+                        _ => None,
                     }),
+
                 };
                 fun.args.prepend(typed, fun.self_arg_comma);
             }
