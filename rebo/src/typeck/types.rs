@@ -2,7 +2,7 @@ use std::fmt;
 use std::borrow::Cow;
 use strum_macros::{EnumDiscriminants, EnumIter};
 use crate::parser::{ExprLiteral, ExprType, Spanned};
-use diagnostic::Diagnostics;
+use diagnostic::{Diagnostics, Span};
 use crate::common::{MetaInfo, UserType};
 use crate::error_codes::ErrorCode;
 
@@ -28,6 +28,8 @@ pub enum SpecificType {
     Struct(String),
     /// enum name
     Enum(String),
+    /// a generic variable inside a function or impl-block
+    Generic(Span),
 }
 #[derive(Debug, Clone, PartialOrd, Ord, PartialEq, Eq, Hash)]
 pub struct FunctionType {
@@ -89,7 +91,7 @@ impl Type {
             ExprType::Float(_) => Type::Specific(SpecificType::Float),
             ExprType::Bool(_) => Type::Specific(SpecificType::Bool),
             ExprType::Unit(_, _) => Type::Specific(SpecificType::Unit),
-            ExprType::UserType(ut, generics) => {
+            ExprType::UserType(ut, _generics) => {
                 match meta_info.user_types.get(ut.ident) {
                     Some(UserType::Struct(s)) => Type::Specific(SpecificType::Struct(s.name.ident.to_string())),
                     Some(UserType::Enum(e)) => Type::Specific(SpecificType::Enum(e.name.ident.to_string())),
@@ -101,12 +103,12 @@ impl Type {
                             diag = diag.with_info_label(typ.span(), format!("did you mean `{}`", similar));
                         }
                         diag.emit();
-                        // hack to make the type resolved regularly even though we don't have any information
+                        // hack to make the type resolve regularly even though we don't have any information
                         Type::Top
                     }
                 }
             },
-            ExprType::Generic(_) => todo!(),
+            ExprType::Generic(g) => Type::Specific(SpecificType::Generic(g.def_ident.span)),
         }
     }
 }
@@ -123,15 +125,16 @@ impl From<&ExprLiteral> for SpecificType {
 }
 
 impl SpecificType {
-    pub fn type_name(&self) -> &str {
+    pub fn type_name(&self) -> String {
         match self {
-            SpecificType::Unit => "()",
-            SpecificType::Integer => "int",
-            SpecificType::Float => "float",
-            SpecificType::Bool => "bool",
-            SpecificType::String => "string",
-            SpecificType::Struct(name) => name,
-            SpecificType::Enum(name) => name,
+            SpecificType::Unit => "()".to_string(),
+            SpecificType::Integer => "int".to_string(),
+            SpecificType::Float => "float".to_string(),
+            SpecificType::Bool => "bool".to_string(),
+            SpecificType::String => "string".to_string(),
+            SpecificType::Struct(name) => name.clone(),
+            SpecificType::Enum(name) => name.clone(),
+            SpecificType::Generic(Span { file, start, end }) => format!("<{},{},{}>", file, start, end),
         }
     }
 }
@@ -146,6 +149,7 @@ impl fmt::Display for SpecificType {
             SpecificType::String => write!(f, "string"),
             SpecificType::Struct(name) => write!(f, "struct {}", name),
             SpecificType::Enum(name) => write!(f, "enum {}", name),
+            SpecificType::Generic(Span { file, start, end }) => write!(f, "<{},{},{}>", file, start, end)
         }
     }
 }

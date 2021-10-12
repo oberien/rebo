@@ -32,7 +32,7 @@ impl Borrow<Span> for TypeVar {
     }
 }
 
-pub fn typeck(diagnostics: &Diagnostics, meta_info: &mut MetaInfo<'_, '_>, exprs: &[&Expr<'_, '_>]) {
+pub fn typeck<'a, 'i>(diagnostics: &Diagnostics, meta_info: &mut MetaInfo<'a, 'i>, exprs: &[&'a Expr<'a, 'i>]) {
     let mut graph = create_graph::create_graph(diagnostics, meta_info, exprs);
     if Level::Trace <= log::max_level() {
         graph.dot(diagnostics);

@@ -8,10 +8,11 @@ use petgraph::dot::{Dot, Config};
 use std::fmt::{Display, Formatter};
 use std::io::Write;
 use itertools::Itertools;
-use diagnostic::Diagnostics;
+use diagnostic::{Diagnostics, Span};
 use petgraph::graph::EdgeReference;
 use petgraph::Direction;
 use indexmap::map::IndexMap;
+use crate::EXTERNAL_SPAN;
 
 #[derive(Debug, Clone)]
 pub struct PossibleTypes(Vec<SpecificType>);
@@ -61,12 +62,20 @@ impl PossibleTypes {
                 SpecificTypeDiscriminants::Struct => possible_types.push(SpecificType::Struct("struct".to_string())),
                 // Similarly to above, we use "enum" as any enum.
                 SpecificTypeDiscriminants::Enum => possible_types.push(SpecificType::Enum("enum".to_string())),
+                SpecificTypeDiscriminants::Generic => possible_types.push(SpecificType::Generic(Self::unrestricted_generic_span())),
             }
         }
         PossibleTypes(possible_types)
     }
     pub fn len(&self) -> usize {
         self.0.len()
+    }
+    fn unrestricted_generic_span() -> Span {
+        Span {
+            file: EXTERNAL_SPAN.lock().unwrap().unwrap().file,
+            start: 0,
+            end: 0,
+        }
     }
 
     pub fn is_unifyable_with(&self, typ: &SpecificType) -> bool {
@@ -79,7 +88,15 @@ impl PossibleTypes {
                 .any(|typ| matches!(typ, SpecificType::Enum(_))),
             SpecificType::Enum(name) => self.0.iter()
                 .any(|typ| matches!(typ, SpecificType::Enum(n) if n == name || n == "enum")),
-            _ => self.0.contains(typ),
+            SpecificType::Generic(span) if *span == Self::unrestricted_generic_span() => self.0.iter()
+                .any(|typ| matches!(typ, SpecificType::Generic(_))),
+            SpecificType::Generic(span) => self.0.iter()
+                .any(|typ| matches!(typ, SpecificType::Generic(span2) if *span2 == Self::unrestricted_generic_span() || span2 == span)),
+            SpecificType::Unit
+            | SpecificType::Bool
+            | SpecificType::Integer
+            | SpecificType::Float
+            | SpecificType::String => self.0.contains(typ),
         }
     }
 
@@ -125,6 +142,22 @@ impl PossibleTypes {
                         ("enum", Some(name))
                         | (name, Some("enum")) => Some(SpecificType::Enum(name.to_string())),
                         (a, Some(b)) if a == b => Some(SpecificType::Enum(a.to_string())),
+                        (_, _) => None,
+                    }
+                }
+                SpecificType::Generic(span) => {
+                    let reduce_generic = reduce.iter()
+                        .filter_map(|typ| match typ {
+                            SpecificType::Generic(span2) => Some(span2),
+                            _ => None,
+                        }).next();
+                    match (span, reduce_generic) {
+                        (_, None) => None,
+                        (span, Some(span2))
+                        | (span2, Some(span)) if *span == Self::unrestricted_generic_span() => {
+                            Some(SpecificType::Generic(*span2))
+                        }
+                        (a, Some(b)) if a == b => Some(SpecificType::Generic(*a)),
                         (_, _) => None,
                     }
                 }

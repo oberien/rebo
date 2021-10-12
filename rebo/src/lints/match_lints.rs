@@ -169,6 +169,7 @@ impl Visitor for MatchLints {
                     }
                 }
             }
+            Type::Specific(SpecificType::Generic(_)) => todo!(),
         }
     }
 }

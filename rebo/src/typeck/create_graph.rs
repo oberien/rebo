@@ -6,9 +6,40 @@ use itertools::Either;
 use crate::typeck::types::{StructType, EnumType, EnumTypeVariant, SpecificType, FunctionType, Type};
 use diagnostic::{Diagnostics, Span};
 use std::borrow::Cow;
+use std::cell::RefCell;
+use std::rc::Rc;
+
+struct FunctionGenericsStack {
+    stack: Rc<RefCell<Vec<Span>>>,
+}
+impl FunctionGenericsStack {
+    fn new() -> Self {
+        FunctionGenericsStack {
+            stack: Rc::new(RefCell::new(Vec::new())),
+        }
+    }
+    fn push_stack(&self) -> FunctionGenericsStackGuard {
+        let prev_stack = std::mem::take(&mut *self.stack.borrow_mut());
+        FunctionGenericsStackGuard {
+            stack: Rc::clone(&self.stack),
+            prev_stack: Some(prev_stack),
+        }
+    }
+}
+
+struct FunctionGenericsStackGuard {
+    stack: Rc<RefCell<Vec<Span>>>,
+    prev_stack: Option<Vec<Span>>,
+}
+impl Drop for FunctionGenericsStackGuard {
+    fn drop(&mut self) {
+        *self.stack.borrow_mut() = self.prev_stack.take().unwrap();
+    }
+}
 
 pub fn create_graph(diagnostics: &Diagnostics, meta_info: &mut MetaInfo, exprs: &[&Expr<'_, '_>]) -> Graph {
     let mut graph = Graph::new();
+    let function_generics_stack = FunctionGenericsStack::new();
 
     // resolve global types
     for user_type in meta_info.user_types.values() {
@@ -104,7 +135,7 @@ fn visit_expr(graph: &mut Graph, diagnostics: &Diagnostics, meta_info: &MetaInfo
                     let var_type_var = TypeVar::new(binding.ident.span);
                     graph.add_type_var(var_type_var);
                     if let Type::Specific(specific) = Type::from_expr_type(typ, diagnostics, meta_info) {
-                         graph.set_exact_type(var_type_var, specific);
+                        graph.set_exact_type(var_type_var, specific);
                     }
                     var_type_var
                 }
@@ -126,7 +157,7 @@ fn visit_expr(graph: &mut Graph, diagnostics: &Diagnostics, meta_info: &MetaInfo
                     graph.add_type_var(var_type_var);
                     graph.add_eq_constraint(var_type_var, expr_type_var);
                 }
-                ExprAssignLhs::FieldAccess(ExprFieldAccess { variable: ExprVariable{ binding, .. }, fields, .. }) => {
+                ExprAssignLhs::FieldAccess(ExprFieldAccess { variable: ExprVariable { binding, .. }, fields, .. }) => {
                     let var_type_var = TypeVar::new(binding.ident.span);
                     let field_type_var = TypeVar::new(lhs.span());
                     graph.add_type_var(var_type_var);
@@ -213,7 +244,7 @@ fn visit_expr(graph: &mut Graph, diagnostics: &Diagnostics, meta_info: &MetaInfo
             for (i, arg_expr) in fn_call.args.iter().enumerate() {
                 let arg_type_var = visit_expr(graph, diagnostics, meta_info, arg_expr);
                 // arg 0 is `self`
-                let arg_index = i+1;
+                let arg_index = i + 1;
                 graph.add_method_call_arg(field_access_type_var, arg_type_var, fn_call.name.ident.to_string(), arg_index);
             }
         }
