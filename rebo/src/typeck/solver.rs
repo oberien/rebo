@@ -67,6 +67,10 @@ pub fn solve(graph: &mut Graph, meta_info: &mut MetaInfo) {
                     changed = true;
                 },
                 UnifyResult::Unchanged => (),
+                UnifyResult::Multiple(to_add) => for to_add in to_add {
+                    todos.add(to_add);
+                    changed = true;
+                }
             }
         }
         if changed {

@@ -622,6 +622,16 @@ fn generics() {
             c: C,
         }
 
-        fn foo<T>(t: T) -> T { t }
+        fn foo<U, V>(u: U, v: V) -> V { v }
+        fn bar<T>(t: T) -> T { foo(42, t) }
+    "#.to_string()), ReturnValue::Diagnostics(6));
+}
+#[test]
+fn generic_diagnostics() {
+    let _ = env_logger::builder().is_test(true).try_init();
+    assert_eq!(rebo::run("test".to_string(), r#"
+        // T and V are not unifyable, because V is int
+        fn foo<U, V>(u: U, v: V) -> V { v }
+        fn bar<T>(t: T) -> T { foo(t, 42) }
     "#.to_string()), ReturnValue::Diagnostics(6));
 }

@@ -79,8 +79,8 @@ fn convert_expr_type(typ: &ExprType, diagnostics: &Diagnostics, meta_info: &Meta
     }
 }
 
-pub fn create_graph(diagnostics: &Diagnostics, meta_info: &mut MetaInfo, exprs: &[&Expr<'_, '_>]) -> Graph {
-    let mut graph = Graph::new();
+pub fn create_graph<'i>(diagnostics: &'i Diagnostics, meta_info: &mut MetaInfo, exprs: &[&Expr<'_, '_>]) -> Graph<'i> {
+    let mut graph = Graph::new(diagnostics);
     let function_generics = FunctionGenerics::new();
 
     // resolve global types

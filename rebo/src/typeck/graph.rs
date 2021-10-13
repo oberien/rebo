@@ -12,6 +12,8 @@ use diagnostic::{Diagnostics, Span};
 use petgraph::graph::EdgeReference;
 use petgraph::Direction;
 use indexmap::map::IndexMap;
+use std::collections::{HashSet, VecDeque};
+use log::Level;
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct PossibleTypes(Vec<SpecificType>);
@@ -27,10 +29,17 @@ impl PartialEq<PossibleTypes> for &[SpecificType] {
     }
 }
 
-#[derive(Debug, Clone, Copy, Ord, PartialOrd, Eq, PartialEq)]
+#[derive(Debug, Clone, Ord, PartialOrd, Eq, PartialEq)]
 pub enum UnifyResult {
     Changed,
     Unchanged,
+    Multiple(Vec<TypeVar>),
+}
+
+enum ReduceResult {
+    Changed,
+    Unchanged,
+    GenericSolved(Span, SpecificType),
 }
 
 impl Default for PossibleTypes {
@@ -72,20 +81,20 @@ impl PossibleTypes {
         }
         PossibleTypes(possible_types)
     }
-    pub fn len(&self) -> usize {
+    fn len(&self) -> usize {
         self.0.len()
     }
 
-    pub fn set_exact_type(&mut self, typ: SpecificType) {
+    fn set_exact_type(&mut self, typ: SpecificType) {
         assert_eq!(*self, PossibleTypes::any());
         // assert!(self.is_unifyable_with(&typ), "{:?} not unifyable with {}", self, typ);
         self.0.clear();
         self.0.push(typ);
     }
 
-    pub fn reduce(&mut self, reduce: &[SpecificType]) -> UnifyResult {
+    fn reduce(&mut self, reduce: &[SpecificType]) -> ReduceResult {
         if reduce.is_empty() {
-            return UnifyResult::Unchanged;
+            return ReduceResult::Unchanged;
         }
 
         // check generics
@@ -118,34 +127,34 @@ impl PossibleTypes {
         struct Unit;
         let _: Unit = match (self_generic, reduce_generic) {
             (Some(Generic::UnUnifyable(span)), Some(Generic::UnUnifyable(span2))) => if span == span2 {
-                return UnifyResult::Unchanged;
+                return ReduceResult::Unchanged;
             } else {
                 self.0.clear();
-                return UnifyResult::Changed;
+                return ReduceResult::Changed;
             }
-            (Some(Generic::UnUnifyable(_)), Some(Generic::Unifyable(_))) => return UnifyResult::Unchanged,
-            (Some(Generic::Unifyable(_)), Some(Generic::UnUnifyable(_))) => return UnifyResult::Unchanged,
-            (Some(Generic::Unifyable(_)), Some(Generic::Unifyable(_))) => return UnifyResult::Unchanged,
+            (Some(Generic::UnUnifyable(_)), Some(Generic::Unifyable(_))) => return ReduceResult::Unchanged,
+            (Some(Generic::Unifyable(_)), Some(Generic::UnUnifyable(_))) => return ReduceResult::Unchanged,
+            (Some(Generic::Unifyable(_)), Some(Generic::Unifyable(_))) => return ReduceResult::Unchanged,
             (Some(Generic::UnUnifyable(_)), None) => if reduce.len() == 1 {
                 self.0.clear();
-                return UnifyResult::Changed;
+                return ReduceResult::Changed;
             } else {
-                return UnifyResult::Unchanged;
+                return ReduceResult::Unchanged;
             }
-            (Some(Generic::Unifyable(_)), None) => if reduce.len() == 1 {
+            (Some(Generic::Unifyable(span)), None) => if reduce.len() == 1 {
                 self.0.clear();
                 self.0.push(reduce[0].clone());
-                return UnifyResult::Changed;
+                return ReduceResult::GenericSolved(span, reduce[0].clone());
             } else {
-                return UnifyResult::Unchanged;
+                return ReduceResult::Unchanged;
             }
-            (None, Some(_)) => if *self == PossibleTypes::any() {
+            (None, Some(_)) if *self == PossibleTypes::any() => {
                 self.0.clear();
                 self.0.push(reduce[0].clone());
-                return UnifyResult::Changed;
-            } else {
-                return UnifyResult::Unchanged;
+                return ReduceResult::Changed;
             }
+            (None, Some(Generic::Unifyable(span))) if self.len() == 1 => return ReduceResult::GenericSolved(span, self.0[0].clone()),
+            (None, Some(_)) => return ReduceResult::Unchanged,
             (None, None) => Unit,
         };
 
@@ -192,13 +201,9 @@ impl PossibleTypes {
         }
         let old = std::mem::replace(&mut self.0, res);
         match old == self.0 {
-            true => UnifyResult::Unchanged,
-            false => UnifyResult::Changed,
+            true => ReduceResult::Unchanged,
+            false => ReduceResult::Changed,
         }
-    }
-
-    pub fn unify_assign(&mut self, other: &PossibleTypes) -> UnifyResult {
-        self.reduce(&other.0)
     }
 }
 
@@ -232,15 +237,17 @@ impl Display for Constraint {
     }
 }
 
-pub struct Graph {
+pub struct Graph<'i> {
+    diagnostics: &'i Diagnostics,
     graph: DiGraph<TypeVar, Constraint>,
     graph_indices: IndexMap<TypeVar, NodeIndex<u32>>,
     possible_types: IndexMap<TypeVar, PossibleTypes>,
 }
 
-impl Graph {
-    pub fn new() -> Graph {
+impl<'i> Graph<'i> {
+    pub fn new(diagnostics: &'i Diagnostics) -> Graph {
         Graph {
+            diagnostics,
             graph: DiGraph::new(),
             graph_indices: IndexMap::new(),
             possible_types: IndexMap::new(),
@@ -309,18 +316,18 @@ impl Graph {
 
     pub fn reduce(&mut self, var: TypeVar, reduce: &[SpecificType]) -> UnifyResult {
         assert!(!reduce.is_empty());
-        self.possible_types.get_mut(&var).unwrap().reduce(reduce)
+        self.reduce_internal(var, reduce)
     }
 
     pub fn unify_assign(&mut self, into: TypeVar, from: TypeVar) -> UnifyResult {
         // TODO: is there really no hashmap allowing mutable access to two values at the same time?
         let from = self.possible_types[&from].clone();
-        self.possible_types.get_mut(&into).unwrap().unify_assign(&from)
+        self.reduce_internal(into, &from.0)
     }
 
     pub fn field_access(&mut self, meta_info: &MetaInfo, struct_var: TypeVar, field_var: TypeVar, fields: &[String]) -> UnifyResult {
+        let res = self.reduce_internal(struct_var, &[SpecificType::Struct("struct".to_string())]);
         let possible_types = self.possible_types.get_mut(&struct_var).unwrap();
-        let res = possible_types.reduce(&[SpecificType::Struct("struct".to_string())]);
         if possible_types.0.len() != 1 {
             return res;
         }
@@ -348,7 +355,7 @@ impl Graph {
             }
         }
         let typ = typ.clone();
-        self.possible_types.get_mut(&field_var).unwrap().reduce(&[typ]);
+        self.reduce_internal(field_var, &[typ]);
         res
     }
     pub fn method_call_arg(&mut self, meta_info: &MetaInfo, field_access: TypeVar, arg: TypeVar, method_name: &str, arg_index: usize) -> UnifyResult {
@@ -369,7 +376,7 @@ impl Graph {
         match expected_arg_type {
             Type::Top | Type::Varargs => UnifyResult::Unchanged,
             Type::Bottom => unreachable!("fn arg is bottom"),
-            Type::Specific(specific) => self.possible_types.get_mut(&arg).unwrap().reduce(&[specific.clone()]),
+            Type::Specific(specific) => self.reduce_internal(arg, &[specific.clone()]),
         }
     }
     pub fn method_call_ret(&mut self, meta_info: &MetaInfo, field_access: TypeVar, method_call: TypeVar, method_name: &str) -> UnifyResult {
@@ -386,11 +393,78 @@ impl Graph {
         match &fn_typ.ret {
             Type::Top | Type::Varargs => unreachable!("fn ret is Top or Varargs"),
             Type::Bottom => UnifyResult::Unchanged,
-            Type::Specific(specific) => self.possible_types.get_mut(&method_call).unwrap().reduce(&[specific.clone()]),
+            Type::Specific(specific) => self.reduce_internal(method_call, &[specific.clone()]),
         }
     }
 
-pub fn incoming(&self, var: TypeVar) -> Vec<(Constraint, TypeVar)> {
+    fn reduce_internal(&mut self, var: TypeVar, reduce: &[SpecificType]) -> UnifyResult {
+        let res = self.possible_types.get_mut(&var).unwrap().reduce(reduce);
+        match res {
+            ReduceResult::Unchanged => UnifyResult::Unchanged,
+            ReduceResult::Changed => UnifyResult::Changed,
+            ReduceResult::GenericSolved(span, typ) => {
+                trace!("generic solved: {:?} = {}", span, typ);
+                // iterate over all reachable fields and edges and exchange the generic with the specific type
+                let mut visited = HashSet::new();
+                let mut todo = VecDeque::new();
+                todo.push_back(var);
+                while let Some(var) = todo.pop_front() {
+                    if visited.contains(&var) {
+                        continue;
+                    }
+                    visited.insert(var);
+                    trace!("    {:?}", var);
+                    // visit node
+                    let possible_types = &mut self.possible_types[&var];
+                    if possible_types.len() == 1 {
+                        if let SpecificType::UnifyableGeneric(span2) = possible_types.0[0] {
+                            if span2 == span {
+                                possible_types.0[0] = typ.clone();
+                            }
+                        }
+                    }
+
+                    // visit edges
+                    let node_index = self.graph_indices[&var];
+                    let edges_outgoing = self.graph.edges_directed(node_index, Direction::Outgoing)
+                        .map(|edge_ref| (edge_ref.id(), edge_ref.target()));
+                    let edges_incoming = self.graph.edges_directed(node_index, Direction::Incoming)
+                        .map(|edge_ref| (edge_ref.id(), edge_ref.source()));
+                    let edge_indexes: Vec<_> = edges_outgoing
+                        .chain(edges_incoming)
+                        .collect();
+
+                    for (edge_index, target) in edge_indexes {
+                        // add target node to todos
+                        todo.push_back(*self.graph.node_weight(target).unwrap());
+
+                        // change edge
+                        let constraint = self.graph.edge_weight_mut(edge_index).unwrap();
+                        match constraint {
+                            Constraint::Eq
+                            | Constraint::Struct
+                            | Constraint::FieldAccess(_)
+                            | Constraint::MethodCallArg(..)
+                            | Constraint::MethodCallReturnType(_) => (),
+                            Constraint::Reduce(reduce) => if reduce.len() == 1 {
+                                if let SpecificType::UnifyableGeneric(span2) = reduce[0] {
+                                    if span == span2 {
+                                        reduce[0] = typ.clone();
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                if Level::Trace <= log::max_level() {
+                    self.dot();
+                }
+                UnifyResult::Multiple(visited.into_iter().collect())
+            },
+        }
+    }
+
+    pub fn incoming(&self, var: TypeVar) -> Vec<(Constraint, TypeVar)> {
         let ix = self.graph_indices[&var];
         self.graph.edges_directed(ix, Direction::Incoming)
             .map(|edge| (edge.weight().clone(), *self.graph.node_weight(edge.source()).unwrap()))
@@ -403,10 +477,10 @@ pub fn incoming(&self, var: TypeVar) -> Vec<(Constraint, TypeVar)> {
             .map(move |ix| *self.graph.node_weight(ix).unwrap())
     }
 
-    pub fn dot(&self, diagnosics: &Diagnostics) {
+    pub fn dot(&self) {
         let f1 = &|_, e: EdgeReference<Constraint>| format!("label = {:?}", e.weight().to_string());
         let f2 = &|_, (_, n): (NodeIndex<u32>, &TypeVar)| {
-            let code = format!("{:?}", diagnosics.resolve_span(n.span));
+            let code = format!("{:?}", self.diagnostics.resolve_span(n.span));
             format!("label = \"{}\\n{}\"", &code[1..code.len()-1], self.possible_types[n])
         };
         let dot = Dot::with_attr_getters(

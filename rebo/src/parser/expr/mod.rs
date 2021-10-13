@@ -589,7 +589,7 @@ impl<'a, 'i> Display for ExprType<'a, 'i> {
             ExprType::UserType(ut, g) => {
                 write!(f, "{}", ut.ident)?;
                 if let Some((_open, g, _close)) = g {
-                    write!(f, "{}", g)?;
+                    write!(f, "<{}>", g)?;
                 }
                 Ok(())
             },
