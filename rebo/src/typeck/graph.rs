@@ -12,9 +12,8 @@ use diagnostic::{Diagnostics, Span};
 use petgraph::graph::EdgeReference;
 use petgraph::Direction;
 use indexmap::map::IndexMap;
-use crate::EXTERNAL_SPAN;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub struct PossibleTypes(Vec<SpecificType>);
 
 impl PartialEq<[SpecificType]> for PossibleTypes {
@@ -46,6 +45,11 @@ impl Display for PossibleTypes {
     }
 }
 
+enum Generic {
+    UnUnifyable(Span),
+    Unifyable(Span),
+}
+
 impl PossibleTypes {
     pub fn any() -> PossibleTypes {
         let mut possible_types = Vec::new();
@@ -62,7 +66,8 @@ impl PossibleTypes {
                 SpecificTypeDiscriminants::Struct => possible_types.push(SpecificType::Struct("struct".to_string())),
                 // Similarly to above, we use "enum" as any enum.
                 SpecificTypeDiscriminants::Enum => possible_types.push(SpecificType::Enum("enum".to_string())),
-                SpecificTypeDiscriminants::Generic => possible_types.push(SpecificType::Generic(Self::unrestricted_generic_span())),
+                SpecificTypeDiscriminants::UnUnifyableGeneric => (),
+                SpecificTypeDiscriminants::UnifyableGeneric => (),
             }
         }
         PossibleTypes(possible_types)
@@ -70,38 +75,10 @@ impl PossibleTypes {
     pub fn len(&self) -> usize {
         self.0.len()
     }
-    fn unrestricted_generic_span() -> Span {
-        Span {
-            file: EXTERNAL_SPAN.lock().unwrap().unwrap().file,
-            start: 0,
-            end: 0,
-        }
-    }
-
-    pub fn is_unifyable_with(&self, typ: &SpecificType) -> bool {
-        match typ {
-            SpecificType::Struct(name) if name == "struct" => self.0.iter()
-                .any(|typ| matches!(typ, SpecificType::Struct(_))),
-            SpecificType::Struct(name) => self.0.iter()
-                .any(|typ| matches!(typ, SpecificType::Struct(n) if n == name || n == "struct")),
-            SpecificType::Enum(name) if name == "enum" => self.0.iter()
-                .any(|typ| matches!(typ, SpecificType::Enum(_))),
-            SpecificType::Enum(name) => self.0.iter()
-                .any(|typ| matches!(typ, SpecificType::Enum(n) if n == name || n == "enum")),
-            SpecificType::Generic(span) if *span == Self::unrestricted_generic_span() => self.0.iter()
-                .any(|typ| matches!(typ, SpecificType::Generic(_))),
-            SpecificType::Generic(span) => self.0.iter()
-                .any(|typ| matches!(typ, SpecificType::Generic(span2) if *span2 == Self::unrestricted_generic_span() || span2 == span)),
-            SpecificType::Unit
-            | SpecificType::Bool
-            | SpecificType::Integer
-            | SpecificType::Float
-            | SpecificType::String => self.0.contains(typ),
-        }
-    }
 
     pub fn set_exact_type(&mut self, typ: SpecificType) {
-        assert!(self.is_unifyable_with(&typ), "{:?} not unifyable with {}", self, typ);
+        assert_eq!(*self, PossibleTypes::any());
+        // assert!(self.is_unifyable_with(&typ), "{:?} not unifyable with {}", self, typ);
         self.0.clear();
         self.0.push(typ);
     }
@@ -110,13 +87,79 @@ impl PossibleTypes {
         if reduce.is_empty() {
             return UnifyResult::Unchanged;
         }
-        let res = self.0.iter().filter_map(|typ| {
+
+        // check generics
+        fn generics<'b>(iter: impl IntoIterator<Item = &'b SpecificType> + Clone) -> Option<Generic> {
+            let generic = iter.clone().into_iter()
+                .filter_map(|typ| match typ {
+                    SpecificType::UnifyableGeneric(span2) => Some(Generic::Unifyable(*span2)),
+                    _ => None,
+                }).next();
+            let un_generic = iter.into_iter()
+                .filter_map(|typ| match typ {
+                    SpecificType::UnUnifyableGeneric(span2) => Some(Generic::UnUnifyable(*span2)),
+                    _ => None,
+                }).next();
+            assert!(!(generic.is_some() && un_generic.is_some()));
+            generic.or(un_generic)
+        }
+
+        let reduce_generic = generics(reduce);
+        let self_generic = generics(&self.0);
+        if reduce_generic.is_some() {
+            assert_eq!(reduce.len(), 1);
+        }
+        if self_generic.is_some() {
+            assert_eq!(self.0.len(), 1);
+        }
+
+        // handle generics
+        // make sure all branches are covered
+        struct Unit;
+        let _: Unit = match (self_generic, reduce_generic) {
+            (Some(Generic::UnUnifyable(span)), Some(Generic::UnUnifyable(span2))) => if span == span2 {
+                return UnifyResult::Unchanged;
+            } else {
+                self.0.clear();
+                return UnifyResult::Changed;
+            }
+            (Some(Generic::UnUnifyable(_)), Some(Generic::Unifyable(_))) => return UnifyResult::Unchanged,
+            (Some(Generic::Unifyable(_)), Some(Generic::UnUnifyable(_))) => return UnifyResult::Unchanged,
+            (Some(Generic::Unifyable(_)), Some(Generic::Unifyable(_))) => return UnifyResult::Unchanged,
+            (Some(Generic::UnUnifyable(_)), None) => if reduce.len() == 1 {
+                self.0.clear();
+                return UnifyResult::Changed;
+            } else {
+                return UnifyResult::Unchanged;
+            }
+            (Some(Generic::Unifyable(_)), None) => if reduce.len() == 1 {
+                self.0.clear();
+                self.0.push(reduce[0].clone());
+                return UnifyResult::Changed;
+            } else {
+                return UnifyResult::Unchanged;
+            }
+            (None, Some(_)) => if *self == PossibleTypes::any() {
+                self.0.clear();
+                self.0.push(reduce[0].clone());
+                return UnifyResult::Changed;
+            } else {
+                return UnifyResult::Unchanged;
+            }
+            (None, None) => Unit,
+        };
+
+        // handle rest
+        let mut res = Vec::new();
+        for typ in &self.0 {
             match typ {
                 SpecificType::Unit
                 | SpecificType::Bool
                 | SpecificType::Float
                 | SpecificType::Integer
-                | SpecificType::String => if reduce.contains(typ) { Some(typ.clone()) } else { None }
+                | SpecificType::String => if reduce.contains(typ) {
+                    res.push(typ.clone())
+                }
                 SpecificType::Struct(name) => {
                     let reduce_struct = reduce.iter()
                         .filter_map(|typ| match typ {
@@ -124,11 +167,10 @@ impl PossibleTypes {
                             _ => None,
                         }).next();
                     match (name.as_str(), reduce_struct) {
-                        (_, None) => None,
                         ("struct", Some(name))
-                        | (name, Some("struct")) => Some(SpecificType::Struct(name.to_string())),
-                        (a, Some(b)) if a == b => Some(SpecificType::Struct(a.to_string())),
-                        (_, _) => None,
+                        | (name, Some("struct")) => res.push(SpecificType::Struct(name.to_string())),
+                        (a, Some(b)) if a == b => res.push(SpecificType::Struct(a.to_string())),
+                        (_, _) => (),
                     }
                 }
                 SpecificType::Enum(name) => {
@@ -138,31 +180,16 @@ impl PossibleTypes {
                             _ => None,
                         }).next();
                     match (name.as_str(), reduce_enum) {
-                        (_, None) => None,
                         ("enum", Some(name))
-                        | (name, Some("enum")) => Some(SpecificType::Enum(name.to_string())),
-                        (a, Some(b)) if a == b => Some(SpecificType::Enum(a.to_string())),
-                        (_, _) => None,
+                        | (name, Some("enum")) => res.push(SpecificType::Enum(name.to_string())),
+                        (a, Some(b)) if a == b => res.push(SpecificType::Enum(a.to_string())),
+                        (_, _) => (),
                     }
                 }
-                SpecificType::Generic(span) => {
-                    let reduce_generic = reduce.iter()
-                        .filter_map(|typ| match typ {
-                            SpecificType::Generic(span2) => Some(span2),
-                            _ => None,
-                        }).next();
-                    match (span, reduce_generic) {
-                        (_, None) => None,
-                        (span, Some(span2))
-                        | (span2, Some(span)) if *span == Self::unrestricted_generic_span() => {
-                            Some(SpecificType::Generic(*span2))
-                        }
-                        (a, Some(b)) if a == b => Some(SpecificType::Generic(*a)),
-                        (_, _) => None,
-                    }
-                }
+                SpecificType::UnUnifyableGeneric(_)
+                | SpecificType::UnifyableGeneric(_) => unreachable!("handled above"),
             }
-        }).collect();
+        }
         let old = std::mem::replace(&mut self.0, res);
         match old == self.0 {
             true => UnifyResult::Unchanged,

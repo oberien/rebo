@@ -51,13 +51,7 @@ pub fn solve(graph: &mut Graph, meta_info: &mut MetaInfo) {
                 Constraint::Struct => graph.reduce(var, &[SpecificType::Struct("struct".to_string())]),
                 Constraint::Reduce(reduce) => graph.reduce(var, &reduce),
                 Constraint::FieldAccess(fields) => {
-                    let res = graph.field_access(meta_info, source, var, &fields);
-                    // `field_access` can also change the struct-source.
-                    // If it has, add the source as well.
-                    if res == UnifyResult::Changed {
-                        todos.add(source);
-                    }
-                    res
+                    graph.field_access(meta_info, source, var, &fields)
                 },
                 Constraint::MethodCallArg(name, arg_index) => {
                     graph.method_call_arg(meta_info, source, var, &name, arg_index)
@@ -68,11 +62,15 @@ pub fn solve(graph: &mut Graph, meta_info: &mut MetaInfo) {
 
             };
             match unify_result {
-                UnifyResult::Changed => changed = true,
+                UnifyResult::Changed => {
+                    todos.add(source);
+                    changed = true;
+                },
                 UnifyResult::Unchanged => (),
             }
         }
         if changed {
+            todos.add(var);
            for todo in graph.outgoing_neighbors(var) {
                 todos.add(todo);
             }

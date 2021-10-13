@@ -27,9 +27,8 @@ impl Visitor for StructDefLints {
 
         // TODO: proper struct recursion recursing into all usertypes (structs, enums, ...)
         // check struct recursion
-        for (ident, _colon, typ) in fields {
-            let field_typ = Type::from_expr_type(typ, diagnostics, meta_info);
-            check_struct_recursion(diagnostics, meta_info, name, &field_typ, vec![ident.ident]);
+        for (ident, field_typ) in &meta_info.struct_types[name.ident].fields {
+            check_struct_recursion(diagnostics, meta_info, name, &field_typ, vec![&ident]);
         }
     }
 }

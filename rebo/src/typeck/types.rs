@@ -1,10 +1,9 @@
 use std::fmt;
 use std::borrow::Cow;
 use strum_macros::{EnumDiscriminants, EnumIter};
-use crate::parser::{ExprLiteral, ExprType, Spanned};
-use diagnostic::{Diagnostics, Span};
-use crate::common::{MetaInfo, UserType};
-use crate::error_codes::ErrorCode;
+use crate::parser::ExprLiteral;
+use diagnostic::Span;
+use crate::common::MetaInfo;
 
 #[derive(Debug, Clone, PartialOrd, Ord, PartialEq, Eq, Hash)]
 pub enum Type {
@@ -28,8 +27,26 @@ pub enum SpecificType {
     Struct(String),
     /// enum name
     Enum(String),
-    /// a generic variable inside a function or impl-block
-    Generic(Span),
+    /// a generic inside a function definition or impl-block definition, which must not
+    /// unify except with itself (or some other generics)
+    UnUnifyableGeneric(Span),
+    /// a generic from a binding that should unify
+    UnifyableGeneric(Span),
+}
+impl SpecificType {
+    pub fn is_generic(&self) -> bool {
+        match self {
+            SpecificType::Unit
+            | SpecificType::Bool
+            | SpecificType::Integer
+            | SpecificType::Float
+            | SpecificType::String
+            | SpecificType::Struct(_)
+            | SpecificType::Enum(_) => false,
+            SpecificType::UnUnifyableGeneric(_)
+            | SpecificType::UnifyableGeneric(_) => true
+        }
+    }
 }
 #[derive(Debug, Clone, PartialOrd, Ord, PartialEq, Eq, Hash)]
 pub struct FunctionType {
@@ -83,35 +100,6 @@ impl EnumTypeVariant {
         }
     }
 }
-impl Type {
-    pub fn from_expr_type(typ: &ExprType, diagnostics: &Diagnostics, meta_info: &MetaInfo) -> Self {
-        match typ {
-            ExprType::String(_) => Type::Specific(SpecificType::String),
-            ExprType::Int(_) => Type::Specific(SpecificType::Integer),
-            ExprType::Float(_) => Type::Specific(SpecificType::Float),
-            ExprType::Bool(_) => Type::Specific(SpecificType::Bool),
-            ExprType::Unit(_, _) => Type::Specific(SpecificType::Unit),
-            ExprType::UserType(ut, _generics) => {
-                match meta_info.user_types.get(ut.ident) {
-                    Some(UserType::Struct(s)) => Type::Specific(SpecificType::Struct(s.name.ident.to_string())),
-                    Some(UserType::Enum(e)) => Type::Specific(SpecificType::Enum(e.name.ident.to_string())),
-                    None => {
-                        let similar = crate::util::similar_name(ut.ident, meta_info.user_types.keys());
-                        let mut diag = diagnostics.error(ErrorCode::UnknownType)
-                            .with_error_label(typ.span(), "can't find type with this name");
-                        if let Some(similar) = similar {
-                            diag = diag.with_info_label(typ.span(), format!("did you mean `{}`", similar));
-                        }
-                        diag.emit();
-                        // hack to make the type resolve regularly even though we don't have any information
-                        Type::Top
-                    }
-                }
-            },
-            ExprType::Generic(g) => Type::Specific(SpecificType::Generic(g.def_ident.span)),
-        }
-    }
-}
 impl From<&ExprLiteral> for SpecificType {
     fn from(lit: &ExprLiteral) -> Self {
         match lit {
@@ -134,7 +122,8 @@ impl SpecificType {
             SpecificType::String => "string".to_string(),
             SpecificType::Struct(name) => name.clone(),
             SpecificType::Enum(name) => name.clone(),
-            SpecificType::Generic(Span { file, start, end }) => format!("<{},{},{}>", file, start, end),
+            SpecificType::UnUnifyableGeneric(Span { file, start, end }) => format!("X<{},{},{}>", file, start, end),
+            SpecificType::UnifyableGeneric(Span { file, start, end }) => format!("V<{},{},{}>", file, start, end),
         }
     }
 }
@@ -149,7 +138,8 @@ impl fmt::Display for SpecificType {
             SpecificType::String => write!(f, "string"),
             SpecificType::Struct(name) => write!(f, "struct {}", name),
             SpecificType::Enum(name) => write!(f, "enum {}", name),
-            SpecificType::Generic(Span { file, start, end }) => write!(f, "<{},{},{}>", file, start, end)
+            SpecificType::UnUnifyableGeneric(Span { file, start, end }) => write!(f, "X<{},{},{}>", file, start, end),
+            SpecificType::UnifyableGeneric(Span { file, start, end }) => write!(f, "V<{},{},{}>", file, start, end),
         }
     }
 }

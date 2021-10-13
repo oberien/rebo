@@ -1,5 +1,5 @@
 use crate::typeck::graph::Graph;
-use crate::parser::{Expr, Spanned, ExprFormatString, ExprFormatStringPart, ExprBind, ExprPattern, ExprPatternTyped, ExprPatternUntyped, ExprAssign, ExprAssignLhs, ExprVariable, ExprFieldAccess, ExprBoolNot, ExprAdd, ExprSub, ExprMul, ExprDiv, ExprBoolAnd, ExprBoolOr, ExprLessThan, ExprLessEquals, ExprEquals, ExprNotEquals, ExprGreaterEquals, ExprGreaterThan, ExprBlock, BlockBody, ExprParenthesized, ExprMatch, ExprMatchPattern, ExprWhile, ExprFunctionCall, ExprFunctionDefinition, ExprStructInitialization, ExprImplBlock, ExprMethodCall};
+use crate::parser::{Expr, Spanned, ExprFormatString, ExprFormatStringPart, ExprBind, ExprPattern, ExprPatternTyped, ExprPatternUntyped, ExprAssign, ExprAssignLhs, ExprVariable, ExprFieldAccess, ExprBoolNot, ExprAdd, ExprSub, ExprMul, ExprDiv, ExprBoolAnd, ExprBoolOr, ExprLessThan, ExprLessEquals, ExprEquals, ExprNotEquals, ExprGreaterEquals, ExprGreaterThan, ExprBlock, BlockBody, ExprParenthesized, ExprMatch, ExprMatchPattern, ExprWhile, ExprFunctionCall, ExprFunctionDefinition, ExprStructInitialization, ExprImplBlock, ExprMethodCall, ExprType};
 use crate::typeck::TypeVar;
 use crate::common::{MetaInfo, UserType, Function};
 use itertools::Either;
@@ -8,13 +8,14 @@ use diagnostic::{Diagnostics, Span};
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::rc::Rc;
+use crate::error_codes::ErrorCode;
 
-struct FunctionGenericsStack {
+struct FunctionGenerics {
     stack: Rc<RefCell<Vec<Span>>>,
 }
-impl FunctionGenericsStack {
+impl FunctionGenerics {
     fn new() -> Self {
-        FunctionGenericsStack {
+        FunctionGenerics {
             stack: Rc::new(RefCell::new(Vec::new())),
         }
     }
@@ -24,6 +25,13 @@ impl FunctionGenericsStack {
             stack: Rc::clone(&self.stack),
             prev_stack: Some(prev_stack),
         }
+    }
+    fn insert(&self, generic: Span) {
+        assert!(!self.contains(generic));
+        self.stack.borrow_mut().push(generic);
+    }
+    fn contains(&self, span: Span) -> bool {
+        self.stack.borrow().iter().find(|&&s| s == span).is_some()
     }
 }
 
@@ -37,9 +45,43 @@ impl Drop for FunctionGenericsStackGuard {
     }
 }
 
+fn convert_expr_type(typ: &ExprType, diagnostics: &Diagnostics, meta_info: &MetaInfo, function_generics: &FunctionGenerics) -> Type {
+    match typ {
+        ExprType::String(_) => Type::Specific(SpecificType::String),
+        ExprType::Int(_) => Type::Specific(SpecificType::Integer),
+        ExprType::Float(_) => Type::Specific(SpecificType::Float),
+        ExprType::Bool(_) => Type::Specific(SpecificType::Bool),
+        ExprType::Unit(_, _) => Type::Specific(SpecificType::Unit),
+        ExprType::UserType(ut, _generics) => {
+            match meta_info.user_types.get(ut.ident) {
+                Some(UserType::Struct(s)) => Type::Specific(SpecificType::Struct(s.name.ident.to_string())),
+                Some(UserType::Enum(e)) => Type::Specific(SpecificType::Enum(e.name.ident.to_string())),
+                None => {
+                    let similar = crate::util::similar_name(ut.ident, meta_info.user_types.keys());
+                    let mut diag = diagnostics.error(ErrorCode::UnknownType)
+                        .with_error_label(typ.span(), "can't find type with this name");
+                    if let Some(similar) = similar {
+                        diag = diag.with_info_label(typ.span(), format!("did you mean `{}`", similar));
+                    }
+                    diag.emit();
+                    // hack to make the type resolve regularly even though we don't have any information
+                    Type::Top
+                }
+            }
+        },
+        ExprType::Generic(g) => {
+            if function_generics.contains(g.def_ident.span) {
+                Type::Specific(SpecificType::UnUnifyableGeneric(g.def_ident.span))
+            } else {
+                Type::Specific(SpecificType::UnifyableGeneric(g.def_ident.span))
+            }
+        },
+    }
+}
+
 pub fn create_graph(diagnostics: &Diagnostics, meta_info: &mut MetaInfo, exprs: &[&Expr<'_, '_>]) -> Graph {
     let mut graph = Graph::new();
-    let function_generics_stack = FunctionGenericsStack::new();
+    let function_generics = FunctionGenerics::new();
 
     // resolve global types
     for user_type in meta_info.user_types.values() {
@@ -48,7 +90,7 @@ pub fn create_graph(diagnostics: &Diagnostics, meta_info: &mut MetaInfo, exprs: 
                 meta_info.struct_types.insert(struct_def.name.ident, StructType {
                     name: struct_def.name.ident.to_string(),
                     fields: struct_def.fields.iter()
-                        .map(|(name, _, typ)| (name.ident.to_string(), Type::from_expr_type(typ, diagnostics, meta_info)))
+                        .map(|(name, _, typ)| (name.ident.to_string(), convert_expr_type(typ, diagnostics, meta_info, &function_generics)))
                         .collect(),
                 });
             }
@@ -61,7 +103,7 @@ pub fn create_graph(diagnostics: &Diagnostics, meta_info: &mut MetaInfo, exprs: 
                             let variant = match &variant.fields {
                                 Some((_open, fields, _close)) => EnumTypeVariant::TupleVariant(
                                     fields.iter()
-                                        .map(|typ| Type::from_expr_type(typ, diagnostics, meta_info))
+                                        .map(|typ| convert_expr_type(typ, diagnostics, meta_info, &function_generics))
                                         .collect()
                                 ),
                                 None => EnumTypeVariant::CLike,
@@ -78,10 +120,10 @@ pub fn create_graph(diagnostics: &Diagnostics, meta_info: &mut MetaInfo, exprs: 
                 let fun = &meta_info.rebo_functions[name];
                 let typ = FunctionType {
                     args: fun.args.iter().map(|pattern| {
-                        Type::from_expr_type(&pattern.typ, diagnostics, meta_info)
+                        convert_expr_type(&pattern.typ, diagnostics, meta_info, &function_generics)
                     }).collect(),
                     ret: fun.ret_type.as_ref()
-                        .map(|(_, typ)| Type::from_expr_type(typ, diagnostics, meta_info))
+                        .map(|(_, typ)| convert_expr_type(typ, diagnostics, meta_info, &function_generics))
                         .unwrap_or(Type::Specific(SpecificType::Unit)),
                 };
                 meta_info.function_types.insert(name.clone(), typ);
@@ -96,7 +138,7 @@ pub fn create_graph(diagnostics: &Diagnostics, meta_info: &mut MetaInfo, exprs: 
                     .unwrap();
                 let typ = FunctionType {
                     args: Cow::Owned(variant.fields.as_ref().unwrap().1.iter()
-                        .map(|typ| Type::from_expr_type(typ, diagnostics, meta_info))
+                        .map(|typ| convert_expr_type(typ, diagnostics, meta_info, &function_generics))
                         .collect()),
                     ret: Type::Specific(SpecificType::Enum(enum_name.clone())),
                 };
@@ -108,12 +150,12 @@ pub fn create_graph(diagnostics: &Diagnostics, meta_info: &mut MetaInfo, exprs: 
 
     // resolve local types
     for expr in exprs {
-        visit_expr(&mut graph, diagnostics, meta_info, expr);
+        visit_expr(&mut graph, diagnostics, meta_info, &function_generics, expr);
     }
     graph
 }
 
-fn visit_expr(graph: &mut Graph, diagnostics: &Diagnostics, meta_info: &MetaInfo, expr: &Expr<'_, '_>) -> TypeVar {
+fn visit_expr(graph: &mut Graph, diagnostics: &Diagnostics, meta_info: &MetaInfo, function_generics: &FunctionGenerics, expr: &Expr<'_, '_>) -> TypeVar {
     let type_var = TypeVar::new(expr.span());
     graph.add_type_var(type_var);
     match expr {
@@ -124,7 +166,7 @@ fn visit_expr(graph: &mut Graph, diagnostics: &Diagnostics, meta_info: &MetaInfo
                 match part {
                     ExprFormatStringPart::Str(_)
                     | ExprFormatStringPart::Escaped(_) => (),
-                    ExprFormatStringPart::FmtArg(expr) => { visit_expr(graph, diagnostics, meta_info, expr); }
+                    ExprFormatStringPart::FmtArg(expr) => { visit_expr(graph, diagnostics, meta_info, function_generics, expr); }
                 }
             }
         }
@@ -134,7 +176,7 @@ fn visit_expr(graph: &mut Graph, diagnostics: &Diagnostics, meta_info: &MetaInfo
                 ExprPattern::Typed(ExprPatternTyped { pattern: ExprPatternUntyped { binding }, typ, .. }) => {
                     let var_type_var = TypeVar::new(binding.ident.span);
                     graph.add_type_var(var_type_var);
-                    if let Type::Specific(specific) = Type::from_expr_type(typ, diagnostics, meta_info) {
+                    if let Type::Specific(specific) = convert_expr_type(typ, diagnostics, meta_info, function_generics) {
                         graph.set_exact_type(var_type_var, specific);
                     }
                     var_type_var
@@ -145,12 +187,12 @@ fn visit_expr(graph: &mut Graph, diagnostics: &Diagnostics, meta_info: &MetaInfo
                     var_type_var
                 }
             };
-            let expr_type_var = visit_expr(graph, diagnostics, meta_info, expr);
+            let expr_type_var = visit_expr(graph, diagnostics, meta_info, function_generics, expr);
             graph.add_eq_constraint(var_type_var, expr_type_var);
         }
         Expr::Assign(ExprAssign { lhs, expr, .. }) => {
             graph.set_exact_type(type_var, SpecificType::Unit);
-            let expr_type_var = visit_expr(graph, diagnostics, meta_info, expr);
+            let expr_type_var = visit_expr(graph, diagnostics, meta_info, function_generics, expr);
             match lhs {
                 ExprAssignLhs::Variable(ExprVariable { binding, .. }) => {
                     let var_type_var = TypeVar::new(binding.ident.span);
@@ -169,7 +211,7 @@ fn visit_expr(graph: &mut Graph, diagnostics: &Diagnostics, meta_info: &MetaInfo
             }
         }
         Expr::BoolNot(ExprBoolNot { expr, .. }) => {
-            let expr_type_var = visit_expr(graph, diagnostics, meta_info, expr);
+            let expr_type_var = visit_expr(graph, diagnostics, meta_info, function_generics, expr);
             graph.set_exact_type(type_var, SpecificType::Bool);
             graph.add_eq_constraint(type_var, expr_type_var);
         }
@@ -177,8 +219,8 @@ fn visit_expr(graph: &mut Graph, diagnostics: &Diagnostics, meta_info: &MetaInfo
         | Expr::Sub(ExprSub { a, b, .. })
         | Expr::Mul(ExprMul { a, b, .. })
         | Expr::Div(ExprDiv { a, b, .. }) => {
-            let a_type_var = visit_expr(graph, diagnostics, meta_info, a);
-            let b_type_var = visit_expr(graph, diagnostics, meta_info, b);
+            let a_type_var = visit_expr(graph, diagnostics, meta_info, function_generics, a);
+            let b_type_var = visit_expr(graph, diagnostics, meta_info, function_generics, b);
             graph.add_reduce_constraint(type_var, a_type_var, vec![SpecificType::Integer, SpecificType::Float]);
             graph.add_reduce_constraint(type_var, b_type_var, vec![SpecificType::Integer, SpecificType::Float]);
             graph.add_reduce_constraint(type_var, type_var, vec![SpecificType::Integer, SpecificType::Float]);
@@ -187,8 +229,8 @@ fn visit_expr(graph: &mut Graph, diagnostics: &Diagnostics, meta_info: &MetaInfo
         }
         Expr::BoolAnd(ExprBoolAnd { a, b, .. })
         | Expr::BoolOr(ExprBoolOr { a, b, .. }) => {
-            let a_type_var = visit_expr(graph, diagnostics, meta_info, a);
-            let b_type_var = visit_expr(graph, diagnostics, meta_info, b);
+            let a_type_var = visit_expr(graph, diagnostics, meta_info, function_generics, a);
+            let b_type_var = visit_expr(graph, diagnostics, meta_info, function_generics, b);
             graph.set_exact_type(type_var, SpecificType::Bool);
             graph.add_eq_constraint(type_var, a_type_var);
             graph.add_eq_constraint(type_var, b_type_var);
@@ -199,13 +241,13 @@ fn visit_expr(graph: &mut Graph, diagnostics: &Diagnostics, meta_info: &MetaInfo
         | Expr::NotEquals(ExprNotEquals { a, b, .. })
         | Expr::GreaterEquals(ExprGreaterEquals { a, b, .. })
         | Expr::GreaterThan(ExprGreaterThan { a, b, .. }) => {
-            let a_type_var = visit_expr(graph, diagnostics, meta_info, a);
-            let b_type_var = visit_expr(graph, diagnostics, meta_info, b);
+            let a_type_var = visit_expr(graph, diagnostics, meta_info, function_generics, a);
+            let b_type_var = visit_expr(graph, diagnostics, meta_info, function_generics, b);
             graph.set_exact_type(type_var, SpecificType::Bool);
             graph.add_eq_constraint(a_type_var, b_type_var);
         }
         Expr::Block(block) => {
-            assert_eq!(visit_block(graph, diagnostics, meta_info, block), type_var);
+            assert_eq!(visit_block(graph, diagnostics, meta_info, function_generics, block), type_var);
         }
         Expr::Variable(ExprVariable { binding, .. }) => {
             let var_type_var = TypeVar::new(binding.ident.span);
@@ -242,31 +284,31 @@ fn visit_expr(graph: &mut Graph, diagnostics: &Diagnostics, meta_info: &MetaInfo
 
             graph.add_method_call_ret(field_access_type_var, type_var, fn_call.name.ident.to_string());
             for (i, arg_expr) in fn_call.args.iter().enumerate() {
-                let arg_type_var = visit_expr(graph, diagnostics, meta_info, arg_expr);
+                let arg_type_var = visit_expr(graph, diagnostics, meta_info, function_generics, arg_expr);
                 // arg 0 is `self`
                 let arg_index = i + 1;
                 graph.add_method_call_arg(field_access_type_var, arg_type_var, fn_call.name.ident.to_string(), arg_index);
             }
         }
         Expr::Parenthesized(ExprParenthesized { expr, .. }) => {
-            let expr_type_var = visit_expr(graph, diagnostics, meta_info, expr);
+            let expr_type_var = visit_expr(graph, diagnostics, meta_info, function_generics, expr);
             graph.add_eq_constraint(expr_type_var, type_var);
         }
         Expr::IfElse(ifelse) => {
             let mut block_type_vars = Vec::new();
             for (condition, body) in ifelse.iter_branches() {
                 if let Some(condition) = condition {
-                    let cond_type_var = visit_expr(graph, diagnostics, meta_info, condition);
+                    let cond_type_var = visit_expr(graph, diagnostics, meta_info, function_generics, condition);
                     graph.add_reduce_constraint(type_var, cond_type_var, vec![SpecificType::Bool]);
                 }
-                block_type_vars.push(visit_block(graph, diagnostics, meta_info, body));
+                block_type_vars.push(visit_block(graph, diagnostics, meta_info, function_generics, body));
             }
             for var in block_type_vars {
                 graph.add_eq_constraint(type_var, var);
             }
         }
         Expr::Match(ExprMatch { expr, arms, .. }) => {
-            let expr_type_var = visit_expr(graph, diagnostics, meta_info, expr);
+            let expr_type_var = visit_expr(graph, diagnostics, meta_info, function_generics, expr);
             for (pat, _arrow, arm_expr) in arms {
                 match pat {
                     ExprMatchPattern::Literal(lit) => {
@@ -314,14 +356,14 @@ fn visit_expr(graph: &mut Graph, diagnostics: &Diagnostics, meta_info: &MetaInfo
                     }
                     ExprMatchPattern::Wildcard(_) => (),
                 }
-                let arm_expr_type_var = visit_expr(graph, diagnostics, meta_info, arm_expr);
+                let arm_expr_type_var = visit_expr(graph, diagnostics, meta_info, function_generics, arm_expr);
                 graph.add_eq_constraint(type_var, arm_expr_type_var);
             }
         }
         Expr::While(ExprWhile { condition, block, .. }) => {
-            let cond_type_var = visit_expr(graph, diagnostics, meta_info, condition);
+            let cond_type_var = visit_expr(graph, diagnostics, meta_info, function_generics, condition);
             graph.add_reduce_constraint(type_var, cond_type_var, vec![SpecificType::Bool]);
-            let block_type_var = visit_block(graph, diagnostics, meta_info, block);
+            let block_type_var = visit_block(graph, diagnostics, meta_info, function_generics, block);
             graph.add_eq_constraint(type_var, block_type_var);
         }
         Expr::FunctionCall(ExprFunctionCall { name, args, .. }) => {
@@ -329,7 +371,7 @@ fn visit_expr(graph: &mut Graph, diagnostics: &Diagnostics, meta_info: &MetaInfo
                 Some(fun) => fun,
                 None => return type_var,
             };
-            let passed_args: Vec<_> = args.iter().map(|expr| visit_expr(graph, diagnostics, meta_info, expr)).collect();
+            let passed_args: Vec<_> = args.iter().map(|expr| visit_expr(graph, diagnostics, meta_info, function_generics, expr)).collect();
             let expected_args = if let Some(Type::Varargs) = fun.args.last() {
                 Either::Left(fun.args.iter().chain(std::iter::repeat(&Type::Varargs)))
             } else {
@@ -352,7 +394,11 @@ fn visit_expr(graph: &mut Graph, diagnostics: &Diagnostics, meta_info: &MetaInfo
             }
         }
         Expr::FunctionDefinition(function) => {
-            visit_function(graph, diagnostics, meta_info, function);
+            let _scope_guard = function_generics.push_stack();
+            for generic in function.generics.iter().flat_map(|g| &g.generics).flatten() {
+                function_generics.insert(generic.def_ident.span);
+            }
+            visit_function(graph, diagnostics, meta_info, function_generics, function);
         }
         Expr::StructDefinition(_) => graph.set_exact_type(type_var, SpecificType::Unit),
         Expr::StructInitialization(ExprStructInitialization { name, fields, .. }) => {
@@ -375,7 +421,7 @@ fn visit_expr(graph: &mut Graph, diagnostics: &Diagnostics, meta_info: &MetaInfo
                     Some(typ) => typ,
                     None => continue,
                 };
-                let expr_type_var = visit_expr(graph, diagnostics, meta_info, expr);
+                let expr_type_var = visit_expr(graph, diagnostics, meta_info, function_generics, expr);
                 if let Type::Specific(specific) = expected_type {
                     graph.add_reduce_constraint(struct_def_type_var, expr_type_var, vec![specific.clone()]);
                 }
@@ -383,9 +429,15 @@ fn visit_expr(graph: &mut Graph, diagnostics: &Diagnostics, meta_info: &MetaInfo
         }
         Expr::EnumDefinition(_) => graph.set_exact_type(type_var, SpecificType::Unit),
         Expr::EnumInitialization(enum_init) => graph.set_exact_type(type_var, SpecificType::Enum(enum_init.enum_name.ident.to_string())),
-        Expr::ImplBlock(ExprImplBlock { functions, .. }) => {
+        Expr::ImplBlock(ExprImplBlock { generics, functions, .. }) => {
             for function in functions {
-                visit_function(graph, diagnostics, meta_info, function);
+                let _scope_guard = function_generics.push_stack();
+                let generic_iter = generics.iter().flat_map(|g| &g.generics).flatten()
+                    .chain(function.generics.iter().flat_map(|g| &g.generics).flatten());
+                for generic in generic_iter {
+                    function_generics.insert(generic.def_ident.span);
+                }
+                visit_function(graph, diagnostics, meta_info, function_generics, function);
             }
             graph.set_exact_type(type_var, SpecificType::Unit);
         }
@@ -393,14 +445,14 @@ fn visit_expr(graph: &mut Graph, diagnostics: &Diagnostics, meta_info: &MetaInfo
     type_var
 }
 
-fn visit_block(graph: &mut Graph, diagnostics: &Diagnostics, meta_info: &MetaInfo, block: &ExprBlock) -> TypeVar {
+fn visit_block(graph: &mut Graph, diagnostics: &Diagnostics, meta_info: &MetaInfo, function_generics: &FunctionGenerics, block: &ExprBlock) -> TypeVar {
     let type_var = TypeVar::new(block.span());
     graph.add_type_var(type_var);
     let ExprBlock { body: BlockBody { exprs, terminated_with_semicolon }, .. } = block;
 
     let mut last = None;
     for expr in exprs {
-        last = Some(visit_expr(graph, diagnostics, meta_info, expr));
+        last = Some(visit_expr(graph, diagnostics, meta_info, function_generics, expr));
     }
     match (terminated_with_semicolon, last) {
         (true, _) | (false, None) => graph.set_exact_type(type_var, SpecificType::Unit),
@@ -409,7 +461,7 @@ fn visit_block(graph: &mut Graph, diagnostics: &Diagnostics, meta_info: &MetaInf
     type_var
 }
 
-fn visit_function(graph: &mut Graph, diagnostics: &Diagnostics, meta_info: &MetaInfo, function: &ExprFunctionDefinition) -> TypeVar {
+fn visit_function(graph: &mut Graph, diagnostics: &Diagnostics, meta_info: &MetaInfo, function_generics: &FunctionGenerics, function: &ExprFunctionDefinition) -> TypeVar {
     let type_var = TypeVar::new(function.span());
     graph.add_type_var(type_var);
     let ExprFunctionDefinition { args, ret_type, body, .. } = function;
@@ -417,14 +469,14 @@ fn visit_function(graph: &mut Graph, diagnostics: &Diagnostics, meta_info: &Meta
     for ExprPatternTyped { pattern: ExprPatternUntyped { binding }, typ, .. } in args {
         let arg_type_var = TypeVar::new(binding.ident.span);
         graph.add_type_var(arg_type_var);
-        if let Type::Specific(specific) = Type::from_expr_type(typ, diagnostics, meta_info) {
+        if let Type::Specific(specific) = convert_expr_type(typ, diagnostics, meta_info, function_generics) {
             graph.add_reduce_constraint(type_var, arg_type_var, vec![specific]);
         }
     }
 
-    let body_type_var = visit_block(graph, diagnostics, meta_info, body);
+    let body_type_var = visit_block(graph, diagnostics, meta_info, function_generics, body);
     if let Some((_arrow, ret_type)) = ret_type {
-        if let Type::Specific(specific) = Type::from_expr_type(ret_type, diagnostics, meta_info) {
+        if let Type::Specific(specific) = convert_expr_type(ret_type, diagnostics, meta_info, function_generics) {
             graph.add_reduce_constraint(type_var, body_type_var, vec![specific]);
         }
     }

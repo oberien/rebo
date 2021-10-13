@@ -1,7 +1,7 @@
 use crate::lints::visitor::Visitor;
 use diagnostic::Diagnostics;
 use crate::common::MetaInfo;
-use crate::parser::{ExprFunctionDefinition, ExprBlock, BlockBody};
+use crate::parser::{ExprFunctionDefinition, ExprBlock, BlockBody, Spanned};
 use crate::error_codes::ErrorCode;
 use crate::typeck::types::{SpecificType, Type};
 
@@ -9,15 +9,12 @@ pub struct EmptyFunctionBody;
 
 impl Visitor for EmptyFunctionBody {
     fn visit_function_definition(&self, diagnostics: &Diagnostics, meta_info: &MetaInfo, def: &ExprFunctionDefinition) {
-        let ExprFunctionDefinition { name, ret_type, body: ExprBlock { body: BlockBody { exprs, .. }, .. }, .. } = def;
-        let ret_type = match ret_type {
-            Some((_arrow, typ)) => match Type::from_expr_type(typ, diagnostics, meta_info) {
-                Type::Specific(specific) => specific,
-                _ => return,
-            },
-            None => SpecificType::Unit,
-        };
-        if exprs.is_empty() && ret_type != SpecificType::Unit {
+        let ExprFunctionDefinition { name, body: ExprBlock { body: BlockBody { exprs, .. }, .. }, .. } = def;
+        // TODO: can this be better?
+        let full_name = meta_info.rebo_functions.iter().find(|(_name, fun)| fun.span() == def.span()).unwrap().0;
+        let ret_type = &meta_info.function_types[full_name].ret;
+
+        if exprs.is_empty() && *ret_type != Type::Specific(SpecificType::Unit) {
             diagnostics.error(ErrorCode::EmptyFunctionBody)
                 .with_error_label(name.span, format!("this function returns {} but has an empty body", ret_type))
                 .emit();
