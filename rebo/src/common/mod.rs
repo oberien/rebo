@@ -8,7 +8,7 @@ pub use values::{FromValue, FromValues, Function, ExternalFunction, FuzzyFloat, 
 
 use crate::error_codes::ErrorCode;
 use crate::EXTERNAL_SPAN;
-use crate::parser::{ExprEnumDefinition, ExprFunctionDefinition, ExprPatternTyped, ExprPatternUntyped, ExprStructDefinition, Spanned};
+use crate::parser::{ExprEnumDefinition, ExprFunctionDefinition, ExprPatternTyped, ExprPatternUntyped, ExprStructDefinition, Spanned, ExprGenerics};
 use crate::typeck::types::{EnumType, FunctionType, StructType, Type};
 use crate::typeck::TypeVar;
 
@@ -34,6 +34,18 @@ impl<'a, 'i> UserType<'a, 'i> {
             _ => None,
         }
     }
+    pub fn name_span(&self) -> Span {
+        match self {
+            UserType::Struct(s) => s.name.span,
+            UserType::Enum(e) => e.name.span,
+        }
+    }
+    pub fn generics(&self) -> Option<&'a ExprGenerics<'a, 'i>> {
+        match self {
+            UserType::Struct(s) => s.generics.as_ref(),
+            UserType::Enum(e) => e.generics.as_ref(),
+        }
+    }
 }
 
 /// Metadata / information needed before and/or during static analyses
@@ -50,7 +62,7 @@ pub struct MetaInfo<'a, 'i> {
     pub rebo_functions: IndexMap<Cow<'i, str>, &'a ExprFunctionDefinition<'a, 'i>>,
     /// enum and struct definitions found in the code
     ///
-    /// Available after the parser's first pass.
+    /// Available after the parser.
     pub user_types: IndexMap<&'i str, UserType<'a, 'i>>,
     /// function types with resolved argument and return types
     ///

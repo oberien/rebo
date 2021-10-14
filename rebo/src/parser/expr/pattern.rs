@@ -170,7 +170,7 @@ impl<'a, 'i> Display for ExprMatchPatternVariant<'a, 'i> {
         write!(f, "{}::{}", self.enum_name.ident, self.variant_name.ident)?;
         if let Some((_, sep, _)) = &self.fields {
             let joined = sep.iter().map(|pat| pat.to_string()).join(", ");
-            write!(f, "{}", joined)?;
+            write!(f, "({})", joined)?;
         }
         Ok(())
     }

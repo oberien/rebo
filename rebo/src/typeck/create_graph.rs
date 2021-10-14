@@ -394,10 +394,6 @@ fn visit_expr(graph: &mut Graph, diagnostics: &Diagnostics, meta_info: &MetaInfo
             }
         }
         Expr::FunctionDefinition(function) => {
-            let _scope_guard = function_generics.push_stack();
-            for generic in function.generics.iter().flat_map(|g| &g.generics).flatten() {
-                function_generics.insert(generic.def_ident.span);
-            }
             visit_function(graph, diagnostics, meta_info, function_generics, function);
         }
         Expr::StructDefinition(_) => graph.set_exact_type(type_var, SpecificType::Unit),
@@ -429,14 +425,8 @@ fn visit_expr(graph: &mut Graph, diagnostics: &Diagnostics, meta_info: &MetaInfo
         }
         Expr::EnumDefinition(_) => graph.set_exact_type(type_var, SpecificType::Unit),
         Expr::EnumInitialization(enum_init) => graph.set_exact_type(type_var, SpecificType::Enum(enum_init.enum_name.ident.to_string())),
-        Expr::ImplBlock(ExprImplBlock { generics, functions, .. }) => {
+        Expr::ImplBlock(ExprImplBlock { functions, .. }) => {
             for function in functions {
-                let _scope_guard = function_generics.push_stack();
-                let generic_iter = generics.iter().flat_map(|g| &g.generics).flatten()
-                    .chain(function.generics.iter().flat_map(|g| &g.generics).flatten());
-                for generic in generic_iter {
-                    function_generics.insert(generic.def_ident.span);
-                }
                 visit_function(graph, diagnostics, meta_info, function_generics, function);
             }
             graph.set_exact_type(type_var, SpecificType::Unit);
@@ -462,6 +452,11 @@ fn visit_block(graph: &mut Graph, diagnostics: &Diagnostics, meta_info: &MetaInf
 }
 
 fn visit_function(graph: &mut Graph, diagnostics: &Diagnostics, meta_info: &MetaInfo, function_generics: &FunctionGenerics, function: &ExprFunctionDefinition) -> TypeVar {
+    let _scope_guard = function_generics.push_stack();
+    for generic in function.generics.iter().flat_map(|g| &g.generics).flatten() {
+        function_generics.insert(generic.def_ident.span);
+    }
+
     let type_var = TypeVar::new(function.span());
     graph.add_type_var(type_var);
     let ExprFunctionDefinition { args, ret_type, body, .. } = function;

@@ -13,7 +13,7 @@ use std::borrow::Cow;
 use crate::parser::parse::{Separated, Spanned, Scoped};
 use crate::parser::precedence::{BooleanExpr, Math};
 use diagnostic::Span;
-use itertools::Itertools;
+use itertools::{Itertools, Either};
 use crate::common::Depth;
 use indexmap::set::IndexSet;
 
@@ -344,13 +344,7 @@ impl<'a, 'i> Expr<'a, 'i> {
         }
         let others: &[ParseFn<'a, '_, 'i>] = &[
             |parser: &mut Parser<'a, '_, 'i>, depth| {
-                // functions must be parsed in their own scope
-                let old_scopes = std::mem::take(&mut parser.scopes);
-                let scope_guard = parser.push_scope();
-                let result = ExprFunctionDefinition::parse(parser, depth);
-                drop(scope_guard);
-                parser.scopes = old_scopes;
-                let expr = result?;
+                let expr = ExprFunctionDefinition::parse(parser, depth)?;
 
                 if let Some(self_arg) = &expr.self_arg {
                     parser.diagnostics.error(ErrorCode::SelfBinding)
@@ -566,7 +560,7 @@ impl<'a, 'i> Display for ExprType<'a, 'i> {
                 }
                 Ok(())
             },
-            ExprType::Generic(g) => write!(f, "{}", g.ident.ident),
+            ExprType::Generic(g) => write!(f, "{}<{},{},{}; {},{},{}>", g.ident.ident, g.def_ident.span.file, g.def_ident.span.start, g.def_ident.span.end, g.ident.span.file, g.ident.span.start, g.ident.span.end),
         }
     }
 }
@@ -592,6 +586,11 @@ impl<'a, 'i> Parse<'a, 'i> for ExprGenerics<'a, 'i> {
 impl<'a, 'i> Display for ExprGenerics<'a, 'i> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "<{}>", self.generics.iter().join(", "))
+    }
+}
+impl<'a, 'i> Spanned for ExprGenerics<'a, 'i> {
+    fn span(&self) -> Span {
+        Span::new(self.open.span.file, self.open.span.start, self.close.span.end)
     }
 }
 
@@ -1368,12 +1367,20 @@ impl<'a, 'i> ExprFunctionDefinition<'a, 'i> {
         Span::new(self.open.span.file, self.open.span.start, self.close.span.end)
     }
     fn parse_with_generics(parser: &mut Parser<'a, '_, 'i>, depth: Depth, generics: &[Generic<'i>]) -> Result<Self, InternalError> {
-        let mark = parser.lexer.mark();
+        // functions must be parsed in their own scope
+        let old_scopes = std::mem::take(&mut parser.scopes);
         // scope for generics and argument-bindings
-        let _scope_guard = parser.push_scope();
+        let scope_guard = parser.push_scope();
         for &generic in generics {
             parser.add_generic(generic);
         }
+        let result = Self::parse_internal(parser, depth);
+        drop(scope_guard);
+        parser.scopes = old_scopes;
+        result
+    }
+    fn parse_internal(parser: &mut Parser<'a, '_, 'i>, depth: Depth) -> Result<Self, InternalError> {
+        let mark = parser.lexer.mark();
 
         let fn_token = parser.parse(depth.next())?;
         let name = parser.parse(depth.next())?;
@@ -1407,7 +1414,11 @@ impl<'a, 'i> Spanned for ExprFunctionDefinition<'a, 'i> {
 }
 impl<'a, 'i> Display for ExprFunctionDefinition<'a, 'i> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "fn {}({}) ", self.name.ident, self.args)?;
+        write!(f, "fn {}", self.name.ident)?;
+        if let Some(generics) = &self.generics {
+            write!(f, "{}", generics)?;
+        }
+        write!(f, "({}) ", self.args)?;
         if let Some((_arrow, ret_type)) = &self.ret_type {
             write!(f, "-> {} ", ret_type)?;
         }
@@ -1446,7 +1457,11 @@ impl<'a, 'i> Spanned for ExprStructDefinition<'a, 'i> {
 }
 impl<'a, 'i> Display for ExprStructDefinition<'a, 'i> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "struct {} {{ ", self.name.ident)?;
+        write!(f, "struct {}", self.name.ident)?;
+        if let Some(generics) = &self.generics {
+            write!(f, "{}", generics)?;
+        }
+        writeln!(f, " {{")?;
         for (name, _comma, typ) in &self.fields {
             write!(f, "{}: {}, ", name.ident, typ)?;
         }
@@ -1521,7 +1536,11 @@ impl<'a, 'i> Spanned for ExprEnumDefinition<'a, 'i> {
 }
 impl<'a, 'i> Display for ExprEnumDefinition<'a, 'i> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        writeln!(f, "enum {} {{", self.name.ident)?;
+        write!(f, "enum {}", self.name.ident)?;
+        if let Some(generics) = &self.generics {
+            write!(f, "{}", generics)?;
+        }
+        writeln!(f, " {{")?;
         let mut padded = PadFmt::new(&mut *f);
         for variant in &self.variants {
             writeln!(padded, "{}", variant)?;
@@ -1594,18 +1613,84 @@ impl<'a, 'i> Parse<'a, 'i> for ExprImplBlock<'a, 'i> {
         let _scope_guard = parser.push_scope();
         let impl_token = parser.parse(depth.next())?;
         let name: TokenIdent = parser.parse(depth.next())?;
-        let generics: Option<ExprGenerics> = parser.parse(depth.next())?;
+        let mut generics: Option<ExprGenerics> = parser.parse(depth.next())?;
         let open = parser.parse(depth.next())?;
+
+        // fix generics to point to their original struct / enum generic
+        (|| {
+            let user_type = match parser.meta_info.user_types.get(name.ident) {
+                Some(user_type) => user_type,
+                None => return,
+            };
+            let target_generics = user_type.generics();
+            let target_generic_span = target_generics.map(|g| g.span()).unwrap_or(Span::new(user_type.name_span().file, user_type.name_span().end, user_type.name_span().end));
+            let target_generics = target_generics.and_then(|g| g.generics.as_ref());
+            let target_generic_iter = match target_generics {
+                Some(generics) => Either::Left(generics.iter().map(Some).chain(std::iter::repeat(None))),
+                None => Either::Right(std::iter::repeat(None)),
+            };
+            let generic_span = generics.as_ref().map(|g| g.span()).unwrap_or(Span::new(name.span.file, name.span.end, name.span.end));
+            let generics = generics.as_mut().and_then(|g| g.generics.as_mut());
+            let generics_iter = match generics {
+                Some(generics) => Either::Left(generics.iter_mut().map(Some).chain(std::iter::repeat_with(|| None))),
+                None => Either::Right(std::iter::repeat_with(|| None)),
+            };
+            let mut iter = target_generic_iter.zip(generics_iter);
+            loop {
+                match iter.next() {
+                    Some((Some(target), Some(generic))) => {
+                        if target.def_ident.ident != generic.def_ident.ident {
+                            parser.diagnostics.error(ErrorCode::MismatchedGeneric)
+                                .with_error_label(generic.def_ident.span, format!("expected generic name `{}`, found `{}`", target.def_ident.ident, generic.def_ident.ident))
+                                .with_note("generics of a type must have the same name in the type def and impl-block")
+                                .emit();
+                        } else {
+                            generic.def_ident = target.def_ident;
+                        }
+                    },
+                    Some((Some(target), None)) => parser.diagnostics.error(ErrorCode::MissingGeneric)
+                        .with_error_label(generic_span, format!("missing generic `{}`", target.def_ident.ident))
+                        .with_info_label(target.def_ident.span, "defined here")
+                        .emit(),
+                    Some((None, Some(generic))) => parser.diagnostics.error(ErrorCode::TooManyGenerics)
+                        .with_error_label(generic.span(), format!("too many generics, unknown generic `{}`", generic.def_ident.ident))
+                        .with_info_label(target_generic_span, "expected generics defined here")
+                        .emit(),
+                    Some((None, None)) => break,
+                    None => unreachable!(),
+                }
+            }
+        })();
 
         let mut functions = Vec::new();
         let generic_list: Vec<_> = generics.iter().flat_map(|g| g.generics.iter().flat_map(|g| g.iter())).copied().collect();
+        dbg!(&generic_list);
         while let Ok(function) = ExprFunctionDefinition::parse_with_generics(parser, depth.next(), &generic_list) {
             functions.push(function);
         }
         let close = parser.parse(depth.last())?;
 
-        // desugar self-args: insert self-args into args
+        // desugar:
+        // * generics: generics defined on the impl-block-target are moved into the function
+        // * self-args: insert self-args into args
         for fun in &mut functions {
+            // generics
+            if !generic_list.is_empty() {
+                match &mut fun.generics {
+                    None => fun.generics = Some(generics.clone().unwrap()),
+                    Some(g) => {
+                        let g = g.generics.get_or_insert_with(|| Separated::default());
+                        for (&generic, delim) in generics.as_ref().unwrap().generics.as_ref().unwrap().iter_with_delimiters() {
+                            let comma = delim.copied().unwrap_or(TokenComma {
+                                span: Span::new(generic.span().file, generic.span().end, generic.span().end),
+                            });
+                            g.prepend(generic, Some(comma))
+                        }
+                    }
+                }
+            }
+
+            // self-args
             if let Some(self_arg) = fun.self_arg {
                 let typed = ExprPatternTyped {
                     pattern: ExprPatternUntyped {
@@ -1639,7 +1724,11 @@ impl<'a, 'i> Spanned for ExprImplBlock<'a, 'i> {
 }
 impl<'a, 'i> Display for ExprImplBlock<'a, 'i> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "impl {} {{", self.name.ident)?;
+        write!(f, "impl {}", self.name.ident)?;
+        if let Some(generics) = &self.generics {
+            write!(f, "{}", generics)?;
+        }
+        writeln!(f, " {{")?;
         let mut padded = PadFmt::new(&mut *f);
         for function in &self.functions {
             writeln!(padded, "{}", function)?;

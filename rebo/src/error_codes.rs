@@ -56,6 +56,9 @@ pub enum ErrorCode {
     UnknownMethod,
     NotAMethod,
     DuplicateGeneric,
+    MismatchedGeneric,
+    MissingGeneric,
+    TooManyGenerics,
 }
 use ErrorCode::*;
 
@@ -118,6 +121,9 @@ impl diagnostic::ErrorCode for ErrorCode {
             UnknownMethod => "0055",
             NotAMethod => "0056",
             DuplicateGeneric => "0057",
+            MismatchedGeneric => "0058",
+            MissingGeneric => "0059",
+            TooManyGenerics => "0060",
         }.to_string()
     }
 
@@ -179,6 +185,9 @@ impl diagnostic::ErrorCode for ErrorCode {
             UnknownMethod => "unknown method",
             NotAMethod => "not a method",
             DuplicateGeneric => "duplicate generic type",
+            MismatchedGeneric => "mismatched generic",
+            MissingGeneric => "missing generic",
+            TooManyGenerics => "too many generics",
         }.to_string()
     }
 }

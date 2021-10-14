@@ -127,6 +127,12 @@ impl<'b, 'a: 'b, 'i: 'b, T: 'a, D: 'a> Separated<'a, 'i, T, D> {
     pub fn iter(&'b self) -> <&'b Self as IntoIterator>::IntoIter {
         (&self).into_iter()
     }
+    pub fn iter_mut(&'b mut self) -> <&'b mut Self as IntoIterator>::IntoIter {
+        self.into_iter()
+    }
+    pub fn iter_with_delimiters(&'b self) -> Box<dyn Iterator<Item = (&'b T, Option<&'b D>)> + 'b> {
+        Box::new(self.inner.iter().map(|(t, d)| (t, Some(d))).chain(self.last.as_ref().map(|t| (t, None))))
+    }
     pub fn last_unterminated(&'b self) -> Option<&T> {
         self.last.as_ref()
     }
@@ -174,6 +180,14 @@ impl<'b, 'a: 'b, 'i: 'b, T: 'a, D: 'a> IntoIterator for &'b Separated<'a, 'i, T,
 
     fn into_iter(self) -> Self::IntoIter {
         Box::new(self.inner.iter().map(|(t, _)| t).chain(&self.last))
+    }
+}
+impl<'b, 'a: 'b, 'i: 'b, T: 'a, D: 'a> IntoIterator for &'b mut Separated<'a, 'i, T, D> {
+    type Item = &'b mut T;
+    type IntoIter = Box<dyn Iterator<Item = &'b mut T> + 'b>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        Box::new(self.inner.iter_mut().map(|(t, _)| t).chain(&mut self.last))
     }
 }
 impl<'a, 'i, T: Display, D: Display> Display for Separated<'a, 'i, T, D> {

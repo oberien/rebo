@@ -230,17 +230,17 @@ impl<'a, 'b, 'i> Parser<'a, 'b, 'i> {
             .next()
     }
     fn add_generic(&mut self, generic: Generic<'i>) {
-        if self.generic_memoization.contains(&generic.def_ident.span) {
+        if self.get_generic(generic.def_ident.ident).is_some() && self.generic_memoization.contains(&generic.def_ident.span) {
             return;
         }
         self.generic_memoization.insert(generic.def_ident.span);
-        match self.get_generic(generic.ident.ident) {
+        match self.get_generic(generic.def_ident.ident) {
             Some(prev) => self.diagnostics.error(ErrorCode::DuplicateGeneric)
-                .with_error_label(generic.ident.span, "this generic has already been defined")
+                .with_error_label(generic.def_ident.span, "this generic has already been defined")
                 .with_info_label(prev.def_ident.span, "previously defined here")
                 .emit(),
             None => {
-                self.scopes.borrow_mut().last_mut().unwrap().generics.insert(generic.ident.ident, generic);
+                self.scopes.borrow_mut().last_mut().unwrap().generics.insert(generic.def_ident.ident, generic);
             }
         }
     }
