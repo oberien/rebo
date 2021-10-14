@@ -1394,11 +1394,14 @@ impl<'a, 'i> ExprFunctionDefinition<'a, 'i> {
     pub fn arg_span(&self) -> Span {
         Span::new(self.open.span.file, self.open.span.start, self.close.span.end)
     }
-}
-impl<'a, 'i> Parse<'a, 'i> for ExprFunctionDefinition<'a, 'i> {
-    fn parse_marked(parser: &mut Parser<'a, '_, 'i>, depth: Depth) -> Result<Self, InternalError> {
+    fn parse_with_generics(parser: &mut Parser<'a, '_, 'i>, depth: Depth, generics: &[Generic]) -> Result<Self, InternalError> {
+        let mark = parser.lexer.mark();
         // scope for generics and argument-bindings
         let _scope_guard = parser.push_scope();
+        for &generic in generics {
+            parser.add_generic(generic);
+        }
+
         let fn_token = parser.parse(depth.next())?;
         let name = parser.parse(depth.next())?;
         let generics = parser.parse(depth.next())?;
@@ -1415,7 +1418,13 @@ impl<'a, 'i> Parse<'a, 'i> for ExprFunctionDefinition<'a, 'i> {
         let ret_type = parser.parse(depth.next())?;
         let body = parser.parse(depth.last())?;
 
+        mark.apply();
         Ok(ExprFunctionDefinition { fn_token, name, generics, open, self_arg, self_arg_comma, args, close, ret_type, body })
+    }
+}
+impl<'a, 'i> Parse<'a, 'i> for ExprFunctionDefinition<'a, 'i> {
+    fn parse_marked(parser: &mut Parser<'a, '_, 'i>, depth: Depth) -> Result<Self, InternalError> {
+        Self::parse_with_generics(parser, depth, &[])
     }
 }
 impl<'a, 'i> Spanned for ExprFunctionDefinition<'a, 'i> {
@@ -1614,7 +1623,12 @@ impl<'a, 'i> Parse<'a, 'i> for ExprImplBlock<'a, 'i> {
         let name: TokenIdent = parser.parse(depth.next())?;
         let generics: Option<ExprGenerics> = parser.parse(depth.next())?;
         let open = parser.parse(depth.next())?;
-        let mut functions: Vec<ExprFunctionDefinition<'a, 'i>> = parser.parse(depth.next())?;
+
+        let mut functions = Vec::new();
+        let generic_list: Vec<_> = generics.iter().flat_map(|g| g.generics.iter().map(|g| g.iter())).collect();
+        while let Ok(function) = ExprFunctionDefinition::parse_with_generics(parser, depth.next(), &generic_list) {
+            functions.push(function);
+        }
         let close = parser.parse(depth.last())?;
 
         // desugar self-args: insert self-args into args
@@ -1627,15 +1641,18 @@ impl<'a, 'i> Parse<'a, 'i> for ExprImplBlock<'a, 'i> {
                     colon_token: TokenColon {
                         span: Span::new(self_arg.ident.span.file, self_arg.ident.span.end, self_arg.ident.span.end),
                     },
-                    typ: ExprType::UserType(TokenIdent {
-                        ident: name.ident,
-                        span: self_arg.ident.span,
-                    }, match generics.clone() {
-                        Some(ExprGenerics { open, generics: Some(generics), close }) => {
-                            Some((open, Box::new(Separated::from(generics)), close,))
+                    typ: ExprType::UserType(
+                        TokenIdent {
+                            ident: name.ident,
+                            span: name.ident.span,
+                        },
+                        match generics.clone() {
+                            Some(ExprGenerics { open, generics: Some(generics), close }) => {
+                                Some((open, Box::new(Separated::from(generics)), close))
+                            }
+                            _ => None,
                         }
-                        _ => None,
-                    }),
+                    ),
 
                 };
                 fun.args.prepend(typed, fun.self_arg_comma);
