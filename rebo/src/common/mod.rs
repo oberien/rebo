@@ -50,7 +50,7 @@ pub struct MetaInfo<'a, 'i> {
     pub rebo_functions: IndexMap<Cow<'i, str>, &'a ExprFunctionDefinition<'a, 'i>>,
     /// enum and struct definitions found in the code
     ///
-    /// Available after the parser.
+    /// Available after the parser's first pass.
     pub user_types: IndexMap<&'i str, UserType<'a, 'i>>,
     /// function types with resolved argument and return types
     ///

@@ -175,7 +175,7 @@ fn free_function_diagnostics() {
         let foo = Foo { x: 1337 };
         change(foo);
         
-        // functions must be parsed in their own scope
+        // unknown identifier foo (functions must be parsed in their own scope)
         let foo = ();
         fn qux() {
             foo

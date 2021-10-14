@@ -129,6 +129,7 @@ impl<'a, 'b, 'i> Parser<'a, 'b, 'i> {
     }
 
     pub fn parse_ast(mut self) -> Result<Ast<'a, 'i>, Error> {
+        self.first_pass();
         trace!("parse_ast");
         // file scope
         let body: BlockBody = match self.parse(Depth::start()) {
@@ -148,6 +149,60 @@ impl<'a, 'b, 'i> Parser<'a, 'b, 'i> {
         })
     }
 
+    /// Parse struct and enum definitions
+    fn first_pass(&mut self) {
+        trace!("first_pass");
+        // create rogue scopes
+        let old_scopes = ::std::mem::replace(&mut self.scopes, Rc::new(RefCell::new(vec![Scope { idents: IndexMap::new(), generics: IndexMap::new() }])));
+        let mark = self.lexer.mark();
+        let functions: &[for<'x> fn(&'x mut Parser<'a, 'b, 'i>, _) -> Result<_, InternalError>] = &[
+            |parser: &mut Parser<'a, '_, 'i>, depth| {
+                let struct_def = &*parser.arena.alloc(Expr::StructDefinition(ExprStructDefinition::parse_reset(parser, depth)?));
+                match struct_def {
+                    Expr::StructDefinition(struct_def) => {
+                        parser.meta_info.add_struct(parser.diagnostics, struct_def);
+                    },
+                    _ => unreachable!("we just created you"),
+                }
+                Ok(struct_def)
+            },
+            |parser: &mut Parser<'a, '_, 'i>, depth| {
+                let enum_def = &*parser.arena.alloc(Expr::EnumDefinition(ExprEnumDefinition::parse_reset(parser, depth)?));
+                match enum_def {
+                    Expr::EnumDefinition(enum_def) => {
+                        parser.meta_info.add_enum(parser.diagnostics, enum_def);
+                        for variant in enum_def.variants.iter() {
+                            if variant.fields.is_some() {
+                                let enum_name = enum_def.name.ident.to_string();
+                                let variant_name = variant.name.ident.to_string();
+                                parser.meta_info.add_enum_initializer_function(parser.diagnostics, enum_name, variant_name);
+                            }
+                        }
+                    },
+                    _ => unreachable!("we just created you"),
+                }
+                Ok(enum_def)
+            },
+        ];
+        while self.peek_token(0).is_ok() && !matches!(self.peek_token(0).unwrap(), Token::Eof(_)) {
+            for function in functions {
+                let expr = match function(&mut *self, Depth::start()) {
+                    Ok(expr) => expr,
+                    Err(_) => continue,
+                };
+                self.pre_parsed.insert((expr.span().file, expr.span().start), expr);
+                // consume tokens except last one as that's consumed after the for loop
+                while self.peek_token(0).unwrap().span().end < expr.span().end {
+                    drop(self.next_token());
+                }
+                break;
+            }
+            drop(self.next_token())
+        }
+        // reset token lookahead
+        drop(mark);
+        self.scopes = old_scopes;
+    }
 
     fn add_binding(&mut self, ident: TokenIdent<'i>, mutable: Option<TokenMut>) -> Binding<'i> {
         self.add_binding_internal(ident, mutable, false)

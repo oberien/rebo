@@ -369,33 +369,6 @@ impl<'a, 'i> Expr<'a, 'i> {
                 Ok(fun)
             },
             |parser: &mut Parser<'a, '_, 'i>, depth| {
-                let struct_def = &*parser.arena.alloc(Expr::StructDefinition(ExprStructDefinition::parse(parser, depth)?));
-                match struct_def {
-                    Expr::StructDefinition(struct_def) => {
-                        parser.meta_info.add_struct(parser.diagnostics, struct_def);
-                    },
-                    _ => unreachable!("we just created you"),
-                }
-                Ok(struct_def)
-            },
-            |parser: &mut Parser<'a, '_, 'i>, depth| {
-                let enum_def = &*parser.arena.alloc(Expr::EnumDefinition(ExprEnumDefinition::parse(parser, depth)?));
-                match enum_def {
-                    Expr::EnumDefinition(enum_def) => {
-                        parser.meta_info.add_enum(parser.diagnostics, enum_def);
-                        for variant in enum_def.variants.iter() {
-                            if variant.fields.is_some() {
-                                let enum_name = enum_def.name.ident.to_string();
-                                let variant_name = variant.name.ident.to_string();
-                                parser.meta_info.add_enum_initializer_function(parser.diagnostics, enum_name, variant_name);
-                            }
-                        }
-                    },
-                    _ => unreachable!("we just created you"),
-                }
-                Ok(enum_def)
-            },
-            |parser: &mut Parser<'a, '_, 'i>, depth| {
                 let impl_block = &*parser.arena.alloc(Expr::ImplBlock(ExprImplBlock::parse(parser, depth)?));
                 match impl_block {
                     Expr::ImplBlock(impl_block) => {
@@ -1394,7 +1367,7 @@ impl<'a, 'i> ExprFunctionDefinition<'a, 'i> {
     pub fn arg_span(&self) -> Span {
         Span::new(self.open.span.file, self.open.span.start, self.close.span.end)
     }
-    fn parse_with_generics(parser: &mut Parser<'a, '_, 'i>, depth: Depth, generics: &[Generic]) -> Result<Self, InternalError> {
+    fn parse_with_generics(parser: &mut Parser<'a, '_, 'i>, depth: Depth, generics: &[Generic<'i>]) -> Result<Self, InternalError> {
         let mark = parser.lexer.mark();
         // scope for generics and argument-bindings
         let _scope_guard = parser.push_scope();
@@ -1625,7 +1598,7 @@ impl<'a, 'i> Parse<'a, 'i> for ExprImplBlock<'a, 'i> {
         let open = parser.parse(depth.next())?;
 
         let mut functions = Vec::new();
-        let generic_list: Vec<_> = generics.iter().flat_map(|g| g.generics.iter().map(|g| g.iter())).collect();
+        let generic_list: Vec<_> = generics.iter().flat_map(|g| g.generics.iter().flat_map(|g| g.iter())).copied().collect();
         while let Ok(function) = ExprFunctionDefinition::parse_with_generics(parser, depth.next(), &generic_list) {
             functions.push(function);
         }
@@ -1642,10 +1615,7 @@ impl<'a, 'i> Parse<'a, 'i> for ExprImplBlock<'a, 'i> {
                         span: Span::new(self_arg.ident.span.file, self_arg.ident.span.end, self_arg.ident.span.end),
                     },
                     typ: ExprType::UserType(
-                        TokenIdent {
-                            ident: name.ident,
-                            span: name.ident.span,
-                        },
+                        name,
                         match generics.clone() {
                             Some(ExprGenerics { open, generics: Some(generics), close }) => {
                                 Some((open, Box::new(Separated::from(generics)), close))

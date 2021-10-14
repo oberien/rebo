@@ -1,7 +1,7 @@
 use crate::lints::visitor::Visitor;
 use diagnostic::Diagnostics;
 use crate::common::MetaInfo;
-use crate::parser::ExprStructDefinition;
+use crate::parser::{ExprStructDefinition, Spanned};
 use crate::error_codes::ErrorCode;
 use crate::lexer::TokenIdent;
 use itertools::Itertools;
@@ -13,6 +13,11 @@ pub struct StructDefLints;
 impl Visitor for StructDefLints {
     fn visit_struct_definition(&self, diagnostics: &Diagnostics, meta_info: &MetaInfo, def: &ExprStructDefinition) {
         let ExprStructDefinition { name, fields, .. } = def;
+
+        // ignore duplicate struct definitions
+        if meta_info.user_types[name.ident].span() != def.span() {
+            return;
+        }
 
         // check duplicate field
         let mut map = IndexMap::new();
