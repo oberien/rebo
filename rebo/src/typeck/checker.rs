@@ -1,18 +1,18 @@
 use diagnostic::Diagnostics;
-use crate::typeck::graph::{Graph, Constraint, PossibleTypes};
+use crate::typeck::graph::{Graph, Constraint};
 use crate::common::MetaInfo;
 use crate::error_codes::ErrorCode;
 use itertools::Itertools;
-use crate::typeck::types::{Type, SpecificType};
+use crate::typeck::types::{Type, SpecificType, ResolvableSpecificType};
 
 pub fn check(diagnostics: &Diagnostics, graph: &Graph, meta_info: &mut MetaInfo) {
     for node in graph.type_vars() {
         let types = graph.possible_types(node);
         if types.len() == 1 {
-            meta_info.types.insert(node, Type::Specific(types[0].clone()));
+            meta_info.types.insert(node, Type::Specific(SpecificType::from(&types[0])));
             continue;
         }
-        if types == PossibleTypes::any() {
+        if types.len() > 1 {
             meta_info.types.insert(node, Type::Top);
             continue;
         }
@@ -39,7 +39,7 @@ pub fn check(diagnostics: &Diagnostics, graph: &Graph, meta_info: &mut MetaInfo)
                         "can't infer this struct type".to_string()
                     } else {
                         match &struct_typ[0] {
-                            SpecificType::Struct(name) => {
+                            ResolvableSpecificType::Struct(name) => {
                                 match meta_info.struct_types[name.as_str()].get_field_path(meta_info, &fields) {
                                     Ok(Type::Specific(typ)) => format!("this says the field has type `{}`", typ),
                                     _ => format!("can't find fields starting from `{}`", struct_typ[0]),

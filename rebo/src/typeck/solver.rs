@@ -2,7 +2,7 @@ use crate::typeck::graph::{Graph, Constraint, UnifyResult};
 use crate::common::MetaInfo;
 use std::collections::{VecDeque, HashSet};
 use crate::typeck::TypeVar;
-use crate::typeck::types::SpecificType;
+use crate::typeck::types::ResolvableSpecificType;
 use std::iter::FromIterator;
 
 struct WorkQueue {
@@ -48,7 +48,7 @@ pub fn solve(graph: &mut Graph, meta_info: &mut MetaInfo) {
         for (constraint, source) in graph.incoming(var) {
             let unify_result = match constraint {
                 Constraint::Eq => graph.unify_assign(var, source),
-                Constraint::Struct => graph.reduce(var, &[SpecificType::Struct("struct".to_string())]),
+                Constraint::Struct => graph.reduce(var, &[ResolvableSpecificType::Struct("struct".to_string())]),
                 Constraint::Reduce(reduce) => graph.reduce(var, &reduce),
                 Constraint::FieldAccess(fields) => {
                     graph.field_access(meta_info, source, var, &fields)

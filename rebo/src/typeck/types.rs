@@ -15,8 +15,7 @@ pub enum Type {
     Varargs,
     Specific(SpecificType),
 }
-#[derive(Debug, Clone, PartialOrd, Ord, PartialEq, Eq, Hash, EnumDiscriminants)]
-#[strum_discriminants(derive(EnumIter))]
+#[derive(Debug, Clone, PartialOrd, Ord, PartialEq, Eq, Hash)]
 pub enum SpecificType {
     Unit,
     Integer,
@@ -27,26 +26,30 @@ pub enum SpecificType {
     Struct(String),
     /// enum name
     Enum(String),
+    Generic(Span),
+}
+#[derive(Debug, Clone, PartialOrd, Ord, PartialEq, Eq, Hash)]
+pub enum ResolvableType {
+    Top,
+    Bottom,
+    Varargs,
+    Specific(ResolvableSpecificType),
+}
+#[derive(Debug, Clone, PartialOrd, Ord, PartialEq, Eq, Hash, EnumDiscriminants)]
+#[strum_discriminants(derive(EnumIter))]
+pub enum ResolvableSpecificType {
+    Unit,
+    Integer,
+    Float,
+    Bool,
+    String,
+    Struct(String),
+    Enum(String),
     /// a generic inside a function definition or impl-block definition, which must not
     /// unify except with itself (or some other generics)
     UnUnifyableGeneric(Span),
     /// a generic from a binding that should unify
     UnifyableGeneric(Span),
-}
-impl SpecificType {
-    pub fn is_generic(&self) -> bool {
-        match self {
-            SpecificType::Unit
-            | SpecificType::Bool
-            | SpecificType::Integer
-            | SpecificType::Float
-            | SpecificType::String
-            | SpecificType::Struct(_)
-            | SpecificType::Enum(_) => false,
-            SpecificType::UnUnifyableGeneric(_)
-            | SpecificType::UnifyableGeneric(_) => true
-        }
-    }
 }
 #[derive(Debug, Clone, PartialOrd, Ord, PartialEq, Eq, Hash)]
 pub struct FunctionType {
@@ -111,6 +114,32 @@ impl From<&ExprLiteral> for SpecificType {
         }
     }
 }
+impl From<&ExprLiteral> for ResolvableSpecificType {
+    fn from(lit: &ExprLiteral) -> Self {
+        match lit {
+            ExprLiteral::Unit(_) => ResolvableSpecificType::Unit,
+            ExprLiteral::Integer(_) => ResolvableSpecificType::Integer,
+            ExprLiteral::Float(_) => ResolvableSpecificType::Float,
+            ExprLiteral::Bool(_) => ResolvableSpecificType::Bool,
+            ExprLiteral::String(_) => ResolvableSpecificType::String,
+        }
+    }
+}
+impl From<&ResolvableSpecificType> for SpecificType {
+    fn from(typ: &ResolvableSpecificType) -> Self {
+        match typ {
+            ResolvableSpecificType::Unit => SpecificType::Unit,
+            ResolvableSpecificType::Bool => SpecificType::Bool,
+            ResolvableSpecificType::Integer => SpecificType::Integer,
+            ResolvableSpecificType::Float => SpecificType::Float,
+            ResolvableSpecificType::String => SpecificType::String,
+            ResolvableSpecificType::Struct(name) => SpecificType::Struct(name.clone()),
+            ResolvableSpecificType::Enum(name) => SpecificType::Enum(name.clone()),
+            &ResolvableSpecificType::UnUnifyableGeneric(span)
+            | &ResolvableSpecificType::UnifyableGeneric(span) => SpecificType::Generic(span),
+        }
+    }
+}
 
 impl SpecificType {
     pub fn type_name(&self) -> String {
@@ -122,8 +151,22 @@ impl SpecificType {
             SpecificType::String => "string".to_string(),
             SpecificType::Struct(name) => name.clone(),
             SpecificType::Enum(name) => name.clone(),
-            SpecificType::UnUnifyableGeneric(Span { file, start, end }) => format!("X<{},{},{}>", file, start, end),
-            SpecificType::UnifyableGeneric(Span { file, start, end }) => format!("V<{},{},{}>", file, start, end),
+            SpecificType::Generic(Span { file, start, end }) => format!("<{},{},{}>", file, start, end),
+        }
+    }
+}
+impl ResolvableSpecificType {
+    pub fn type_name(&self) -> String {
+        match self {
+            ResolvableSpecificType::Unit => "()".to_string(),
+            ResolvableSpecificType::Integer => "int".to_string(),
+            ResolvableSpecificType::Float => "float".to_string(),
+            ResolvableSpecificType::Bool => "bool".to_string(),
+            ResolvableSpecificType::String => "string".to_string(),
+            ResolvableSpecificType::Struct(name) => name.clone(),
+            ResolvableSpecificType::Enum(name) => name.clone(),
+            ResolvableSpecificType::UnUnifyableGeneric(Span { file, start, end }) => format!("X<{},{},{}>", file, start, end),
+            ResolvableSpecificType::UnifyableGeneric(Span { file, start, end }) => format!("V<{},{},{}>", file, start, end),
         }
     }
 }
@@ -138,8 +181,22 @@ impl fmt::Display for SpecificType {
             SpecificType::String => write!(f, "string"),
             SpecificType::Struct(name) => write!(f, "struct {}", name),
             SpecificType::Enum(name) => write!(f, "enum {}", name),
-            SpecificType::UnUnifyableGeneric(Span { file, start, end }) => write!(f, "X<{},{},{}>", file, start, end),
-            SpecificType::UnifyableGeneric(Span { file, start, end }) => write!(f, "V<{},{},{}>", file, start, end),
+            SpecificType::Generic(Span { file, start, end }) => write!(f, "<{},{},{}>", file, start, end),
+        }
+    }
+}
+impl fmt::Display for ResolvableSpecificType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ResolvableSpecificType::Unit => write!(f, "()"),
+            ResolvableSpecificType::Integer => write!(f, "int"),
+            ResolvableSpecificType::Float => write!(f, "float"),
+            ResolvableSpecificType::Bool => write!(f, "bool"),
+            ResolvableSpecificType::String => write!(f, "string"),
+            ResolvableSpecificType::Struct(name) => write!(f, "struct {}", name),
+            ResolvableSpecificType::Enum(name) => write!(f, "enum {}", name),
+            ResolvableSpecificType::UnUnifyableGeneric(Span { file, start, end }) => write!(f, "X<{},{},{}>", file, start, end),
+            ResolvableSpecificType::UnifyableGeneric(Span { file, start, end }) => write!(f, "V<{},{},{}>", file, start, end),
         }
     }
 }

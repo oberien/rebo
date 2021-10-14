@@ -3,7 +3,7 @@ use crate::parser::{Expr, Spanned, ExprFormatString, ExprFormatStringPart, ExprB
 use crate::typeck::TypeVar;
 use crate::common::{MetaInfo, UserType, Function};
 use itertools::Either;
-use crate::typeck::types::{StructType, EnumType, EnumTypeVariant, SpecificType, FunctionType, Type};
+use crate::typeck::types::{StructType, EnumType, EnumTypeVariant, SpecificType, FunctionType, Type, ResolvableSpecificType};
 use diagnostic::{Diagnostics, Span};
 use std::borrow::Cow;
 use std::cell::RefCell;
@@ -33,6 +33,22 @@ impl FunctionGenerics {
     fn contains(&self, span: Span) -> bool {
         self.stack.borrow().iter().find(|&&s| s == span).is_some()
     }
+    fn make_specific_resolvable(&self, typ: &SpecificType) -> ResolvableSpecificType {
+        match typ {
+            SpecificType::Unit => ResolvableSpecificType::Unit,
+            SpecificType::Bool => ResolvableSpecificType::Bool,
+            SpecificType::Integer => ResolvableSpecificType::Integer,
+            SpecificType::Float => ResolvableSpecificType::Float,
+            SpecificType::String => ResolvableSpecificType::String,
+            SpecificType::Struct(name) => ResolvableSpecificType::Struct(name.clone()),
+            SpecificType::Enum(name) => ResolvableSpecificType::Enum(name.clone()),
+            &SpecificType::Generic(span) => if self.contains(span) {
+                ResolvableSpecificType::UnUnifyableGeneric(span)
+            } else {
+                ResolvableSpecificType::UnifyableGeneric(span)
+            }
+        }
+    }
 }
 
 struct FunctionGenericsStackGuard {
@@ -45,7 +61,7 @@ impl Drop for FunctionGenericsStackGuard {
     }
 }
 
-fn convert_expr_type(typ: &ExprType, diagnostics: &Diagnostics, meta_info: &MetaInfo, function_generics: &FunctionGenerics) -> Type {
+fn convert_expr_type(typ: &ExprType, diagnostics: &Diagnostics, meta_info: &MetaInfo) -> Type {
     match typ {
         ExprType::String(_) => Type::Specific(SpecificType::String),
         ExprType::Int(_) => Type::Specific(SpecificType::Integer),
@@ -70,19 +86,12 @@ fn convert_expr_type(typ: &ExprType, diagnostics: &Diagnostics, meta_info: &Meta
             }
         },
         ExprType::Generic(g) => {
-            if function_generics.contains(g.def_ident.span) {
-                Type::Specific(SpecificType::UnUnifyableGeneric(g.def_ident.span))
-            } else {
-                Type::Specific(SpecificType::UnifyableGeneric(g.def_ident.span))
-            }
+            Type::Specific(SpecificType::Generic(g.def_ident.span))
         },
     }
 }
 
 pub fn create_graph<'i>(diagnostics: &'i Diagnostics, meta_info: &mut MetaInfo, exprs: &[&Expr<'_, '_>]) -> Graph<'i> {
-    let mut graph = Graph::new(diagnostics);
-    let function_generics = FunctionGenerics::new();
-
     // resolve global types
     for user_type in meta_info.user_types.values() {
         match user_type {
@@ -90,7 +99,7 @@ pub fn create_graph<'i>(diagnostics: &'i Diagnostics, meta_info: &mut MetaInfo, 
                 meta_info.struct_types.insert(struct_def.name.ident, StructType {
                     name: struct_def.name.ident.to_string(),
                     fields: struct_def.fields.iter()
-                        .map(|(name, _, typ)| (name.ident.to_string(), convert_expr_type(typ, diagnostics, meta_info, &function_generics)))
+                        .map(|(name, _, typ)| (name.ident.to_string(), convert_expr_type(typ, diagnostics, meta_info)))
                         .collect(),
                 });
             }
@@ -103,7 +112,7 @@ pub fn create_graph<'i>(diagnostics: &'i Diagnostics, meta_info: &mut MetaInfo, 
                             let variant = match &variant.fields {
                                 Some((_open, fields, _close)) => EnumTypeVariant::TupleVariant(
                                     fields.iter()
-                                        .map(|typ| convert_expr_type(typ, diagnostics, meta_info, &function_generics))
+                                        .map(|typ| convert_expr_type(typ, diagnostics, meta_info))
                                         .collect()
                                 ),
                                 None => EnumTypeVariant::CLike,
@@ -120,10 +129,10 @@ pub fn create_graph<'i>(diagnostics: &'i Diagnostics, meta_info: &mut MetaInfo, 
                 let fun = &meta_info.rebo_functions[name];
                 let typ = FunctionType {
                     args: fun.args.iter().map(|pattern| {
-                        convert_expr_type(&pattern.typ, diagnostics, meta_info, &function_generics)
+                        convert_expr_type(&pattern.typ, diagnostics, meta_info)
                     }).collect(),
                     ret: fun.ret_type.as_ref()
-                        .map(|(_, typ)| convert_expr_type(typ, diagnostics, meta_info, &function_generics))
+                        .map(|(_, typ)| convert_expr_type(typ, diagnostics, meta_info))
                         .unwrap_or(Type::Specific(SpecificType::Unit)),
                 };
                 meta_info.function_types.insert(name.clone(), typ);
@@ -138,7 +147,7 @@ pub fn create_graph<'i>(diagnostics: &'i Diagnostics, meta_info: &mut MetaInfo, 
                     .unwrap();
                 let typ = FunctionType {
                     args: Cow::Owned(variant.fields.as_ref().unwrap().1.iter()
-                        .map(|typ| convert_expr_type(typ, diagnostics, meta_info, &function_generics))
+                        .map(|typ| convert_expr_type(typ, diagnostics, meta_info))
                         .collect()),
                     ret: Type::Specific(SpecificType::Enum(enum_name.clone())),
                 };
@@ -149,6 +158,8 @@ pub fn create_graph<'i>(diagnostics: &'i Diagnostics, meta_info: &mut MetaInfo, 
     }
 
     // resolve local types
+    let mut graph = Graph::new(diagnostics);
+    let function_generics = FunctionGenerics::new();
     for expr in exprs {
         visit_expr(&mut graph, diagnostics, meta_info, &function_generics, expr);
     }
@@ -159,9 +170,9 @@ fn visit_expr(graph: &mut Graph, diagnostics: &Diagnostics, meta_info: &MetaInfo
     let type_var = TypeVar::new(expr.span());
     graph.add_type_var(type_var);
     match expr {
-        Expr::Literal(lit) => graph.set_exact_type(type_var, SpecificType::from(lit)),
+        Expr::Literal(lit) => graph.set_exact_type(type_var, ResolvableSpecificType::from(lit)),
         Expr::FormatString(ExprFormatString { parts, .. }) => {
-            graph.set_exact_type(type_var, SpecificType::String);
+            graph.set_exact_type(type_var, ResolvableSpecificType::String);
             for part in parts {
                 match part {
                     ExprFormatStringPart::Str(_)
@@ -171,13 +182,13 @@ fn visit_expr(graph: &mut Graph, diagnostics: &Diagnostics, meta_info: &MetaInfo
             }
         }
         Expr::Bind(ExprBind { pattern, expr, .. }) => {
-            graph.set_exact_type(type_var, SpecificType::Unit);
+            graph.set_exact_type(type_var, ResolvableSpecificType::Unit);
             let var_type_var = match pattern {
                 ExprPattern::Typed(ExprPatternTyped { pattern: ExprPatternUntyped { binding }, typ, .. }) => {
                     let var_type_var = TypeVar::new(binding.ident.span);
                     graph.add_type_var(var_type_var);
-                    if let Type::Specific(specific) = convert_expr_type(typ, diagnostics, meta_info, function_generics) {
-                        graph.set_exact_type(var_type_var, specific);
+                    if let Type::Specific(specific) = convert_expr_type(typ, diagnostics, meta_info) {
+                        graph.set_exact_type(var_type_var, function_generics.make_specific_resolvable(&specific));
                     }
                     var_type_var
                 }
@@ -191,7 +202,7 @@ fn visit_expr(graph: &mut Graph, diagnostics: &Diagnostics, meta_info: &MetaInfo
             graph.add_eq_constraint(var_type_var, expr_type_var);
         }
         Expr::Assign(ExprAssign { lhs, expr, .. }) => {
-            graph.set_exact_type(type_var, SpecificType::Unit);
+            graph.set_exact_type(type_var, ResolvableSpecificType::Unit);
             let expr_type_var = visit_expr(graph, diagnostics, meta_info, function_generics, expr);
             match lhs {
                 ExprAssignLhs::Variable(ExprVariable { binding, .. }) => {
@@ -212,7 +223,7 @@ fn visit_expr(graph: &mut Graph, diagnostics: &Diagnostics, meta_info: &MetaInfo
         }
         Expr::BoolNot(ExprBoolNot { expr, .. }) => {
             let expr_type_var = visit_expr(graph, diagnostics, meta_info, function_generics, expr);
-            graph.set_exact_type(type_var, SpecificType::Bool);
+            graph.set_exact_type(type_var, ResolvableSpecificType::Bool);
             graph.add_eq_constraint(type_var, expr_type_var);
         }
         Expr::Add(ExprAdd { a, b, .. })
@@ -221,9 +232,9 @@ fn visit_expr(graph: &mut Graph, diagnostics: &Diagnostics, meta_info: &MetaInfo
         | Expr::Div(ExprDiv { a, b, .. }) => {
             let a_type_var = visit_expr(graph, diagnostics, meta_info, function_generics, a);
             let b_type_var = visit_expr(graph, diagnostics, meta_info, function_generics, b);
-            graph.add_reduce_constraint(type_var, a_type_var, vec![SpecificType::Integer, SpecificType::Float]);
-            graph.add_reduce_constraint(type_var, b_type_var, vec![SpecificType::Integer, SpecificType::Float]);
-            graph.add_reduce_constraint(type_var, type_var, vec![SpecificType::Integer, SpecificType::Float]);
+            graph.add_reduce_constraint(type_var, a_type_var, vec![ResolvableSpecificType::Integer, ResolvableSpecificType::Float]);
+            graph.add_reduce_constraint(type_var, b_type_var, vec![ResolvableSpecificType::Integer, ResolvableSpecificType::Float]);
+            graph.add_reduce_constraint(type_var, type_var, vec![ResolvableSpecificType::Integer, ResolvableSpecificType::Float]);
             graph.add_eq_constraint(a_type_var, type_var);
             graph.add_eq_constraint(b_type_var, type_var);
         }
@@ -231,7 +242,7 @@ fn visit_expr(graph: &mut Graph, diagnostics: &Diagnostics, meta_info: &MetaInfo
         | Expr::BoolOr(ExprBoolOr { a, b, .. }) => {
             let a_type_var = visit_expr(graph, diagnostics, meta_info, function_generics, a);
             let b_type_var = visit_expr(graph, diagnostics, meta_info, function_generics, b);
-            graph.set_exact_type(type_var, SpecificType::Bool);
+            graph.set_exact_type(type_var, ResolvableSpecificType::Bool);
             graph.add_eq_constraint(type_var, a_type_var);
             graph.add_eq_constraint(type_var, b_type_var);
         }
@@ -243,7 +254,7 @@ fn visit_expr(graph: &mut Graph, diagnostics: &Diagnostics, meta_info: &MetaInfo
         | Expr::GreaterThan(ExprGreaterThan { a, b, .. }) => {
             let a_type_var = visit_expr(graph, diagnostics, meta_info, function_generics, a);
             let b_type_var = visit_expr(graph, diagnostics, meta_info, function_generics, b);
-            graph.set_exact_type(type_var, SpecificType::Bool);
+            graph.set_exact_type(type_var, ResolvableSpecificType::Bool);
             graph.add_eq_constraint(a_type_var, b_type_var);
         }
         Expr::Block(block) => {
@@ -299,7 +310,7 @@ fn visit_expr(graph: &mut Graph, diagnostics: &Diagnostics, meta_info: &MetaInfo
             for (condition, body) in ifelse.iter_branches() {
                 if let Some(condition) = condition {
                     let cond_type_var = visit_expr(graph, diagnostics, meta_info, function_generics, condition);
-                    graph.add_reduce_constraint(type_var, cond_type_var, vec![SpecificType::Bool]);
+                    graph.add_reduce_constraint(type_var, cond_type_var, vec![ResolvableSpecificType::Bool]);
                 }
                 block_type_vars.push(visit_block(graph, diagnostics, meta_info, function_generics, body));
             }
@@ -314,13 +325,13 @@ fn visit_expr(graph: &mut Graph, diagnostics: &Diagnostics, meta_info: &MetaInfo
                     ExprMatchPattern::Literal(lit) => {
                         let pat_type_var = TypeVar::new(pat.span());
                         graph.add_type_var(pat_type_var);
-                        graph.set_exact_type(pat_type_var, SpecificType::from(lit));
+                        graph.set_exact_type(pat_type_var, ResolvableSpecificType::from(lit));
                         graph.add_eq_constraint(expr_type_var, pat_type_var);
                     }
                     ExprMatchPattern::Variant(variant) => {
                         let pat_type_var = TypeVar::new(pat.span());
                         graph.add_type_var(pat_type_var);
-                        graph.set_exact_type(pat_type_var, SpecificType::Enum(variant.enum_name.ident.to_string()));
+                        graph.set_exact_type(pat_type_var, ResolvableSpecificType::Enum(variant.enum_name.ident.to_string()));
                         graph.add_eq_constraint(expr_type_var, pat_type_var);
 
                         let repeat_top = std::iter::repeat(&Type::Top);
@@ -345,7 +356,7 @@ fn visit_expr(graph: &mut Graph, diagnostics: &Diagnostics, meta_info: &MetaInfo
                             // always add all field type-vars even for unknown enums / variants
                             graph.add_type_var(field_binding_type_var);
                             if let Type::Specific(specific) = expected_type {
-                                graph.add_reduce_constraint(pat_type_var, field_binding_type_var, vec![specific.clone()])
+                                graph.add_reduce_constraint(pat_type_var, field_binding_type_var, vec![function_generics.make_specific_resolvable(specific)])
                             }
                         }
                     }
@@ -362,7 +373,7 @@ fn visit_expr(graph: &mut Graph, diagnostics: &Diagnostics, meta_info: &MetaInfo
         }
         Expr::While(ExprWhile { condition, block, .. }) => {
             let cond_type_var = visit_expr(graph, diagnostics, meta_info, function_generics, condition);
-            graph.add_reduce_constraint(type_var, cond_type_var, vec![SpecificType::Bool]);
+            graph.add_reduce_constraint(type_var, cond_type_var, vec![ResolvableSpecificType::Bool]);
             let block_type_var = visit_block(graph, diagnostics, meta_info, function_generics, block);
             graph.add_eq_constraint(type_var, block_type_var);
         }
@@ -383,22 +394,22 @@ fn visit_expr(graph: &mut Graph, diagnostics: &Diagnostics, meta_info: &MetaInfo
                     Type::Bottom => unreachable!("function argument type is Bottom"),
                     Type::Varargs => (),
                     Type::Specific(specific) => {
-                        graph.add_reduce_constraint(type_var, passed_type_var, vec![specific.clone()]);
+                        graph.add_reduce_constraint(type_var, passed_type_var, vec![function_generics.make_specific_resolvable(&specific)]);
                     }
                 }
             }
             match &fun.ret {
                 Type::Varargs => unreachable!("function return type is Varargs"),
                 Type::Top | Type::Bottom => (),
-                Type::Specific(specific) => graph.set_exact_type(type_var, specific.clone()),
+                Type::Specific(specific) => graph.set_exact_type(type_var, function_generics.make_specific_resolvable(specific)),
             }
         }
         Expr::FunctionDefinition(function) => {
             visit_function(graph, diagnostics, meta_info, function_generics, function);
         }
-        Expr::StructDefinition(_) => graph.set_exact_type(type_var, SpecificType::Unit),
+        Expr::StructDefinition(_) => graph.set_exact_type(type_var, ResolvableSpecificType::Unit),
         Expr::StructInitialization(ExprStructInitialization { name, fields, .. }) => {
-            graph.set_exact_type(type_var, SpecificType::Struct(name.ident.to_string()));
+            graph.set_exact_type(type_var, ResolvableSpecificType::Struct(name.ident.to_string()));
             let struct_def_span = match meta_info.user_types.get(name.ident) {
                 Some(user_type) => user_type.span(),
                 None => return type_var,
@@ -406,7 +417,7 @@ fn visit_expr(graph: &mut Graph, diagnostics: &Diagnostics, meta_info: &MetaInfo
             let struct_typ = meta_info.struct_types.get(name.ident).unwrap();
             let struct_def_type_var = TypeVar::new(struct_def_span);
             graph.add_type_var(struct_def_type_var);
-            graph.set_exact_type(struct_def_type_var, SpecificType::Unit);
+            graph.set_exact_type(struct_def_type_var, ResolvableSpecificType::Unit);
 
             for (name, _colon, expr) in fields {
                 let expected_type = struct_typ.fields.iter()
@@ -419,17 +430,17 @@ fn visit_expr(graph: &mut Graph, diagnostics: &Diagnostics, meta_info: &MetaInfo
                 };
                 let expr_type_var = visit_expr(graph, diagnostics, meta_info, function_generics, expr);
                 if let Type::Specific(specific) = expected_type {
-                    graph.add_reduce_constraint(struct_def_type_var, expr_type_var, vec![specific.clone()]);
+                    graph.add_reduce_constraint(struct_def_type_var, expr_type_var, vec![function_generics.make_specific_resolvable(&specific)]);
                 }
             }
         }
-        Expr::EnumDefinition(_) => graph.set_exact_type(type_var, SpecificType::Unit),
-        Expr::EnumInitialization(enum_init) => graph.set_exact_type(type_var, SpecificType::Enum(enum_init.enum_name.ident.to_string())),
+        Expr::EnumDefinition(_) => graph.set_exact_type(type_var, ResolvableSpecificType::Unit),
+        Expr::EnumInitialization(enum_init) => graph.set_exact_type(type_var, ResolvableSpecificType::Enum(enum_init.enum_name.ident.to_string())),
         Expr::ImplBlock(ExprImplBlock { functions, .. }) => {
             for function in functions {
                 visit_function(graph, diagnostics, meta_info, function_generics, function);
             }
-            graph.set_exact_type(type_var, SpecificType::Unit);
+            graph.set_exact_type(type_var, ResolvableSpecificType::Unit);
         }
     }
     type_var
@@ -445,7 +456,7 @@ fn visit_block(graph: &mut Graph, diagnostics: &Diagnostics, meta_info: &MetaInf
         last = Some(visit_expr(graph, diagnostics, meta_info, function_generics, expr));
     }
     match (terminated_with_semicolon, last) {
-        (true, _) | (false, None) => graph.set_exact_type(type_var, SpecificType::Unit),
+        (true, _) | (false, None) => graph.set_exact_type(type_var, ResolvableSpecificType::Unit),
         (false, Some(var)) => graph.add_eq_constraint(type_var, var),
     }
     type_var
@@ -464,17 +475,17 @@ fn visit_function(graph: &mut Graph, diagnostics: &Diagnostics, meta_info: &Meta
     for ExprPatternTyped { pattern: ExprPatternUntyped { binding }, typ, .. } in args {
         let arg_type_var = TypeVar::new(binding.ident.span);
         graph.add_type_var(arg_type_var);
-        if let Type::Specific(specific) = convert_expr_type(typ, diagnostics, meta_info, function_generics) {
-            graph.add_reduce_constraint(type_var, arg_type_var, vec![specific]);
+        if let Type::Specific(specific) = convert_expr_type(typ, diagnostics, meta_info) {
+            graph.add_reduce_constraint(type_var, arg_type_var, vec![function_generics.make_specific_resolvable(&specific)]);
         }
     }
 
     let body_type_var = visit_block(graph, diagnostics, meta_info, function_generics, body);
     if let Some((_arrow, ret_type)) = ret_type {
-        if let Type::Specific(specific) = convert_expr_type(ret_type, diagnostics, meta_info, function_generics) {
-            graph.add_reduce_constraint(type_var, body_type_var, vec![specific]);
+        if let Type::Specific(specific) = convert_expr_type(ret_type, diagnostics, meta_info) {
+            graph.add_reduce_constraint(type_var, body_type_var, vec![function_generics.make_specific_resolvable(&specific)]);
         }
     }
-    graph.set_exact_type(type_var, SpecificType::Unit);
+    graph.set_exact_type(type_var, ResolvableSpecificType::Unit);
     type_var
 }
