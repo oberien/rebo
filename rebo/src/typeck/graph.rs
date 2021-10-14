@@ -86,10 +86,10 @@ impl PossibleTypes {
     }
 
     fn set_exact_type(&mut self, typ: SpecificType) {
-        assert_eq!(*self, PossibleTypes::any());
-        // assert!(self.is_unifyable_with(&typ), "{:?} not unifyable with {}", self, typ);
-        self.0.clear();
-        self.0.push(typ);
+        self.reduce(&[typ.clone()]);
+        assert_eq!(self.len(), 1);
+        // self.0.clear();
+        // self.0.push(typ);
     }
 
     fn reduce(&mut self, reduce: &[SpecificType]) -> ReduceResult {
