@@ -15,6 +15,7 @@ use indexmap::map::IndexMap;
 use std::collections::{HashSet, VecDeque};
 use log::Level;
 use std::cell::RefCell;
+use std::ops::BitOr;
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct PossibleTypes(Vec<ResolvableSpecificType>);
@@ -35,6 +36,19 @@ pub enum UnifyResult {
     Changed,
     Unchanged,
     Multiple(Vec<TypeVar>),
+}
+impl BitOr<UnifyResult> for UnifyResult {
+    type Output = UnifyResult;
+
+    fn bitor(self, rhs: UnifyResult) -> UnifyResult {
+        match (self, rhs) {
+            (UnifyResult::Multiple(vec), _)
+            | (_, UnifyResult::Multiple(vec)) => UnifyResult::Multiple(vec),
+            (UnifyResult::Changed, _)
+            | (_, UnifyResult::Changed) => UnifyResult::Changed,
+            (UnifyResult::Unchanged, UnifyResult::Unchanged) => UnifyResult::Unchanged,
+        }
+    }
 }
 
 enum ReduceResult {
@@ -356,8 +370,7 @@ impl<'i> Graph<'i> {
                 _ => return res,
             }
         }
-        self.reduce_internal(field_var, &[typ]);
-        res
+        res | self.reduce_replace_edge(struct_var, field_var, typ)
     }
     pub fn method_call_arg(&mut self, meta_info: &MetaInfo, field_access: TypeVar, arg: TypeVar, method_name: &str, arg_index: usize) -> UnifyResult {
         let possible_types = &self.possible_types[&field_access];
@@ -377,7 +390,9 @@ impl<'i> Graph<'i> {
         match expected_arg_type {
             ResolvableType::Top | ResolvableType::Varargs => UnifyResult::Unchanged,
             ResolvableType::Bottom => unreachable!("fn arg is bottom"),
-            ResolvableType::Specific(specific) => self.reduce_internal(arg, &[specific]),
+            ResolvableType::Specific(specific) => {
+                self.reduce_replace_edge(field_access, arg, specific)
+            }
         }
     }
     pub fn method_call_ret(&mut self, meta_info: &MetaInfo, field_access: TypeVar, method_call: TypeVar, method_name: &str) -> UnifyResult {
@@ -394,7 +409,9 @@ impl<'i> Graph<'i> {
         match self.make_type_resolvable(&fn_typ.ret, method_call) {
             ResolvableType::Top | ResolvableType::Varargs => unreachable!("fn ret is Top or Varargs"),
             ResolvableType::Bottom => UnifyResult::Unchanged,
-            ResolvableType::Specific(specific) => self.reduce_internal(method_call, &[specific]),
+            ResolvableType::Specific(specific) => {
+                self.reduce_replace_edge(field_access, method_call, specific)
+            }
         }
     }
 
@@ -450,6 +467,13 @@ impl<'i> Graph<'i> {
         }
     }
 
+    fn reduce_replace_edge(&mut self, from: TypeVar, to: TypeVar, typ: ResolvableSpecificType) -> UnifyResult {
+        let edge_idx = self.graph.find_edge(self.graph_indices[&from], self.graph_indices[&to]).unwrap();
+        let reduce = vec![typ];
+        let res = self.reduce_internal(to, &reduce);
+        *self.graph.edge_weight_mut(edge_idx).unwrap() = Constraint::Reduce(reduce);
+        res | UnifyResult::Changed
+    }
     fn reduce_internal(&mut self, var: TypeVar, reduce: &[ResolvableSpecificType]) -> UnifyResult {
         let res = self.possible_types.get_mut(&var).unwrap().reduce(reduce);
         match res {
