@@ -476,7 +476,7 @@ fn visit_function(graph: &mut Graph, diagnostics: &Diagnostics, meta_info: &Meta
         let arg_type_var = TypeVar::new(binding.ident.span);
         graph.add_type_var(arg_type_var);
         if let Type::Specific(specific) = convert_expr_type(typ, diagnostics, meta_info) {
-            graph.add_reduce_constraint(type_var, arg_type_var, vec![function_generics.make_specific_resolvable(&specific)]);
+            graph.set_exact_type(arg_type_var, function_generics.make_specific_resolvable(&specific));
         }
     }
 
