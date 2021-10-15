@@ -28,7 +28,6 @@ pub fn check(diagnostics: &Diagnostics, graph: &Graph, meta_info: &mut MetaInfo)
         for (constraint, incoming) in graph.incoming(node) {
             let msg = match constraint {
                 Constraint::Eq => format!("must have same type as this (`{}`)", graph.possible_types(incoming).iter().join(", ")),
-                Constraint::Struct => "this field access means that it must be a struct".to_string(),
                 Constraint::Reduce(reduce) => {
                     let prefix = if reduce.len() == 1 { "" } else { "one of " };
                     format!("this means it can only be {}`{}`", prefix, reduce.iter().join(", "))

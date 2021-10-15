@@ -218,8 +218,6 @@ pub enum Constraint {
     Reduce(Vec<ResolvableSpecificType>),
     /// field names of access path
     FieldAccess(Vec<String>),
-    /// Reverse-Edge of FieldAccess, indicating that a variable must be a struct
-    Struct,
     /// name of the method (not fully qualified yet), arg-index
     MethodCallArg(String, usize),
     /// name of the method (not fully qualified yet)
@@ -235,7 +233,6 @@ impl Display for Constraint {
             Constraint::FieldAccess(fields) => {
                 write!(f, ".{}", fields.join("."))
             }
-            Constraint::Struct => write!(f, "struct"),
             Constraint::MethodCallArg(name, arg) => write!(f, "{}({})", name, arg),
             Constraint::MethodCallReturnType(name) => write!(f, "{}(...) -> ret", name),
         }
@@ -295,7 +292,7 @@ impl<'i> Graph<'i> {
         let struc = self.graph_indices[&struc];
         let field = self.graph_indices[&field];
         self.graph.add_edge(struc, field, Constraint::FieldAccess(fields));
-        self.graph.add_edge(field, struc, Constraint::Struct);
+        self.graph.add_edge(field, struc, Constraint::Reduce(vec![ResolvableSpecificType::Struct("struct".to_string())]));
     }
 
     pub fn add_method_call_arg(&mut self, source: TypeVar, arg: TypeVar, method_name: String, arg_index: usize) {
@@ -477,7 +474,6 @@ impl<'i> Graph<'i> {
                         let constraint = this.graph.edge_weight_mut(edge_index).unwrap();
                         match constraint {
                             Constraint::Eq
-                            | Constraint::Struct
                             | Constraint::FieldAccess(_)
                             | Constraint::MethodCallArg(..)
                             | Constraint::MethodCallReturnType(_) => (),
