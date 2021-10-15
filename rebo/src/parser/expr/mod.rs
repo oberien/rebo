@@ -1664,7 +1664,6 @@ impl<'a, 'i> Parse<'a, 'i> for ExprImplBlock<'a, 'i> {
 
         let mut functions = Vec::new();
         let generic_list: Vec<_> = generics.iter().flat_map(|g| g.generics.iter().flat_map(|g| g.iter())).copied().collect();
-        dbg!(&generic_list);
         while let Ok(function) = ExprFunctionDefinition::parse_with_generics(parser, depth.next(), &generic_list) {
             functions.push(function);
         }
