@@ -258,6 +258,7 @@ pub struct Graph<'i> {
     graph: DiGraph<TypeVar, Constraint>,
     graph_indices: IndexMap<TypeVar, NodeIndex<u32>>,
     possible_types: IndexMap<TypeVar, PossibleTypes>,
+    resolved_generics: IndexMap<(TypeVar, Span), ResolvableSpecificType>,
 }
 
 impl<'i> Graph<'i> {
@@ -267,6 +268,7 @@ impl<'i> Graph<'i> {
             graph: DiGraph::new(),
             graph_indices: IndexMap::new(),
             possible_types: IndexMap::new(),
+            resolved_generics: IndexMap::new(),
         }
     }
 
@@ -433,6 +435,9 @@ impl<'i> Graph<'i> {
             SpecificType::Struct(name) => ResolvableSpecificType::Struct(name.clone()),
             SpecificType::Enum(name) => ResolvableSpecificType::Enum(name.clone()),
             &SpecificType::Generic(span) => {
+                if let Some(typ) = self.resolved_generics.get(&(from, span)) {
+                    return typ.clone();
+                }
                 let is_un_unifyable = RefCell::new(false);
                 self.search_from(
                     from,
@@ -485,6 +490,7 @@ impl<'i> Graph<'i> {
                 let visited_nodes = self.search_from(
                     var,
                     |this, var| {
+                        this.resolved_generics.insert((var, span), typ.clone());
                         let possible_types = &mut this.possible_types[&var];
                         if possible_types.len() == 1 {
                             if let ResolvableSpecificType::UnifyableGeneric(span2) = possible_types.0[0] {
