@@ -473,7 +473,9 @@ impl<'i> Graph<'i> {
     }
 
     fn reduce_replace_edge(&mut self, from: TypeVar, to: TypeVar, typ: ResolvableSpecificType) -> UnifyResult {
-        let edge_idx = self.graph.find_edge(self.graph_indices[&from], self.graph_indices[&to]).unwrap();
+        let mut edges = self.graph.edges_connecting(self.graph_indices[&from], self.graph_indices[&to]);
+        let edge_idx = edges.next().unwrap().id();
+        assert!(edges.next().is_none(), "reduce_replace_edge called with two nodes with multiple edges");
         let reduce = vec![typ];
         let res = self.reduce_internal(to, &reduce);
         *self.graph.edge_weight_mut(edge_idx).unwrap() = Constraint::Reduce(reduce);
