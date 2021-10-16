@@ -61,49 +61,38 @@ pub fn skip_whitespace(s: &str, mut index: usize) -> Option<usize> {
     }
 }
 
+macro_rules! lex_kws {
+    ($diagnostics:ident, $file:ident, $s:ident, $index:ident; $($kw:literal => $token_name:ident, $token:ident;)*) => {
+        $(
+            match try_lex_ident($diagnostics, $file, $s, $index) {
+                Ok(MaybeToken::Token(Token::Ident(TokenIdent { ident, span }))) => if ident == $kw {
+                    return Ok(MaybeToken::Token(Token::$token_name($token { span })));
+                }
+                Ok(MaybeToken::Token(token)) => unreachable!("try_lex_ident returned non-Token::Ident: {:?}", token),
+                _ => (),
+            }
+        )*
+    }
+}
+
 pub fn try_lex_token<'i>(diagnostics: &Diagnostics, file: FileId, s: &'i str, index: usize) -> Result<MaybeToken<'i>, Error> {
     trace!("try_lex_token: {}", index);
-    if s[index..].starts_with("let") {
-        return Ok(MaybeToken::Token(Token::Let(TokenLet { span: Span::new(file, index, index+3) })));
-    }
-    if s[index..].starts_with("mut") {
-        return Ok(MaybeToken::Token(Token::Mut(TokenMut { span: Span::new(file, index, index+3) })));
-    }
-    if s[index..].starts_with("fn") {
-        return Ok(MaybeToken::Token(Token::Fn(TokenFn { span: Span::new(file, index, index+2) })));
-    }
-    if s[index..].starts_with("struct") {
-        return Ok(MaybeToken::Token(Token::Struct(TokenStruct { span: Span::new(file, index, index+6) })));
-    }
-    if s[index..].starts_with("enum") {
-        return Ok(MaybeToken::Token(Token::Enum(TokenEnum { span: Span::new(file, index, index+4) })));
-    }
-    if s[index..].starts_with("impl") {
-        return Ok(MaybeToken::Token(Token::Impl(TokenImpl { span: Span::new(file, index, index+4) })));
-    }
-    if s[index..].starts_with("match") {
-        return Ok(MaybeToken::Token(Token::Match(TokenMatch { span: Span::new(file, index, index+5) })));
-    }
-    if s[index..].starts_with("if") {
-        return Ok(MaybeToken::Token(Token::If(TokenIf { span: Span::new(file, index, index+2) })));
-    }
-    if s[index..].starts_with("while") {
-        return Ok(MaybeToken::Token(Token::While(TokenWhile { span: Span::new(file, index, index+5) })));
-    }
-    if s[index..].starts_with("else") {
-        return Ok(MaybeToken::Token(Token::Else(TokenElse { span: Span::new(file, index, index+4) })));
-    }
-    if s[index..].starts_with("string") {
-        return Ok(MaybeToken::Token(Token::StringType(TokenStringType { span: Span::new(file, index, index+6) })));
-    }
-    if s[index..].starts_with("int") {
-        return Ok(MaybeToken::Token(Token::IntType(TokenIntType { span: Span::new(file, index, index+3) })));
-    }
-    if s[index..].starts_with("float") {
-        return Ok(MaybeToken::Token(Token::FloatType(TokenFloatType { span: Span::new(file, index, index+5) })));
-    }
-    if s[index..].starts_with("bool") {
-        return Ok(MaybeToken::Token(Token::BoolType(TokenBoolType { span: Span::new(file, index, index+4) })));
+    lex_kws! {
+        diagnostics, file, s, index;
+        "let" => Let, TokenLet;
+        "mut" => Mut, TokenMut;
+        "fn" => Fn, TokenFn;
+        "struct" => Struct, TokenStruct;
+        "enum" => Enum, TokenEnum;
+        "impl" => Impl, TokenImpl;
+        "match" => Match, TokenMatch;
+        "if" => If, TokenIf;
+        "while" => While, TokenWhile;
+        "else" => Else, TokenElse;
+        "string" => StringType, TokenStringType;
+        "int" => IntType, TokenIntType;
+        "float" => FloatType, TokenFloatType;
+        "bool" => BoolType, TokenBoolType;
     }
     let char = s[index..].chars().next().unwrap();
     let span = Span::new(file, index, index + char.len_utf8());

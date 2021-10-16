@@ -1,6 +1,14 @@
 use crate::ReturnValue;
 
 #[test]
+fn other_stuff() {
+    let _ = env_logger::builder().is_test(true).try_init();
+    assert_eq!(rebo::run("test".to_string(), r#"
+        // "integer" should not be parsed as Keyword("int"),Ident("eger") but as Ident("integer")
+        let integer = 1337;
+    "#.to_string()), ReturnValue::Ok);
+}
+#[test]
 fn other_stuff_diagnostics() {
     let _ = env_logger::builder().is_test(true).try_init();
     assert_eq!(rebo::run("test".to_string(), r#"
