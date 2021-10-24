@@ -54,7 +54,8 @@ impl BitOr<UnifyResult> for UnifyResult {
 enum ReduceResult {
     Changed,
     Unchanged,
-    GenericSolved(Span, ResolvableSpecificType),
+    /// (def_ident-span, depth, resolved-to-type)
+    GenericSolved(Span, usize, ResolvableSpecificType),
 }
 
 impl Default for PossibleTypes {
@@ -70,8 +71,8 @@ impl Display for PossibleTypes {
 }
 
 enum Generic {
-    UnUnifyable(Span),
-    Unifyable(Span),
+    UnUnifyable(Span, usize),
+    Unifyable(Span, usize),
 }
 
 impl PossibleTypes {
@@ -116,12 +117,12 @@ impl PossibleTypes {
         fn generics<'b>(iter: impl IntoIterator<Item = &'b ResolvableSpecificType> + Clone) -> Option<Generic> {
             let generic = iter.clone().into_iter()
                 .filter_map(|typ| match typ {
-                    ResolvableSpecificType::UnifyableGeneric(span2) => Some(Generic::Unifyable(*span2)),
+                    ResolvableSpecificType::UnifyableGeneric(span2, depth2) => Some(Generic::Unifyable(*span2, *depth2)),
                     _ => None,
                 }).next();
             let un_generic = iter.into_iter()
                 .filter_map(|typ| match typ {
-                    ResolvableSpecificType::UnUnifyableGeneric(span2) => Some(Generic::UnUnifyable(*span2)),
+                    ResolvableSpecificType::UnUnifyableGeneric(span2, depth2) => Some(Generic::UnUnifyable(*span2, *depth2)),
                     _ => None,
                 }).next();
             assert!(!(generic.is_some() && un_generic.is_some()));
@@ -141,25 +142,25 @@ impl PossibleTypes {
         // make sure all branches are covered
         struct Unit;
         let _: Unit = match (self_generic, reduce_generic) {
-            (Some(Generic::UnUnifyable(span)), Some(Generic::UnUnifyable(span2))) => if span == span2 {
+            (Some(Generic::UnUnifyable(span, depth)), Some(Generic::UnUnifyable(span2, depth2))) => if span == span2 && depth == depth2 {
                 return ReduceResult::Unchanged;
             } else {
                 self.0.clear();
                 return ReduceResult::Changed;
             }
-            (Some(Generic::UnUnifyable(_)), Some(Generic::Unifyable(_))) => return ReduceResult::Unchanged,
-            (Some(Generic::Unifyable(_)), Some(Generic::UnUnifyable(_))) => return ReduceResult::Unchanged,
-            (Some(Generic::Unifyable(_)), Some(Generic::Unifyable(_))) => return ReduceResult::Unchanged,
-            (Some(Generic::UnUnifyable(_)), None) => if reduce.len() == 1 {
+            (Some(Generic::UnUnifyable(_, _)), Some(Generic::Unifyable(_, _))) => return ReduceResult::Unchanged,
+            (Some(Generic::Unifyable(_, _)), Some(Generic::UnUnifyable(_, _))) => return ReduceResult::Unchanged,
+            (Some(Generic::Unifyable(_, _)), Some(Generic::Unifyable(_, _))) => return ReduceResult::Unchanged,
+            (Some(Generic::UnUnifyable(_, _)), None) => if reduce.len() == 1 {
                 self.0.clear();
                 return ReduceResult::Changed;
             } else {
                 return ReduceResult::Unchanged;
             }
-            (Some(Generic::Unifyable(span)), None) => if reduce.len() == 1 {
+            (Some(Generic::Unifyable(span, depth)), None) => if reduce.len() == 1 {
                 self.0.clear();
                 self.0.push(reduce[0].clone());
-                return ReduceResult::GenericSolved(span, reduce[0].clone());
+                return ReduceResult::GenericSolved(span, depth, reduce[0].clone());
             } else {
                 return ReduceResult::Unchanged;
             }
@@ -168,8 +169,8 @@ impl PossibleTypes {
                 self.0.push(reduce[0].clone());
                 return ReduceResult::Changed;
             }
-            (None, Some(Generic::Unifyable(span))) if self.len() == 1 => return ReduceResult::GenericSolved(span, self.0[0].clone()),
-            (None, Some(Generic::UnUnifyable(_))) if self.len() == 1 => {
+            (None, Some(Generic::Unifyable(span, depth))) if self.len() == 1 => return ReduceResult::GenericSolved(span, depth, self.0[0].clone()),
+            (None, Some(Generic::UnUnifyable(_, _))) if self.len() == 1 => {
                 self.0.clear();
                 return ReduceResult::Changed;
             },
@@ -214,8 +215,8 @@ impl PossibleTypes {
                         (_, _) => (),
                     }
                 }
-                ResolvableSpecificType::UnUnifyableGeneric(_)
-                | ResolvableSpecificType::UnifyableGeneric(_) => unreachable!("handled above"),
+                ResolvableSpecificType::UnUnifyableGeneric(_, _)
+                | ResolvableSpecificType::UnifyableGeneric(_, _) => unreachable!("handled above"),
             }
         }
         let old = std::mem::replace(&mut self.0, res);
@@ -258,7 +259,7 @@ pub struct Graph<'i> {
     graph: DiGraph<TypeVar, Constraint>,
     graph_indices: IndexMap<TypeVar, NodeIndex<u32>>,
     possible_types: IndexMap<TypeVar, PossibleTypes>,
-    resolved_generics: IndexMap<(TypeVar, Span), ResolvableSpecificType>,
+    resolved_generics: IndexMap<(TypeVar, Span, usize), ResolvableSpecificType>,
 }
 
 impl<'i> Graph<'i> {
@@ -434,8 +435,8 @@ impl<'i> Graph<'i> {
             SpecificType::String => ResolvableSpecificType::String,
             SpecificType::Struct(name) => ResolvableSpecificType::Struct(name.clone()),
             SpecificType::Enum(name) => ResolvableSpecificType::Enum(name.clone()),
-            &SpecificType::Generic(span) => {
-                if let Some(typ) = self.resolved_generics.get(&(from, span)) {
+            &SpecificType::Generic(span, depth) => {
+                if let Some(typ) = self.resolved_generics.get(&(from, span, depth)) {
                     return typ.clone();
                 }
                 let is_un_unifyable = RefCell::new(false);
@@ -443,8 +444,8 @@ impl<'i> Graph<'i> {
                     from,
                     |this, var| {
                         for typ in &this.possible_types[&var].0 {
-                            if let &ResolvableSpecificType::UnUnifyableGeneric(span2) = typ {
-                                if span == span2 {
+                            if let &ResolvableSpecificType::UnUnifyableGeneric(span2, depth2) = typ {
+                                if span == span2 && depth == depth2 {
                                     *is_un_unifyable.borrow_mut() = true;
                                 }
                             }
@@ -453,8 +454,8 @@ impl<'i> Graph<'i> {
                     |this, edge_index| {
                         match &this.graph[edge_index] {
                             Constraint::Reduce(types) => for typ in types {
-                                if let &ResolvableSpecificType::UnUnifyableGeneric(span2) = typ {
-                                    if span == span2 {
+                                if let &ResolvableSpecificType::UnUnifyableGeneric(span2, depth2) = typ {
+                                    if span == span2 && depth == depth2 {
                                         *is_un_unifyable.borrow_mut() = true;
                                     }
                                 }
@@ -464,9 +465,9 @@ impl<'i> Graph<'i> {
                     }
                 );
                 if *is_un_unifyable.borrow() {
-                    ResolvableSpecificType::UnUnifyableGeneric(span)
+                    ResolvableSpecificType::UnUnifyableGeneric(span, depth)
                 } else {
-                    ResolvableSpecificType::UnifyableGeneric(span)
+                    ResolvableSpecificType::UnifyableGeneric(span, depth)
                 }
             }
         }
@@ -486,17 +487,17 @@ impl<'i> Graph<'i> {
         match res {
             ReduceResult::Unchanged => UnifyResult::Unchanged,
             ReduceResult::Changed => UnifyResult::Changed,
-            ReduceResult::GenericSolved(span, typ) => {
+            ReduceResult::GenericSolved(span, depth, typ) => {
                 trace!("generic solved: {:?} = {}", span, typ);
                 // iterate over all reachable fields and edges and exchange the generic with the specific ResolvableType
                 let visited_nodes = self.search_from(
                     var,
                     |this, var| {
-                        this.resolved_generics.insert((var, span), typ.clone());
+                        this.resolved_generics.insert((var, span, depth), typ.clone());
                         let possible_types = &mut this.possible_types[&var];
                         if possible_types.len() == 1 {
-                            if let ResolvableSpecificType::UnifyableGeneric(span2) = possible_types.0[0] {
-                                if span2 == span {
+                            if let ResolvableSpecificType::UnifyableGeneric(span2, depth2) = possible_types.0[0] {
+                                if span2 == span && depth == depth2 {
                                     possible_types.0[0] = typ.clone();
                                 }
                             }
@@ -510,8 +511,8 @@ impl<'i> Graph<'i> {
                             | Constraint::MethodCallArg(..)
                             | Constraint::MethodCallReturnType(_) => (),
                             Constraint::Reduce(reduce) => if reduce.len() == 1 {
-                                if let ResolvableSpecificType::UnifyableGeneric(span2) = reduce[0] {
-                                    if span == span2 {
+                                if let ResolvableSpecificType::UnifyableGeneric(span2, depth2) = reduce[0] {
+                                    if span == span2 && depth == depth2 {
                                         reduce[0] = typ.clone();
                                     }
                                 }

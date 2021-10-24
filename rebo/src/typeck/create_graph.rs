@@ -42,10 +42,10 @@ impl FunctionGenerics {
             SpecificType::String => ResolvableSpecificType::String,
             SpecificType::Struct(name) => ResolvableSpecificType::Struct(name.clone()),
             SpecificType::Enum(name) => ResolvableSpecificType::Enum(name.clone()),
-            &SpecificType::Generic(span) => if self.contains(span) {
-                ResolvableSpecificType::UnUnifyableGeneric(span)
+            &SpecificType::Generic(span, depth) => if self.contains(span) {
+                ResolvableSpecificType::UnUnifyableGeneric(span, depth)
             } else {
-                ResolvableSpecificType::UnifyableGeneric(span)
+                ResolvableSpecificType::UnifyableGeneric(span, depth)
             }
         }
     }
@@ -61,17 +61,31 @@ impl Drop for FunctionGenericsStackGuard {
     }
 }
 
-fn convert_expr_type(typ: &ExprType, diagnostics: &Diagnostics, meta_info: &MetaInfo) -> Type {
+fn convert_expr_type_statically(typ: &ExprType, diagnostics: &Diagnostics, meta_info: &MetaInfo) -> Type {
+    convert_expr_type_internal(None, typ, diagnostics, meta_info, 0)
+}
+fn convert_expr_type(typ: &ExprType, graph: &mut Graph, function_generics: &FunctionGenerics, source: TypeVar, diagnostics: &Diagnostics, meta_info: &MetaInfo) -> Type {
+    convert_expr_type_internal(Some((graph, function_generics, source)), typ, diagnostics, meta_info, 0)
+}
+fn convert_expr_type_internal(context: Option<(&mut Graph, &FunctionGenerics, TypeVar)>, typ: &ExprType, diagnostics: &Diagnostics, meta_info: &MetaInfo, depth: usize) -> Type {
     match typ {
         ExprType::String(_) => Type::Specific(SpecificType::String),
         ExprType::Int(_) => Type::Specific(SpecificType::Integer),
         ExprType::Float(_) => Type::Specific(SpecificType::Float),
         ExprType::Bool(_) => Type::Specific(SpecificType::Bool),
         ExprType::Unit(_, _) => Type::Specific(SpecificType::Unit),
-        ExprType::UserType(ut, _generics) => {
-            match meta_info.user_types.get(ut.ident) {
-                Some(UserType::Struct(s)) => Type::Specific(SpecificType::Struct(s.name.ident.to_string())),
-                Some(UserType::Enum(e)) => Type::Specific(SpecificType::Enum(e.name.ident.to_string())),
+        ExprType::UserType(ut, generics) => {
+            let (typ, typ_span, expected_generics) = match meta_info.user_types.get(ut.ident) {
+                Some(UserType::Struct(s)) => (
+                    Type::Specific(SpecificType::Struct(s.name.ident.to_string())),
+                    s.name.span,
+                    s.generics.as_ref(),
+                ),
+                Some(UserType::Enum(e)) => (
+                    Type::Specific(SpecificType::Enum(e.name.ident.to_string())),
+                    e.name.span,
+                    e.generics.as_ref(),
+                ),
                 None => {
                     let similar = crate::util::similar_name(ut.ident, meta_info.user_types.keys());
                     let mut diag = diagnostics.error(ErrorCode::UnknownType)
@@ -81,12 +95,52 @@ fn convert_expr_type(typ: &ExprType, diagnostics: &Diagnostics, meta_info: &Meta
                     }
                     diag.emit();
                     // hack to make the type resolve regularly even though we don't have any information
-                    Type::Top
+                    return Type::Top
+                }
+            };
+            if context.is_none() || generics.is_none() {
+                return typ;
+            }
+            let (graph, function_generics, source) = context.unwrap();
+            let (open, generics, close) = generics.as_ref().unwrap();
+            let generic_span = Span::new(open.span.file, open.span.start, close.span.end);
+
+            let expected_generics = expected_generics.and_then(|g| g.generics.as_ref());
+            let expected_generic_span = expected_generics.and_then(|g| g.span()).unwrap_or(typ_span);
+            let expected_generic_iter = match expected_generics {
+                Some(generics) => Either::Left(generics.iter().map(Some).chain(std::iter::repeat(None))),
+                None => Either::Right(std::iter::repeat(None)),
+            };
+            let generics_iter = generics.iter().map(Some).chain(std::iter::repeat_with(|| None));
+            let mut iter = expected_generic_iter.zip(generics_iter);
+            loop {
+                match iter.next() {
+                    Some((Some(expected), Some(generic))) => {
+                        let generic_var = TypeVar::new(generic.span());
+                        graph.add_type_var(generic_var);
+                        let typ = convert_expr_type_internal(Some((graph, function_generics, generic_var)), generic, diagnostics, meta_info, depth+1);
+                        if let Type::Specific(typ) = typ {
+                            graph.set_exact_type(generic_var, function_generics.make_specific_resolvable(&typ));
+                        }
+                        let typ = function_generics.make_specific_resolvable(&SpecificType::Generic(expected.def_ident.span, depth));
+                        graph.add_reduce_constraint(source, generic_var, vec![typ]);
+                    },
+                    Some((Some(expected), None)) => diagnostics.error(ErrorCode::MissingGeneric)
+                        .with_error_label(generic_span, format!("missing generic `{}`", expected.def_ident.ident))
+                        .with_info_label(expected.def_ident.span, "defined here")
+                        .emit(),
+                    Some((None, Some(generic))) => diagnostics.error(ErrorCode::TooManyGenerics)
+                        .with_error_label(generic.span(), format!("too many generics, unknown generic `{}`", generic))
+                        .with_info_label(expected_generic_span, "expected generics defined here")
+                        .emit(),
+                    Some((None, None)) => break,
+                    None => unreachable!(),
                 }
             }
+            typ
         },
         ExprType::Generic(g) => {
-            Type::Specific(SpecificType::Generic(g.def_ident.span))
+            Type::Specific(SpecificType::Generic(g.def_ident.span, depth))
         },
     }
 }
@@ -99,7 +153,7 @@ pub fn create_graph<'i>(diagnostics: &'i Diagnostics, meta_info: &mut MetaInfo, 
                 meta_info.struct_types.insert(struct_def.name.ident, StructType {
                     name: struct_def.name.ident.to_string(),
                     fields: struct_def.fields.iter()
-                        .map(|(name, _, typ)| (name.ident.to_string(), convert_expr_type(typ, diagnostics, meta_info)))
+                        .map(|(name, _, typ)| (name.ident.to_string(), convert_expr_type_statically(typ, diagnostics, meta_info)))
                         .collect(),
                 });
             }
@@ -112,7 +166,7 @@ pub fn create_graph<'i>(diagnostics: &'i Diagnostics, meta_info: &mut MetaInfo, 
                             let variant = match &variant.fields {
                                 Some((_open, fields, _close)) => EnumTypeVariant::TupleVariant(
                                     fields.iter()
-                                        .map(|typ| convert_expr_type(typ, diagnostics, meta_info))
+                                        .map(|typ| convert_expr_type_statically(typ, diagnostics, meta_info))
                                         .collect()
                                 ),
                                 None => EnumTypeVariant::CLike,
@@ -129,10 +183,10 @@ pub fn create_graph<'i>(diagnostics: &'i Diagnostics, meta_info: &mut MetaInfo, 
                 let fun = &meta_info.rebo_functions[name];
                 let typ = FunctionType {
                     args: fun.args.iter().map(|pattern| {
-                        convert_expr_type(&pattern.typ, diagnostics, meta_info)
+                        convert_expr_type_statically(&pattern.typ, diagnostics, meta_info)
                     }).collect(),
                     ret: fun.ret_type.as_ref()
-                        .map(|(_, typ)| convert_expr_type(typ, diagnostics, meta_info))
+                        .map(|(_, typ)| convert_expr_type_statically(typ, diagnostics, meta_info))
                         .unwrap_or(Type::Specific(SpecificType::Unit)),
                 };
                 meta_info.function_types.insert(name.clone(), typ);
@@ -147,7 +201,7 @@ pub fn create_graph<'i>(diagnostics: &'i Diagnostics, meta_info: &mut MetaInfo, 
                     .unwrap();
                 let typ = FunctionType {
                     args: Cow::Owned(variant.fields.as_ref().unwrap().1.iter()
-                        .map(|typ| convert_expr_type(typ, diagnostics, meta_info))
+                        .map(|typ| convert_expr_type_statically(typ, diagnostics, meta_info))
                         .collect()),
                     ret: Type::Specific(SpecificType::Enum(enum_name.clone())),
                 };
@@ -187,7 +241,7 @@ fn visit_expr(graph: &mut Graph, diagnostics: &Diagnostics, meta_info: &MetaInfo
                 ExprPattern::Typed(ExprPatternTyped { pattern: ExprPatternUntyped { binding }, typ, .. }) => {
                     let var_type_var = TypeVar::new(binding.ident.span);
                     graph.add_type_var(var_type_var);
-                    if let Type::Specific(specific) = convert_expr_type(typ, diagnostics, meta_info) {
+                    if let Type::Specific(specific) = convert_expr_type(typ, graph, function_generics, var_type_var, diagnostics, meta_info) {
                         graph.set_exact_type(var_type_var, function_generics.make_specific_resolvable(&specific));
                     }
                     var_type_var
@@ -475,14 +529,14 @@ fn visit_function(graph: &mut Graph, diagnostics: &Diagnostics, meta_info: &Meta
     for ExprPatternTyped { pattern: ExprPatternUntyped { binding }, typ, .. } in args {
         let arg_type_var = TypeVar::new(binding.ident.span);
         graph.add_type_var(arg_type_var);
-        if let Type::Specific(specific) = convert_expr_type(typ, diagnostics, meta_info) {
+        if let Type::Specific(specific) = convert_expr_type(typ, graph, function_generics, arg_type_var, diagnostics, meta_info) {
             graph.set_exact_type(arg_type_var, function_generics.make_specific_resolvable(&specific));
         }
     }
 
     let body_type_var = visit_block(graph, diagnostics, meta_info, function_generics, body);
     if let Some((_arrow, ret_type)) = ret_type {
-        if let Type::Specific(specific) = convert_expr_type(ret_type, diagnostics, meta_info) {
+        if let Type::Specific(specific) = convert_expr_type(ret_type, graph, function_generics, type_var, diagnostics, meta_info) {
             graph.add_reduce_constraint(type_var, body_type_var, vec![function_generics.make_specific_resolvable(&specific)]);
         }
     }

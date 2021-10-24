@@ -57,7 +57,6 @@ pub fn solve(graph: &mut Graph, meta_info: &mut MetaInfo) {
                 Constraint::MethodCallReturnType(name) => {
                     graph.method_call_ret(meta_info, source, var, &name)
                 }
-
             };
             match unify_result {
                 UnifyResult::Changed => {

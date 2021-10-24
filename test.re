@@ -1,3 +1,59 @@
+enum Option<T> {
+    Some(T),
+    None,
+}
+
+/*
+impl Option<T> {
+    fn unwrap(self) -> T {
+        match self {
+            Option::Some(t) => t,
+            Option::None => panic("tried to unwrap a None value"),
+        }
+    }
+}
+
+fn create_some<T>(t: T) -> Option<T> {
+    Option::Some(t)
+}
+*/
+
+/*
+let a = Option::Some(42);
+*/
+let b: Option<Option<string>> = Option::Some(Option::Some("uiae"));
+/*
+print(a, b);
+
+/*
+let c: option<float> = option::none;
+print(a.unwrap(), b.unwrap(), c);
+/*
+struct foo<t> {
+    t: t,
+}
+struct bar {
+    a: int,
+}
+let foo = foo { t: bar { a: 1337 } };
+print(foo.t.a);
+let foo = foo { t: bar { a: "uiae" } };
+
+/*
+fn a(self) -> int {
+    self.a
+}
+/*
+struct Something {}
+impl Something {
+    fn returns_self(self) -> Something {
+        returns_self
+    }
+}
+let foo = Something {};
+foo.returns_self().returns_self();
+
+/*
 print(foo(10, 20));
 fn foo(mut x: int, mut y: int) -> int {
     x = x + 10;
@@ -116,3 +172,30 @@ print(unit, i, f);
 print_value(unit);
 print_value(i);
 print_value(f);
+
+// generics
+fn foo<U, V>(u: U, v: V) -> V { v }
+fn bar<T>(t: T) -> T { foo(42, t) }
+print(bar(1337));
+
+enum Option<T> {
+    Some(T),
+    None,
+}
+
+impl Option<T> {
+    fn unwrap(self) -> T {
+        match self {
+            Option::Some(t) => t,
+            Option::None => panic("tried to unwrap a None value"),
+        }
+    }
+}
+
+let a = Option::Some(1337);
+let c = Option::Some("uiae");
+print(a.unwrap() + c.unwrap());
+
+let a = Option::None;
+let b = Option::None;
+print(a.unwrap() + b.unwrap());

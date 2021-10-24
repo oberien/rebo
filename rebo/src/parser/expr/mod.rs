@@ -1622,10 +1622,10 @@ impl<'a, 'i> Parse<'a, 'i> for ExprImplBlock<'a, 'i> {
                 Some(user_type) => user_type,
                 None => return,
             };
-            let target_generics = user_type.generics();
-            let target_generic_span = target_generics.map(|g| g.span()).unwrap_or(Span::new(user_type.name_span().file, user_type.name_span().end, user_type.name_span().end));
-            let target_generics = target_generics.and_then(|g| g.generics.as_ref());
-            let target_generic_iter = match target_generics {
+            let expected_generics = user_type.generics();
+            let expected_generic_span = expected_generics.map(|g| g.span()).unwrap_or(Span::new(user_type.name_span().file, user_type.name_span().end, user_type.name_span().end));
+            let expected_generics = expected_generics.and_then(|g| g.generics.as_ref());
+            let expected_generic_iter = match expected_generics {
                 Some(generics) => Either::Left(generics.iter().map(Some).chain(std::iter::repeat(None))),
                 None => Either::Right(std::iter::repeat(None)),
             };
@@ -1635,26 +1635,26 @@ impl<'a, 'i> Parse<'a, 'i> for ExprImplBlock<'a, 'i> {
                 Some(generics) => Either::Left(generics.iter_mut().map(Some).chain(std::iter::repeat_with(|| None))),
                 None => Either::Right(std::iter::repeat_with(|| None)),
             };
-            let mut iter = target_generic_iter.zip(generics_iter);
+            let mut iter = expected_generic_iter.zip(generics_iter);
             loop {
                 match iter.next() {
-                    Some((Some(target), Some(generic))) => {
-                        if target.def_ident.ident != generic.def_ident.ident {
+                    Some((Some(expected), Some(generic))) => {
+                        if expected.def_ident.ident != generic.def_ident.ident {
                             parser.diagnostics.error(ErrorCode::MismatchedGeneric)
-                                .with_error_label(generic.def_ident.span, format!("expected generic name `{}`, found `{}`", target.def_ident.ident, generic.def_ident.ident))
+                                .with_error_label(generic.def_ident.span, format!("expected generic name `{}`, found `{}`", expected.def_ident.ident, generic.def_ident.ident))
                                 .with_note("generics of a type must have the same name in the type def and impl-block")
                                 .emit();
                         } else {
-                            generic.def_ident = target.def_ident;
+                            generic.def_ident = expected.def_ident;
                         }
                     },
-                    Some((Some(target), None)) => parser.diagnostics.error(ErrorCode::MissingGeneric)
-                        .with_error_label(generic_span, format!("missing generic `{}`", target.def_ident.ident))
-                        .with_info_label(target.def_ident.span, "defined here")
+                    Some((Some(expected), None)) => parser.diagnostics.error(ErrorCode::MissingGeneric)
+                        .with_error_label(generic_span, format!("missing generic `{}`", expected.def_ident.ident))
+                        .with_info_label(expected.def_ident.span, "defined here")
                         .emit(),
                     Some((None, Some(generic))) => parser.diagnostics.error(ErrorCode::TooManyGenerics)
                         .with_error_label(generic.span(), format!("too many generics, unknown generic `{}`", generic.def_ident.ident))
-                        .with_info_label(target_generic_span, "expected generics defined here")
+                        .with_info_label(expected_generic_span, "expected generics defined here")
                         .emit(),
                     Some((None, None)) => break,
                     None => unreachable!(),
