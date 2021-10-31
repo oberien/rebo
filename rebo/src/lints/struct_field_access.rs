@@ -26,7 +26,7 @@ fn check_non_struct_field_access(diagnostics: &Diagnostics, meta_info: &MetaInfo
     for field in fields {
         let struct_name = match &typ {
             Type::Top | Type::Bottom => return,
-            Type::Specific(SpecificType::Struct(name)) => name,
+            Type::Specific(SpecificType::Struct(name, _)) => name,
             _ => {
                 diagnostics.error(ErrorCode::NonStructFieldAccess)
                     .with_error_label(span, format!("`{}` is of type `{}`, which is not a struct", diagnostics.resolve_span(span), typ))

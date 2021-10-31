@@ -34,7 +34,7 @@ impl Visitor for MatchLints {
                     .with_error_label(expr.span(), "")
                     .emit();
             }
-            Type::Specific(SpecificType::Struct(_)) => {
+            Type::Specific(SpecificType::Struct(_, _)) => {
                 diagnostics.error(ErrorCode::StructMatch)
                     .with_error_label(expr.span(), "")
                     .emit();
@@ -103,7 +103,7 @@ impl Visitor for MatchLints {
                     }
                 }
             }
-            Type::Specific(SpecificType::Enum(name)) => {
+            Type::Specific(SpecificType::Enum(name, _)) => {
                 let variants: Vec<_> = meta_info.enum_types[name.as_str()].variants.iter()
                     .map(|(name, _)| RequiredEnumVariant(name.as_str()))
                     .collect();
@@ -169,7 +169,7 @@ impl Visitor for MatchLints {
                     }
                 }
             }
-            Type::Specific(SpecificType::Generic(_, _)) => todo!(),
+            Type::Specific(SpecificType::Generic(_)) => todo!(),
         }
     }
 }

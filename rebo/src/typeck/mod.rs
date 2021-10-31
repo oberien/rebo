@@ -3,13 +3,12 @@ use std::borrow::Borrow;
 use diagnostic::{Diagnostics, Span};
 use log::Level;
 
+use graph::Graph;
+
 use crate::common::MetaInfo;
 use crate::parser::Expr;
 
 mod graph;
-mod create_graph;
-mod solver;
-mod checker;
 pub mod types;
 
 /// A type variable.
@@ -33,13 +32,13 @@ impl Borrow<Span> for TypeVar {
 }
 
 pub fn typeck<'a, 'i>(diagnostics: &Diagnostics, meta_info: &mut MetaInfo<'a, 'i>, exprs: &[&'a Expr<'a, 'i>]) {
-    let mut graph = create_graph::create_graph(diagnostics, meta_info, exprs);
+    let mut graph = Graph::create(diagnostics, meta_info, exprs);
     if Level::Trace <= log::max_level() {
         graph.dot();
     }
-    solver::solve(&mut graph, meta_info);
-    if Level::Trace <= log::max_level() {
-        graph.dot();
-    }
-    checker::check(diagnostics, &graph, meta_info);
+    // graph.solve(meta_info);
+    // if Level::Trace <= log::max_level() {
+    //     graph.dot();
+    // }
+    // graph.check(diagnostics, meta_info);
 }

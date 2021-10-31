@@ -40,7 +40,7 @@ impl Visitor for StructDefLints {
 
 fn check_struct_recursion(diagnostics: &Diagnostics, meta_info: &MetaInfo, struct_name: &TokenIdent, field_typ: &Type, field_path: Vec<&str>) {
     let field_struct_name = match &field_typ {
-        Type::Specific(SpecificType::Struct(s)) => s.as_str(),
+        Type::Specific(SpecificType::Struct(s, _)) => s.as_str(),
         _ => return,
     };
     // As we check every single struct, we only need to check if any recursive field is of the

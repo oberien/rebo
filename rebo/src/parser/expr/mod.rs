@@ -483,6 +483,7 @@ pub enum ExprType<'a, 'i> {
     Bool(TokenBoolType),
     Unit(TokenOpenParen, TokenCloseParen),
     // struct, enum, typedef, ...
+    /// name, generics
     UserType(TokenIdent<'i>, Option<(TokenLessThan, Box<Separated<'a, 'i, ExprType<'a, 'i>, TokenComma>>, TokenGreaterThan)>),
     Generic(Generic<'i>),
 }
