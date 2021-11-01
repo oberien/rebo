@@ -36,9 +36,9 @@ pub fn typeck<'a, 'i>(diagnostics: &Diagnostics, meta_info: &mut MetaInfo<'a, 'i
     if Level::Trace <= log::max_level() {
         graph.dot();
     }
-    // graph.solve(meta_info);
-    // if Level::Trace <= log::max_level() {
-    //     graph.dot();
-    // }
+    graph.solve(meta_info);
+    if Level::Trace <= log::max_level() {
+        graph.dot();
+    }
     // graph.check(diagnostics, meta_info);
 }

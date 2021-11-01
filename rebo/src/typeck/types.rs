@@ -61,6 +61,7 @@ pub struct FunctionType {
 }
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct StructType {
+    pub generics: Cow<'static, [Span]>,
     pub name: String,
     pub fields: Vec<(String, Type)>,
 }
@@ -90,6 +91,7 @@ impl StructType {
 }
 #[derive(Debug, Clone, PartialOrd, PartialEq, Hash)]
 pub struct EnumType {
+    pub generics: Cow<'static, [Span]>,
     pub name: String,
     pub variants: Vec<(String, EnumTypeVariant)>,
 }

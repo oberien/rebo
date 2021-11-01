@@ -17,9 +17,9 @@ use crate::typeck::types::{ResolvableSpecificType, ResolvableSpecificTypeDiscrim
 use crate::typeck::TypeVar;
 use crate::typeck::graph::create::FunctionGenerics;
 
-pub mod create;
-// pub mod solve;
-// pub mod check;
+mod create;
+mod solve;
+// mod check;
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct PossibleTypes(Vec<ResolvableSpecificType>);
@@ -124,6 +124,14 @@ impl Node {
         }
     }
 }
+impl Display for Node {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Node::TypeVar(var) => write!(f, "[{}:{}:{}]", var.span.file, var.span.start, var.span.end),
+            Node::Synthetic(_, id) => write!(f, "[{}]", id),
+        }
+    }
+}
 
 pub struct Graph<'i> {
     diagnostics: &'i Diagnostics,
@@ -177,13 +185,8 @@ impl<'i> Graph<'i> {
     pub fn dot(&self) {
         let f1 = &|_, e: EdgeReference<Constraint>| format!("label = {:?}", e.weight().to_string());
         let f2 = &|_, (_, n): (NodeIndex<u32>, &Node)| {
-            let mut prefix = "".to_string();
-            let prefix = match n {
-                Node::TypeVar(var) => format!("[{}:{}:{}]: ", var.span.file, var.span.start, var.span.end),
-                Node::Synthetic(_, id) => format!("[{}]: ", id),
-            };
             let code = format!("{:?}", self.diagnostics.resolve_span(n.span()));
-            format!("label = \"{}{}\\n{}\"", prefix, &code[1..code.len()-1], self.possible_types[n])
+            format!("label = \"{}: {}\\n{}\"", n, &code[1..code.len()-1], self.possible_types[n])
         };
         let dot = Dot::with_attr_getters(
             &self.graph,
@@ -200,7 +203,7 @@ impl<'i> Graph<'i> {
             writeln!(vec, "}}").unwrap();
             String::from_utf8(vec).unwrap()
         };
-        println!("{}", dot);
+        // println!("{}", dot);
         let mut xdot = Command::new("xdot")
             .arg("-")
             .stdin(Stdio::piped())

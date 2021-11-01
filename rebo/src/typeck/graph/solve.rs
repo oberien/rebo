@@ -1,15 +1,12 @@
-use crate::typeck::graph::{Graph, Constraint, UnifyResult, Node, PossibleTypes};
+use crate::typeck::graph::{Graph, Constraint, Node, PossibleTypes};
 use crate::common::MetaInfo;
 use std::collections::{VecDeque, HashSet};
-use crate::typeck::TypeVar;
 use std::iter::FromIterator;
 use crate::typeck::types::{ResolvableSpecificType, Type, ResolvableType, SpecificType};
-use log::Level;
 use petgraph::graph::EdgeIndex;
 use petgraph::Direction;
 use petgraph::prelude::EdgeRef;
 use std::cell::RefCell;
-use std::ops::BitOr;
 use crate::typeck::graph::create::FunctionGenerics;
 
 struct WorkQueue {
@@ -31,7 +28,7 @@ impl WorkQueue {
     }
     pub fn add_single(&mut self, node: Node) {
         if self.set.contains(&node) {
-            break;
+            return;
         }
         self.set.insert(node);
         self.queue.push_back(node);
@@ -46,7 +43,7 @@ impl FromIterator<Node> for WorkQueue {
     fn from_iter<T: IntoIterator<Item=Node>>(iter: T) -> Self {
         let mut queue = WorkQueue::new();
         for e in iter {
-            queue.add(e);
+            queue.add_single(e);
         }
         queue
     }
@@ -58,11 +55,12 @@ impl<'i> Graph<'i> {
 
         while let Some(node) = todos.next() {
             for (constraint, source) in self.incoming(node) {
+                println!("{} -> {}: {:?}", source, node, constraint);
                 match constraint {
                     Constraint::Eq => self.unify_assign(&mut todos, node, source),
                     Constraint::Reduce(reduce) => self.reduce(&mut todos, node, &reduce),
-                    Constraint::FieldAccess(fields) => {
-                        self.field_access(&mut todos, meta_info, source, node, &fields);
+                    Constraint::FieldAccess(field) => {
+                        self.field_access(&mut todos, meta_info, source, node, field);
                     },
                     Constraint::MethodCallArg(name, method_call_index, arg_index) => {
                         self.method_call_arg(&mut todos, meta_info, source, node, &name, method_call_index, arg_index);
@@ -72,28 +70,29 @@ impl<'i> Graph<'i> {
                     }
                     Constraint::Generic => (),
                 };
+                // self.dot();
             }
         }
     }
 
-    fn reduce(&mut self, todos: &mut WorkQueue, node: Node, reduce: &[ResolvableSpecificType]) -> UnifyResult {
+    fn reduce(&mut self, todos: &mut WorkQueue, node: Node, reduce: &[ResolvableSpecificType]) {
         assert!(!reduce.is_empty());
         self.reduce_internal(todos, node, reduce)
     }
 
-    fn unify_assign(&mut self, todos: &mut WorkQueue, into: Node, from: Node) -> UnifyResult {
+    fn unify_assign(&mut self, todos: &mut WorkQueue, into: Node, from: Node) {
         let from = self.possible_types[&from].clone();
         self.reduce_internal(todos, into, &from.0)
     }
 
-    fn field_access(&mut self, todos: &mut WorkQueue, meta_info: &MetaInfo, struct_node: Node, field_node: Node, fields: &[String]) {
-        self.reduce_internal(todos, struct_node, &[ResolvableSpecificType::Struct("struct".to_string())]);
+    fn field_access(&mut self, todos: &mut WorkQueue, meta_info: &MetaInfo, struct_node: Node, field_node: Node, field: String) {
+        self.reduce_internal(todos, struct_node, &[ResolvableSpecificType::Struct("struct".to_string(), vec![])]);
         let possible_types = self.possible_types.get_mut(&struct_node).unwrap();
         if possible_types.0.len() != 1 {
             return;
         }
         let (struct_name, struct_generics) = if let ResolvableSpecificType::Struct(name, generics) = &possible_types.0[0] {
-            (name, generics)
+            (name, generics.clone())
         } else {
             return;
         };
@@ -101,26 +100,40 @@ impl<'i> Graph<'i> {
             return;
         }
 
-        let mut function_generics = FunctionGenerics::new();
-        for &generic in struct_generics {
+        let function_generics = FunctionGenerics::new();
+        for &generic in &struct_generics {
             function_generics.insert_generic(generic);
         }
 
-        let mut typ = possible_types.0[0].clone();
-        for field in fields {
-            let struct_typ = match typ {
-                ResolvableSpecificType::Struct(name, _) => match meta_info.struct_types.get(name.as_str()) {
-                    Some(struct_typ) => struct_typ,
-                    None => return res,
-                }
-                _ => return res,
-            };
-            typ = match struct_typ.get_field(field) {
-                Some(Type::Specific(typ)) => function_generics.apply_specific_type_reduce(&typ, field_node),
-                _ => return res,
+        let struct_typ = match meta_info.struct_types.get(struct_name.as_str()) {
+            Some(struct_typ) => struct_typ,
+            // no struct with the given name, don't continue type inference surrounding this type
+            None => return,
+        };
+
+        for (&expected, &gotten) in struct_typ.generics.iter().zip(&struct_generics) {
+            if expected != gotten.span() {
+                let synthetic = Node::synthetic(expected);
+                self.add_node(synthetic);
+                self.add_eq_constraint(gotten, synthetic);
+                function_generics.insert_generic(synthetic);
             }
         }
+
+        let typ = match struct_typ.get_field(&field) {
+            Some(typ) => typ,
+            // no field with the given name, don't continue type inference surrounding this type
+            None => return,
+        };
+
+        for generic in struct_generics {
+            todos.add_single(generic);
+        }
+        todos.add(self, struct_node);
+        todos.add(self, field_node);
+
         self.remove_single_edge(struct_node, field_node);
+        function_generics.apply_type_reduce(struct_node, field_node, &typ, self);
     }
     fn method_call_arg(&mut self, todos: &mut WorkQueue, meta_info: &MetaInfo, field_access: Node, arg: Node, method_name: &str, method_call_index: u64, arg_index: usize) {
         let possible_types = &self.possible_types[&field_access];
@@ -133,25 +146,24 @@ impl<'i> Graph<'i> {
             Some(fn_typ) => fn_typ,
             None => return,
         };
+
+        // function generics
+        let default_function_generics = FunctionGenerics::new();
+        for &generic_span in &*fn_typ.generics {
+            let node = Node::synthetic(generic_span);
+            self.add_node(node);
+            default_function_generics.insert_generic(node);
+        }
         let function_generics = self.method_function_generics.entry(method_call_index)
-            .or_insert_with(|| {
-                let mut function_generics = FunctionGenerics::new();
-                for &generic_span in &*fun_typ.generics {
-                    let node = Node::synthetic(generic_span);
-                    self.add_node(node);
-                    function_generics.insert_generic(node);
-                }
-                function_generics
-            });
+            .or_insert(default_function_generics)
+            .clone();
         let expected_arg_type = match fn_typ.args.get(arg_index) {
             Some(typ) => typ,
-            None => Type::Varargs,
+            None => &Type::Varargs,
         };
 
         self.remove_single_edge(field_access, arg);
-        assert!(self.graph.edges_connecting(self.graph_indices[&field_access], self.graph_indices[&arg]).count() == 0);
         function_generics.apply_type_reduce(field_access, arg, expected_arg_type, self);
-        assert!(self.graph.edges_connecting(self.graph_indices[&field_access], self.graph_indices[&arg]).count() > 0);
         todos.add(self, field_access);
         todos.add(self, arg);
         for generic in function_generics.generics() {
@@ -161,24 +173,25 @@ impl<'i> Graph<'i> {
     fn method_call_ret(&mut self, todos: &mut WorkQueue, meta_info: &MetaInfo, field_access: Node, method_call: Node, method_name: &str, method_call_index: u64) {
         let possible_types = &self.possible_types[&field_access];
         if possible_types.0.len() != 1 {
-            return UnifyResult::Unchanged;
+            return;
         }
         let type_name = possible_types.0[0].type_name();
         let fn_name = format!("{}::{}", type_name, method_name);
         let fn_typ = match meta_info.function_types.get(fn_name.as_str()) {
             Some(fn_typ) => fn_typ,
-            None => return UnifyResult::Unchanged,
+            None => return,
         };
+
+        // function generics
+        let mut default_function_generics = FunctionGenerics::new();
+        for &generic_span in &*fn_typ.generics {
+            let node = Node::synthetic(generic_span);
+            self.add_node(node);
+            default_function_generics.insert_generic(node);
+        }
         let function_generics = self.method_function_generics.entry(method_call_index)
-            .or_insert_with(|| {
-                let mut function_generics = FunctionGenerics::new();
-                for &generic_span in &*fun_typ.generics {
-                    let node = Node::synthetic(generic_span);
-                    self.add_node(node);
-                    function_generics.insert_generic(node);
-                }
-                function_generics
-            });
+            .or_insert(default_function_generics)
+            .clone();
 
         self.remove_single_edge(field_access, method_call);
         assert!(self.graph.edges_connecting(self.graph_indices[&field_access], self.graph_indices[&method_call]).count() == 0);
@@ -187,7 +200,7 @@ impl<'i> Graph<'i> {
         todos.add(self, field_access);
         todos.add(self, method_call);
         for generic in function_generics.generics() {
-            todos.add(selfge, neric);
+            todos.add(self, generic);
         }
     }
     fn remove_single_edge(&mut self, from: Node, to: Node) {
@@ -209,7 +222,7 @@ impl<'i> Graph<'i> {
             ResolvableSpecificType::UnUnifyableGeneric(span) => Some(*span),
             _ => None,
         }).next();
-        let self_generic = self.0.iter().filter_map(|typ| match typ {
+        let self_generic = possible_types.0.iter().filter_map(|typ| match typ {
             ResolvableSpecificType::UnUnifyableGeneric(span) => Some(*span),
             _ => None,
         }).next();
@@ -217,7 +230,7 @@ impl<'i> Graph<'i> {
             assert_eq!(reduce.len(), 1);
         }
         if self_generic.is_some() {
-            assert_eq!(self.0.len(), 1);
+            assert_eq!(possible_types.0.len(), 1);
         }
 
         // handle generics
@@ -227,25 +240,25 @@ impl<'i> Graph<'i> {
             (Some(span), Some(span2)) => if span == span2 {
                 return;
             } else {
-                self.0.clear();
+                possible_types.0.clear();
                 todos.add(self, node);
                 return;
             }
             (Some(_), None) => if reduce.len() == 1 {
-                self.0.clear();
+                possible_types.0.clear();
                 todos.add(self, node);
                 return;
             } else {
                 return;
             }
-            (None, Some(_)) if *self == PossibleTypes::any() => {
-                self.0.clear();
-                self.0.push(reduce[0].clone());
+            (None, Some(_)) if *possible_types == PossibleTypes::any() => {
+                possible_types.0.clear();
+                possible_types.0.push(reduce[0].clone());
                 todos.add(self, node);
                 return;
             }
-            (None, Some(_)) if self.len() == 1 => {
-                self.0.clear();
+            (None, Some(_)) if possible_types.len() == 1 => {
+                possible_types.0.clear();
                 todos.add(self, node);
                 return;
             },
@@ -255,7 +268,7 @@ impl<'i> Graph<'i> {
 
         // handle rest
         let mut reduced = Vec::new();
-        for typ in &possible_types.0 {
+        for typ in &possible_types.0.clone() {
             match typ {
                 ResolvableSpecificType::Unit
                 | ResolvableSpecificType::Bool
@@ -272,16 +285,16 @@ impl<'i> Graph<'i> {
                         }).next();
                     match (name.as_str(), generics, reduce_struct) {
                         ("struct", _, Some((name, generics)))
-                        | (name, generics, Some("struct")) => reduced.push(ResolvableSpecificType::Struct(name.to_string(), generics)),
+                        | (name, generics, Some(("struct", _))) => reduced.push(ResolvableSpecificType::Struct(name.to_string(), generics.clone())),
                         (a, a_generics, Some((b, b_generics))) if a == b => {
-                            for (ag, bg) in a_generics.iter().zip(b_generics) {
+                            for (&ag, &bg) in a_generics.iter().zip(b_generics).filter(|(ag, bg)| ag != bg) {
                                 self.add_eq_constraint(ag, bg);
                                 todos.add_single(ag);
                                 todos.add_single(bg);
                             }
-                            reduced.push(ResolvableSpecificType::Struct(a.to_string(), a_generics));
+                            reduced.push(ResolvableSpecificType::Struct(a.to_string(), a_generics.clone()));
                         },
-                        (_, _) => (),
+                        (_, _, _) => (),
                     }
                 }
                 ResolvableSpecificType::Enum(name, generics) => {
@@ -292,84 +305,31 @@ impl<'i> Graph<'i> {
                         }).next();
                     match (name.as_str(), generics, reduce_enum) {
                         ("enum", _, Some((name, generics)))
-                        | (name, generics, Some("enum")) => reduced.push(ResolvableSpecificType::Enum(name.to_string())),
+                        | (name, generics, Some(("enum", _))) => reduced.push(ResolvableSpecificType::Enum(name.to_string(), generics.clone())),
                         (a, a_generics, Some((b, b_generics))) if a == b => {
-                            for (ag, bg) in a_generics.iter().zip(b_generics) {
+                            for (&ag, &bg) in a_generics.iter().zip(b_generics).filter(|(ag, bg)| ag != bg) {
                                 self.add_eq_constraint(ag, bg);
                                 todos.add_single(ag);
                                 todos.add_single(bg);
                             }
-                            reduced.push(ResolvableSpecificType::Enum(a.to_string(), a_generics));
+                            reduced.push(ResolvableSpecificType::Enum(a.to_string(), a_generics.clone()));
                         },
-                        (_, _) => (),
+                        (_, _, _) => (),
                     }
                 }
                 ResolvableSpecificType::UnUnifyableGeneric(_) => unreachable!("handled above"),
             }
         }
+        // fetch again for the borrow checker
+        let possible_types = self.possible_types.get_mut(&node).unwrap();
         let old = std::mem::replace(&mut possible_types.0, reduced);
-        if old == possible_types.0 {
+        if old != possible_types.0 {
             todos.add(self, node);
         }
     }
 
-    fn make_type_resolvable(&mut self, typ: &Type, from: TypeVar) -> ResolvableType {
-        match typ {
-            Type::Top => ResolvableType::Top,
-            Type::Bottom => ResolvableType::Bottom,
-            Type::Varargs => ResolvableType::Varargs,
-            Type::Specific(specific) => ResolvableType::Specific(self.make_specific_resolvable(specific, from)),
-        }
-    }
-    fn make_specific_resolvable(&mut self, typ: &SpecificType, from: TypeVar) -> ResolvableSpecificType {
-        match typ {
-            SpecificType::Unit => ResolvableSpecificType::Unit,
-            SpecificType::Bool => ResolvableSpecificType::Bool,
-            SpecificType::Integer => ResolvableSpecificType::Integer,
-            SpecificType::Float => ResolvableSpecificType::Float,
-            SpecificType::String => ResolvableSpecificType::String,
-            SpecificType::Struct(name) => ResolvableSpecificType::Struct(name.clone()),
-            SpecificType::Enum(name) => ResolvableSpecificType::Enum(name.clone()),
-            &SpecificType::Generic(span, depth) => {
-                if let Some(typ) = self.resolved_generics.get(&(from, span, depth)) {
-                    return typ.clone();
-                }
-                let is_un_unifyable = RefCell::new(false);
-                self.search_from(
-                    from,
-                    |this, var| {
-                        for typ in &this.possible_types[&var].0 {
-                            if let &ResolvableSpecificType::UnUnifyableGeneric(span2, depth2) = typ {
-                                if span == span2 && depth == depth2 {
-                                    *is_un_unifyable.borrow_mut() = true;
-                                }
-                            }
-                        }
-                    },
-                    |this, edge_index| {
-                        match &this.graph[edge_index] {
-                            Constraint::Reduce(types) => for typ in types {
-                                if let &ResolvableSpecificType::UnUnifyableGeneric(span2, depth2) = typ {
-                                    if span == span2 && depth == depth2 {
-                                        *is_un_unifyable.borrow_mut() = true;
-                                    }
-                                }
-                            }
-                            _ => (),
-                        }
-                    }
-                );
-                if *is_un_unifyable.borrow() {
-                    ResolvableSpecificType::UnUnifyableGeneric(span, depth)
-                } else {
-                    ResolvableSpecificType::UnifyableGeneric(span, depth)
-                }
-            }
-        }
-    }
-
     /// Breadth-first search over all nodes and edges (some edges are visited multiple times), returning a list of all visited nodes
-    fn search_from(&mut self, var: TypeVar, mut node_visitor: impl FnMut(&mut Self, TypeVar), mut edge_visitor: impl FnMut(&mut Self, EdgeIndex)) -> Vec<TypeVar> {
+    fn search_from(&mut self, var: Node, mut node_visitor: impl FnMut(&mut Self, Node), mut edge_visitor: impl FnMut(&mut Self, EdgeIndex)) -> Vec<Node> {
         let mut visited = HashSet::new();
         let mut todo = VecDeque::new();
         todo.push_back(var);

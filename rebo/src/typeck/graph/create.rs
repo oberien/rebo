@@ -10,6 +10,7 @@ use std::rc::Rc;
 use crate::error_codes::ErrorCode;
 use std::sync::atomic::{Ordering, AtomicU64};
 
+#[derive(Clone)]
 pub(super) struct FunctionGenerics {
     /// ununifyable generics within function definitions
     ununifyable: Rc<RefCell<Vec<Span>>>,
@@ -93,7 +94,9 @@ impl FunctionGenerics {
                 graph.add_eq_constraint(to, node);
                 return;
             } else {
-                unreachable!();
+                println!("dtruniaedtrnuidtraen");
+                graph.dot();
+                unreachable!("tried to convert unknown generic {}", typ);
             }
         };
         let mut resolvable_generics = Vec::new();
@@ -211,6 +214,9 @@ impl<'i> Graph<'i> {
             match user_type {
                 UserType::Struct(struct_def) => {
                     meta_info.struct_types.insert(struct_def.name.ident, StructType {
+                        generics: struct_def.generics.iter().flat_map(|g| &g.generics).flatten()
+                            .map(|g| g.def_ident.span)
+                            .collect(),
                         name: struct_def.name.ident.to_string(),
                         fields: struct_def.fields.iter()
                             .map(|(name, _, typ)| (name.ident.to_string(), convert_expr_type(typ, diagnostics, meta_info)))
@@ -219,6 +225,9 @@ impl<'i> Graph<'i> {
                 }
                 UserType::Enum(enum_def) => {
                     meta_info.enum_types.insert(enum_def.name.ident, EnumType {
+                        generics: enum_def.generics.iter().flat_map(|g| &g.generics).flatten()
+                            .map(|g| g.def_ident.span)
+                            .collect(),
                         name: enum_def.name.ident.to_string(),
                         variants: enum_def.variants.iter()
                             .map(|variant| {
@@ -391,7 +400,7 @@ impl<'i> Graph<'i> {
                 self.add_node(var_node);
                 self.add_node(binding_node);
                 self.add_unidirectional_eq_constraint(binding_node, var_node);
-                let mut access_node = var_node;
+                let mut access_node = binding_node;
                 for access in accesses {
                     access_node = match access {
                         FieldOrMethod::Field(field) => {
