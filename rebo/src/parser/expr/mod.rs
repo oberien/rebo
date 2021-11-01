@@ -280,10 +280,8 @@ pub enum Expr<'a, 'i> {
     Block(ExprBlock<'a, 'i>),
     /// foo
     Variable(ExprVariable<'i>),
-    /// foo.bar.baz
-    FieldAccess(ExprFieldAccess<'a, 'i>),
-    /// foo.bar.baz(args...)
-    MethodCall(ExprMethodCall<'a, 'i>),
+    /// foo.bar.baz().qux.quux().corge
+    Access(ExprAccess<'a, 'i>),
     /// (expr)
     Parenthesized(ExprParenthesized<'a, 'i>),
     /// if expr {...} else if {...} else if {...} else {...}
@@ -388,8 +386,7 @@ impl<'a, 'i> Expr<'a, 'i> {
             |parser: &mut Parser<'a, '_, 'i>, depth| Ok(parser.arena.alloc(Expr::Literal(ExprLiteral::parse(parser, depth)?))),
             |parser: &mut Parser<'a, '_, 'i>, depth| Ok(parser.arena.alloc(Expr::FormatString(ExprFormatString::parse(parser, depth)?))),
             |parser: &mut Parser<'a, '_, 'i>, depth| Ok(parser.arena.alloc(Expr::Assign(ExprAssign::parse(parser, depth)?))),
-            |parser: &mut Parser<'a, '_, 'i>, depth| Ok(parser.arena.alloc(Expr::MethodCall(ExprMethodCall::parse(parser, depth)?))),
-            |parser: &mut Parser<'a, '_, 'i>, depth| Ok(parser.arena.alloc(Expr::FieldAccess(ExprFieldAccess::parse(parser, depth)?))),
+            |parser: &mut Parser<'a, '_, 'i>, depth| Ok(parser.arena.alloc(Expr::Access(ExprAccess::parse(parser, depth)?))),
             |parser: &mut Parser<'a, '_, 'i>, depth| Ok(parser.arena.alloc(Expr::Variable(ExprVariable::parse(parser, depth)?))),
         ];
         fns.extend(others);
@@ -865,7 +862,6 @@ impl<'a, 'i> Spanned for ExprAssignLhs<'a, 'i> {
         }
     }
 }
-
 #[derive(Debug, Clone)]
 pub struct ExprFieldAccess<'a, 'i> {
     pub variable: ExprVariable<'i>,
@@ -901,40 +897,78 @@ impl<'a, 'i> Display for ExprFieldAccess<'a, 'i> {
     }
 }
 
+
 #[derive(Debug, Clone)]
-pub struct ExprMethodCall<'a, 'i> {
+pub struct ExprAccess<'a, 'i> {
     pub variable: ExprVariable<'i>,
     pub dot: TokenDot,
-    pub fields: Vec<(TokenIdent<'i>, TokenDot)>,
-    pub fn_call: ExprFunctionCall<'a, 'i>,
+    pub accesses: Separated<'a, 'i, FieldOrMethod<'a, 'i>, TokenDot>,
 }
-impl<'a, 'i> Parse<'a, 'i> for ExprMethodCall<'a, 'i> {
+impl<'a, 'i> Parse<'a, 'i> for ExprAccess<'a, 'i> {
     fn parse_marked(parser: &mut Parser<'a, '_, 'i>, depth: Depth) -> Result<Self, InternalError> {
         let variable: ExprVariable = parser.parse(depth.next())?;
         let dot: TokenDot = parser.parse(depth.next())?;
-        // try to parse function after every field
-        let mut fields = Vec::new();
-        let fn_call = loop {
-            match ExprFunctionCall::parse(parser, depth.next()) {
-                Ok(fn_call) => break fn_call,
-                Err(InternalError::Backtrack(..)) => fields.push(parser.parse(depth.next())?),
-                Err(InternalError::Error(e)) => return Err(InternalError::Error(e)),
-            }
-        };
-        Ok(ExprMethodCall { variable, dot, fields, fn_call })
+        let accesses: Separated<FieldOrMethod, TokenDot> = parser.parse(depth.last())?;
+        // check length
+        if accesses.is_empty() {
+            return Err(InternalError::Backtrack(parser.lexer.next_span(), Cow::Borrowed(&[Expected::Token(TokenType::Ident)])));
+        }
+        // check trailing dot
+        if accesses.is_terminated() {
+            parser.diagnostics.error(ErrorCode::InvalidExpression)
+                .with_error_label(accesses.span().unwrap(), "trailing dot")
+                .emit();
+        }
+        Ok(ExprAccess { variable, dot, accesses })
     }
 }
-impl<'a, 'i> Spanned for ExprMethodCall<'a, 'i> {
+impl<'a, 'i> Spanned for ExprAccess<'a, 'i> {
     fn span(&self) -> Span {
-        Span::new(self.variable.span.file, self.variable.span.start, self.fn_call.span().end)
+        Span::new(self.variable.span.file, self.variable.span.start, self.accesses.span().unwrap().end)
     }
 }
-impl<'a, 'i> Display for ExprMethodCall<'a, 'i> {
+impl<'a, 'i> Display for ExprAccess<'a, 'i> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        let fields = self.fields.iter().map(|(f, _)| format!("{}.", f.ident)).join(".");
-        write!(f, "{}.{}{}", self.variable, fields, self.fn_call)
+        write!(f, "{}.{}", self.variable, self.accesses.iter().join("."))
     }
 }
+
+
+#[derive(Debug, Clone)]
+pub enum FieldOrMethod<'a, 'i> {
+    Field(TokenIdent<'i>),
+    Method(ExprFunctionCall<'a, 'i>),
+}
+impl<'a, 'i> Parse<'a, 'i> for FieldOrMethod<'a, 'i> {
+    fn parse_marked(parser: &mut Parser<'a, '_, 'i>, depth: Depth) -> Result<Self, InternalError> {
+        let err1 = match ExprFunctionCall::parse(parser, depth.next()) {
+            Ok(fuction_call) => return Ok(FieldOrMethod::Method(fuction_call)),
+            Err(e) => e,
+        };
+        let err2 = match TokenIdent::parse(parser, depth.last()) {
+            Ok(field) => return Ok(FieldOrMethod::Field(field)),
+            Err(e) => e,
+        };
+        Err(helper::last_error(&[err1, err2]))
+    }
+}
+impl<'a, 'i> Spanned for FieldOrMethod<'a, 'i> {
+    fn span(&self) -> Span {
+        match self {
+            FieldOrMethod::Method(function_call) => function_call.span(),
+            FieldOrMethod::Field(field) => field.span(),
+        }
+    }
+}
+impl<'a, 'i> Display for FieldOrMethod<'a, 'i> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            FieldOrMethod::Field(field) => Display::fmt(field, f),
+            FieldOrMethod::Method(function_call) => Display::fmt(function_call, f),
+        }
+    }
+}
+
 
 #[derive(Debug, Clone)]
 pub struct ExprBoolNot<'a, 'i> {

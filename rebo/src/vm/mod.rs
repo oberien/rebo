@@ -8,7 +8,7 @@ use parking_lot::ReentrantMutex;
 
 use crate::common::{Depth, Enum, EnumArc, Function, FuzzyFloat, MetaInfo, Struct, StructArc, Value};
 use crate::lexer::{TokenBool, TokenDqString, TokenFloat, TokenIdent, TokenInteger};
-use crate::parser::{Binding, BlockBody, Expr, ExprAdd, ExprAssign, ExprAssignLhs, ExprBind, ExprBlock, ExprBool, ExprBoolAnd, ExprBoolNot, ExprBoolOr, ExprDiv, ExprEnumDefinition, ExprEnumInitialization, ExprEquals, ExprFieldAccess, ExprFloat, ExprFormatString, ExprFormatStringPart, ExprFunctionCall, ExprFunctionDefinition, ExprGreaterEquals, ExprGreaterThan, ExprIfElse, ExprInteger, ExprLessEquals, ExprLessThan, ExprLiteral, ExprMatch, ExprMatchPattern, ExprMethodCall, ExprMul, ExprNotEquals, ExprParenthesized, ExprPattern, ExprPatternTyped, ExprPatternUntyped, ExprString, ExprStructDefinition, ExprStructInitialization, ExprSub, ExprVariable, ExprWhile};
+use crate::parser::{Binding, BlockBody, Expr, ExprAdd, ExprAssign, ExprAssignLhs, ExprBind, ExprBlock, ExprBool, ExprBoolAnd, ExprBoolNot, ExprBoolOr, ExprDiv, ExprEnumDefinition, ExprEnumInitialization, ExprEquals, ExprFieldAccess, ExprFloat, ExprFormatString, ExprFormatStringPart, ExprFunctionCall, ExprFunctionDefinition, ExprGreaterEquals, ExprGreaterThan, ExprIfElse, ExprInteger, ExprLessEquals, ExprLessThan, ExprLiteral, ExprMatch, ExprMatchPattern, ExprMul, ExprNotEquals, ExprParenthesized, ExprPattern, ExprPatternTyped, ExprPatternUntyped, ExprString, ExprStructDefinition, ExprStructInitialization, ExprSub, ExprVariable, ExprWhile, ExprAccess, FieldOrMethod};
 use crate::typeck::types::StructType;
 pub use crate::vm::scope::{Scopes, Scope};
 
@@ -65,19 +65,32 @@ impl<'a, 'i> Vm<'a, 'i> {
             Expr::Literal(ExprLiteral::Bool(ExprBool { b: TokenBool { value, .. } })) => Value::Bool(*value),
             Expr::Literal(ExprLiteral::String(ExprString { string: TokenDqString { string, .. } })) => Value::String(string.clone()),
             Expr::Variable(ExprVariable { binding, .. }) => self.load_binding(binding, depth.last()),
-            Expr::FieldAccess(ExprFieldAccess { variable: ExprVariable { binding, .. }, fields, .. }) => {
-                self.field_access(binding, fields.iter().map(|ident| ident.ident), depth)
-            },
-            Expr::MethodCall(ExprMethodCall { variable: ExprVariable { binding, .. }, fields, fn_call: ExprFunctionCall { name, args, .. }, .. }) => {
-                trace!("{}method_call: {}.{}{}({:?})", depth, binding.ident.ident, fields.iter().map(|(i, _)| format!("{}.", i.ident)).join(""), name.ident, args);
-                let field_val = if fields.is_empty() {
-                    self.load_binding(binding, depth.next())
-                } else {
-                    self.field_access(binding, fields.iter().map(|(ident, _dot)| ident.ident), depth.next())
-                };
-                let fn_name = format!("{}::{}", field_val.type_name(), name.ident);
-                let args = std::iter::once(field_val).chain(args.iter().map(|expr| self.eval_expr(expr, depth.next()))).collect();
-                self.call_function(&fn_name, args, depth)
+            Expr::Access(ExprAccess { variable: ExprVariable { binding, .. }, accesses, .. }) => {
+                let mut val = self.load_binding(binding, depth.next());
+                for acc in accesses {
+                    val = match acc {
+                        FieldOrMethod::Field(field) => {
+                            let struct_arc = match val {
+                                Value::Struct(s) => s,
+                                val => unreachable!("typechecker ensures this is a struct: {:?}", val),
+                            };
+                            let val = struct_arc.s.lock().borrow_mut().fields.iter()
+                                .filter(|(name, _value)| name == field.ident)
+                                .map(|(_name, value)| value.clone())
+                                .next()
+                                .expect("typechecker ensures all fields exist");
+                            val
+                        },
+                        FieldOrMethod::Method(ExprFunctionCall { name, args, .. }) => {
+                            let fn_name = format!("{}::{}", val.type_name(), name.ident);
+                            let args = std::iter::once(val)
+                                .chain(args.iter().map(|expr| self.eval_expr(expr, depth.next())))
+                                .collect();
+                            self.call_function(&fn_name, args, depth.last())
+                        }
+                    };
+                }
+                val
             }
             Expr::FormatString(ExprFormatString { parts, .. }) => {
                 let mut res = String::new();
@@ -308,24 +321,6 @@ impl<'a, 'i> Vm<'a, 'i> {
                 })))})
             }
         }
-    }
-    fn field_access<'b>(&mut self, binding: &Binding, fields: impl IntoIterator<Item = &'b str>, depth: Depth) -> Value {
-        let mut struct_arc = match self.load_binding(binding, depth.last()) {
-            Value::Struct(s) => s,
-            val => unreachable!("typechecker ensures this is a struct: {:?}", val),
-        };
-        for field in fields {
-            let field_value = struct_arc.s.lock().borrow_mut().fields.iter()
-                .filter(|(name, _value)| name == field)
-                .map(|(_name, value)| value.clone())
-                .next()
-                .expect("typechecker ensures all fields exist");
-            match field_value {
-                Value::Struct(s) => struct_arc = s,
-                value => return value,
-            }
-        }
-        Value::Struct(struct_arc)
     }
 }
 

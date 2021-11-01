@@ -18,7 +18,7 @@ use crate::typeck::TypeVar;
 use crate::typeck::graph::create::FunctionGenerics;
 
 pub mod create;
-pub mod solve;
+// pub mod solve;
 // pub mod check;
 
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -77,8 +77,8 @@ impl PossibleTypes {
 pub enum Constraint {
     Eq,
     Reduce(Vec<ResolvableSpecificType>),
-    /// field names of access path
-    FieldAccess(Vec<String>),
+    /// accessed field
+    FieldAccess(String),
     /// name of the method (not fully qualified yet), method_call_index (to identify FunctionGenerics), arg-index
     MethodCallArg(String, u64, usize),
     /// name of the method (not fully qualified yet), method_call_index (to identify FunctionGenerics)
@@ -93,8 +93,8 @@ impl Display for Constraint {
             Constraint::Reduce(reduce) => {
                 write!(f, "[{}]", reduce.iter().join(","))
             }
-            Constraint::FieldAccess(fields) => {
-                write!(f, ".{}", fields.join("."))
+            Constraint::FieldAccess(field) => {
+                write!(f, ".{}", field)
             }
             Constraint::MethodCallArg(name, idx, arg) => write!(f, "{}[{}]({})", name, idx, arg),
             Constraint::MethodCallReturnType(name, idx) => write!(f, "{}[{}](...) -> ret", name, idx),

@@ -1,5 +1,5 @@
 use crate::typeck::graph::{Graph, Node, PossibleTypes, Constraint};
-use crate::parser::{Expr, Spanned, ExprFormatString, ExprFormatStringPart, ExprBind, ExprPattern, ExprPatternTyped, ExprPatternUntyped, ExprAssign, ExprAssignLhs, ExprVariable, ExprFieldAccess, ExprBoolNot, ExprAdd, ExprSub, ExprMul, ExprDiv, ExprBoolAnd, ExprBoolOr, ExprLessThan, ExprLessEquals, ExprEquals, ExprNotEquals, ExprGreaterEquals, ExprGreaterThan, ExprBlock, BlockBody, ExprParenthesized, ExprMatch, ExprMatchPattern, ExprWhile, ExprFunctionCall, ExprFunctionDefinition, ExprStructInitialization, ExprImplBlock, ExprMethodCall, ExprType, ExprGenerics};
+use crate::parser::{Expr, Spanned, ExprFormatString, ExprFormatStringPart, ExprBind, ExprPattern, ExprPatternTyped, ExprPatternUntyped, ExprAssign, ExprAssignLhs, ExprVariable, ExprFieldAccess, ExprBoolNot, ExprAdd, ExprSub, ExprMul, ExprDiv, ExprBoolAnd, ExprBoolOr, ExprLessThan, ExprLessEquals, ExprEquals, ExprNotEquals, ExprGreaterEquals, ExprGreaterThan, ExprBlock, BlockBody, ExprParenthesized, ExprMatch, ExprMatchPattern, ExprWhile, ExprFunctionCall, ExprFunctionDefinition, ExprStructInitialization, ExprImplBlock, ExprType, ExprGenerics, ExprAccess, FieldOrMethod};
 use crate::common::{MetaInfo, UserType, Function};
 use itertools::Either;
 use crate::typeck::types::{StructType, EnumType, EnumTypeVariant, SpecificType, FunctionType, Type, ResolvableSpecificType};
@@ -385,43 +385,40 @@ impl<'i> Graph<'i> {
                 self.add_unidirectional_eq_constraint(var_node, node);
                 return var_node;
             }
-            Expr::FieldAccess(ExprFieldAccess { variable, fields, .. }) => {
+            Expr::Access(ExprAccess { variable, accesses, .. }) => {
                 let var_node = Node::type_var(variable.span());
                 let binding_node = Node::type_var(variable.binding.ident.span);
                 self.add_node(var_node);
                 self.add_node(binding_node);
                 self.add_unidirectional_eq_constraint(binding_node, var_node);
-                let fields = fields.iter().map(|ident| ident.ident.to_string()).collect();
-                self.add_field_access(binding_node, node, fields);
-            }
-            Expr::MethodCall(ExprMethodCall { variable, fields, fn_call, .. }) => {
-                // add variable type-vars
-                let var_node = Node::type_var(variable.span());
-                let binding_node = Node::type_var(variable.binding.ident.span);
-                self.add_node(var_node);
-                self.add_node(binding_node);
-                self.add_unidirectional_eq_constraint(binding_node, var_node);
+                let mut access_node = var_node;
+                for access in accesses {
+                    access_node = match access {
+                        FieldOrMethod::Field(field) => {
+                            let field_node = Node::type_var(field.span);
+                            self.add_node(field_node);
+                            self.add_field_access(access_node, field_node, field.ident.to_string());
+                            field_node
+                        }
+                        FieldOrMethod::Method(fn_call) => {
+                            static METHOD_CALL_INDEX: AtomicU64 = AtomicU64::new(0);
 
-                // add field access type-vars
-                let field_access_node = if fields.is_empty() {
-                    binding_node
-                } else {
-                    let field_access_node = Node::type_var(Span::new(variable.span().file, variable.span().start, fields.last().unwrap().0.span().end));
-                    let fields = fields.iter().map(|(ident, _dot)| ident.ident.to_string()).collect();
-                    self.add_field_access(binding_node, field_access_node, fields);
-                    field_access_node
-                };
+                            let method_call_node = Node::type_var(fn_call.span());
+                            self.add_node(method_call_node);
 
-                static METHOD_CALL_INDEX: AtomicU64 = AtomicU64::new(0);
-
-                let idx = METHOD_CALL_INDEX.fetch_add(1, Ordering::SeqCst);
-                self.add_method_call_ret(field_access_node, node, fn_call.name.ident.to_string(), idx);
-                for (i, arg_expr) in fn_call.args.iter().enumerate() {
-                    let arg_node = self.visit_expr(diagnostics, meta_info, function_generics, arg_expr);
-                    // arg 0 is `self`
-                    let arg_index = i + 1;
-                    self.add_method_call_arg(field_access_node, arg_node, fn_call.name.ident.to_string(), idx, arg_index);
+                            let idx = METHOD_CALL_INDEX.fetch_add(1, Ordering::SeqCst);
+                            self.add_method_call_ret(access_node, method_call_node, fn_call.name.ident.to_string(), idx);
+                            for (i, arg_expr) in fn_call.args.iter().enumerate() {
+                                let arg_node = self.visit_expr(diagnostics, meta_info, function_generics, arg_expr);
+                                // arg 0 is `self`
+                                let arg_index = i + 1;
+                                self.add_method_call_arg(access_node, arg_node, fn_call.name.ident.to_string(), idx, arg_index);
+                            }
+                            method_call_node
+                        }
+                    };
                 }
+                self.add_eq_constraint(node, access_node);
             }
             Expr::Parenthesized(ExprParenthesized { expr, .. }) => {
                 let expr_node = self.visit_expr(diagnostics, meta_info, function_generics, expr);
@@ -652,16 +649,16 @@ impl<'i> Graph<'i> {
         self.add_nonduplicate_edge(from, to, Constraint::Reduce(reduce));
     }
 
-    fn add_field_access(&mut self, struc: Node, field: Node, fields: Vec<String>) {
-        self.add_nonduplicate_edge(struc, field, Constraint::FieldAccess(fields));
-        self.add_nonduplicate_edge(field, struc, Constraint::Reduce(vec![ResolvableSpecificType::Struct("struct".to_string(), Vec::new())]));
+    fn add_field_access(&mut self, struct_node: Node, field_node: Node, field: String) {
+        self.add_nonduplicate_edge(struct_node, field_node, Constraint::FieldAccess(field));
+        self.add_nonduplicate_edge(field_node, struct_node, Constraint::Reduce(vec![ResolvableSpecificType::Struct("struct".to_string(), Vec::new())]));
     }
 
     fn add_method_call_arg(&mut self, source: Node, arg: Node, method_name: String, method_call_index: u64, arg_index: usize) {
         self.add_nonduplicate_edge(source, arg, Constraint::MethodCallArg(method_name, method_call_index, arg_index));
     }
-    fn add_method_call_ret(&mut self, source: Node, call_expr: Node, method_name: String, method_call_index: u64) {
-        self.add_nonduplicate_edge(source, call_expr, Constraint::MethodCallReturnType(method_name, method_call_index));
+    fn add_method_call_ret(&mut self, source: Node, method_call_node: Node, method_name: String, method_call_index: u64) {
+        self.add_nonduplicate_edge(source, method_call_node, Constraint::MethodCallReturnType(method_name, method_call_index));
     }
 
     fn add_generic_constraint(&mut self, from: Node, to: Node) {

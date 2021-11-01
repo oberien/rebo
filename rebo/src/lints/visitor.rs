@@ -1,4 +1,4 @@
-use crate::parser::{ExprLiteral, ExprFormatString, ExprBind, ExprAssign, ExprBoolNot, ExprAdd, ExprSub, ExprMul, ExprDiv, ExprBoolAnd, ExprBoolOr, ExprLessThan, ExprLessEquals, ExprEquals, ExprNotEquals, ExprGreaterEquals, ExprGreaterThan, ExprBlock, ExprVariable, ExprFieldAccess, ExprParenthesized, ExprIfElse, ExprMatch, ExprWhile, ExprFunctionCall, ExprFunctionDefinition, ExprStructDefinition, ExprStructInitialization, ExprImplBlock, Expr, ExprFormatStringPart, ExprEnumDefinition, ExprEnumInitialization, ExprMethodCall};
+use crate::parser::{ExprLiteral, ExprFormatString, ExprBind, ExprAssign, ExprBoolNot, ExprAdd, ExprSub, ExprMul, ExprDiv, ExprBoolAnd, ExprBoolOr, ExprLessThan, ExprLessEquals, ExprEquals, ExprNotEquals, ExprGreaterEquals, ExprGreaterThan, ExprBlock, ExprVariable, ExprParenthesized, ExprIfElse, ExprMatch, ExprWhile, ExprFunctionCall, ExprFunctionDefinition, ExprStructDefinition, ExprStructInitialization, ExprImplBlock, Expr, ExprFormatStringPart, ExprEnumDefinition, ExprEnumInitialization, ExprAccess, FieldOrMethod};
 use diagnostic::Diagnostics;
 use crate::common::MetaInfo;
 
@@ -28,8 +28,7 @@ pub trait Visitor {
     fn visit_greater_than(&self, _: &Diagnostics, _: &MetaInfo, _: &ExprGreaterThan) {}
     fn visit_block(&self, _: &Diagnostics, _: &MetaInfo, _: &ExprBlock) {}
     fn visit_variable(&self, _: &Diagnostics, _: &MetaInfo, _: &ExprVariable) {}
-    fn visit_field_access(&self, _: &Diagnostics, _: &MetaInfo, _: &ExprFieldAccess) {}
-    fn visit_method_call(&self, _: &Diagnostics, _: &MetaInfo, _: &ExprMethodCall) {}
+    fn visit_access(&self, _: &Diagnostics, _: &MetaInfo, _: &ExprAccess) {}
     fn visit_parenthesized(&self, _: &Diagnostics, _: &MetaInfo, _: &ExprParenthesized) {}
     fn visit_if_else(&self, _: &Diagnostics, _: &MetaInfo, _: &ExprIfElse) {}
     fn visit_match(&self, _: &Diagnostics, _: &MetaInfo, _: &ExprMatch) {}
@@ -162,11 +161,17 @@ impl<'a, 'b, 'i, 'v> VisitorDriver<'a, 'b, 'i, 'v> {
                 self.visit_exprs(&block.body.exprs);
             }
             Expr::Variable(var) => visit!(self, visit_variable, var),
-            Expr::FieldAccess(fa) => visit!(self, visit_field_access, fa),
-            Expr::MethodCall(mc) => {
-                visit!(self, visit_method_call, mc);
-                for arg in &mc.fn_call.args {
-                    self.visit_expr(arg);
+            Expr::Access(acc) => {
+                visit!(self, visit_access, acc);
+                for acc in &acc.accesses {
+                    match acc {
+                        FieldOrMethod::Field(_) => (),
+                        FieldOrMethod::Method(fn_call) => {
+                            for arg in &fn_call.args {
+                                self.visit_expr(arg);
+                            }
+                        }
+                    }
                 }
             }
             Expr::Parenthesized(par) => {

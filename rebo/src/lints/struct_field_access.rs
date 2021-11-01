@@ -1,7 +1,7 @@
 use crate::lints::visitor::Visitor;
 use diagnostic::Diagnostics;
 use crate::common::MetaInfo;
-use crate::parser::{ExprFieldAccess, ExprAssign, ExprAssignLhs, Spanned};
+use crate::parser::{ExprFieldAccess, ExprAssign, ExprAssignLhs, Spanned, ExprAccess};
 use crate::error_codes::ErrorCode;
 use crate::typeck::TypeVar;
 use crate::typeck::types::{Type, SpecificType};
@@ -15,8 +15,9 @@ impl Visitor for StructFieldAccess {
             check_non_struct_field_access(diagnostics, meta_info, expr);
         }
     }
-    fn visit_field_access(&self, diagnostics: &Diagnostics, meta_info: &MetaInfo, expr: &ExprFieldAccess) {
-        check_non_struct_field_access(diagnostics, meta_info, expr);
+    fn visit_access(&self, diagnostics: &Diagnostics, meta_info: &MetaInfo, expr: &ExprAccess) {
+        todo!()
+        // check_non_struct_field_access(diagnostics, meta_info, expr);
     }
 }
 fn check_non_struct_field_access(diagnostics: &Diagnostics, meta_info: &MetaInfo, expr: &ExprFieldAccess) {
