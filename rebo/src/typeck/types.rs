@@ -134,6 +134,18 @@ impl ResolvableSpecificType {
             ResolvableSpecificType::UnUnifyableGeneric(Span { file, start, end }) => format!("<{}:{}:{}>", file, start, end),
         }
     }
+    pub fn generics(&self) -> Vec<Node> {
+        match self {
+            ResolvableSpecificType::Unit
+            | ResolvableSpecificType::Integer
+            | ResolvableSpecificType::Float
+            | ResolvableSpecificType::Bool
+            | ResolvableSpecificType::String
+            | ResolvableSpecificType::UnUnifyableGeneric(_) => Vec::new(),
+            ResolvableSpecificType::Struct(_, generics) => generics.clone(),
+            ResolvableSpecificType::Enum(_, generics) => generics.clone(),
+        }
+    }
 }
 
 impl fmt::Display for SpecificType {

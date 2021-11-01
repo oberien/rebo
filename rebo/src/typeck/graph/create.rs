@@ -46,12 +46,18 @@ impl FunctionGenerics {
     }
     pub(super) fn insert_generic(&self, node: Node) {
         assert!(matches!(node, Node::Synthetic(..)));
-        assert!(!self.contains_generic(node));
+        if self.contains_generic(node) {
+            return;
+        }
         self.generic_nodes.borrow_mut().last_mut().unwrap().push(node);
     }
     pub(super) fn contains_generic(&self, node: Node) -> bool {
         self.generic_nodes.borrow().iter().flatten()
-            .any(|&n| n == node)
+            .any(|&n| n.span() == node.span())
+    }
+    pub(super) fn contains_generic_span(&self, span: Span) -> bool {
+        self.generic_nodes.borrow().iter().flatten()
+            .any(|&n| n.span() == span)
     }
     pub(super) fn generics(&self) -> impl Iterator<Item = Node> {
         self.generic_nodes.borrow().iter().rev().flatten().copied().collect::<Vec<_>>().into_iter()
@@ -180,9 +186,9 @@ fn convert_expr_type(typ: &ExprType, diagnostics: &Diagnostics, meta_info: &Meta
             let mut generics = Vec::new();
             loop {
                 match iter.next() {
-                    Some((Some(_expected), Some(generic))) => {
+                    Some((Some(expected), Some(generic))) => {
                         let typ = convert_expr_type(generic, diagnostics, meta_info);
-                        generics.push((generic.span(), typ));
+                        generics.push((expected.span(), typ));
                     },
                     Some((Some(expected), None)) => {
                         diagnostics.error(ErrorCode::MissingGeneric)

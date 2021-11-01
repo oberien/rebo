@@ -1,76 +1,3 @@
-enum Option<T> {
-    Some(T),
-    None,
-}
-impl Option<T> {
-    fn unwrap(self) -> T {
-        match self {
-            Option::Some(t) => t,
-            Option::None => panic("tried to unwrap a None value"),
-        }
-    }
-}
-let foo = Option::Some("uiae");
-print(foo.unwrap() + 1);
-
-/*
-struct GenericFoo<T> {
-    bar: GenericBar<T>,
-}
-struct GenericBar<U> {
-    t: U,
-}
-let foo = GenericFoo { bar: GenericBar { t: 1337 } };
-print(foo.bar.t + 1);
-
-enum Option<T> {
-    Some(T),
-    None,
-}
-let a = Option::Some(42);
-let b: Option<Option<string>> = Option::Some(Option::Some("uiae"));
-print(b.unwrap().unwrap() + 1);
-print(a, b);
-
-impl Option<T> {
-    fn unwrap(self) -> T {
-        match self {
-            Option::Some(t) => t,
-            Option::None => panic("tried to unwrap a None value"),
-        }
-    }
-}
-
-fn create_some<T>(t: T) -> Option<T> {
-    Option::Some(t)
-}
-
-/*
-
-let c: Option<float> = Option::None;
-print(a.unwrap(), b.unwrap(), c);
-struct Foo<T> {
-    t: T,
-}
-struct Bar {
-    a: int,
-}
-let foo = Foo { t: Bar { a: 1337 } };
-print(foo.t.a);
-let foo = Foo { t: Bar { a: "uiae" } };
-
-fn a(self) -> int {
-    self.a
-}
-struct Something {}
-impl Something {
-    fn returns_self(self) -> Something {
-        returns_self
-    }
-}
-let foo = Something {};
-foo.returns_self().returns_self();
-
 print(foo(10, 20));
 fn foo(mut x: int, mut y: int) -> int {
     x = x + 10;
@@ -102,6 +29,7 @@ print(foo.a, foo.b);
 foo.b = "dtrn";
 print(foo, foo2, foo == foo2);
 
+// methods
 impl Foo {
     fn new(a: int, b: string) -> Foo {
         Foo { a: a, b: b }
@@ -118,8 +46,20 @@ print(foo);
 print(foo.a(), foo.b());
 print(Foo::a(foo), Foo::b(foo));
 
+struct Something {}
+impl Something {
+    fn returns_self(self) -> Something {
+        self
+    }
+}
+let foo = Something {};
+print(foo.returns_self().returns_self());
+
+
+// if - else if - else
 print(if true { 1337 } else { panic("F") } + 5);
 
+// while
 let mut i = 0;
 while i < 3 {
     i = i + 1;
@@ -155,9 +95,11 @@ fn fib_iter(mut i: int) -> int {
 print(fib(10));
 print(fib_iter(90));
 
+// format strings
 let foo = 4;
 print(f"{foo * 10 + 2} is the answer");
 
+// match
 print(match 1 {
     0 => 21,
     1 => 1337,
@@ -169,6 +111,7 @@ match 1 {
   foo => print(f"it was something else: {foo}"),
 }
 
+// enums with match
 enum Value {
     Unit,
     Integer(int),
@@ -200,11 +143,11 @@ struct GenericBar<U> {
 let foo = GenericFoo { bar: GenericBar { t: 1337 } };
 print(foo.bar.t + 1);
 
-fn foo<U, V>(u: U, v: V) -> V { v }
-fn bar<T>(t: T) -> T { foo(42, t) }
-print(bar(1337));
 fn id<T>(t: T) -> T { t }
 print(id(id(1337)));
+fn id1<U, V>(u: U, v: V) -> V { v }
+fn id2<T>(t: T) -> T { id1(42, t) }
+print(id2(1337));
 
 enum Option<T> {
     Some(T),
@@ -221,10 +164,10 @@ impl Option<T> {
 }
 
 let a = Option::Some(1337);
-let c = Option::Some("uiae");
+let c = Option::Some(42);
 print(a.unwrap() + c.unwrap());
 
-let a = Option::None;
-let b = Option::None;
-print(a.unwrap() + b.unwrap());
-
+let a = Option::Some(42);
+let b: Option<Option<string>> = Option::Some(Option::Some("uiae"));
+print(b.unwrap().unwrap());
+print(a, b);

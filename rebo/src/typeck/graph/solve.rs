@@ -2,7 +2,7 @@ use crate::typeck::graph::{Graph, Constraint, Node, PossibleTypes};
 use crate::common::MetaInfo;
 use std::collections::{VecDeque, HashSet};
 use std::iter::FromIterator;
-use crate::typeck::types::{ResolvableSpecificType, Type};
+use crate::typeck::types::{ResolvableSpecificType, Type, FunctionType};
 use petgraph::prelude::EdgeRef;
 use crate::typeck::graph::create::FunctionGenerics;
 
@@ -132,21 +132,29 @@ impl<'i> Graph<'i> {
         self.remove_single_edge(struct_node, field_node);
         function_generics.apply_type_reduce(struct_node, field_node, &typ, self);
     }
-    fn method_call_arg(&mut self, todos: &mut WorkQueue, meta_info: &MetaInfo, field_access: Node, arg: Node, method_name: &str, method_call_index: u64, arg_index: usize) {
-        let possible_types = &self.possible_types[&field_access];
+    fn get_function_generics<'a>(&mut self, meta_info: &'a MetaInfo, source_node: Node, method_name: &str, method_call_index: u64) -> Option<(FunctionGenerics, &'a FunctionType)> {
+        let possible_types = &self.possible_types[&source_node];
         if possible_types.0.len() != 1 {
-            return;
+            return None;
         }
-        let type_name = possible_types.0[0].type_name();
+
+        let typ = &possible_types.0[0];
+        let type_name = typ.type_name();
         let fn_name = format!("{}::{}", type_name, method_name);
         let fn_typ = match meta_info.function_types.get(fn_name.as_str()) {
             Some(fn_typ) => fn_typ,
-            None => return,
+            None => return None,
         };
 
         // function generics
         let default_function_generics = FunctionGenerics::new();
+        for generic_node in typ.generics() {
+            default_function_generics.insert_generic(generic_node);
+        }
         for &generic_span in &*fn_typ.generics {
+            if default_function_generics.contains_generic_span(generic_span) {
+                continue;
+            }
             let node = Node::synthetic(generic_span);
             self.add_node(node);
             default_function_generics.insert_generic(node);
@@ -154,6 +162,14 @@ impl<'i> Graph<'i> {
         let function_generics = self.method_function_generics.entry(method_call_index)
             .or_insert(default_function_generics)
             .clone();
+        Some((function_generics, fn_typ))
+    }
+    fn method_call_arg(&mut self, todos: &mut WorkQueue, meta_info: &MetaInfo, field_access: Node, arg: Node, method_name: &str, method_call_index: u64, arg_index: usize) {
+        let (function_generics, fn_typ) = match self.get_function_generics(meta_info, field_access, method_name, method_call_index) {
+            Some(t) => t,
+            None => return,
+        };
+
         let expected_arg_type = match fn_typ.args.get(arg_index) {
             Some(typ) => typ,
             None => &Type::Varargs,
@@ -168,27 +184,10 @@ impl<'i> Graph<'i> {
         }
     }
     fn method_call_ret(&mut self, todos: &mut WorkQueue, meta_info: &MetaInfo, field_access: Node, method_call: Node, method_name: &str, method_call_index: u64) {
-        let possible_types = &self.possible_types[&field_access];
-        if possible_types.0.len() != 1 {
-            return;
-        }
-        let type_name = possible_types.0[0].type_name();
-        let fn_name = format!("{}::{}", type_name, method_name);
-        let fn_typ = match meta_info.function_types.get(fn_name.as_str()) {
-            Some(fn_typ) => fn_typ,
+        let (function_generics, fn_typ) = match self.get_function_generics(meta_info, field_access, method_name, method_call_index) {
+            Some(t) => t,
             None => return,
         };
-
-        // function generics
-        let default_function_generics = FunctionGenerics::new();
-        for &generic_span in &*fn_typ.generics {
-            let node = Node::synthetic(generic_span);
-            self.add_node(node);
-            default_function_generics.insert_generic(node);
-        }
-        let function_generics = self.method_function_generics.entry(method_call_index)
-            .or_insert(default_function_generics)
-            .clone();
 
         self.remove_single_edge(field_access, method_call);
         function_generics.apply_type_reduce(field_access, method_call, &fn_typ.ret, self);
