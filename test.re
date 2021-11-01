@@ -1,3 +1,15 @@
+struct Foo<T> {
+    bar: Bar<T>,
+}
+
+struct Bar<U> {
+    t: U,
+}
+
+let foo = Foo { bar: Bar { t: 1337 } };
+print(foo.bar.t + 1);
+
+/*
 enum Option<T> {
     Some(T),
     None,

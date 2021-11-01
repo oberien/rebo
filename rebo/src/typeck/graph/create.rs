@@ -8,18 +8,19 @@ use std::borrow::Cow;
 use std::cell::RefCell;
 use std::rc::Rc;
 use crate::error_codes::ErrorCode;
+use std::sync::atomic::{Ordering, AtomicU64};
 
-struct FunctionGenerics {
+pub(super) struct FunctionGenerics {
     /// ununifyable generics within function definitions
     ununifyable: Rc<RefCell<Vec<Span>>>,
     /// generics of a called function
     generic_nodes: Rc<RefCell<Vec<Vec<Node>>>>,
 }
 impl FunctionGenerics {
-    fn new() -> Self {
+    pub(super) fn new() -> Self {
         FunctionGenerics {
             ununifyable: Rc::new(RefCell::new(Vec::new())),
-            generic_nodes: Rc::new(RefCell::new(Vec::new())),
+            generic_nodes: Rc::new(RefCell::new(vec![Vec::new()])),
         }
     }
     fn push_ununifyable(&self) -> UnunifyableGuard {
@@ -42,27 +43,28 @@ impl FunctionGenerics {
     fn contains_ununifyable(&self, span: Span) -> bool {
         self.ununifyable.borrow().iter().any(|&s| s == span)
     }
-    fn insert_generic(&self, node: Node) {
+    pub(super) fn insert_generic(&self, node: Node) {
         assert!(matches!(node, Node::Synthetic(..)));
         assert!(!self.contains_generic(node));
         self.generic_nodes.borrow_mut().last_mut().unwrap().push(node);
     }
-    fn contains_generic(&self, node: Node) -> bool {
+    pub(super) fn contains_generic(&self, node: Node) -> bool {
         self.generic_nodes.borrow().iter().flatten()
             .any(|&n| n == node)
     }
-    fn get_generic(&self, span: Span) -> Option<Node> {
-        self.generic_nodes.borrow().iter().rev().flatten()
-            .copied()
-            .find(|n| n.span() == span)
+    pub(super) fn generics(&self) -> impl Iterator<Item = Node> {
+        self.generic_nodes.borrow().iter().rev().flatten().copied().collect::<Vec<_>>().into_iter()
     }
-    fn apply_type_reduce(&self, from: Node, to: Node, typ: &Type, graph: &mut Graph) {
+    pub(super) fn get_generic(&self, span: Span) -> Option<Node> {
+        self.generics().find(|n| n.span() == span)
+    }
+    pub(super) fn apply_type_reduce(&self, from: Node, to: Node, typ: &Type, graph: &mut Graph) {
         match typ {
             Type::Top | Type::Bottom | Type::Varargs => (),
             Type::Specific(specific) => self.apply_specific_type_reduce(from, to, specific, graph),
         }
     }
-    fn apply_specific_type_reduce(&self, from: Node, to: Node, typ: &SpecificType, graph: &mut Graph) {
+    pub(super) fn apply_specific_type_reduce(&self, from: Node, to: Node, typ: &SpecificType, graph: &mut Graph) {
         self.apply_specific_type_reduce_internal(from, to, typ, graph);
         // graph.dot();
     }
@@ -92,12 +94,6 @@ impl FunctionGenerics {
                 return;
             } else {
                 unreachable!();
-                let synthetic = Node::synthetic(span);
-                self.insert_generic(synthetic);
-                graph.add_node(synthetic);
-                graph.add_generic_constraint(from, synthetic);
-                graph.add_eq_constraint(from, synthetic);
-                return;
             }
         };
         let mut resolvable_generics = Vec::new();
@@ -416,12 +412,15 @@ impl<'i> Graph<'i> {
                     field_access_node
                 };
 
-                self.add_method_call_ret(field_access_node, node, fn_call.name.ident.to_string());
+                static METHOD_CALL_INDEX: AtomicU64 = AtomicU64::new(0);
+
+                let idx = METHOD_CALL_INDEX.fetch_add(1, Ordering::SeqCst);
+                self.add_method_call_ret(field_access_node, node, fn_call.name.ident.to_string(), idx);
                 for (i, arg_expr) in fn_call.args.iter().enumerate() {
                     let arg_node = self.visit_expr(diagnostics, meta_info, function_generics, arg_expr);
                     // arg 0 is `self`
                     let arg_index = i + 1;
-                    self.add_method_call_arg(field_access_node, arg_node, fn_call.name.ident.to_string(), arg_index);
+                    self.add_method_call_arg(field_access_node, arg_node, fn_call.name.ident.to_string(), idx, arg_index);
                 }
             }
             Expr::Parenthesized(ExprParenthesized { expr, .. }) => {
@@ -537,7 +536,14 @@ impl<'i> Graph<'i> {
             }
             Expr::StructDefinition(_) => self.add_reduce_constraint(node, node, vec![ResolvableSpecificType::Unit]),
             Expr::StructInitialization(ExprStructInitialization { name, fields, .. }) => {
-                let typ = SpecificType::Struct(name.ident.to_string(), get_user_type_generics(meta_info, name.ident));
+                let _guard = function_generics.push_generic_nodes();
+                let generics = get_user_type_generics(meta_info, name.ident);
+                for (span, _) in &generics {
+                    let synthetic = Node::synthetic(*span);
+                    self.add_node(synthetic);
+                    function_generics.insert_generic(synthetic);
+                }
+                let typ = SpecificType::Struct(name.ident.to_string(), generics);
                 function_generics.apply_specific_type_reduce(node, node, &typ, self);
                 let struct_def_span = match meta_info.user_types.get(name.ident) {
                     Some(user_type) => user_type.span(),
@@ -563,7 +569,14 @@ impl<'i> Graph<'i> {
             }
             Expr::EnumDefinition(_) => self.add_reduce_constraint(node, node, vec![ResolvableSpecificType::Unit]),
             Expr::EnumInitialization(enum_init) => {
-                let typ = SpecificType::Enum(enum_init.enum_name.ident.to_string(), get_user_type_generics(meta_info, enum_init.enum_name.ident));
+                let _guard = function_generics.push_generic_nodes();
+                let generics = get_user_type_generics(meta_info, enum_init.enum_name.ident);
+                for (span, _) in &generics {
+                    let synthetic = Node::synthetic(*span);
+                    self.add_node(synthetic);
+                    function_generics.insert_generic(synthetic);
+                }
+                let typ = SpecificType::Enum(enum_init.enum_name.ident.to_string(), generics);
                 function_generics.apply_specific_type_reduce(node, node, &typ, self);
             },
             Expr::ImplBlock(ExprImplBlock { functions, .. }) => {
@@ -618,7 +631,7 @@ impl<'i> Graph<'i> {
         node
     }
 
-    fn add_node(&mut self, node: Node) {
+    pub(super) fn add_node(&mut self, node: Node) {
         if self.graph_indices.contains_key(&node) {
             return;
         }
@@ -627,46 +640,42 @@ impl<'i> Graph<'i> {
         self.possible_types.insert(node, PossibleTypes::any());
     }
 
-    fn add_eq_constraint(&mut self, from: Node, to: Node) {
-        let from = self.graph_indices[&from];
-        let to = self.graph_indices[&to];
-        self.graph.add_edge(from, to, Constraint::Eq);
-        self.graph.add_edge(to, from, Constraint::Eq);
+    pub(super) fn add_eq_constraint(&mut self, from: Node, to: Node) {
+        self.add_nonduplicate_edge(from, to, Constraint::Eq);
+        self.add_nonduplicate_edge(to, from, Constraint::Eq);
     }
     fn add_unidirectional_eq_constraint(&mut self, from: Node, to: Node) {
-        let from = self.graph_indices[&from];
-        let to = self.graph_indices[&to];
-        self.graph.add_edge(from, to, Constraint::Eq);
+        self.add_nonduplicate_edge(from, to, Constraint::Eq);
     }
 
     fn add_reduce_constraint(&mut self, from: Node, to: Node, reduce: Vec<ResolvableSpecificType>) {
-        let from = self.graph_indices[&from];
-        let to = self.graph_indices[&to];
-        self.graph.add_edge(from, to, Constraint::Reduce(reduce));
+        self.add_nonduplicate_edge(from, to, Constraint::Reduce(reduce));
     }
 
     fn add_field_access(&mut self, struc: Node, field: Node, fields: Vec<String>) {
-        let struc = self.graph_indices[&struc];
-        let field = self.graph_indices[&field];
-        self.graph.add_edge(struc, field, Constraint::FieldAccess(fields));
-        self.graph.add_edge(field, struc, Constraint::Reduce(vec![ResolvableSpecificType::Struct("struct".to_string(), Vec::new())]));
+        self.add_nonduplicate_edge(struc, field, Constraint::FieldAccess(fields));
+        self.add_nonduplicate_edge(field, struc, Constraint::Reduce(vec![ResolvableSpecificType::Struct("struct".to_string(), Vec::new())]));
     }
 
-    fn add_method_call_arg(&mut self, source: Node, arg: Node, method_name: String, arg_index: usize) {
-        let source = self.graph_indices[&source];
-        let arg = self.graph_indices[&arg];
-        self.graph.add_edge(source, arg, Constraint::MethodCallArg(method_name, arg_index));
+    fn add_method_call_arg(&mut self, source: Node, arg: Node, method_name: String, method_call_index: u64, arg_index: usize) {
+        self.add_nonduplicate_edge(source, arg, Constraint::MethodCallArg(method_name, method_call_index, arg_index));
     }
-    fn add_method_call_ret(&mut self, source: Node, call_expr: Node, method_name: String) {
-        let source = self.graph_indices[&source];
-        let call_expr = self.graph_indices[&call_expr];
-        self.graph.add_edge(source, call_expr, Constraint::MethodCallReturnType(method_name));
+    fn add_method_call_ret(&mut self, source: Node, call_expr: Node, method_name: String, method_call_index: u64) {
+        self.add_nonduplicate_edge(source, call_expr, Constraint::MethodCallReturnType(method_name, method_call_index));
     }
 
     fn add_generic_constraint(&mut self, from: Node, to: Node) {
+        self.add_nonduplicate_edge(from, to, Constraint::Generic);
+    }
+
+    fn add_nonduplicate_edge(&mut self, from: Node, to: Node, constraint: Constraint) {
         let from = self.graph_indices[&from];
         let to = self.graph_indices[&to];
-        self.graph.add_edge(from, to, Constraint::Generic);
+        let contained = self.graph.edges_connecting(from, to)
+            .any(|er| *er.weight() == constraint);
+        if !contained {
+            self.graph.add_edge(from, to, constraint);
+        }
     }
 }
 

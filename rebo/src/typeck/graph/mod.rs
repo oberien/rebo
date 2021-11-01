@@ -15,9 +15,10 @@ use strum::IntoEnumIterator;
 
 use crate::typeck::types::{ResolvableSpecificType, ResolvableSpecificTypeDiscriminants};
 use crate::typeck::TypeVar;
+use crate::typeck::graph::create::FunctionGenerics;
 
 pub mod create;
-// pub mod solve;
+pub mod solve;
 // pub mod check;
 
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -31,26 +32,6 @@ impl PartialEq<[ResolvableSpecificType]> for PossibleTypes {
 impl PartialEq<PossibleTypes> for &[ResolvableSpecificType] {
     fn eq(&self, other: &PossibleTypes) -> bool {
         *self == other.0
-    }
-}
-
-#[derive(Debug, Clone, Ord, PartialOrd, Eq, PartialEq)]
-pub enum UnifyResult {
-    Changed,
-    Unchanged,
-    Multiple(Vec<Node>),
-}
-impl BitOr<UnifyResult> for UnifyResult {
-    type Output = UnifyResult;
-
-    fn bitor(self, rhs: UnifyResult) -> UnifyResult {
-        match (self, rhs) {
-            (UnifyResult::Multiple(vec), _)
-            | (_, UnifyResult::Multiple(vec)) => UnifyResult::Multiple(vec),
-            (UnifyResult::Changed, _)
-            | (_, UnifyResult::Changed) => UnifyResult::Changed,
-            (UnifyResult::Unchanged, UnifyResult::Unchanged) => UnifyResult::Unchanged,
-        }
     }
 }
 
@@ -92,16 +73,16 @@ impl PossibleTypes {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub enum Constraint {
     Eq,
     Reduce(Vec<ResolvableSpecificType>),
     /// field names of access path
     FieldAccess(Vec<String>),
-    /// name of the method (not fully qualified yet), arg-index
-    MethodCallArg(String, usize),
-    /// name of the method (not fully qualified yet)
-    MethodCallReturnType(String),
+    /// name of the method (not fully qualified yet), method_call_index (to identify FunctionGenerics), arg-index
+    MethodCallArg(String, u64, usize),
+    /// name of the method (not fully qualified yet), method_call_index (to identify FunctionGenerics)
+    MethodCallReturnType(String, u64),
     /// can be ignored for everything, just there to make the graph look better
     Generic,
 }
@@ -115,8 +96,8 @@ impl Display for Constraint {
             Constraint::FieldAccess(fields) => {
                 write!(f, ".{}", fields.join("."))
             }
-            Constraint::MethodCallArg(name, arg) => write!(f, "{}({})", name, arg),
-            Constraint::MethodCallReturnType(name) => write!(f, "{}(...) -> ret", name),
+            Constraint::MethodCallArg(name, idx, arg) => write!(f, "{}[{}]({})", name, idx, arg),
+            Constraint::MethodCallReturnType(name, idx) => write!(f, "{}[{}](...) -> ret", name, idx),
             Constraint::Generic => write!(f, "Generic"),
         }
     }
@@ -149,6 +130,7 @@ pub struct Graph<'i> {
     graph: DiGraph<Node, Constraint>,
     graph_indices: IndexMap<Node, NodeIndex<u32>>,
     possible_types: IndexMap<Node, PossibleTypes>,
+    method_function_generics: IndexMap<u64, FunctionGenerics>,
 }
 
 impl<'i> Graph<'i> {
@@ -158,6 +140,7 @@ impl<'i> Graph<'i> {
             graph: DiGraph::new(),
             graph_indices: IndexMap::new(),
             possible_types: IndexMap::new(),
+            method_function_generics: IndexMap::new(),
         }
     }
 
