@@ -1,6 +1,5 @@
 use std::fmt::{Display, Formatter};
 use std::io::Write;
-use std::ops::BitOr;
 use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicU64, Ordering};
 
@@ -19,7 +18,7 @@ use crate::typeck::graph::create::FunctionGenerics;
 
 mod create;
 mod solve;
-// mod check;
+mod check;
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct PossibleTypes(Vec<ResolvableSpecificType>);
@@ -165,10 +164,6 @@ impl<'i> Graph<'i> {
         })
     }
 
-    fn possible_types(&self, node: Node) -> &[ResolvableSpecificType] {
-        &self.possible_types[&node].0
-    }
-
     fn incoming(&self, node: Node) -> Vec<(Constraint, Node)> {
         let ix = self.graph_indices[&node];
         self.graph.edges_directed(ix, Direction::Incoming)
@@ -203,7 +198,6 @@ impl<'i> Graph<'i> {
             writeln!(vec, "}}").unwrap();
             String::from_utf8(vec).unwrap()
         };
-        // println!("{}", dot);
         let mut xdot = Command::new("xdot")
             .arg("-")
             .stdin(Stdio::piped())

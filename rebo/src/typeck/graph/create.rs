@@ -94,9 +94,9 @@ impl FunctionGenerics {
                 graph.add_eq_constraint(to, node);
                 return;
             } else {
-                println!("dtruniaedtrnuidtraen");
+                eprintln!("tried to convert unknown generic {}", typ);
                 graph.dot();
-                unreachable!("tried to convert unknown generic {}", typ);
+                unreachable!();
             }
         };
         let mut resolvable_generics = Vec::new();

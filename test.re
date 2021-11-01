@@ -1,23 +1,37 @@
-struct Foo<T> {
-    bar: Bar<T>,
-}
-struct Bar<U> {
-    t: U,
-}
-
-let foo = Foo { bar: Bar { t: 1337 } };
-print(foo.bar.t + 1);
-
-/*
 enum Option<T> {
     Some(T),
     None,
 }
-//let a = Option::Some(42);
-let b: Option<Option<string>> = Option::Some(Option::Some("uiae"));
-//print(a, b);
+impl Option<T> {
+    fn unwrap(self) -> T {
+        match self {
+            Option::Some(t) => t,
+            Option::None => panic("tried to unwrap a None value"),
+        }
+    }
+}
+let foo = Option::Some("uiae");
+print(foo.unwrap() + 1);
 
 /*
+struct GenericFoo<T> {
+    bar: GenericBar<T>,
+}
+struct GenericBar<U> {
+    t: U,
+}
+let foo = GenericFoo { bar: GenericBar { t: 1337 } };
+print(foo.bar.t + 1);
+
+enum Option<T> {
+    Some(T),
+    None,
+}
+let a = Option::Some(42);
+let b: Option<Option<string>> = Option::Some(Option::Some("uiae"));
+print(b.unwrap().unwrap() + 1);
+print(a, b);
+
 impl Option<T> {
     fn unwrap(self) -> T {
         match self {
@@ -31,6 +45,7 @@ fn create_some<T>(t: T) -> Option<T> {
     Option::Some(t)
 }
 
+/*
 
 let c: Option<float> = Option::None;
 print(a.unwrap(), b.unwrap(), c);
@@ -176,6 +191,15 @@ print_value(i);
 print_value(f);
 
 // generics
+struct GenericFoo<T> {
+    bar: GenericBar<T>,
+}
+struct GenericBar<U> {
+    t: U,
+}
+let foo = GenericFoo { bar: GenericBar { t: 1337 } };
+print(foo.bar.t + 1);
+
 fn foo<U, V>(u: U, v: V) -> V { v }
 fn bar<T>(t: T) -> T { foo(42, t) }
 print(bar(1337));
@@ -203,3 +227,4 @@ print(a.unwrap() + c.unwrap());
 let a = Option::None;
 let b = Option::None;
 print(a.unwrap() + b.unwrap());
+

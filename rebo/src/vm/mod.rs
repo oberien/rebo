@@ -3,7 +3,6 @@ use std::cell::RefCell;
 use std::sync::Arc;
 
 use indexmap::map::IndexMap;
-use itertools::Itertools;
 use parking_lot::ReentrantMutex;
 
 use crate::common::{Depth, Enum, EnumArc, Function, FuzzyFloat, MetaInfo, Struct, StructArc, Value};

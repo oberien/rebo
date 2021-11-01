@@ -3,7 +3,6 @@ use std::borrow::Cow;
 use strum_macros::{EnumDiscriminants, EnumIter};
 use crate::parser::ExprLiteral;
 use diagnostic::Span;
-use crate::common::MetaInfo;
 use crate::typeck::graph::Node;
 
 #[derive(Debug, Clone, PartialOrd, Ord, PartialEq, Eq, Hash)]
@@ -29,13 +28,6 @@ pub enum SpecificType {
     Enum(String, Vec<(Span, Type)>),
     /// def_ident-span
     Generic(Span),
-}
-#[derive(Debug, Clone, PartialOrd, Ord, PartialEq, Eq, Hash)]
-pub enum ResolvableType {
-    Top,
-    Bottom,
-    Varargs,
-    Specific(ResolvableSpecificType),
 }
 #[derive(Debug, Clone, PartialOrd, Ord, PartialEq, Eq, Hash, EnumDiscriminants)]
 #[strum_discriminants(derive(EnumIter))]
@@ -71,22 +63,6 @@ impl StructType {
             .filter(|(field_name, _typ)| field_name == name)
             .map(|(_name, typ)| typ)
             .next()
-    }
-    pub fn get_field_path(&self, meta_info: &MetaInfo, fields: impl IntoIterator<Item = impl AsRef<str>>) -> Result<Type, usize> {
-        let mut typ = Type::Specific(SpecificType::Struct(self.name.clone(), vec![]));
-        for (i, field) in fields.into_iter().enumerate() {
-            let struct_name = match &typ {
-                Type::Specific(SpecificType::Struct(name, _)) => name,
-                _ => return Err(i),
-            };
-            let struct_type = &meta_info.struct_types[struct_name.as_str()];
-            let field_type = struct_type.get_field(field.as_ref());
-            match field_type {
-                Some(field_typ) => typ = field_typ.clone(),
-                None => return Err(i),
-            }
-        }
-        Ok(typ)
     }
 }
 #[derive(Debug, Clone, PartialOrd, PartialEq, Hash)]
@@ -130,21 +106,6 @@ impl From<&ExprLiteral> for ResolvableSpecificType {
         }
     }
 }
-// impl From<&ResolvableSpecificType> for SpecificType {
-//     fn from(typ: &ResolvableSpecificType) -> Self {
-//         match typ {
-//             ResolvableSpecificType::Unit => SpecificType::Unit,
-//             ResolvableSpecificType::Bool => SpecificType::Bool,
-//             ResolvableSpecificType::Integer => SpecificType::Integer,
-//             ResolvableSpecificType::Float => SpecificType::Float,
-//             ResolvableSpecificType::String => SpecificType::String,
-//             ResolvableSpecificType::Struct(name) => SpecificType::Struct(name.clone()),
-//             ResolvableSpecificType::Enum(name) => SpecificType::Enum(name.clone()),
-//             &ResolvableSpecificType::UnUnifyableGeneric(span, depth)
-//             | &ResolvableSpecificType::UnifyableGeneric(span, depth) => SpecificType::Generic(span, depth),
-//         }
-//     }
-// }
 
 impl SpecificType {
     pub fn type_name(&self) -> String {
@@ -170,7 +131,7 @@ impl ResolvableSpecificType {
             ResolvableSpecificType::String => "string".to_string(),
             ResolvableSpecificType::Struct(name, _) => name.clone(),
             ResolvableSpecificType::Enum(name, _) => name.clone(),
-            ResolvableSpecificType::UnUnifyableGeneric(Span { file, start, end }) => format!("X<{}:{}:{}>", file, start, end),
+            ResolvableSpecificType::UnUnifyableGeneric(Span { file, start, end }) => format!("<{}:{}:{}>", file, start, end),
         }
     }
 }
@@ -199,7 +160,7 @@ impl fmt::Display for ResolvableSpecificType {
             ResolvableSpecificType::String => return write!(f, "string"),
             ResolvableSpecificType::Struct(name, generics) => ("struct", name, generics),
             ResolvableSpecificType::Enum(name, generics) => ("enum", name, generics),
-            ResolvableSpecificType::UnUnifyableGeneric(Span { file, start, end }) => return write!(f, "X<{}:{}:{}>", file, start, end),
+            ResolvableSpecificType::UnUnifyableGeneric(Span { file, start, end }) => return write!(f, "<{}:{}:{}>", file, start, end),
         };
         write!(f, "{} {}", typ, name)?;
         if !generics.is_empty() {

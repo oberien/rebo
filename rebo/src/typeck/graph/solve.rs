@@ -2,11 +2,8 @@ use crate::typeck::graph::{Graph, Constraint, Node, PossibleTypes};
 use crate::common::MetaInfo;
 use std::collections::{VecDeque, HashSet};
 use std::iter::FromIterator;
-use crate::typeck::types::{ResolvableSpecificType, Type, ResolvableType, SpecificType};
-use petgraph::graph::EdgeIndex;
-use petgraph::Direction;
+use crate::typeck::types::{ResolvableSpecificType, Type};
 use petgraph::prelude::EdgeRef;
-use std::cell::RefCell;
 use crate::typeck::graph::create::FunctionGenerics;
 
 struct WorkQueue {
@@ -55,7 +52,7 @@ impl<'i> Graph<'i> {
 
         while let Some(node) = todos.next() {
             for (constraint, source) in self.incoming(node) {
-                println!("{} -> {}: {:?}", source, node, constraint);
+                trace!("{} -> {}: {:?}", source, node, constraint);
                 match constraint {
                     Constraint::Eq => self.unify_assign(&mut todos, node, source),
                     Constraint::Reduce(reduce) => self.reduce(&mut todos, node, &reduce),
@@ -183,7 +180,7 @@ impl<'i> Graph<'i> {
         };
 
         // function generics
-        let mut default_function_generics = FunctionGenerics::new();
+        let default_function_generics = FunctionGenerics::new();
         for &generic_span in &*fn_typ.generics {
             let node = Node::synthetic(generic_span);
             self.add_node(node);
@@ -194,9 +191,7 @@ impl<'i> Graph<'i> {
             .clone();
 
         self.remove_single_edge(field_access, method_call);
-        assert!(self.graph.edges_connecting(self.graph_indices[&field_access], self.graph_indices[&method_call]).count() == 0);
         function_generics.apply_type_reduce(field_access, method_call, &fn_typ.ret, self);
-        assert!(self.graph.edges_connecting(self.graph_indices[&field_access], self.graph_indices[&method_call]).count() > 0);
         todos.add(self, field_access);
         todos.add(self, method_call);
         for generic in function_generics.generics() {
@@ -326,40 +321,5 @@ impl<'i> Graph<'i> {
         if old != possible_types.0 {
             todos.add(self, node);
         }
-    }
-
-    /// Breadth-first search over all nodes and edges (some edges are visited multiple times), returning a list of all visited nodes
-    fn search_from(&mut self, var: Node, mut node_visitor: impl FnMut(&mut Self, Node), mut edge_visitor: impl FnMut(&mut Self, EdgeIndex)) -> Vec<Node> {
-        let mut visited = HashSet::new();
-        let mut todo = VecDeque::new();
-        todo.push_back(var);
-
-        while let Some(var) = todo.pop_front() {
-            if visited.contains(&var) {
-                continue;
-            }
-            visited.insert(var);
-            // visit node
-            node_visitor(self, var);
-
-            // visit edges
-            let node_index = self.graph_indices[&var];
-            let edges_outgoing = self.graph.edges_directed(node_index, Direction::Outgoing)
-                .map(|edge_ref| (edge_ref.id(), edge_ref.target()));
-            let edges_incoming = self.graph.edges_directed(node_index, Direction::Incoming)
-                .map(|edge_ref| (edge_ref.id(), edge_ref.source()));
-            let edge_indexes: Vec<_> = edges_outgoing
-                .chain(edges_incoming)
-                .collect();
-
-            for (edge_index, target) in edge_indexes {
-                // add target node to todos
-                todo.push_back(*self.graph.node_weight(target).unwrap());
-
-                // change edge
-                edge_visitor(self, edge_index);
-            }
-        }
-        visited.into_iter().collect()
     }
 }

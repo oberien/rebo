@@ -18,7 +18,7 @@ pub mod types;
 /// For variables, the binding-span (i.e. creation span) is used.
 #[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub struct TypeVar {
-    span: Span,
+    pub span: Span,
 }
 impl TypeVar {
     pub fn new(span: Span) -> TypeVar {
@@ -40,5 +40,5 @@ pub fn typeck<'a, 'i>(diagnostics: &Diagnostics, meta_info: &mut MetaInfo<'a, 'i
     if Level::Trace <= log::max_level() {
         graph.dot();
     }
-    // graph.check(diagnostics, meta_info);
+    graph.check(diagnostics, meta_info);
 }

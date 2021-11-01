@@ -1,23 +1,19 @@
 use crate::lints::visitor::Visitor;
 use diagnostic::Diagnostics;
 use crate::common::MetaInfo;
-use crate::parser::{ExprFieldAccess, ExprAssign, ExprAssignLhs, Spanned, ExprAccess};
+use crate::parser::{ExprFieldAccess, ExprAssign, ExprAssignLhs, Spanned};
 use crate::error_codes::ErrorCode;
 use crate::typeck::TypeVar;
 use crate::typeck::types::{Type, SpecificType};
 
-pub struct StructFieldAccess;
+pub struct StructFieldAssign;
 
-impl Visitor for StructFieldAccess {
+impl Visitor for StructFieldAssign {
     fn visit_assign(&self, diagnostics: &Diagnostics, meta_info: &MetaInfo, expr: &ExprAssign) {
         let ExprAssign { lhs, .. } = expr;
         if let ExprAssignLhs::FieldAccess(expr) = lhs {
             check_non_struct_field_access(diagnostics, meta_info, expr);
         }
-    }
-    fn visit_access(&self, diagnostics: &Diagnostics, meta_info: &MetaInfo, expr: &ExprAccess) {
-        todo!()
-        // check_non_struct_field_access(diagnostics, meta_info, expr);
     }
 }
 fn check_non_struct_field_access(diagnostics: &Diagnostics, meta_info: &MetaInfo, expr: &ExprFieldAccess) {
