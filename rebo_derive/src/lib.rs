@@ -79,6 +79,7 @@ pub fn function(_args: TokenStream, input: TokenStream) -> TokenStream {
         #[allow(non_upper_case_globals)]
         const #ident: ::rebo::common::ExternalFunction = ::rebo::common::ExternalFunction {
             typ: ::rebo::typeck::types::FunctionType {
+                generics: ::std::borrow::Cow::Borrowed(&[]),
                 args: ::std::borrow::Cow::Borrowed(#workaround_ident),
                 ret: ::rebo::typeck::types::Type::Specific(<#output as ::rebo::common::FromValue>::TYPE),
             },

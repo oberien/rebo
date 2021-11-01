@@ -10,27 +10,51 @@ use std::rc::Rc;
 use crate::error_codes::ErrorCode;
 
 struct FunctionGenerics {
-    stack: Rc<RefCell<Vec<Span>>>,
+    /// ununifyable generics within function definitions
+    ununifyable: Rc<RefCell<Vec<Span>>>,
+    /// generics of a called function
+    generic_nodes: Rc<RefCell<Vec<Vec<Node>>>>,
 }
 impl FunctionGenerics {
     fn new() -> Self {
         FunctionGenerics {
-            stack: Rc::new(RefCell::new(Vec::new())),
+            ununifyable: Rc::new(RefCell::new(Vec::new())),
+            generic_nodes: Rc::new(RefCell::new(Vec::new())),
         }
     }
-    fn push_stack(&self) -> FunctionGenericsStackGuard {
-        let prev_stack = std::mem::take(&mut *self.stack.borrow_mut());
-        FunctionGenericsStackGuard {
-            stack: Rc::clone(&self.stack),
+    fn push_ununifyable(&self) -> UnunifyableGuard {
+        let prev_stack = std::mem::take(&mut *self.ununifyable.borrow_mut());
+        UnunifyableGuard {
+            stack: Rc::clone(&self.ununifyable),
             prev_stack: Some(prev_stack),
         }
     }
-    fn insert(&self, generic: Span) {
-        assert!(!self.contains(generic));
-        self.stack.borrow_mut().push(generic);
+    fn push_generic_nodes(&self) -> GenericGuard {
+        self.generic_nodes.borrow_mut().push(Vec::new());
+        GenericGuard {
+            stack: Rc::clone(&self.generic_nodes),
+        }
     }
-    fn contains(&self, span: Span) -> bool {
-        self.stack.borrow().iter().find(|&&s| s == span).is_some()
+    fn insert_ununifyable(&self, generic: Span) {
+        assert!(!self.contains_ununifyable(generic));
+        self.ununifyable.borrow_mut().push(generic);
+    }
+    fn contains_ununifyable(&self, span: Span) -> bool {
+        self.ununifyable.borrow().iter().any(|&s| s == span)
+    }
+    fn insert_generic(&self, node: Node) {
+        assert!(matches!(node, Node::Synthetic(..)));
+        assert!(!self.contains_generic(node));
+        self.generic_nodes.borrow_mut().last_mut().unwrap().push(node);
+    }
+    fn contains_generic(&self, node: Node) -> bool {
+        self.generic_nodes.borrow().iter().flatten()
+            .any(|&n| n == node)
+    }
+    fn get_generic(&self, span: Span) -> Option<Node> {
+        self.generic_nodes.borrow().iter().rev().flatten()
+            .copied()
+            .find(|n| n.span() == span)
     }
     fn apply_type_reduce(&self, from: Node, to: Node, typ: &Type, graph: &mut Graph) {
         match typ {
@@ -39,6 +63,10 @@ impl FunctionGenerics {
         }
     }
     fn apply_specific_type_reduce(&self, from: Node, to: Node, typ: &SpecificType, graph: &mut Graph) {
+        self.apply_specific_type_reduce_internal(from, to, typ, graph);
+        // graph.dot();
+    }
+    fn apply_specific_type_reduce_internal(&self, from: Node, to: Node, typ: &SpecificType, graph: &mut Graph) {
         let (type_constructor, generics, name): (fn(_, _) -> _, _, _) =  match typ {
             SpecificType::Unit => { graph.add_reduce_constraint(from, to, vec![ResolvableSpecificType::Unit]); return },
             SpecificType::Bool => { graph.add_reduce_constraint(from, to, vec![ResolvableSpecificType::Bool]); return },
@@ -55,11 +83,17 @@ impl FunctionGenerics {
                 generics,
                 name.clone()
             ),
-            &SpecificType::Generic(span) => if self.contains(span) {
+            &SpecificType::Generic(span) => if self.contains_ununifyable(span) {
                 graph.add_reduce_constraint(from, to, vec![ResolvableSpecificType::UnUnifyableGeneric(span)]);
                 return;
+            } else if let Some(node) = self.get_generic(span) {
+                graph.add_generic_constraint(from, node);
+                graph.add_eq_constraint(to, node);
+                return;
             } else {
+                unreachable!();
                 let synthetic = Node::synthetic(span);
+                self.insert_generic(synthetic);
                 graph.add_node(synthetic);
                 graph.add_generic_constraint(from, synthetic);
                 graph.add_eq_constraint(from, synthetic);
@@ -79,13 +113,21 @@ impl FunctionGenerics {
     }
 }
 
-struct FunctionGenericsStackGuard {
+struct UnunifyableGuard {
     stack: Rc<RefCell<Vec<Span>>>,
     prev_stack: Option<Vec<Span>>,
 }
-impl Drop for FunctionGenericsStackGuard {
+impl Drop for UnunifyableGuard {
     fn drop(&mut self) {
         *self.stack.borrow_mut() = self.prev_stack.take().unwrap();
+    }
+}
+struct GenericGuard {
+    stack: Rc<RefCell<Vec<Vec<Node>>>>,
+}
+impl Drop for GenericGuard {
+    fn drop(&mut self) {
+        self.stack.borrow_mut().pop().unwrap();
     }
 }
 
@@ -204,6 +246,9 @@ impl<'i> Graph<'i> {
                 Function::Rebo(..) => {
                     let fun = &meta_info.rebo_functions[name];
                     let typ = FunctionType {
+                        generics: fun.generics.iter().flat_map(|g| &g.generics).flatten()
+                            .map(|g| g.def_ident.span)
+                            .collect(),
                         args: fun.args.iter().map(|pattern| {
                             convert_expr_type(&pattern.typ, diagnostics, meta_info)
                         }).collect(),
@@ -222,6 +267,9 @@ impl<'i> Graph<'i> {
                         .find(|variant| variant.name.ident == variant_name)
                         .unwrap();
                     let typ = FunctionType {
+                        generics: get_user_type_generics(meta_info, &enum_name).into_iter()
+                            .map(|(span, _typ)| span)
+                            .collect(),
                         args: Cow::Owned(variant.fields.as_ref().unwrap().1.iter()
                             .map(|typ| convert_expr_type(typ, diagnostics, meta_info))
                             .collect()),
@@ -452,10 +500,16 @@ impl<'i> Graph<'i> {
                 self.add_eq_constraint(node, block_node);
             }
             Expr::FunctionCall(ExprFunctionCall { name, args, .. }) => {
+                let _guard = function_generics.push_generic_nodes();
                 let fun = match meta_info.function_types.get(name.ident) {
                     Some(fun) => fun,
                     None => return node,
                 };
+                for &generic_span in &*fun.generics {
+                    let node = Node::synthetic(generic_span);
+                    self.add_node(node);
+                    function_generics.insert_generic(node);
+                }
                 let passed_args: Vec<_> = args.iter().map(|expr| self.visit_expr(diagnostics, meta_info, function_generics, expr)).collect();
                 let expected_args = if let Some(Type::Varargs) = fun.args.last() {
                     Either::Left(fun.args.iter().chain(std::iter::repeat(&Type::Varargs)))
@@ -539,9 +593,9 @@ impl<'i> Graph<'i> {
     }
 
     fn visit_function(&mut self, diagnostics: &Diagnostics, meta_info: &MetaInfo, function_generics: &FunctionGenerics, function: &ExprFunctionDefinition) -> Node {
-        let _scope_guard = function_generics.push_stack();
+        let _scope_guard = function_generics.push_ununifyable();
         for generic in function.generics.iter().flat_map(|g| &g.generics).flatten() {
-            function_generics.insert(generic.def_ident.span);
+            function_generics.insert_ununifyable(generic.def_ident.span);
         }
 
         let node = Node::type_var(function.span());

@@ -2,6 +2,9 @@ enum Option<T> {
     Some(T),
     None,
 }
+//let a = Option::Some(42);
+let b: Option<Option<string>> = Option::Some(Option::Some("uiae"));
+//print(a, b);
 
 /*
 impl Option<T> {
@@ -16,34 +19,23 @@ impl Option<T> {
 fn create_some<T>(t: T) -> Option<T> {
     Option::Some(t)
 }
-*/
 
-/*
-let a = Option::Some(42);
-*/
-let b: Option<Option<string>> = Option::Some(Option::Some("uiae"));
-/*
-print(a, b);
 
-/*
-let c: option<float> = option::none;
+let c: Option<float> = Option::None;
 print(a.unwrap(), b.unwrap(), c);
-/*
-struct foo<t> {
-    t: t,
+struct Foo<T> {
+    t: T,
 }
-struct bar {
+struct Bar {
     a: int,
 }
-let foo = foo { t: bar { a: 1337 } };
+let foo = Foo { t: Bar { a: 1337 } };
 print(foo.t.a);
-let foo = foo { t: bar { a: "uiae" } };
+let foo = Foo { t: Bar { a: "uiae" } };
 
-/*
 fn a(self) -> int {
     self.a
 }
-/*
 struct Something {}
 impl Something {
     fn returns_self(self) -> Something {
@@ -53,7 +45,6 @@ impl Something {
 let foo = Something {};
 foo.returns_self().returns_self();
 
-/*
 print(foo(10, 20));
 fn foo(mut x: int, mut y: int) -> int {
     x = x + 10;
@@ -177,6 +168,8 @@ print_value(f);
 fn foo<U, V>(u: U, v: V) -> V { v }
 fn bar<T>(t: T) -> T { foo(42, t) }
 print(bar(1337));
+fn id<T>(t: T) -> T { t }
+print(id(id(1337)));
 
 enum Option<T> {
     Some(T),

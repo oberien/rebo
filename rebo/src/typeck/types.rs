@@ -55,6 +55,7 @@ pub enum ResolvableSpecificType {
 }
 #[derive(Debug, Clone, PartialOrd, Ord, PartialEq, Eq, Hash)]
 pub struct FunctionType {
+    pub generics: Cow<'static, [Span]>,
     pub args: Cow<'static, [Type]>,
     pub ret: Type,
 }
@@ -153,7 +154,7 @@ impl SpecificType {
             SpecificType::String => "string".to_string(),
             SpecificType::Struct(name, _) => name.clone(),
             SpecificType::Enum(name, _) => name.clone(),
-            SpecificType::Generic(Span { file, start, end }) => format!("<{},{},{}>", file, start, end),
+            SpecificType::Generic(Span { file, start, end }) => format!("<{}:{}:{}>", file, start, end),
         }
     }
 }
@@ -167,7 +168,7 @@ impl ResolvableSpecificType {
             ResolvableSpecificType::String => "string".to_string(),
             ResolvableSpecificType::Struct(name, _) => name.clone(),
             ResolvableSpecificType::Enum(name, _) => name.clone(),
-            ResolvableSpecificType::UnUnifyableGeneric(Span { file, start, end }) => format!("X<{},{},{}>", file, start, end),
+            ResolvableSpecificType::UnUnifyableGeneric(Span { file, start, end }) => format!("X<{}:{}:{}>", file, start, end),
         }
     }
 }
@@ -182,7 +183,7 @@ impl fmt::Display for SpecificType {
             SpecificType::String => write!(f, "string"),
             SpecificType::Struct(name, _) => write!(f, "struct {}", name),
             SpecificType::Enum(name, _) => write!(f, "enum {}", name),
-            SpecificType::Generic(Span { file, start, end }) => write!(f, "<{},{},{}>", file, start, end),
+            SpecificType::Generic(Span { file, start, end }) => write!(f, "<{}:{}:{}>", file, start, end),
         }
     }
 }
@@ -196,7 +197,7 @@ impl fmt::Display for ResolvableSpecificType {
             ResolvableSpecificType::String => return write!(f, "string"),
             ResolvableSpecificType::Struct(name, generics) => ("struct", name, generics),
             ResolvableSpecificType::Enum(name, generics) => ("enum", name, generics),
-            ResolvableSpecificType::UnUnifyableGeneric(Span { file, start, end }) => return write!(f, "X<{},{},{}>", file, start, end),
+            ResolvableSpecificType::UnUnifyableGeneric(Span { file, start, end }) => return write!(f, "X<{}:{}:{}>", file, start, end),
         };
         write!(f, "{} {}", typ, name)?;
         if !generics.is_empty() {

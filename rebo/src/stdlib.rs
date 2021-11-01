@@ -9,6 +9,7 @@ use crate::typeck::types::{FunctionType, Type, SpecificType};
 pub fn add_to_scope(diagnostics: &Diagnostics, meta_info: &mut MetaInfo<'_, '_>) {
     meta_info.add_external_function(diagnostics, "print", ExternalFunction {
         typ: FunctionType {
+            generics: Cow::Borrowed(&[]),
             args: Cow::Borrowed(&[Type::Varargs]),
             ret: Type::Specific(SpecificType::Unit),
         },
@@ -18,6 +19,7 @@ pub fn add_to_scope(diagnostics: &Diagnostics, meta_info: &mut MetaInfo<'_, '_>)
     meta_info.add_external_function(diagnostics, "assert", assert);
     meta_info.add_external_function(diagnostics, "panic", ExternalFunction {
         typ: FunctionType {
+            generics: Cow::Borrowed(&[]),
             args: Cow::Borrowed(&[Type::Specific(SpecificType::String)]),
             ret: Type::Bottom,
         },
