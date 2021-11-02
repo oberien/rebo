@@ -157,13 +157,6 @@ impl<'i> Graph<'i> {
         self.graph_indices.keys().copied()
     }
 
-    fn type_vars(&self) -> impl Iterator<Item = TypeVar> + '_ {
-        self.graph_indices.keys().copied().filter_map(|node| match node {
-            Node::TypeVar(var) => Some(var),
-            Node::Synthetic(..) => None,
-        })
-    }
-
     fn incoming(&self, node: Node) -> Vec<(Constraint, Node)> {
         let ix = self.graph_indices[&node];
         self.graph.edges_directed(ix, Direction::Incoming)

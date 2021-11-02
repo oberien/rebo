@@ -21,7 +21,7 @@ pub fn add_to_meta_info<'a, 'i>(diagnostics: &'i Diagnostics, arena: &'a Arena<E
     meta_info.add_external_function(diagnostics, "print", ExternalFunction {
         typ: FunctionType {
             generics: Cow::Borrowed(&[]),
-            args: Cow::Borrowed(&[Type::Varargs]),
+            args: Cow::Borrowed(&[Type::UntypedVarargs]),
             ret: Type::Specific(SpecificType::Unit),
         },
         imp: print,

@@ -9,12 +9,14 @@ use std::collections::HashSet;
 impl<'i> Graph<'i> {
     pub fn check(&self, diagnostics: &Diagnostics, meta_info: &mut MetaInfo) {
         let mut already_errored = HashSet::new();
-        for type_var in self.type_vars() {
-            let node = Node::TypeVar(type_var);
-            match self.try_convert_possible_types(&mut already_errored, diagnostics, meta_info, node) {
-                Some(typ) => meta_info.types.insert(type_var, typ),
-                None => meta_info.types.insert(type_var, Type::Top),
+        for node in self.nodes() {
+            let typ = match self.try_convert_possible_types(&mut already_errored, diagnostics, meta_info, node) {
+                Some(typ) => typ,
+                None => Type::Top,
             };
+            if let Node::TypeVar(type_var) = node {
+                meta_info.types.insert(type_var, typ);
+            }
         }
     }
     fn try_convert_possible_types(&self, already_errored: &mut HashSet<Node>, diagnostics: &Diagnostics, meta_info: &mut MetaInfo, node: Node) -> Option<Type> {
@@ -88,10 +90,11 @@ impl<'i> Graph<'i> {
                         let type_name = field_access_typ[0].type_name();
                         let fn_name = format!("{}::{}", type_name, method_name);
                         match meta_info.function_types.get(fn_name.as_str()) {
-                            Some(fn_typ) => match fn_typ.args.iter().chain(std::iter::repeat(&Type::Varargs)).nth(arg_index) {
-                                Some(Type::Top | Type::Varargs) => "this says the argument can be of any type".to_string(),
+                            Some(fn_typ) => match fn_typ.args.iter().chain(std::iter::repeat(&Type::UntypedVarargs)).nth(arg_index) {
+                                Some(Type::Top | Type::UntypedVarargs) => "this says the argument can be of any type".to_string(),
                                 Some(Type::Bottom) => unreachable!("fn arg type is bottom"),
-                                Some(Type::Specific(specific)) => format!("this says the argument must have type {}", specific),
+                                Some(Type::TypedVarargs(specific))
+                                | Some(Type::Specific(specific)) => format!("this says the argument must have type {}", specific),
                                 None => unreachable!("iter::repeat ended"),
                             }
                             None => format!("can't find function {}", fn_name),
@@ -107,9 +110,10 @@ impl<'i> Graph<'i> {
                         let fn_name = format!("{}::{}", type_name, method_name);
                         match meta_info.function_types.get(fn_name.as_str()) {
                             Some(fn_typ) => match &fn_typ.ret {
-                                Type::Top | Type::Varargs => unreachable!("fn arg type is bottom"),
+                                Type::Top | Type::UntypedVarargs => unreachable!("fn arg type is bottom"),
                                 Type::Bottom => "this says the return type can be any type".to_string(),
-                                Type::Specific(specific) => format!("this says the return type must be {}", specific),
+                                Type::TypedVarargs(specific)
+                                | Type::Specific(specific) => format!("this says the return type must be {}", specific),
                             }
                             None => format!("can't find function {}", fn_name),
                         }

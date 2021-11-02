@@ -10,7 +10,7 @@ use parking_lot::ReentrantMutex;
 use std::sync::Arc;
 use std::cell::RefCell;
 
-pub fn add_list<'a, 'i>(diagnostics: &'i Diagnostics, arena: &'a Arena<Expr<'a, 'i>>, meta_info: &mut MetaInfo<'a, 'i>, option_generic_span: Span) {
+pub fn add_list<'a, 'i>(diagnostics: &'i Diagnostics, arena: &'a Arena<Expr<'a, 'i>>, meta_info: &mut MetaInfo<'a, 'i>, option_t: Span) {
     let code = "struct List<T> {}".to_string();
     let (file, _) = diagnostics.add_file("list.rs".to_string(), code);
 
@@ -23,22 +23,30 @@ pub fn add_list<'a, 'i>(diagnostics: &'i Diagnostics, arena: &'a Arena<Expr<'a, 
         Expr::StructDefinition(struct_def) => struct_def,
         _ => unreachable!(),
     };
-    let generic_span = struct_def.generics.as_ref().unwrap().generics.as_ref().unwrap().iter().next().unwrap().def_ident.span;
+    let list_t = struct_def.generics.as_ref().unwrap().generics.as_ref().unwrap().iter().next().unwrap().def_ident.span;
 
     meta_info.add_external_function(diagnostics, "List::new", ExternalFunction {
         typ: FunctionType {
-            generics: Cow::Owned(vec![generic_span]),
+            generics: Cow::Owned(vec![list_t]),
             args: Cow::Borrowed(&[]),
-            ret: Type::Specific(SpecificType::Struct("List".to_string(), vec![(generic_span, Type::Top)]))
+            ret: Type::Specific(SpecificType::Struct("List".to_string(), vec![(list_t, Type::Top)]))
         },
         imp: list_new,
     });
+    meta_info.add_external_function(diagnostics, "List::of", ExternalFunction {
+        typ: FunctionType {
+            generics: Cow::Owned(vec![list_t]),
+            args: Cow::Owned(vec![Type::TypedVarargs(SpecificType::Generic(list_t))]),
+            ret: Type::Specific(SpecificType::Struct("List".to_string(), vec![(list_t, Type::Specific(SpecificType::Generic(list_t)))]))
+        },
+        imp: list_of,
+    });
     meta_info.add_external_function(diagnostics, "List::push", ExternalFunction {
         typ: FunctionType {
-            generics: Cow::Owned(vec![generic_span]),
+            generics: Cow::Owned(vec![list_t]),
             args: Cow::Owned(vec![
-                Type::Specific(SpecificType::Struct("List".to_string(), vec![(generic_span, Type::Top)])),
-                Type::Specific(SpecificType::Generic(generic_span)),
+                Type::Specific(SpecificType::Struct("List".to_string(), vec![(list_t, Type::Top)])),
+                Type::Specific(SpecificType::Generic(list_t)),
             ]),
             ret: Type::Specific(SpecificType::Unit),
         },
@@ -46,12 +54,12 @@ pub fn add_list<'a, 'i>(diagnostics: &'i Diagnostics, arena: &'a Arena<Expr<'a, 
     });
     meta_info.add_external_function(diagnostics, "List::get", ExternalFunction {
         typ: FunctionType {
-            generics: Cow::Owned(vec![generic_span]),
+            generics: Cow::Owned(vec![list_t]),
             args: Cow::Owned(vec![
-                Type::Specific(SpecificType::Struct("List".to_string(), vec![(generic_span, Type::Top)])),
+                Type::Specific(SpecificType::Struct("List".to_string(), vec![(list_t, Type::Top)])),
                 Type::Specific(SpecificType::Integer),
             ]),
-            ret: Type::Specific(SpecificType::Enum("Option".to_string(), vec![(option_generic_span, Type::Specific(SpecificType::Generic(generic_span)))])),
+            ret: Type::Specific(SpecificType::Enum("Option".to_string(), vec![(option_t, Type::Specific(SpecificType::Generic(list_t)))])),
         },
         imp: list_get,
     });
@@ -67,6 +75,9 @@ fn list_push(_expr_span: Span, _vm: &mut VmContext, mut values: Vec<Value>) -> V
     let list = list.list.lock();
     list.borrow_mut().push(value);
     Value::Unit
+}
+fn list_of(_expr_span: Span, _vm: &mut VmContext, values: Vec<Value>) -> Value {
+    Value::List(ListArc { list: Arc::new(ReentrantMutex::new(RefCell::new(values))) })
 }
 
 fn list_get(_expr_span: Span, _vm: &mut VmContext, mut values: Vec<Value>) -> Value {

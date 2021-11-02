@@ -12,7 +12,9 @@ pub enum Type {
     /// Bottom-type, unreachable type, return type of non-returning functions.
     Bottom,
     /// Varargs used by functions.
-    Varargs,
+    UntypedVarargs,
+    /// Typed Varargs used by functions; all arguments must have the same type.
+    TypedVarargs(SpecificType),
     Specific(SpecificType),
 }
 #[derive(Debug, Clone, PartialOrd, Ord, PartialEq, Eq, Hash)]
@@ -192,7 +194,10 @@ impl fmt::Display for Type {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Type::Specific(t) => t.fmt(f),
-            Type::Varargs => {
+            Type::TypedVarargs(t) => {
+                write!(f, "{}...", t)
+            },
+            Type::UntypedVarargs => {
                 write!(f, "varargs...")
             },
             Type::Top => write!(f, "any"),

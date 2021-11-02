@@ -172,7 +172,10 @@ impl<'i> Graph<'i> {
 
         let expected_arg_type = match fn_typ.args.get(arg_index) {
             Some(typ) => typ,
-            None => &Type::Varargs,
+            None => match fn_typ.args.last() {
+                Some(t @ Type::TypedVarargs(_)) => t,
+                _ => &Type::UntypedVarargs,
+            },
         };
 
         self.remove_single_edge(field_access, arg);

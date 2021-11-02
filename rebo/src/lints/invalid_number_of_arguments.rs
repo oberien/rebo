@@ -18,7 +18,7 @@ impl Visitor for InvalidNumberOfArguments {
         };
         let fun_span = meta_info.functions[name.ident].span(meta_info);
 
-        let varargs = matches!(fun.args.last(), Some(&Type::Varargs));
+        let varargs = matches!(fun.args.last(), Some(&Type::UntypedVarargs | &Type::TypedVarargs(_)));
         let correct_number_of_args = args.len() == fun.args.len()
             || varargs && args.len() >= fun.args.len() - 1;
         if !correct_number_of_args {

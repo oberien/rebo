@@ -172,3 +172,4 @@ print(list);
 list.push(1337);
 list.push(42);
 print(list, list.get(0), list.get(1).unwrap(), list.get(2));
+print(List::of(1, 2, 3));

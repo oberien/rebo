@@ -67,8 +67,9 @@ impl FunctionGenerics {
     }
     pub(super) fn apply_type_reduce(&self, from: Node, to: Node, typ: &Type, graph: &mut Graph) {
         match typ {
-            Type::Top | Type::Bottom | Type::Varargs => (),
-            Type::Specific(specific) => self.apply_specific_type_reduce(from, to, specific, graph),
+            Type::Top | Type::Bottom | Type::UntypedVarargs => (),
+            Type::TypedVarargs(specific)
+            | Type::Specific(specific) => self.apply_specific_type_reduce(from, to, specific, graph),
         }
     }
     pub(super) fn apply_specific_type_reduce(&self, from: Node, to: Node, typ: &SpecificType, graph: &mut Graph) {
@@ -511,34 +512,42 @@ impl<'i> Graph<'i> {
                 self.add_eq_constraint(node, block_node);
             }
             Expr::FunctionCall(ExprFunctionCall { name, args, .. }) => {
-                let _guard = function_generics.push_generic_nodes();
                 let fun = match meta_info.function_types.get(name.ident) {
                     Some(fun) => fun,
                     None => return node,
                 };
+                let passed_args: Vec<_> = args.iter().map(|expr| self.visit_expr(diagnostics, meta_info, function_generics, expr)).collect();
+
+                let _guard = function_generics.push_generic_nodes();
                 for &generic_span in &*fun.generics {
                     let node = Node::synthetic(generic_span);
                     self.add_node(node);
                     function_generics.insert_generic(node);
                 }
-                let passed_args: Vec<_> = args.iter().map(|expr| self.visit_expr(diagnostics, meta_info, function_generics, expr)).collect();
-                let expected_args = if let Some(Type::Varargs) = fun.args.last() {
-                    Either::Left(fun.args.iter().chain(std::iter::repeat(&Type::Varargs)))
+                let expected_args = if let Some(Type::UntypedVarargs) = fun.args.last() {
+                    Either::Left(fun.args.iter().chain(std::iter::repeat(&Type::UntypedVarargs)))
+                } else if let Some(t @ Type::TypedVarargs(_)) = fun.args.last() {
+                    Either::Left(fun.args.iter().chain(std::iter::repeat(t)))
                 } else {
                     Either::Right(fun.args.iter())
                 };
                 for (passed_node, expected) in passed_args.into_iter().zip(expected_args) {
+                    if name.ident == "List::of" {
+                        dbg!(expected);
+                    }
                     match expected {
                         Type::Top => (),
                         Type::Bottom => unreachable!("function argument type is Bottom"),
-                        Type::Varargs => (),
-                        Type::Specific(specific) => {
+                        Type::UntypedVarargs => (),
+                        Type::TypedVarargs(specific)
+                        | Type::Specific(specific) => {
                             function_generics.apply_specific_type_reduce(node, passed_node, &specific, self);
                         }
                     }
                 }
                 match &fun.ret {
-                    Type::Varargs => unreachable!("function return type is Varargs"),
+                    Type::UntypedVarargs => unreachable!("function return type is UntypedVarargs"),
+                    Type::TypedVarargs(_) => unreachable!("function return type is TypedVarargs"),
                     Type::Top | Type::Bottom => (),
                     Type::Specific(specific) => function_generics.apply_specific_type_reduce(node, node, specific, self),
                 }
@@ -548,15 +557,8 @@ impl<'i> Graph<'i> {
             }
             Expr::StructDefinition(_) => self.add_reduce_constraint(node, node, vec![ResolvableSpecificType::Unit]),
             Expr::StructInitialization(ExprStructInitialization { name, fields, .. }) => {
-                let _guard = function_generics.push_generic_nodes();
                 let generics = get_user_type_generics(meta_info, name.ident);
-                for (span, _) in &generics {
-                    let synthetic = Node::synthetic(*span);
-                    self.add_node(synthetic);
-                    function_generics.insert_generic(synthetic);
-                }
-                let typ = SpecificType::Struct(name.ident.to_string(), generics);
-                function_generics.apply_specific_type_reduce(node, node, &typ, self);
+                let typ = SpecificType::Struct(name.ident.to_string(), generics.clone());
                 let struct_def_span = match meta_info.user_types.get(name.ident) {
                     Some(user_type) => user_type.span(),
                     None => return node,
@@ -566,6 +568,7 @@ impl<'i> Graph<'i> {
                 self.add_node(struct_def_node);
                 self.add_reduce_constraint(struct_def_node, struct_def_node, vec![ResolvableSpecificType::Unit]);
 
+                let mut field_nodes = Vec::new();
                 for (name, _colon, expr) in fields {
                     let expected_type = struct_typ.fields.iter()
                         .filter(|(field_name, _typ)| field_name == name.ident)
@@ -576,6 +579,18 @@ impl<'i> Graph<'i> {
                         None => continue,
                     };
                     let expr_node = self.visit_expr(diagnostics, meta_info, function_generics, expr);
+                    field_nodes.push((expr_node, expected_type));
+                }
+
+                // apply types
+                let _guard = function_generics.push_generic_nodes();
+                for (span, _) in &generics {
+                    let synthetic = Node::synthetic(*span);
+                    self.add_node(synthetic);
+                    function_generics.insert_generic(synthetic);
+                }
+                function_generics.apply_specific_type_reduce(node, node, &typ, self);
+                for (expr_node, expected_type) in field_nodes {
                     function_generics.apply_type_reduce(struct_def_node, expr_node, expected_type, self);
                 }
             }
