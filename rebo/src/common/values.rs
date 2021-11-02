@@ -92,6 +92,12 @@ impl Value {
             _ => panic!("{}", msg),
         }
     }
+    pub fn expect_int(self, msg: &'static str) -> i64 {
+        match self {
+            Value::Integer(i) => i,
+            _ => panic!("{}", msg),
+        }
+    }
     pub fn expect_string(self, msg: &'static str) -> String {
         match self {
             Value::String(s) => s,
@@ -100,7 +106,7 @@ impl Value {
     }
     pub fn expect_list(self, msg: &'static str) -> ListArc {
         match self {
-            Value::List(b) => b,
+            Value::List(l) => l,
             _ => panic!("{}", msg),
         }
     }

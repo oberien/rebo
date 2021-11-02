@@ -163,4 +163,4 @@ let list = List::new();
 print(list);
 list.push(1337);
 list.push(42);
-print(list);
+print(list, list.get(0), list.get(1).unwrap(), list.get(2));
