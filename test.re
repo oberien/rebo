@@ -149,14 +149,22 @@ fn id1<U, V>(u: U, v: V) -> V { v }
 fn id2<T>(t: T) -> T { id1(42, t) }
 print(id2(1337));
 
+// Option<T>
 let a = Option::Some(1337);
 let c = Option::Some(42);
 print(a.unwrap() + c.unwrap());
 
 let a = Option::Some(42);
 let b: Option<Option<string>> = Option::Some(Option::Some("uiae"));
-print(b.unwrap().unwrap());
-print(a, b);
+print(a, b, b.unwrap().unwrap());
+
+// Result<T, E>
+let a = Result::Err("error");
+let b = Result::Err("error");
+assert(a == b);
+let a = Result::Ok(1337);
+let b = Result::Ok(42);
+print(a, b, a.unwrap() + b.unwrap());
 
 // List<T>
 let list = List::new();

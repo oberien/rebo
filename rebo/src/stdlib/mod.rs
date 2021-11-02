@@ -11,9 +11,11 @@ use typed_arena::Arena;
 
 mod list;
 mod option;
+mod result;
 
 pub fn add_to_meta_info<'a, 'i>(diagnostics: &'i Diagnostics, arena: &'a Arena<Expr<'a, 'i>>, meta_info: &mut MetaInfo<'a, 'i>) {
     let option_generic_span = option::add_option(diagnostics, arena, meta_info);
+    result::add_result(diagnostics, arena, meta_info);
     list::add_list(diagnostics, arena, meta_info, option_generic_span);
 
     meta_info.add_external_function(diagnostics, "print", ExternalFunction {
