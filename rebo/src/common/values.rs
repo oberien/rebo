@@ -196,7 +196,7 @@ impl Div<FuzzyFloat> for FuzzyFloat {
 }
 impl Display for FuzzyFloat {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        Display::fmt(&self.0, f)
+        Debug::fmt(&self.0, f)
     }
 }
 

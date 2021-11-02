@@ -1,4 +1,4 @@
-use crate::common::{Value, MetaInfo, ExternalFunction};
+use crate::common::{Value, MetaInfo, ExternalFunction, FuzzyFloat};
 use crate::vm::VmContext;
 use crate as rebo;
 use std::borrow::Cow;
@@ -17,6 +17,11 @@ pub fn add_to_scope(diagnostics: &Diagnostics, meta_info: &mut MetaInfo<'_, '_>)
         imp: print,
     });
     meta_info.add_external_function(diagnostics, "add_one", add_one);
+
+    meta_info.add_external_function(diagnostics, "int::to_float", int_to_float);
+    meta_info.add_external_function(diagnostics, "float::to_int", float_to_int);
+    meta_info.add_external_function(diagnostics, "bool::to_int", bool_to_int);
+
     meta_info.add_external_function(diagnostics, "assert", ExternalFunction {
         typ: FunctionType {
             generics: Cow::Borrowed(&[]),
@@ -44,6 +49,20 @@ fn print(_expr_span: Span, _vm: &mut VmContext, values: Vec<Value>) -> Value {
 #[rebo::function]
 fn add_one(a: i64) -> i64 {
     a + 1
+}
+
+// type conversions
+#[rebo::function]
+fn int_to_float(i: i64) -> FuzzyFloat {
+    FuzzyFloat(i as f64)
+}
+#[rebo::function]
+fn bool_to_int(b: bool) -> i64 {
+    b as i64
+}
+#[rebo::function]
+fn float_to_int(f: FuzzyFloat) -> i64 {
+    f.0 as i64
 }
 
 fn assert(expr_span: Span, vm: &mut VmContext, mut values: Vec<Value>) -> Value {

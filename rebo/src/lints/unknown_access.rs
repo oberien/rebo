@@ -45,7 +45,7 @@ impl Visitor for UnknownAccess {
 
                     match meta_info.functions.get(fn_name.as_str()) {
                         None => {
-                            let similar = crate::util::similar_name(&fn_name, meta_info.rebo_functions.keys());
+                            let similar = crate::util::similar_name(&fn_name, meta_info.functions.keys());
                             let mut diag = diagnostics.error(ErrorCode::UnknownMethod)
                                 .with_error_label(fn_call.name.span, format!("can't find method `{}`", fn_name));
                             if let Some(similar) = similar {
@@ -54,7 +54,7 @@ impl Visitor for UnknownAccess {
                             diag.emit();
                             return
                         }
-                        Some(Function::Rust(_)) => unimplemented!(),
+                        Some(Function::Rust(_)) => TypeVar::new(fn_call.span()),
                         Some(Function::EnumInitializer(_, _)) => unreachable!("can't call an EnumInitializer as self-method"),
                         Some(Function::Rebo(_, _)) => {
                             let fun = &meta_info.rebo_functions[fn_name.as_str()];
