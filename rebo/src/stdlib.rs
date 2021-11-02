@@ -1,10 +1,11 @@
 use crate::common::{Value, MetaInfo, ExternalFunction};
-use crate::vm::Scopes;
+use crate::vm::VmContext;
 use crate as rebo;
 use std::borrow::Cow;
 use itertools::Itertools;
-use diagnostic::Diagnostics;
+use diagnostic::{Diagnostics, Span};
 use crate::typeck::types::{FunctionType, Type, SpecificType};
+use crate::error_codes::ErrorCode;
 
 pub fn add_to_scope(diagnostics: &Diagnostics, meta_info: &mut MetaInfo<'_, '_>) {
     meta_info.add_external_function(diagnostics, "print", ExternalFunction {
@@ -16,7 +17,14 @@ pub fn add_to_scope(diagnostics: &Diagnostics, meta_info: &mut MetaInfo<'_, '_>)
         imp: print,
     });
     meta_info.add_external_function(diagnostics, "add_one", add_one);
-    meta_info.add_external_function(diagnostics, "assert", assert);
+    meta_info.add_external_function(diagnostics, "assert", ExternalFunction {
+        typ: FunctionType {
+            generics: Cow::Borrowed(&[]),
+            args: Cow::Borrowed(&[Type::Specific(SpecificType::Bool)]),
+            ret: Type::Specific(SpecificType::Unit),
+        },
+        imp: assert,
+    });
     meta_info.add_external_function(diagnostics, "panic", ExternalFunction {
         typ: FunctionType {
             generics: Cow::Borrowed(&[]),
@@ -27,7 +35,7 @@ pub fn add_to_scope(diagnostics: &Diagnostics, meta_info: &mut MetaInfo<'_, '_>)
     });
 }
 
-fn print(_scopes: &mut Scopes, values: Vec<Value>) -> Value {
+fn print(_expr_span: Span, _vm: &mut VmContext, values: Vec<Value>) -> Value {
     let joined = values.iter().map(ToString::to_string).join(", ");
     println!("{}", joined);
     Value::Unit
@@ -38,10 +46,19 @@ fn add_one(a: i64) -> i64 {
     a + 1
 }
 
-#[rebo::function]
-fn assert(b: bool) {
-    assert!(b);
+fn assert(expr_span: Span, vm: &mut VmContext, mut values: Vec<Value>) -> Value {
+    if !values.remove(0).expect_bool("assert called with non-bool") {
+        vm.diagnostics().error(ErrorCode::AssertionFailed)
+            .with_error_label(expr_span, "this assertion failed")
+            .emit();
+        panic!("assertion error in rebo")
+    } else {
+        Value::Unit
+    }
 }
-fn panic(_scopes: &mut Scopes, mut values: Vec<Value>) -> Value {
-    panic!("{}", values.remove(0).expect_string("panic called with non-string"))
+fn panic(expr_span: Span, vm: &mut VmContext, mut values: Vec<Value>) -> Value {
+    vm.diagnostics().error(ErrorCode::Panic)
+        .with_error_label(expr_span, values.remove(0).expect_string("panic called with non-string"))
+        .emit();
+    panic!("explicit panic in rebo")
 }

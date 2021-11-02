@@ -59,6 +59,8 @@ pub enum ErrorCode {
     MismatchedGeneric,
     MissingGeneric,
     TooManyGenerics,
+    Panic,
+    AssertionFailed,
 }
 use ErrorCode::*;
 
@@ -124,6 +126,8 @@ impl diagnostic::ErrorCode for ErrorCode {
             MismatchedGeneric => "0058",
             MissingGeneric => "0059",
             TooManyGenerics => "0060",
+            Panic => "9999",
+            AssertionFailed => "9998",
         }.to_string()
     }
 
@@ -188,6 +192,8 @@ impl diagnostic::ErrorCode for ErrorCode {
             MismatchedGeneric => "mismatched generic",
             MissingGeneric => "missing generic",
             TooManyGenerics => "too many generics",
+            Panic => "explicit panic",
+            AssertionFailed => "assertion failed",
         }.to_string()
     }
 }

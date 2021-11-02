@@ -5,7 +5,7 @@ extern crate self as rebo;
 use std::sync::Mutex;
 use std::time::Instant;
 
-use diagnostic::{Diagnostics, Span};
+pub use diagnostic::{Diagnostics, Span};
 use itertools::Itertools;
 use typed_arena::Arena;
 
@@ -87,7 +87,7 @@ pub fn run(filename: String, code: String) -> ReturnValue {
     }
 
     let time = Instant::now();
-    let vm = Vm::new(meta_info);
+    let vm = Vm::new(&diagnostics, meta_info);
     let result = vm.run(&exprs);
     info!("Execution took {}μs", time.elapsed().as_micros());
     println!("RESULT: {:?}", result);

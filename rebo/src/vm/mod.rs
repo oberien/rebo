@@ -7,26 +7,56 @@ use parking_lot::ReentrantMutex;
 
 use crate::common::{Depth, Enum, EnumArc, Function, FuzzyFloat, MetaInfo, Struct, StructArc, Value};
 use crate::lexer::{TokenBool, TokenDqString, TokenFloat, TokenIdent, TokenInteger};
-use crate::parser::{Binding, BlockBody, Expr, ExprAdd, ExprAssign, ExprAssignLhs, ExprBind, ExprBlock, ExprBool, ExprBoolAnd, ExprBoolNot, ExprBoolOr, ExprDiv, ExprEnumDefinition, ExprEnumInitialization, ExprEquals, ExprFieldAccess, ExprFloat, ExprFormatString, ExprFormatStringPart, ExprFunctionCall, ExprFunctionDefinition, ExprGreaterEquals, ExprGreaterThan, ExprIfElse, ExprInteger, ExprLessEquals, ExprLessThan, ExprLiteral, ExprMatch, ExprMatchPattern, ExprMul, ExprNotEquals, ExprParenthesized, ExprPattern, ExprPatternTyped, ExprPatternUntyped, ExprString, ExprStructDefinition, ExprStructInitialization, ExprSub, ExprVariable, ExprWhile, ExprAccess, FieldOrMethod};
+use crate::parser::{Binding, BlockBody, Expr, ExprAdd, ExprAssign, ExprAssignLhs, ExprBind, ExprBlock, ExprBool, ExprBoolAnd, ExprBoolNot, ExprBoolOr, ExprDiv, ExprEnumDefinition, ExprEnumInitialization, ExprEquals, ExprFieldAccess, ExprFloat, ExprFormatString, ExprFormatStringPart, ExprFunctionCall, ExprFunctionDefinition, ExprGreaterEquals, ExprGreaterThan, ExprIfElse, ExprInteger, ExprLessEquals, ExprLessThan, ExprLiteral, ExprMatch, ExprMatchPattern, ExprMul, ExprNotEquals, ExprParenthesized, ExprPattern, ExprPatternTyped, ExprPatternUntyped, ExprString, ExprStructDefinition, ExprStructInitialization, ExprSub, ExprVariable, ExprWhile, ExprAccess, FieldOrMethod, Spanned};
 use crate::typeck::types::StructType;
 pub use crate::vm::scope::{Scopes, Scope};
+use diagnostic::{Diagnostics, Span};
+use std::ops::{Deref, DerefMut};
 
 mod scope;
 
 pub struct Vm<'a, 'i> {
-    scopes: Scopes,
     functions: IndexMap<Cow<'i, str>, Function>,
+    ctx: VmContext<'a, 'i>,
+}
+
+impl<'a, 'i> Deref for Vm<'a, 'i> {
+    type Target = VmContext<'a, 'i>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.ctx
+    }
+}
+impl<'a, 'i> DerefMut for Vm<'a, 'i> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.ctx
+    }
+}
+
+pub struct VmContext<'a, 'i> {
+    diagnostics: &'i Diagnostics,
+    scopes: Scopes,
     rebo_functions: IndexMap<Cow<'i, str>, &'a ExprFunctionDefinition<'a, 'i>>,
     struct_types: IndexMap<&'i str, StructType>,
 }
 
+impl<'a, 'i> VmContext<'a, 'i> {
+    pub fn scopes(&mut self) -> &mut Scopes {
+        &mut self.scopes
+    }
+
+    pub fn diagnostics(&self) -> &Diagnostics {
+        self.diagnostics
+    }
+}
+
 impl<'a, 'i> Vm<'a, 'i> {
-    pub fn new(meta_info: MetaInfo<'a, 'i>) -> Self {
+    pub fn new(diagnostics: &'i Diagnostics, meta_info: MetaInfo<'a, 'i>) -> Self {
         let MetaInfo { functions, rebo_functions, user_types: _, function_types: _, struct_types, enum_types: _, types: _ } = meta_info;
         let mut scopes = Scopes::new();
         let root_scope = Scope::new();
         scopes.push_scope(root_scope);
-        Vm { scopes, functions, rebo_functions, struct_types }
+        Vm { functions, ctx: VmContext { diagnostics, scopes, rebo_functions, struct_types } }
     }
 
     pub fn run(mut self, ast: &[&Expr]) -> Value {
@@ -37,7 +67,6 @@ impl<'a, 'i> Vm<'a, 'i> {
         }
         value.unwrap_or(Value::Unit)
     }
-
 
     fn load_binding(&self, binding: &Binding, depth: Depth) -> Value {
         trace!("{}load_binding: {}", depth, binding.ident.ident);
@@ -85,7 +114,7 @@ impl<'a, 'i> Vm<'a, 'i> {
                             let args = std::iter::once(val)
                                 .chain(args.iter().map(|expr| self.eval_expr(expr, depth.next())))
                                 .collect();
-                            self.call_function(&fn_name, args, depth.last())
+                            self.call_function(&fn_name, acc.span(), args, depth.last())
                         }
                     };
                 }
@@ -249,7 +278,7 @@ impl<'a, 'i> Vm<'a, 'i> {
             }
             Expr::FunctionCall(ExprFunctionCall { name, args, .. }) => {
                 let args = args.iter().map(|expr| self.eval_expr(expr, depth.next())).collect();
-                self.call_function(name.ident, args, depth.last())
+                self.call_function(name.ident, expr.span(), args, depth.last())
             },
             // ignore function definitions as we have those handled already
             Expr::FunctionDefinition(ExprFunctionDefinition { .. }) => Value::Unit,
@@ -292,16 +321,16 @@ impl<'a, 'i> Vm<'a, 'i> {
             val
         }
     }
-    fn call_function(&mut self, name: &str, args: Vec<Value>, depth: Depth) -> Value {
+    fn call_function(&mut self, name: &str, expr_span: Span, args: Vec<Value>, depth: Depth) -> Value {
         trace!("{}call_function: {}({:?})", depth, name, args);
         match &self.functions[name] {
-            Function::Rust(f) => f(&mut self.scopes, args),
+            Function::Rust(f) => f(expr_span, &mut self.ctx, args),
             Function::Rebo(name, arg_binding_ids) => {
                 let mut scope = Scope::new();
                 for (&id, val) in arg_binding_ids.iter().zip(args) {
                     scope.create(id, val);
                 }
-                self.scopes.push_scope(scope);
+                self.ctx.scopes.push_scope(scope);
 
                 let mut last = None;
                 let fun = self.rebo_functions[name.as_str()];
@@ -309,7 +338,7 @@ impl<'a, 'i> Vm<'a, 'i> {
                     last = Some(self.eval_expr(expr, depth.next()));
                 }
 
-                self.scopes.pop_scope();
+                self.ctx.scopes.pop_scope();
                 last.unwrap_or(Value::Unit)
             }
             Function::EnumInitializer(enum_name, variant_name) => {
