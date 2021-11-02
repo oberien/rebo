@@ -1,7 +1,7 @@
 use diagnostic::{Diagnostics, Span};
 use typed_arena::Arena;
-use crate::parser::{Expr, ExprStructDefinition, Parser, Parse};
-use crate::common::{MetaInfo, Value, ExternalFunction, ListArc, Depth};
+use crate::parser::{Expr, Parser};
+use crate::common::{MetaInfo, Value, ExternalFunction, ListArc};
 use crate::lexer::Lexer;
 use crate::vm::VmContext;
 use crate::typeck::types::{FunctionType, Type, SpecificType};
@@ -15,9 +15,11 @@ pub fn add_list<'a, 'i>(diagnostics: &'i Diagnostics, arena: &'a Arena<Expr<'a, 
     let (file, _) = diagnostics.add_file("list.rs".to_string(), code);
 
     let lexer = Lexer::new(diagnostics, file);
-    let mut parser = Parser::new(arena, lexer, diagnostics, meta_info);
-    let struct_def = ExprStructDefinition::parse(&mut parser, Depth::start()).unwrap();
-    let struct_def = match arena.alloc(Expr::StructDefinition(struct_def)) {
+    let parser = Parser::new(arena, lexer, diagnostics, meta_info);
+    let ast = parser.parse_ast().unwrap();
+    assert_eq!(ast.exprs.len(), 1);
+
+    let struct_def = match ast.exprs[0] {
         Expr::StructDefinition(struct_def) => struct_def,
         _ => unreachable!(),
     };
