@@ -171,13 +171,6 @@ impl<'a, 'b, 'i> Parser<'a, 'b, 'i> {
                 match enum_def {
                     Expr::EnumDefinition(enum_def) => {
                         parser.meta_info.add_enum(parser.diagnostics, enum_def);
-                        for variant in enum_def.variants.iter() {
-                            if variant.fields.is_some() {
-                                let enum_name = enum_def.name.ident.to_string();
-                                let variant_name = variant.name.ident.to_string();
-                                parser.meta_info.add_enum_initializer_function(parser.diagnostics, enum_name, variant_name);
-                            }
-                        }
                     },
                     _ => unreachable!("we just created you"),
                 }

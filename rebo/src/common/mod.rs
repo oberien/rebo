@@ -110,7 +110,7 @@ impl<'a, 'i> MetaInfo<'a, 'i> {
         self.functions.insert(Cow::Borrowed(name), Function::Rust(fun.imp));
         self.function_types.insert(Cow::Borrowed(name), fun.typ);
     }
-    pub fn add_enum_initializer_function(&mut self, diagnostics: &Diagnostics, enum_name: String, variant_name: String) {
+    fn add_enum_initializer_function(&mut self, diagnostics: &Diagnostics, enum_name: String, variant_name: String) {
         let name = format!("{}::{}", enum_name, variant_name);
         let span = self.user_types[enum_name.as_str()].variant_initializer_span(&variant_name).unwrap();
         if self.check_existing_function(diagnostics, &name, span) {
@@ -146,7 +146,14 @@ impl<'a, 'i> MetaInfo<'a, 'i> {
         false
     }
     pub fn add_enum(&mut self, diagnostics: &Diagnostics, enum_def: &'a ExprEnumDefinition<'a, 'i>) {
-        self.add_user_type(diagnostics, enum_def.name.ident, UserType::Enum(enum_def))
+        self.add_user_type(diagnostics, enum_def.name.ident, UserType::Enum(enum_def));
+        for variant in enum_def.variants.iter() {
+            if variant.fields.is_some() {
+                let enum_name = enum_def.name.ident.to_string();
+                let variant_name = variant.name.ident.to_string();
+                self.add_enum_initializer_function(diagnostics, enum_name, variant_name);
+            }
+        }
     }
     pub fn add_struct(&mut self, diagnostics: &Diagnostics, struct_def: &'a ExprStructDefinition<'a, 'i>) {
         self.add_user_type(diagnostics, struct_def.name.ident, UserType::Struct(struct_def))
