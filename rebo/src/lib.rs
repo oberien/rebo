@@ -55,11 +55,11 @@ pub fn run(filename: String, code: String) -> ReturnValue {
     info!("Lexing took {}μs", time.elapsed().as_micros());
     info!("TOKENS:\n{}\n", lexer.iter().map(|token| token.to_string()).join(""));
 
+    let arena = Arena::new();
     let mut meta_info = MetaInfo::new();
-    stdlib::add_to_scope(&diagnostics, &mut meta_info);
+    stdlib::add_to_meta_info(&diagnostics, &arena, &mut meta_info);
 
     let time = Instant::now();
-    let arena = Arena::new();
     let parser = Parser::new(&arena, lexer, &diagnostics, &mut meta_info);
     let ast = parser.parse_ast().unwrap();
     info!("Parsing took {}μs", time.elapsed().as_micros());

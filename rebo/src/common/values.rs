@@ -82,6 +82,7 @@ pub enum Value {
     String(String),
     Struct(StructArc),
     Enum(EnumArc),
+    List(ListArc),
 }
 
 impl Value {
@@ -97,6 +98,12 @@ impl Value {
             _ => panic!("{}", msg),
         }
     }
+    pub fn expect_list(self, msg: &'static str) -> ListArc {
+        match self {
+            Value::List(b) => b,
+            _ => panic!("{}", msg),
+        }
+    }
     pub fn type_name(&self) -> String {
         match self {
             Value::Unit => "unit".to_string(),
@@ -106,6 +113,7 @@ impl Value {
             Value::String(_) => "string".to_string(),
             Value::Struct(s) => s.s.lock().borrow().name.clone(),
             Value::Enum(e) => e.e.lock().borrow().name.clone(),
+            Value::List(_) => "List".to_string(),
         }
     }
 }
@@ -135,6 +143,11 @@ impl Display for Value {
                     write!(f, "({})", e.fields.iter().join(", "))?;
                 }
                 Ok(())
+            }
+            Value::List(l) => {
+                let l = l.list.lock();
+                let l = l.borrow();
+                write!(f, "[{}]", l.iter().join(", "))
             }
         }
     }
@@ -300,6 +313,21 @@ pub struct Enum {
     pub name: String,
     pub variant: String,
     pub fields: Vec<Value>,
+}
+
+#[derive(Debug, Clone)]
+pub struct ListArc {
+    pub list: Arc<ReentrantMutex<RefCell<Vec<Value>>>>,
+}
+impl PartialOrd for ListArc {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        self.list.lock().borrow().partial_cmp(&other.list.lock().borrow())
+    }
+}
+impl PartialEq for ListArc {
+    fn eq(&self, other: &Self) -> bool {
+        self.list.lock().borrow().eq(&*other.list.lock().borrow())
+    }
 }
 
 macro_rules! impl_from_into {

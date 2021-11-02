@@ -171,3 +171,10 @@ let a = Option::Some(42);
 let b: Option<Option<string>> = Option::Some(Option::Some("uiae"));
 print(b.unwrap().unwrap());
 print(a, b);
+
+// List<T>
+let list = List::new();
+print(list);
+list.push(1337);
+list.push(42);
+print(list);

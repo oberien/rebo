@@ -59,6 +59,8 @@ pub enum ErrorCode {
     MismatchedGeneric,
     MissingGeneric,
     TooManyGenerics,
+    ListStructInitialization,
+
     Panic,
     AssertionFailed,
 }
@@ -126,6 +128,8 @@ impl diagnostic::ErrorCode for ErrorCode {
             MismatchedGeneric => "0058",
             MissingGeneric => "0059",
             TooManyGenerics => "0060",
+            ListStructInitialization => "0061",
+
             Panic => "9999",
             AssertionFailed => "9998",
         }.to_string()
@@ -192,6 +196,8 @@ impl diagnostic::ErrorCode for ErrorCode {
             MismatchedGeneric => "mismatched generic",
             MissingGeneric => "missing generic",
             TooManyGenerics => "too many generics",
+            ListStructInitialization => "`List` not allowed in struct initializer",
+
             Panic => "explicit panic",
             AssertionFailed => "assertion failed",
         }.to_string()

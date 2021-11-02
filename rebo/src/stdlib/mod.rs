@@ -6,8 +6,14 @@ use itertools::Itertools;
 use diagnostic::{Diagnostics, Span};
 use crate::typeck::types::{FunctionType, Type, SpecificType};
 use crate::error_codes::ErrorCode;
+use crate::parser::Expr;
+use typed_arena::Arena;
 
-pub fn add_to_scope(diagnostics: &Diagnostics, meta_info: &mut MetaInfo<'_, '_>) {
+mod list;
+
+pub fn add_to_meta_info<'a, 'i>(diagnostics: &Diagnostics, arena: &'a Arena<Expr<'a, 'i>>, meta_info: &mut MetaInfo<'a, 'i>) {
+    list::add_list(diagnostics, arena, meta_info);
+
     meta_info.add_external_function(diagnostics, "print", ExternalFunction {
         typ: FunctionType {
             generics: Cow::Borrowed(&[]),

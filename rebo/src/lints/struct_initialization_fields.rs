@@ -1,7 +1,7 @@
 use crate::lints::visitor::Visitor;
 use diagnostic::Diagnostics;
 use crate::common::MetaInfo;
-use crate::parser::ExprStructInitialization;
+use crate::parser::{ExprStructInitialization, Spanned};
 use crate::error_codes::ErrorCode;
 use indexmap::set::IndexSet;
 
@@ -10,6 +10,14 @@ pub struct StructInitializationFields;
 impl Visitor for StructInitializationFields {
     fn visit_struct_initialization(&self, diagnostics: &Diagnostics, meta_info: &MetaInfo, init: &ExprStructInitialization) {
         let ExprStructInitialization { name, fields, .. } = init;
+        if name.ident == "List" {
+            diagnostics.error(ErrorCode::ListStructInitialization)
+                .with_error_label(init.span(), "List can't be initialized")
+                .with_info_label(init.span(), "use `List::new()` instead")
+                .emit();
+            return;
+        }
+
         if let Some(typ) = meta_info.struct_types.get(name.ident) {
             let def_span = meta_info.user_types[name.ident].span();
             let mut expected_fields: IndexSet<_> = typ.fields.iter().map(|(name, _typ)| name.as_str()).collect();

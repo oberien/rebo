@@ -4,7 +4,7 @@ use std::fmt::{self, Display, Formatter};
 use diagnostic::{Diagnostics, Span};
 use indexmap::map::IndexMap;
 
-pub use values::{FromValue, FromValues, Function, ExternalFunction, FuzzyFloat, IntoValue, Struct, StructArc, Enum, EnumArc, Value};
+pub use values::{FromValue, FromValues, Function, ExternalFunction, FuzzyFloat, IntoValue, Struct, StructArc, Enum, EnumArc, Value, ListArc};
 
 use crate::error_codes::ErrorCode;
 use crate::EXTERNAL_SPAN;
@@ -62,7 +62,7 @@ pub struct MetaInfo<'a, 'i> {
     pub rebo_functions: IndexMap<Cow<'i, str>, &'a ExprFunctionDefinition<'a, 'i>>,
     /// enum and struct definitions found in the code
     ///
-    /// Available after the parser.
+    /// Available after the first pass of the parser.
     pub user_types: IndexMap<&'i str, UserType<'a, 'i>>,
     /// function types with resolved argument and return types
     ///
