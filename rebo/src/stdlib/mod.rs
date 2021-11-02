@@ -10,9 +10,11 @@ use crate::parser::Expr;
 use typed_arena::Arena;
 
 mod list;
+mod option;
 
 pub fn add_to_meta_info<'a, 'i>(diagnostics: &'i Diagnostics, arena: &'a Arena<Expr<'a, 'i>>, meta_info: &mut MetaInfo<'a, 'i>) {
     list::add_list(diagnostics, arena, meta_info);
+    option::add_option(diagnostics, arena, meta_info);
 
     meta_info.add_external_function(diagnostics, "print", ExternalFunction {
         typ: FunctionType {

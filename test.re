@@ -149,20 +149,6 @@ fn id1<U, V>(u: U, v: V) -> V { v }
 fn id2<T>(t: T) -> T { id1(42, t) }
 print(id2(1337));
 
-enum Option<T> {
-    Some(T),
-    None,
-}
-
-impl Option<T> {
-    fn unwrap(self) -> T {
-        match self {
-            Option::Some(t) => t,
-            Option::None => panic("tried to unwrap a None value"),
-        }
-    }
-}
-
 let a = Option::Some(1337);
 let c = Option::Some(42);
 print(a.unwrap() + c.unwrap());

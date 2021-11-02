@@ -47,18 +47,19 @@ pub fn run(filename: String, code: String) -> ReturnValue {
     let external = diagnostics.add_file("external".to_string(), EXTERNAL_SOURCE.to_string());
     *EXTERNAL_SPAN.lock().unwrap() = Some(Span::new(external.0, 0, EXTERNAL_SOURCE.len()));
 
-    let (file, _code) = diagnostics.add_file(filename, code);
+    // stdlib
+    let arena = Arena::new();
+    let mut meta_info = MetaInfo::new();
+    stdlib::add_to_meta_info(&diagnostics, &arena, &mut meta_info);
 
     // lex
+    let (file, _code) = diagnostics.add_file(filename, code);
     let time = Instant::now();
     let lexer = Lexer::new(&diagnostics, file);
     info!("Lexing took {}μs", time.elapsed().as_micros());
     info!("TOKENS:\n{}\n", lexer.iter().map(|token| token.to_string()).join(""));
 
-    let arena = Arena::new();
-    let mut meta_info = MetaInfo::new();
-    stdlib::add_to_meta_info(&diagnostics, &arena, &mut meta_info);
-
+    // parse
     let time = Instant::now();
     let parser = Parser::new(&arena, lexer, &diagnostics, &mut meta_info);
     let ast = parser.parse_ast().unwrap();
@@ -66,11 +67,12 @@ pub fn run(filename: String, code: String) -> ReturnValue {
     info!("AST:\n{}\n", ast);
     let Ast { exprs, bindings: _ } = ast;
 
+    // typeck
     let time = Instant::now();
-    // Typechecker::new(&diagnostics, &mut meta_info).typeck(&exprs);
     typeck::typeck(&diagnostics, &mut meta_info, &exprs);
     info!("Typechecking took {}μs", time.elapsed().as_micros());
 
+    // lint
     let time = Instant::now();
     lints::lint(&diagnostics, &meta_info, &exprs);
     info!("Linting took {}μs", time.elapsed().as_micros());
@@ -86,6 +88,7 @@ pub fn run(filename: String, code: String) -> ReturnValue {
         return ReturnValue::Diagnostics(diags);
     }
 
+    // run
     let time = Instant::now();
     let vm = Vm::new(&diagnostics, meta_info);
     let result = vm.run(&exprs);
