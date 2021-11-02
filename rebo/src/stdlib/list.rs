@@ -1,8 +1,8 @@
 use diagnostic::{Diagnostics, Span};
 use typed_arena::Arena;
-use crate::parser::{Expr, ExprStructDefinition, ExprGenerics, Separated, Generic};
-use crate::common::{MetaInfo, Value, ExternalFunction, ListArc};
-use crate::lexer::{TokenStruct, TokenIdent, TokenLessThan, TokenGreaterThan, TokenOpenCurly, TokenCloseCurly};
+use crate::parser::{Expr, ExprStructDefinition, Parser, Parse};
+use crate::common::{MetaInfo, Value, ExternalFunction, ListArc, Depth};
+use crate::lexer::Lexer;
 use crate::vm::VmContext;
 use crate::typeck::types::{FunctionType, Type, SpecificType};
 use std::borrow::Cow;
@@ -10,32 +10,18 @@ use parking_lot::ReentrantMutex;
 use std::sync::Arc;
 use std::cell::RefCell;
 
-pub fn add_list<'a, 'i>(diagnostics: &Diagnostics, arena: &'a Arena<Expr<'a, 'i>>, meta_info: &mut MetaInfo<'a, 'i>) {
-    let code = "struct List<T> { ... }".to_string();
+pub fn add_list<'a, 'i>(diagnostics: &'i Diagnostics, arena: &'a Arena<Expr<'a, 'i>>, meta_info: &mut MetaInfo<'a, 'i>) {
+    let code = "struct List<T> {}".to_string();
     let (file, _) = diagnostics.add_file("list.rs".to_string(), code);
-    let generic_span = Span::new(file, 12, 13);
-    let struct_def = ExprStructDefinition {
-        struct_token: TokenStruct { span: Span { file, start: 0, end: 6 } },
-        name: TokenIdent { span: Span { file, start: 7, end: 11 }, ident: "List" },
-        generics: Some(ExprGenerics {
-            open: TokenLessThan { span: Span { file, start: 11, end: 12 } },
-            generics: Some({
-                let mut sep = Separated::default();
-                let generic_ident = TokenIdent { span: generic_span, ident: "T" };
-                sep.prepend(Generic { def_ident: generic_ident, ident: generic_ident }, None);
-                sep
-            }),
-            close: TokenGreaterThan { span: Span { file, start: 13, end: 14 } }
-        }),
-        open: TokenOpenCurly { span: Span { file, start: 15, end: 16 } },
-        fields: Separated::default(),
-        close: TokenCloseCurly { span: Span { file, start: 21, end: 22 } },
-    };
+
+    let lexer = Lexer::new(diagnostics, file);
+    let mut parser = Parser::new(arena, lexer, diagnostics, meta_info);
+    let struct_def = ExprStructDefinition::parse(&mut parser, Depth::start()).unwrap();
     let struct_def = match arena.alloc(Expr::StructDefinition(struct_def)) {
         Expr::StructDefinition(struct_def) => struct_def,
         _ => unreachable!(),
     };
-    meta_info.add_struct(diagnostics, struct_def);
+    let generic_span = struct_def.generics.as_ref().unwrap().generics.as_ref().unwrap().iter().next().unwrap().def_ident.span;
 
     meta_info.add_external_function(diagnostics, "List::new", ExternalFunction {
         typ: FunctionType {
