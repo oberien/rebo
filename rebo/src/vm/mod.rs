@@ -119,6 +119,7 @@ impl<'a, 'i> Vm<'a, 'i> {
         trace!("{}eval_expr: {}", depth, expr);
         self.instructions_since_last_interrupt += 1;
         if self.instructions_since_last_interrupt > self.interrupt_interval {
+            self.instructions_since_last_interrupt = 0;
             (self.interrupt_function)(&mut self.ctx)?;
         }
         match expr {
