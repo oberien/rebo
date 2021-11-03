@@ -8,7 +8,7 @@ pub use values::{FromValue, FromValues, Function, ExternalFunction, FuzzyFloat, 
 
 use crate::error_codes::ErrorCode;
 use crate::EXTERNAL_SPAN;
-use crate::parser::{ExprEnumDefinition, ExprFunctionDefinition, ExprPatternTyped, ExprPatternUntyped, ExprStructDefinition, Spanned, ExprGenerics};
+use crate::parser::{ExprEnumDefinition, ExprFunctionDefinition, ExprPatternTyped, ExprPatternUntyped, ExprStructDefinition, Spanned, ExprGenerics, ExprStatic, ExprPattern};
 use crate::typeck::types::{EnumType, FunctionType, StructType, Type};
 use crate::typeck::TypeVar;
 
@@ -64,6 +64,10 @@ pub struct MetaInfo<'a, 'i> {
     ///
     /// Available after the first pass of the parser.
     pub user_types: IndexMap<&'i str, UserType<'a, 'i>>,
+    /// static variables defined in the code
+    ///
+    /// Available after the first pass of the parser.
+    pub statics: IndexMap<&'i str, &'a ExprStatic<'a, 'i>>,
     /// function types with resolved argument and return types
     ///
     /// Available after the beginning of typeck.
@@ -87,6 +91,7 @@ impl<'a, 'i> MetaInfo<'a, 'i> {
             functions: IndexMap::new(),
             rebo_functions: IndexMap::new(),
             user_types: IndexMap::new(),
+            statics: IndexMap::new(),
             function_types: IndexMap::new(),
             struct_types: IndexMap::new(),
             enum_types: IndexMap::new(),
@@ -161,6 +166,21 @@ impl<'a, 'i> MetaInfo<'a, 'i> {
     pub fn add_user_type(&mut self, diagnostics: &Diagnostics, name: &'i str, user_type: UserType<'a, 'i>) {
         let new_span = user_type.span();
         if let Some(old) = self.user_types.insert(name, user_type) {
+            let mut spans = [old.span(), new_span];
+            spans.sort();
+            diagnostics.error(ErrorCode::DuplicateGlobal)
+                .with_info_label(spans[0], "first defined here")
+                .with_error_label(spans[1], "also defined here")
+                .emit();
+        }
+    }
+    pub fn add_static(&mut self, diagnostics: &Diagnostics, static_def: &'a ExprStatic<'a, 'i>) {
+        let new_span = static_def.span();
+        let name = match &static_def.pattern {
+            ExprPattern::Untyped(untyped) => untyped.binding.ident.ident,
+            ExprPattern::Typed(typed) => typed.pattern.binding.ident.ident,
+        };
+        if let Some(old) = self.statics.insert(name, static_def) {
             let mut spans = [old.span(), new_span];
             spans.sort();
             diagnostics.error(ErrorCode::DuplicateGlobal)

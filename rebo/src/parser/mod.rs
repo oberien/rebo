@@ -131,6 +131,9 @@ impl<'a, 'b, 'i> Parser<'a, 'b, 'i> {
     pub fn parse_ast(mut self) -> Result<Ast<'a, 'i>, Error> {
         self.first_pass();
         trace!("parse_ast");
+
+        // add statics to global scope
+        self.add_statics();
         // file scope
         let body: BlockBody = match self.parse(Depth::start()) {
             Ok(body) => body,
@@ -176,6 +179,16 @@ impl<'a, 'b, 'i> Parser<'a, 'b, 'i> {
                 }
                 Ok(enum_def)
             },
+            |parser: &mut Parser<'a, '_, 'i>, depth| {
+                let static_def = &*parser.arena.alloc(Expr::Static(ExprStatic::parse_reset(parser, depth)?));
+                match static_def {
+                    Expr::Static(static_def) => {
+                        parser.meta_info.add_static(parser.diagnostics, static_def);
+                    },
+                    _ => unreachable!("we just created you"),
+                }
+                Ok(static_def)
+            },
         ];
         while self.peek_token(0).is_ok() && !matches!(self.peek_token(0).unwrap(), Token::Eof(_)) {
             for function in functions {
@@ -195,6 +208,17 @@ impl<'a, 'b, 'i> Parser<'a, 'b, 'i> {
         // reset token lookahead
         drop(mark);
         self.scopes = old_scopes;
+    }
+
+    fn add_statics(&mut self) {
+        for static_def in self.meta_info.statics.clone().values() {
+            let binding = match &static_def.pattern {
+                ExprPattern::Typed(typed) => typed.pattern.binding,
+                ExprPattern::Untyped(untyped) => untyped.binding,
+            };
+            // the memoized binding will be used
+            self.add_binding(binding.ident, binding.mutable);
+        }
     }
 
     fn add_binding(&mut self, ident: TokenIdent<'i>, mutable: Option<TokenMut>) -> Binding<'i> {

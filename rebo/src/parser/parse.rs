@@ -267,6 +267,7 @@ impl_for_tokens! {
     While, TokenWhile;
     For, TokenFor;
     In, TokenIn;
+    Static, TokenStatic;
     // types
     StringType, TokenStringType;
     IntType, TokenIntType;

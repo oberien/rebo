@@ -6,7 +6,7 @@ use std::fmt::{self, Write, Display, Formatter, Debug};
 use derive_more::Display;
 use crate::parser::scope::BindingId;
 use crate::util::PadFmt;
-use crate::lexer::{TokenOpenParen, TokenCloseParen, TokenIdent, TokenInteger, TokenFloat, TokenBool, TokenDqString, TokenType, TokenStringType, TokenIntType, TokenFloatType, TokenBoolType, Token, TokenLet, TokenColon, TokenMut, TokenAssign, TokenOpenCurly, TokenCloseCurly, TokenComma, TokenArrow, TokenFn, TokenBang, TokenPlus, TokenMinus, TokenStar, TokenSlash, TokenDoubleAmp, TokenDoublePipe, TokenLessThan, TokenLessEquals, TokenEquals, TokenNotEquals, TokenGreaterEquals, TokenGreaterThan, TokenStruct, TokenDot, TokenIf, TokenElse, TokenWhile, TokenFormatString, TokenFormatStringPart, Lexer, TokenMatch, TokenFatArrow, TokenEnum, TokenDoubleColon, TokenImpl, TokenFor, TokenIn};
+use crate::lexer::{TokenOpenParen, TokenCloseParen, TokenIdent, TokenInteger, TokenFloat, TokenBool, TokenDqString, TokenType, TokenStringType, TokenIntType, TokenFloatType, TokenBoolType, Token, TokenLet, TokenColon, TokenMut, TokenAssign, TokenOpenCurly, TokenCloseCurly, TokenComma, TokenArrow, TokenFn, TokenBang, TokenPlus, TokenMinus, TokenStar, TokenSlash, TokenDoubleAmp, TokenDoublePipe, TokenLessThan, TokenLessEquals, TokenEquals, TokenNotEquals, TokenGreaterEquals, TokenGreaterThan, TokenStruct, TokenDot, TokenIf, TokenElse, TokenWhile, TokenFormatString, TokenFormatStringPart, Lexer, TokenMatch, TokenFatArrow, TokenEnum, TokenDoubleColon, TokenImpl, TokenFor, TokenIn, TokenStatic};
 use crate::parser::{Parse, InternalError, Parser, Expected};
 use crate::error_codes::ErrorCode;
 use std::borrow::Cow;
@@ -243,8 +243,10 @@ pub enum Expr<'a, 'i> {
     Literal(ExprLiteral),
     /// f"abc {expr} def"
     FormatString(ExprFormatString<'a, 'i>),
-    /// let ident = expr
+    /// let pattern = expr
     Bind(ExprBind<'a, 'i>),
+    /// static pattern = expr
+    Static(ExprStatic<'a, 'i>),
     /// ident = expr
     Assign(ExprAssign<'a, 'i>),
     // unops
@@ -811,6 +813,34 @@ impl<'a, 'i> Spanned for ExprBind<'a, 'i> {
 impl<'a, 'i> Display for ExprBind<'a, 'i> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "let {} = {}", self.pattern, self.expr)
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct ExprStatic<'a, 'i> {
+    pub static_token: TokenStatic,
+    pub pattern: ExprPattern<'a, 'i>,
+    pub assign: TokenAssign,
+    pub expr: &'a Expr<'a, 'i>,
+}
+impl<'a, 'i> Parse<'a, 'i> for ExprStatic<'a, 'i> {
+    fn parse_marked(parser: &mut Parser<'a, '_, 'i>, depth: Depth) -> Result<Self, InternalError> {
+        Ok(ExprStatic {
+            static_token: parser.parse(depth.next())?,
+            pattern: parser.parse(depth.next())?,
+            assign: parser.parse(depth.next())?,
+            expr: parser.parse(depth.last())?,
+        })
+    }
+}
+impl<'a, 'i> Spanned for ExprStatic<'a, 'i> {
+    fn span(&self) -> Span {
+        Span::new(self.static_token.span.file, self.static_token.span.start, self.expr.span().end)
+    }
+}
+impl<'a, 'i> Display for ExprStatic<'a, 'i> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "static {} = {}", self.pattern, self.expr)
     }
 }
 
@@ -1444,6 +1474,9 @@ impl<'a, 'i> ExprFunctionDefinition<'a, 'i> {
         let old_scopes = std::mem::take(&mut parser.scopes);
         // scope for generics and argument-bindings
         let scope_guard = parser.push_scope();
+        // statics are available in functions
+        parser.add_statics();
+
         for &generic in generics {
             parser.add_generic(generic);
         }

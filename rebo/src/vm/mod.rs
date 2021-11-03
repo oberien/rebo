@@ -7,7 +7,7 @@ use parking_lot::ReentrantMutex;
 
 use crate::common::{Depth, Enum, EnumArc, Function, FuzzyFloat, MetaInfo, Struct, StructArc, Value};
 use crate::lexer::{TokenBool, TokenDqString, TokenFloat, TokenIdent, TokenInteger};
-use crate::parser::{Binding, BlockBody, Expr, ExprAdd, ExprAssign, ExprAssignLhs, ExprBind, ExprBlock, ExprBool, ExprBoolAnd, ExprBoolNot, ExprBoolOr, ExprDiv, ExprEnumDefinition, ExprEnumInitialization, ExprEquals, ExprFieldAccess, ExprFloat, ExprFormatString, ExprFormatStringPart, ExprFunctionCall, ExprFunctionDefinition, ExprGreaterEquals, ExprGreaterThan, ExprIfElse, ExprInteger, ExprLessEquals, ExprLessThan, ExprLiteral, ExprMatch, ExprMatchPattern, ExprMul, ExprNotEquals, ExprParenthesized, ExprPattern, ExprPatternTyped, ExprPatternUntyped, ExprString, ExprStructDefinition, ExprStructInitialization, ExprSub, ExprVariable, ExprWhile, ExprAccess, FieldOrMethod, Spanned, ExprFor};
+use crate::parser::{Binding, BlockBody, Expr, ExprAdd, ExprAssign, ExprAssignLhs, ExprBind, ExprBlock, ExprBool, ExprBoolAnd, ExprBoolNot, ExprBoolOr, ExprDiv, ExprEnumDefinition, ExprEnumInitialization, ExprEquals, ExprFieldAccess, ExprFloat, ExprFormatString, ExprFormatStringPart, ExprFunctionCall, ExprFunctionDefinition, ExprGreaterEquals, ExprGreaterThan, ExprIfElse, ExprInteger, ExprLessEquals, ExprLessThan, ExprLiteral, ExprMatch, ExprMatchPattern, ExprMul, ExprNotEquals, ExprParenthesized, ExprPattern, ExprPatternTyped, ExprPatternUntyped, ExprString, ExprStructDefinition, ExprStructInitialization, ExprSub, ExprVariable, ExprWhile, ExprAccess, FieldOrMethod, Spanned, ExprFor, ExprStatic};
 use crate::typeck::types::StructType;
 pub use crate::vm::scope::{Scopes, Scope};
 use diagnostic::{Diagnostics, Span};
@@ -38,6 +38,7 @@ pub struct VmContext<'a, 'i> {
     scopes: Scopes,
     rebo_functions: IndexMap<Cow<'i, str>, &'a ExprFunctionDefinition<'a, 'i>>,
     struct_types: IndexMap<&'i str, StructType>,
+    statics: IndexMap<&'i str, &'a ExprStatic<'a, 'i>>,
 }
 
 impl<'a, 'i> VmContext<'a, 'i> {
@@ -52,15 +53,25 @@ impl<'a, 'i> VmContext<'a, 'i> {
 
 impl<'a, 'i> Vm<'a, 'i> {
     pub fn new(diagnostics: &'i Diagnostics, meta_info: MetaInfo<'a, 'i>) -> Self {
-        let MetaInfo { functions, rebo_functions, user_types: _, function_types: _, struct_types, enum_types: _, types: _ } = meta_info;
+        let MetaInfo { functions, rebo_functions, user_types: _, statics, function_types: _, struct_types, enum_types: _, types: _ } = meta_info;
         let mut scopes = Scopes::new();
         let root_scope = Scope::new();
         scopes.push_scope(root_scope);
-        Vm { functions, ctx: VmContext { diagnostics, scopes, rebo_functions, struct_types } }
+        Vm { functions, ctx: VmContext { diagnostics, scopes, rebo_functions, struct_types, statics } }
     }
 
     pub fn run(mut self, ast: &[&Expr]) -> Value {
         trace!("run");
+        // add statics
+        for static_def in self.statics.clone().values() {
+            let binding = match &static_def.pattern {
+                ExprPattern::Typed(typed) => typed.pattern.binding,
+                ExprPattern::Untyped(untyped) => untyped.binding,
+            };
+            let value = self.eval_expr(static_def.expr, Depth::start());
+            self.bind(&binding, value, Depth::start());
+        }
+
         let mut value = None;
         for expr in ast {
             value = Some(self.eval_expr(expr, Depth::start()));
@@ -172,6 +183,8 @@ impl<'a, 'i> Vm<'a, 'i> {
                 let value = self.eval_expr(expr, depth.next());
                 self.bind(binding, value, depth.last())
             },
+            // handled already
+            Expr::Static(_) => Value::Unit,
             Expr::LessThan(ExprLessThan { a, b, .. }) => cmp::<Lt>(self.eval_expr(a, depth.next()), self.eval_expr(b, depth.next()), depth.last()),
             Expr::LessEquals(ExprLessEquals { a, b, .. }) => cmp::<Le>(self.eval_expr(a, depth.next()), self.eval_expr(b, depth.next()), depth.last()),
             Expr::Equals(ExprEquals { a, b, .. }) => cmp::<Eq>(self.eval_expr(a, depth.next()), self.eval_expr(b, depth.next()), depth.last()),

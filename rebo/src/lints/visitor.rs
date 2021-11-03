@@ -1,4 +1,4 @@
-use crate::parser::{ExprLiteral, ExprFormatString, ExprBind, ExprAssign, ExprBoolNot, ExprAdd, ExprSub, ExprMul, ExprDiv, ExprBoolAnd, ExprBoolOr, ExprLessThan, ExprLessEquals, ExprEquals, ExprNotEquals, ExprGreaterEquals, ExprGreaterThan, ExprBlock, ExprVariable, ExprParenthesized, ExprIfElse, ExprMatch, ExprWhile, ExprFunctionCall, ExprFunctionDefinition, ExprStructDefinition, ExprStructInitialization, ExprImplBlock, Expr, ExprFormatStringPart, ExprEnumDefinition, ExprEnumInitialization, ExprAccess, FieldOrMethod, ExprFor};
+use crate::parser::{ExprLiteral, ExprFormatString, ExprBind, ExprAssign, ExprBoolNot, ExprAdd, ExprSub, ExprMul, ExprDiv, ExprBoolAnd, ExprBoolOr, ExprLessThan, ExprLessEquals, ExprEquals, ExprNotEquals, ExprGreaterEquals, ExprGreaterThan, ExprBlock, ExprVariable, ExprParenthesized, ExprIfElse, ExprMatch, ExprWhile, ExprFunctionCall, ExprFunctionDefinition, ExprStructDefinition, ExprStructInitialization, ExprImplBlock, Expr, ExprFormatStringPart, ExprEnumDefinition, ExprEnumInitialization, ExprAccess, FieldOrMethod, ExprFor, ExprStatic};
 use diagnostic::Diagnostics;
 use crate::common::MetaInfo;
 
@@ -12,6 +12,7 @@ pub trait Visitor {
     fn visit_literal(&self, _: &Diagnostics, _: &MetaInfo, _: &ExprLiteral) {}
     fn visit_format_string(&self, _: &Diagnostics, _: &MetaInfo, _: &ExprFormatString) {}
     fn visit_bind(&self, _: &Diagnostics, _: &MetaInfo, _: &ExprBind) {}
+    fn visit_static(&self, _: &Diagnostics, _: &MetaInfo, _: &ExprStatic) {}
     fn visit_assign(&self, _: &Diagnostics, _: &MetaInfo, _: &ExprAssign) {}
     fn visit_bool_not(&self, _: &Diagnostics, _: &MetaInfo, _: &ExprBoolNot) {}
     fn visit_add(&self, _: &Diagnostics, _: &MetaInfo, _: &ExprAdd) {}
@@ -88,6 +89,10 @@ impl<'a, 'b, 'i, 'v> VisitorDriver<'a, 'b, 'i, 'v> {
             Expr::Bind(bind) => {
                 visit!(self, visit_bind, bind);
                 self.visit_expr(bind.expr);
+            }
+            Expr::Static(stati) => {
+                visit!(self, visit_static, stati);
+                self.visit_expr(stati.expr);
             }
             Expr::Assign(assign) => {
                 visit!(self, visit_assign, assign);

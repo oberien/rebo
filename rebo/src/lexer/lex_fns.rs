@@ -90,6 +90,7 @@ pub fn try_lex_token<'i>(diagnostics: &Diagnostics, file: FileId, s: &'i str, in
         "while" => While, TokenWhile;
         "for" => For, TokenFor;
         "in" => In, TokenIn;
+        "static" => Static, TokenStatic;
         "else" => Else, TokenElse;
         "string" => StringType, TokenStringType;
         "int" => IntType, TokenIntType;

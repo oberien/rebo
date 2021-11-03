@@ -185,3 +185,16 @@ map.insert("a", 1337);
 map.insert("b", 42);
 print(map, map.keys(), map.values());
 print(map.get("a"), map.remove("b"));
+
+// statics
+print(MY_STATIC);
+static mut MY_STATIC = 42;
+MY_STATIC = 1337;
+use_static();
+print(MY_STATIC);
+
+fn use_static() {
+    print(MY_STATIC);
+    MY_STATIC = 21;
+}
+
