@@ -17,6 +17,9 @@ mod scope;
 
 pub struct Vm<'a, 'i> {
     functions: IndexMap<Cow<'i, str>, Function>,
+    interrupt_interval: u32,
+    instructions_since_last_interrupt: u32,
+    interrupt_function: fn(&mut VmContext) -> Result<(), ExecError>,
     ctx: VmContext<'a, 'i>,
 }
 
@@ -31,6 +34,11 @@ impl<'a, 'i> DerefMut for Vm<'a, 'i> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.ctx
     }
+}
+
+#[derive(Debug)]
+pub enum ExecError {
+    Panic,
 }
 
 pub struct VmContext<'a, 'i> {
@@ -52,15 +60,27 @@ impl<'a, 'i> VmContext<'a, 'i> {
 }
 
 impl<'a, 'i> Vm<'a, 'i> {
-    pub fn new(diagnostics: &'i Diagnostics, meta_info: MetaInfo<'a, 'i>) -> Self {
+    pub fn new(diagnostics: &'i Diagnostics, meta_info: MetaInfo<'a, 'i>, interrupt_interval: u32, interrupt_function: fn(&mut VmContext) -> Result<(), ExecError>) -> Self {
         let MetaInfo { functions, rebo_functions, user_types: _, statics, function_types: _, struct_types, enum_types: _, types: _ } = meta_info;
-        let mut scopes = Scopes::new();
+        let scopes = Scopes::new();
         let root_scope = Scope::new();
         scopes.push_scope(root_scope);
-        Vm { functions, ctx: VmContext { diagnostics, scopes, rebo_functions, struct_types, statics } }
+        Vm {
+            functions,
+            instructions_since_last_interrupt: 0,
+            interrupt_interval,
+            interrupt_function,
+            ctx: VmContext {
+                diagnostics,
+                scopes,
+                rebo_functions,
+                struct_types,
+                statics
+            }
+        }
     }
 
-    pub fn run(mut self, ast: &[&Expr]) -> Value {
+    pub fn run(mut self, ast: &[&Expr]) -> Result<Value, ExecError> {
         trace!("run");
         // add statics
         for static_def in self.statics.clone().values() {
@@ -68,20 +88,20 @@ impl<'a, 'i> Vm<'a, 'i> {
                 ExprPattern::Typed(typed) => typed.pattern.binding,
                 ExprPattern::Untyped(untyped) => untyped.binding,
             };
-            let value = self.eval_expr(static_def.expr, Depth::start());
+            let value = self.eval_expr(static_def.expr, Depth::start())?;
             self.bind(&binding, value, Depth::start());
         }
 
         let mut value = None;
         for expr in ast {
-            value = Some(self.eval_expr(expr, Depth::start()));
+            value = Some(self.eval_expr(expr, Depth::start())?);
         }
-        value.unwrap_or(Value::Unit)
+        Ok(value.unwrap_or(Value::Unit))
     }
 
     fn load_binding(&self, binding: &Binding, depth: Depth) -> Value {
         trace!("{}load_binding: {}", depth, binding.ident.ident);
-        self.scopes.get(binding.id).unwrap_or_else(|| panic!("binding {}[{}] is None", binding.ident.ident, binding.id)).clone()
+        self.scopes.get(binding.id).unwrap_or_else(|| panic!("binding {}[{}] is None", binding.ident.ident, binding.id))
     }
 
     fn bind(&mut self, binding: &Binding, value: Value, depth: Depth) -> Value {
@@ -95,15 +115,19 @@ impl<'a, 'i> Vm<'a, 'i> {
         self.scopes.assign(binding.id, value);
     }
 
-    fn eval_expr(&mut self, expr: &Expr, depth: Depth) -> Value {
+    fn eval_expr(&mut self, expr: &Expr, depth: Depth) -> Result<Value, ExecError> {
         trace!("{}eval_expr: {}", depth, expr);
+        self.instructions_since_last_interrupt += 1;
+        if self.instructions_since_last_interrupt > self.interrupt_interval {
+            (self.interrupt_function)(&mut self.ctx)?;
+        }
         match expr {
-            Expr::Literal(ExprLiteral::Unit(_)) => Value::Unit,
-            Expr::Literal(ExprLiteral::Integer(ExprInteger { int: TokenInteger { value, .. } })) => Value::Integer(*value),
-            Expr::Literal(ExprLiteral::Float(ExprFloat { float: TokenFloat { value, .. }})) => Value::Float(FuzzyFloat(*value)),
-            Expr::Literal(ExprLiteral::Bool(ExprBool { b: TokenBool { value, .. } })) => Value::Bool(*value),
-            Expr::Literal(ExprLiteral::String(ExprString { string: TokenDqString { string, .. } })) => Value::String(string.clone()),
-            Expr::Variable(ExprVariable { binding, .. }) => self.load_binding(binding, depth.last()),
+            Expr::Literal(ExprLiteral::Unit(_)) => Ok(Value::Unit),
+            Expr::Literal(ExprLiteral::Integer(ExprInteger { int: TokenInteger { value, .. } })) => Ok(Value::Integer(*value)),
+            Expr::Literal(ExprLiteral::Float(ExprFloat { float: TokenFloat { value, .. }})) => Ok(Value::Float(FuzzyFloat(*value))),
+            Expr::Literal(ExprLiteral::Bool(ExprBool { b: TokenBool { value, .. } })) => Ok(Value::Bool(*value)),
+            Expr::Literal(ExprLiteral::String(ExprString { string: TokenDqString { string, .. } })) => Ok(Value::String(string.clone())),
+            Expr::Variable(ExprVariable { binding, .. }) => Ok(self.load_binding(binding, depth.last())),
             Expr::Access(ExprAccess { variable: ExprVariable { binding, .. }, accesses, .. }) => {
                 let mut val = self.load_binding(binding, depth.next());
                 for acc in accesses {
@@ -122,14 +146,14 @@ impl<'a, 'i> Vm<'a, 'i> {
                         },
                         FieldOrMethod::Method(ExprFunctionCall { name, args, .. }) => {
                             let fn_name = format!("{}::{}", val.type_name(), name.ident);
-                            let args = std::iter::once(val)
+                            let args = std::iter::once(Ok(val))
                                 .chain(args.iter().map(|expr| self.eval_expr(expr, depth.next())))
-                                .collect();
-                            self.call_function(&fn_name, acc.span(), args, depth.last())
+                                .collect::<Result<_, _>>()?;
+                            self.call_function(&fn_name, acc.span(), args, depth.last())?
                         }
                     };
                 }
-                val
+                Ok(val)
             }
             Expr::FormatString(ExprFormatString { parts, .. }) => {
                 let mut res = String::new();
@@ -138,15 +162,15 @@ impl<'a, 'i> Vm<'a, 'i> {
                         ExprFormatStringPart::Str(s) => res.push_str(s),
                         ExprFormatStringPart::Escaped(s) => res.push_str(s),
                         ExprFormatStringPart::FmtArg(expr) => {
-                            let val = self.eval_expr(expr, depth.next());
+                            let val = self.eval_expr(expr, depth.next())?;
                             res.push_str(&val.to_string());
                         }
                     }
                 }
-                Value::String(res)
+                Ok(Value::String(res))
             },
             Expr::Assign(ExprAssign { lhs, expr, .. }) => {
-                let value = self.eval_expr(expr, depth.next());
+                let value = self.eval_expr(expr, depth.next())?;
                 match lhs {
                     ExprAssignLhs::Variable(ExprVariable { binding, .. }) => self.assign(binding, value, depth.last()),
                     ExprAssignLhs::FieldAccess(ExprFieldAccess { variable: ExprVariable { binding, .. }, fields, .. }) => {
@@ -176,40 +200,38 @@ impl<'a, 'i> Vm<'a, 'i> {
                         }
                     }
                 }
-                Value::Unit
+                Ok(Value::Unit)
             },
             Expr::Bind(ExprBind { pattern: ExprPattern::Typed(ExprPatternTyped { pattern: ExprPatternUntyped { binding }, .. }), expr, .. })
             | Expr::Bind(ExprBind { pattern: ExprPattern::Untyped(ExprPatternUntyped { binding }), expr, .. }) => {
-                let value = self.eval_expr(expr, depth.next());
-                self.bind(binding, value, depth.last())
+                let value = self.eval_expr(expr, depth.next())?;
+                Ok(self.bind(binding, value, depth.last()))
             },
             // handled already
-            Expr::Static(_) => Value::Unit,
-            Expr::LessThan(ExprLessThan { a, b, .. }) => cmp::<Lt>(self.eval_expr(a, depth.next()), self.eval_expr(b, depth.next()), depth.last()),
-            Expr::LessEquals(ExprLessEquals { a, b, .. }) => cmp::<Le>(self.eval_expr(a, depth.next()), self.eval_expr(b, depth.next()), depth.last()),
-            Expr::Equals(ExprEquals { a, b, .. }) => cmp::<Eq>(self.eval_expr(a, depth.next()), self.eval_expr(b, depth.next()), depth.last()),
-            Expr::NotEquals(ExprNotEquals { a, b, .. }) => cmp::<Neq>(self.eval_expr(a, depth.next()), self.eval_expr(b, depth.next()), depth.last()),
-            Expr::GreaterEquals(ExprGreaterEquals { a, b, .. }) => cmp::<Ge>(self.eval_expr(a, depth.next()), self.eval_expr(b, depth.next()), depth.last()),
-            Expr::GreaterThan(ExprGreaterThan { a, b, .. }) => cmp::<Gt>(self.eval_expr(a, depth.next()), self.eval_expr(b, depth.next()), depth.last()),
-            Expr::Add(ExprAdd { a, b, .. }) => math::<Add>(self.eval_expr(a, depth.next()), self.eval_expr(b, depth.next()), depth.last()),
-            Expr::Sub(ExprSub { a, b, .. }) => math::<Sub>(self.eval_expr(a, depth.next()), self.eval_expr(b, depth.next()), depth.last()),
-            Expr::Mul(ExprMul { a, b, .. }) => math::<Mul>(self.eval_expr(a, depth.next()), self.eval_expr(b, depth.next()), depth.last()),
-            Expr::Div(ExprDiv { a, b, .. }) => math::<Div>(self.eval_expr(a, depth.next()), self.eval_expr(b, depth.next()), depth.last()),
+            Expr::Static(_) => Ok(Value::Unit),
+            Expr::LessThan(ExprLessThan { a, b, .. }) => Ok(cmp::<Lt>(self.eval_expr(a, depth.next())?, self.eval_expr(b, depth.next())?, depth.last())),
+            Expr::LessEquals(ExprLessEquals { a, b, .. }) => Ok(cmp::<Le>(self.eval_expr(a, depth.next())?, self.eval_expr(b, depth.next())?, depth.last())),
+            Expr::Equals(ExprEquals { a, b, .. }) => Ok(cmp::<Eq>(self.eval_expr(a, depth.next())?, self.eval_expr(b, depth.next())?, depth.last())),
+            Expr::NotEquals(ExprNotEquals { a, b, .. }) => Ok(cmp::<Neq>(self.eval_expr(a, depth.next())?, self.eval_expr(b, depth.next())?, depth.last())),
+            Expr::GreaterEquals(ExprGreaterEquals { a, b, .. }) => Ok(cmp::<Ge>(self.eval_expr(a, depth.next())?, self.eval_expr(b, depth.next())?, depth.last())),
+            Expr::GreaterThan(ExprGreaterThan { a, b, .. }) => Ok(cmp::<Gt>(self.eval_expr(a, depth.next())?, self.eval_expr(b, depth.next())?, depth.last())),
+            Expr::Add(ExprAdd { a, b, .. }) => Ok(math::<Add>(self.eval_expr(a, depth.next())?, self.eval_expr(b, depth.next())?, depth.last())),
+            Expr::Sub(ExprSub { a, b, .. }) => Ok(math::<Sub>(self.eval_expr(a, depth.next())?, self.eval_expr(b, depth.next())?, depth.last())),
+            Expr::Mul(ExprMul { a, b, .. }) => Ok(math::<Mul>(self.eval_expr(a, depth.next())?, self.eval_expr(b, depth.next())?, depth.last())),
+            Expr::Div(ExprDiv { a, b, .. }) => Ok(math::<Div>(self.eval_expr(a, depth.next())?, self.eval_expr(b, depth.next())?, depth.last())),
             Expr::BoolNot(ExprBoolNot { expr, .. }) => {
-                match self.eval_expr(expr, depth.last()) {
-                    Value::Bool(expr) => Value::Bool(!expr),
-                    _ => unreachable!("boolean NOT called with non-bool"),
-                }
+                let b = self.eval_expr(expr, depth.last())?.expect_bool("boolean NOT called with non-bool");
+                Ok(Value::Bool(!b))
             }
             Expr::BoolAnd(ExprBoolAnd { a, b, .. }) => {
-                let res = self.eval_expr(a, depth.next()).expect_bool("boolean AND called with non-bool")
-                    && self.eval_expr(b, depth.last()).expect_bool("boolean AND called with non-bool");
-                Value::Bool(res)
+                let res = self.eval_expr(a, depth.next())?.expect_bool("boolean AND called with non-bool")
+                    && self.eval_expr(b, depth.last())?.expect_bool("boolean AND called with non-bool");
+                Ok(Value::Bool(res))
             }
             Expr::BoolOr(ExprBoolOr { a, b, .. }) => {
-                let res = self.eval_expr(a, depth.next()).expect_bool("boolean OR called with non-bool")
-                    || self.eval_expr(b, depth.last()).expect_bool("boolean OR called with non-bool");
-                Value::Bool(res)
+                let res = self.eval_expr(a, depth.next())?.expect_bool("boolean OR called with non-bool")
+                    || self.eval_expr(b, depth.last())?.expect_bool("boolean OR called with non-bool");
+                Ok(Value::Bool(res))
             }
             Expr::Parenthesized(ExprParenthesized { expr, .. }) => self.eval_expr(expr, depth.last()),
             Expr::Block(block) => {
@@ -219,7 +241,7 @@ impl<'a, 'i> Vm<'a, 'i> {
                 let branches = ::std::iter::once((condition, then))
                     .chain(else_ifs.iter().map(|(_, _, cond, block)| (cond, block)));
                 for (cond, block) in branches {
-                    let cond = self.eval_expr(cond, depth.next()).expect_bool("if-condition doesn't evaluate to bool");
+                    let cond = self.eval_expr(cond, depth.next())?.expect_bool("if-condition doesn't evaluate to bool");
                     if cond {
                         return self.eval_block(block, depth.last());
                     }
@@ -227,21 +249,21 @@ impl<'a, 'i> Vm<'a, 'i> {
                 if let Some((_, block)) = els {
                     return self.eval_block(block, depth.last());
                 }
-                Value::Unit
+                Ok(Value::Unit)
             }
             Expr::Match(ExprMatch { expr, arms, .. }) => {
-                let to_match = self.eval_expr(expr, depth.next());
+                let to_match = self.eval_expr(expr, depth.next())?;
                 let mut val = None;
                 for (pattern, _arrow, expr) in arms {
                     match pattern {
                         ExprMatchPattern::Literal(lit) => if &to_match == lit {
-                            self.scopes.push_scope(Scope::new());
-                            val = Some(self.eval_expr(expr, depth.last()));
-                            self.scopes.pop_scope();
+                            let _guard = self.scopes.push_scope(Scope::new());
+                            val = Some(self.eval_expr(expr, depth.last())?);
                             break;
                         }
                         ExprMatchPattern::Variant(variant) => {
                             // lock and release enum value before evaluating the match arm
+                            let _guard = self.scopes.push_scope(Scope::new());
                             {
                                 let enum_value = match &to_match {
                                     Value::Enum(enum_value) => enum_value,
@@ -255,99 +277,93 @@ impl<'a, 'i> Vm<'a, 'i> {
                                     continue;
                                 }
 
-                                self.scopes.push_scope(Scope::new());
                                 if let Some((_open, fields, _close)) = &variant.fields {
                                     for (binding, value) in fields.iter().zip(&enum_value.fields) {
                                         self.scopes.create(binding.id, value.clone());
                                     }
                                 }
                             }
-                            val = Some(self.eval_expr(expr, depth.last()));
-                            self.scopes.pop_scope();
+                            val = Some(self.eval_expr(expr, depth.last())?);
                             break;
                         }
                         ExprMatchPattern::Binding(binding) => {
-                            self.scopes.push_scope(Scope::new());
+                            let _guard = self.scopes.push_scope(Scope::new());
                             self.scopes.create(binding.id, to_match);
-                            val = Some(self.eval_expr(expr, depth.last()));
-                            self.scopes.pop_scope();
+                            val = Some(self.eval_expr(expr, depth.last())?);
                             break;
                         }
                         ExprMatchPattern::Wildcard(_) => {
-                            self.scopes.push_scope(Scope::new());
-                            val = Some(self.eval_expr(expr, depth.last()));
-                            self.scopes.pop_scope();
+                            let _guard = self.scopes.push_scope(Scope::new());
+                            val = Some(self.eval_expr(expr, depth.last())?);
                             break;
                         },
                     }
                 }
-                val.unwrap()
+                Ok(val.unwrap())
             }
             Expr::While(ExprWhile { condition, block, .. }) => {
-                while self.eval_expr(condition, depth.next()).expect_bool("while condition not a bool") {
-                    self.eval_block(block, depth.next());
+                while self.eval_expr(condition, depth.next())?.expect_bool("while condition not a bool") {
+                    self.eval_block(block, depth.next())?;
                 }
-                Value::Unit
+                Ok(Value::Unit)
             }
             Expr::For(ExprFor { binding, expr, block, .. }) => {
-                let list = self.eval_expr(expr, depth.next()).expect_list("for expr is not a list");
+                let list = self.eval_expr(expr, depth.next())?.expect_list("for expr is not a list");
                 let list = list.list.lock();
                 let list = list.borrow();
-                self.scopes.push_scope(Scope::new());
+                let _guard = self.scopes.push_scope(Scope::new());
                 self.bind(binding, Value::Unit, depth.next());
                 for value in list.iter().cloned() {
                     self.assign(binding, value, depth.next());
-                    self.eval_block(block, depth.next());
+                    self.eval_block(block, depth.next())?;
                 }
-                self.scopes.pop_scope();
-                Value::Unit
+                Ok(Value::Unit)
             }
             Expr::FunctionCall(ExprFunctionCall { name, args, .. }) => {
-                let args = args.iter().map(|expr| self.eval_expr(expr, depth.next())).collect();
+                let args = args.iter().map(|expr| self.eval_expr(expr, depth.next())).collect::<Result<_, _>>()?;
                 self.call_function(name.ident, expr.span(), args, depth.last())
             },
             // ignore function definitions as we have those handled already
-            Expr::FunctionDefinition(ExprFunctionDefinition { .. }) => Value::Unit,
-            Expr::StructDefinition(ExprStructDefinition { .. }) => Value::Unit,
+            Expr::FunctionDefinition(ExprFunctionDefinition { .. }) => Ok(Value::Unit),
+            Expr::StructDefinition(ExprStructDefinition { .. }) => Ok(Value::Unit),
             Expr::StructInitialization(ExprStructInitialization { name, fields, .. }) => {
                 let mut field_values = Vec::new();
                 for (field, _colon, expr) in fields {
-                    field_values.push((field.ident.to_string(), self.eval_expr(expr, depth.next())));
+                    field_values.push((field.ident.to_string(), self.eval_expr(expr, depth.next())?));
                 }
                 // TODO: O(n²log(n)) probably isn't the best but we need the correct order of the type-definition for comparisons
                 let typ = &self.struct_types[name.ident];
                 field_values.sort_by_key(|(field, _)| typ.fields.iter().position(|(name, _)| field == name));
-                Value::Struct(StructArc { s: Arc::new(ReentrantMutex::new(RefCell::new(Struct {
+                Ok(Value::Struct(StructArc { s: Arc::new(ReentrantMutex::new(RefCell::new(Struct {
                     name: name.ident.to_string(),
                     fields: field_values,
-                })))})
+                })))}))
             }
-            Expr::EnumDefinition(ExprEnumDefinition { .. }) => Value::Unit,
+            Expr::EnumDefinition(ExprEnumDefinition { .. }) => Ok(Value::Unit),
             Expr::EnumInitialization(ExprEnumInitialization { enum_name, variant_name, .. }) => {
-                Value::Enum(EnumArc { e: Arc::new(ReentrantMutex::new(RefCell::new(Enum {
+                Ok(Value::Enum(EnumArc { e: Arc::new(ReentrantMutex::new(RefCell::new(Enum {
                     name: enum_name.ident.to_string(),
                     variant: variant_name.ident.to_string(),
                     fields: vec![],
-                })))})
+                })))}))
             }
-            Expr::ImplBlock(_) => Value::Unit,
+            Expr::ImplBlock(_) => Ok(Value::Unit),
         }
     }
 
-    fn eval_block(&mut self, ExprBlock { body: BlockBody { exprs, terminated_with_semicolon }, .. }: &ExprBlock, depth: Depth) -> Value {
-        self.scopes.push_scope(Scope::new());
+    fn eval_block(&mut self, ExprBlock { body: BlockBody { exprs, terminated_with_semicolon }, .. }: &ExprBlock, depth: Depth) -> Result<Value, ExecError> {
+        let _guard = self.scopes.push_scope(Scope::new());
         let mut val = Value::Unit;
         for expr in exprs {
-            val = self.eval_expr(expr, depth.next());
+            val = self.eval_expr(expr, depth.next())?;
         }
-        self.scopes.pop_scope();
         if *terminated_with_semicolon {
-            Value::Unit
+            Ok(Value::Unit)
         } else {
-            val
+            Ok(val)
         }
     }
-    fn call_function(&mut self, name: &str, expr_span: Span, args: Vec<Value>, depth: Depth) -> Value {
+    fn call_function(&mut self, name: &str, expr_span: Span, args: Vec<Value>, depth: Depth) -> Result<Value, ExecError> {
         trace!("{}call_function: {}({:?})", depth, name, args);
         match &self.functions[name] {
             Function::Rust(f) => f(expr_span, &mut self.ctx, args),
@@ -356,23 +372,22 @@ impl<'a, 'i> Vm<'a, 'i> {
                 for (&id, val) in arg_binding_ids.iter().zip(args) {
                     scope.create(id, val);
                 }
-                self.ctx.scopes.push_scope(scope);
+                let _guard = self.ctx.scopes.push_scope(scope);
 
                 let mut last = None;
                 let fun = self.rebo_functions[name.as_str()];
                 for expr in &fun.body.body.exprs {
-                    last = Some(self.eval_expr(expr, depth.next()));
+                    last = Some(self.eval_expr(expr, depth.next())?);
                 }
 
-                self.ctx.scopes.pop_scope();
-                last.unwrap_or(Value::Unit)
+                Ok(last.unwrap_or(Value::Unit))
             }
             Function::EnumInitializer(enum_name, variant_name) => {
-                Value::Enum(EnumArc { e: Arc::new(ReentrantMutex::new(RefCell::new(Enum {
+                Ok(Value::Enum(EnumArc { e: Arc::new(ReentrantMutex::new(RefCell::new(Enum {
                     name: enum_name.clone(),
                     variant: variant_name.clone(),
                     fields: args,
-                })))})
+                })))}))
             }
         }
     }

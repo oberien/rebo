@@ -27,9 +27,10 @@ mod common;
 mod tests;
 
 pub use rebo_derive::function;
-pub use vm::VmContext;
+pub use vm::{VmContext, ExecError};
 pub use common::{Value, FromValue, FromValues, IntoValue, ExternalFunction};
-pub use typeck::types::{Type, FunctionType};
+pub use typeck::types::{Type, FunctionType, SpecificType};
+pub use stdlib::Stdlib;
 
 const EXTERNAL_SOURCE: &str = "defined externally";
 lazy_static::lazy_static! {
@@ -42,10 +43,43 @@ pub enum ReturnValue {
     Diagnostics(u32),
 }
 
-pub fn run(filename: String, code: String) -> ReturnValue {
-    run_with_functions(filename, code, [])
+pub struct ReboConfig {
+    stdlib: Stdlib,
+    functions: Vec<(&'static str, ExternalFunction)>,
+    interrupt_interval: u32,
+    interrupt_function: fn(&mut VmContext) -> Result<(), ExecError>,
 }
-pub fn run_with_functions(filename: String, code: String, functions: impl IntoIterator<Item = (&'static str, ExternalFunction)>) -> ReturnValue {
+impl ReboConfig {
+    pub fn new() -> ReboConfig {
+        ReboConfig {
+            stdlib: Stdlib::all(),
+            functions: vec![],
+            interrupt_interval: 10000,
+            interrupt_function: |_| Ok(()),
+        }
+    }
+    pub fn stdlib(mut self, stdlib: Stdlib) -> Self {
+        self.stdlib = stdlib;
+        self
+    }
+    pub fn add_function(mut self, name: &'static str, function: ExternalFunction) -> Self {
+        self.functions.push((name, function));
+        self
+    }
+    pub fn interrupt_interval(mut self, interval: u32) -> Self {
+        self.interrupt_interval = interval;
+        self
+    }
+    pub fn interrupt_function(mut self, function: fn(&mut VmContext) -> Result<(), ExecError>) -> Self {
+        self.interrupt_function = function;
+        self
+    }
+}
+
+pub fn run(filename: String, code: String) -> ReturnValue {
+    run_with_config(filename, code, ReboConfig::new())
+}
+pub fn run_with_config(filename: String, code: String, config: ReboConfig) -> ReturnValue {
     let diagnostics = Diagnostics::new();
     // register file 0 for external sources
     let external = diagnostics.add_file("external".to_string(), EXTERNAL_SOURCE.to_string());
@@ -54,10 +88,10 @@ pub fn run_with_functions(filename: String, code: String, functions: impl IntoIt
     // stdlib
     let arena = Arena::new();
     let mut meta_info = MetaInfo::new();
-    stdlib::add_to_meta_info(&diagnostics, &arena, &mut meta_info);
+    stdlib::add_to_meta_info(config.stdlib, &diagnostics, &arena, &mut meta_info);
 
     // add external functions defined by library user
-    for (name, function) in functions {
+    for (name, function) in config.functions {
         meta_info.add_external_function(&diagnostics, name, function);
     }
 
@@ -99,7 +133,7 @@ pub fn run_with_functions(filename: String, code: String, functions: impl IntoIt
 
     // run
     let time = Instant::now();
-    let vm = Vm::new(&diagnostics, meta_info);
+    let vm = Vm::new(&diagnostics, meta_info, config.interrupt_interval, config.interrupt_function);
     let result = vm.run(&exprs);
     info!("Execution took {}μs", time.elapsed().as_micros());
     println!("RESULT: {:?}", result);

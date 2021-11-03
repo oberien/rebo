@@ -9,6 +9,7 @@ use std::borrow::Cow;
 use parking_lot::ReentrantMutex;
 use std::sync::Arc;
 use std::cell::RefCell;
+use crate::ExecError;
 
 pub fn add_list<'a, 'i>(diagnostics: &'i Diagnostics, arena: &'a Arena<Expr<'a, 'i>>, meta_info: &mut MetaInfo<'a, 'i>, option_t: Span) -> Span {
     let code = "struct List<T> {}".to_string();
@@ -66,22 +67,22 @@ pub fn add_list<'a, 'i>(diagnostics: &'i Diagnostics, arena: &'a Arena<Expr<'a, 
     list_t
 }
 
-fn list_new(_expr_span: Span, _vm: &mut VmContext, _values: Vec<Value>) -> Value {
-    Value::List(ListArc { list: Arc::new(ReentrantMutex::new(RefCell::new(Vec::new()))) })
+fn list_new(_expr_span: Span, _vm: &mut VmContext, _values: Vec<Value>) -> Result<Value, ExecError> {
+    Ok(Value::List(ListArc { list: Arc::new(ReentrantMutex::new(RefCell::new(Vec::new()))) }))
 }
 
-fn list_push(_expr_span: Span, _vm: &mut VmContext, mut values: Vec<Value>) -> Value {
+fn list_push(_expr_span: Span, _vm: &mut VmContext, mut values: Vec<Value>) -> Result<Value, ExecError> {
     let list = values.remove(0).expect_list("List::push called with non-list self argument");
     let value = values.remove(0);
     let list = list.list.lock();
     list.borrow_mut().push(value);
-    Value::Unit
+    Ok(Value::Unit)
 }
-fn list_of(_expr_span: Span, _vm: &mut VmContext, values: Vec<Value>) -> Value {
-    Value::List(ListArc { list: Arc::new(ReentrantMutex::new(RefCell::new(values))) })
+fn list_of(_expr_span: Span, _vm: &mut VmContext, values: Vec<Value>) -> Result<Value, ExecError> {
+    Ok(Value::List(ListArc { list: Arc::new(ReentrantMutex::new(RefCell::new(values))) }))
 }
 
-fn list_get(_expr_span: Span, _vm: &mut VmContext, mut values: Vec<Value>) -> Value {
+fn list_get(_expr_span: Span, _vm: &mut VmContext, mut values: Vec<Value>) -> Result<Value, ExecError> {
     let list = values.remove(0).expect_list("List::get called with non-list self argument");
     let index = values.remove(0).expect_int("List::get called with non-int index");
     let list = list.list.lock();
@@ -89,10 +90,10 @@ fn list_get(_expr_span: Span, _vm: &mut VmContext, mut values: Vec<Value>) -> Va
         Some(v) => ("Some".to_string(), vec![v.clone()]),
         None => ("None".to_string(), vec![]),
     };
-    Value::Enum(EnumArc { e: Arc::new(ReentrantMutex::new(RefCell::new(Enum {
+    Ok(Value::Enum(EnumArc { e: Arc::new(ReentrantMutex::new(RefCell::new(Enum {
         name: "Option".to_string(),
         variant,
         fields,
-    })))})
+    })))}))
 }
 

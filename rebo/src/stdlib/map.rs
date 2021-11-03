@@ -10,6 +10,7 @@ use parking_lot::ReentrantMutex;
 use std::sync::Arc;
 use std::cell::RefCell;
 use std::collections::BTreeMap;
+use crate::ExecError;
 
 pub fn add_map<'a, 'i>(diagnostics: &'i Diagnostics, arena: &'a Arena<Expr<'a, 'i>>, meta_info: &mut MetaInfo<'a, 'i>, option_t: Span, list_t: Span) {
     let code = "struct Map<K, V> {}".to_string();
@@ -93,11 +94,11 @@ pub fn add_map<'a, 'i>(diagnostics: &'i Diagnostics, arena: &'a Arena<Expr<'a, '
     });
 }
 
-fn map_new(_expr_span: Span, _vm: &mut VmContext, _values: Vec<Value>) -> Value {
-    Value::Map(MapArc { map: Arc::new(ReentrantMutex::new(RefCell::new(BTreeMap::new()))) })
+fn map_new(_expr_span: Span, _vm: &mut VmContext, _values: Vec<Value>) -> Result<Value, ExecError> {
+    Ok(Value::Map(MapArc { map: Arc::new(ReentrantMutex::new(RefCell::new(BTreeMap::new()))) }))
 }
 
-fn map_insert(_expr_span: Span, _vm: &mut VmContext, mut values: Vec<Value>) -> Value {
+fn map_insert(_expr_span: Span, _vm: &mut VmContext, mut values: Vec<Value>) -> Result<Value, ExecError> {
     let map = values.remove(0).expect_map("Map::insert called with non-map self argument");
     let key = values.remove(0);
     let value = values.remove(0);
@@ -106,14 +107,14 @@ fn map_insert(_expr_span: Span, _vm: &mut VmContext, mut values: Vec<Value>) -> 
         Some(v) => ("Some".to_string(), vec![v.clone()]),
         None => ("None".to_string(), vec![]),
     };
-    Value::Enum(EnumArc { e: Arc::new(ReentrantMutex::new(RefCell::new(Enum {
+    Ok(Value::Enum(EnumArc { e: Arc::new(ReentrantMutex::new(RefCell::new(Enum {
         name: "Option".to_string(),
         variant,
         fields,
-    })))})
+    })))}))
 }
 
-fn map_get(_expr_span: Span, _vm: &mut VmContext, mut values: Vec<Value>) -> Value {
+fn map_get(_expr_span: Span, _vm: &mut VmContext, mut values: Vec<Value>) -> Result<Value, ExecError> {
     let map = values.remove(0).expect_map("Map::get called with non-map self argument");
     let key = values.remove(0);
     let map = map.map.lock();
@@ -121,14 +122,14 @@ fn map_get(_expr_span: Span, _vm: &mut VmContext, mut values: Vec<Value>) -> Val
         Some(v) => ("Some".to_string(), vec![v.clone()]),
         None => ("None".to_string(), vec![]),
     };
-    Value::Enum(EnumArc { e: Arc::new(ReentrantMutex::new(RefCell::new(Enum {
+    Ok(Value::Enum(EnumArc { e: Arc::new(ReentrantMutex::new(RefCell::new(Enum {
         name: "Option".to_string(),
         variant,
         fields,
-    })))})
+    })))}))
 }
 
-fn map_remove(_expr_span: Span, _vm: &mut VmContext, mut values: Vec<Value>) -> Value {
+fn map_remove(_expr_span: Span, _vm: &mut VmContext, mut values: Vec<Value>) -> Result<Value, ExecError> {
     let map = values.remove(0).expect_map("Map::remove called with non-map self argument");
     let key = values.remove(0);
     let map = map.map.lock();
@@ -136,23 +137,23 @@ fn map_remove(_expr_span: Span, _vm: &mut VmContext, mut values: Vec<Value>) -> 
         Some(v) => ("Some".to_string(), vec![v]),
         None => ("None".to_string(), vec![]),
     };
-    Value::Enum(EnumArc { e: Arc::new(ReentrantMutex::new(RefCell::new(Enum {
+    Ok(Value::Enum(EnumArc { e: Arc::new(ReentrantMutex::new(RefCell::new(Enum {
         name: "Option".to_string(),
         variant,
         fields,
-    })))})
+    })))}))
 }
 
-fn map_keys(_expr_span: Span, _vm: &mut VmContext, mut values: Vec<Value>) -> Value {
+fn map_keys(_expr_span: Span, _vm: &mut VmContext, mut values: Vec<Value>) -> Result<Value, ExecError> {
     let map = values.remove(0).expect_map("Map::keys called with non-map self argument");
     let map = map.map.lock();
     let keys = map.borrow().keys().cloned().collect();
-    Value::List(ListArc { list: Arc::new(ReentrantMutex::new(RefCell::new(keys))) })
+    Ok(Value::List(ListArc { list: Arc::new(ReentrantMutex::new(RefCell::new(keys))) }))
 }
 
-fn map_values(_expr_span: Span, _vm: &mut VmContext, mut values: Vec<Value>) -> Value {
+fn map_values(_expr_span: Span, _vm: &mut VmContext, mut values: Vec<Value>) -> Result<Value, ExecError> {
     let map = values.remove(0).expect_map("Map::values called with non-map self argument");
     let map = map.map.lock();
     let values = map.borrow().values().cloned().collect();
-    Value::List(ListArc { list: Arc::new(ReentrantMutex::new(RefCell::new(values))) })
+    Ok(Value::List(ListArc { list: Arc::new(ReentrantMutex::new(RefCell::new(values))) }))
 }

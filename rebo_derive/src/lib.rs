@@ -42,7 +42,7 @@ pub fn function(_args: TokenStream, input: TokenStream) -> TokenStream {
                 if !attrs.is_empty() {
                     abort!(attrs[0], "argument attributes are not supported for static rebo functions");
                 }
-                if let Pat::Ident(PatIdent { mutability, .. }) = &*pat {
+                if let Pat::Ident(PatIdent { .. }) = &*pat {
                 } else {
                     abort!(pat, "arguments must be identifiers for static rebo functions");
                 }
@@ -62,11 +62,11 @@ pub fn function(_args: TokenStream, input: TokenStream) -> TokenStream {
     }
 
     let res = quote::quote! {
-        #vis #constness #asyncness #unsafety #abi fn #fn_ident #generics (_expr_span: ::rebo::Span, vm: &mut ::rebo::VmContext, args: ::std::vec::Vec<::rebo::Value>) -> ::rebo::Value {
+        #vis #constness #asyncness #unsafety #abi fn #fn_ident #generics (_expr_span: ::rebo::Span, vm: &mut ::rebo::VmContext, args: ::std::vec::Vec<::rebo::Value>) -> ::std::result::Result<::rebo::Value, ::rebo::ExecError> {
             let scopes = vm.scopes();
             let (#(#input_pats,)*): (#(#input_types,)*) = ::rebo::FromValues::from_values(args.into_iter());
             let res: #output = #block;
-            ::rebo::IntoValue::into_value(res)
+            Ok(::rebo::IntoValue::into_value(res))
         }
 
         #[allow(non_upper_case_globals)]

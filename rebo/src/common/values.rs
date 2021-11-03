@@ -1,6 +1,6 @@
 use std::fmt;
 
-use crate::vm::VmContext;
+use crate::vm::{ExecError, VmContext};
 use crate::parser::BindingId;
 use std::sync::Arc;
 use std::fmt::{Display, Formatter, Debug};
@@ -253,7 +253,7 @@ pub struct ExternalFunction {
     pub imp: RustFunction,
 }
 
-pub type RustFunction = fn(expr_span: Span, &mut VmContext, Vec<Value>) -> Value;
+pub type RustFunction = fn(expr_span: Span, &mut VmContext, Vec<Value>) -> Result<Value, ExecError>;
 #[derive(Clone)]
 pub enum Function {
     Rust(RustFunction),
