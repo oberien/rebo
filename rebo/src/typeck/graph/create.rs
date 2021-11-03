@@ -1,5 +1,5 @@
 use crate::typeck::graph::{Graph, Node, PossibleTypes, Constraint};
-use crate::parser::{Expr, Spanned, ExprFormatString, ExprFormatStringPart, ExprBind, ExprPattern, ExprPatternTyped, ExprPatternUntyped, ExprAssign, ExprAssignLhs, ExprVariable, ExprFieldAccess, ExprBoolNot, ExprAdd, ExprSub, ExprMul, ExprDiv, ExprBoolAnd, ExprBoolOr, ExprLessThan, ExprLessEquals, ExprEquals, ExprNotEquals, ExprGreaterEquals, ExprGreaterThan, ExprBlock, BlockBody, ExprParenthesized, ExprMatch, ExprMatchPattern, ExprWhile, ExprFunctionCall, ExprFunctionDefinition, ExprStructInitialization, ExprImplBlock, ExprType, ExprGenerics, ExprAccess, FieldOrMethod};
+use crate::parser::{Expr, Spanned, ExprFormatString, ExprFormatStringPart, ExprBind, ExprPattern, ExprPatternTyped, ExprPatternUntyped, ExprAssign, ExprAssignLhs, ExprVariable, ExprFieldAccess, ExprBoolNot, ExprAdd, ExprSub, ExprMul, ExprDiv, ExprBoolAnd, ExprBoolOr, ExprLessThan, ExprLessEquals, ExprEquals, ExprNotEquals, ExprGreaterEquals, ExprGreaterThan, ExprBlock, BlockBody, ExprParenthesized, ExprMatch, ExprMatchPattern, ExprWhile, ExprFunctionCall, ExprFunctionDefinition, ExprStructInitialization, ExprImplBlock, ExprType, ExprGenerics, ExprAccess, FieldOrMethod, ExprFor};
 use crate::common::{MetaInfo, UserType, Function};
 use itertools::Either;
 use crate::typeck::types::{StructType, EnumType, EnumTypeVariant, SpecificType, FunctionType, Type, ResolvableSpecificType};
@@ -510,6 +510,21 @@ impl<'i> Graph<'i> {
                 self.add_reduce_constraint(node, cond_node, vec![ResolvableSpecificType::Bool]);
                 let block_node = self.visit_block(diagnostics, meta_info, function_generics, block);
                 self.add_eq_constraint(node, block_node);
+                self.add_reduce_constraint(node, node, vec![ResolvableSpecificType::Unit]);
+            }
+            Expr::For(ExprFor { binding, expr, block, .. }) => {
+                let binding_node = Node::type_var(binding.ident.span);
+                self.add_node(binding_node);
+                let expr_node = self.visit_expr(diagnostics, meta_info, function_generics, expr);
+                let block_node = self.visit_block(diagnostics, meta_info, function_generics, block);
+                let list_t = meta_info.user_types["List"].generics().unwrap().generics.as_ref().unwrap().iter().next().unwrap().def_ident.span;
+
+                let synthetic = Node::synthetic(list_t);
+                self.add_node(synthetic);
+                self.add_reduce_constraint(node, expr_node, vec![ResolvableSpecificType::Struct("List".to_string(), vec![synthetic])]);
+                self.add_eq_constraint(binding_node, synthetic);
+                self.add_eq_constraint(node, block_node);
+                self.add_reduce_constraint(node, node, vec![ResolvableSpecificType::Unit]);
             }
             Expr::FunctionCall(ExprFunctionCall { name, args, .. }) => {
                 let fun = match meta_info.function_types.get(name.ident) {
@@ -532,9 +547,6 @@ impl<'i> Graph<'i> {
                     Either::Right(fun.args.iter())
                 };
                 for (passed_node, expected) in passed_args.into_iter().zip(expected_args) {
-                    if name.ident == "List::of" {
-                        dbg!(expected);
-                    }
                     match expected {
                         Type::Top => (),
                         Type::Bottom => unreachable!("function argument type is Bottom"),

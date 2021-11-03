@@ -88,6 +88,8 @@ pub fn try_lex_token<'i>(diagnostics: &Diagnostics, file: FileId, s: &'i str, in
         "match" => Match, TokenMatch;
         "if" => If, TokenIf;
         "while" => While, TokenWhile;
+        "for" => For, TokenFor;
+        "in" => In, TokenIn;
         "else" => Else, TokenElse;
         "string" => StringType, TokenStringType;
         "int" => IntType, TokenIntType;

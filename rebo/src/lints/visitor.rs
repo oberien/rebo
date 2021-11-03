@@ -1,4 +1,4 @@
-use crate::parser::{ExprLiteral, ExprFormatString, ExprBind, ExprAssign, ExprBoolNot, ExprAdd, ExprSub, ExprMul, ExprDiv, ExprBoolAnd, ExprBoolOr, ExprLessThan, ExprLessEquals, ExprEquals, ExprNotEquals, ExprGreaterEquals, ExprGreaterThan, ExprBlock, ExprVariable, ExprParenthesized, ExprIfElse, ExprMatch, ExprWhile, ExprFunctionCall, ExprFunctionDefinition, ExprStructDefinition, ExprStructInitialization, ExprImplBlock, Expr, ExprFormatStringPart, ExprEnumDefinition, ExprEnumInitialization, ExprAccess, FieldOrMethod};
+use crate::parser::{ExprLiteral, ExprFormatString, ExprBind, ExprAssign, ExprBoolNot, ExprAdd, ExprSub, ExprMul, ExprDiv, ExprBoolAnd, ExprBoolOr, ExprLessThan, ExprLessEquals, ExprEquals, ExprNotEquals, ExprGreaterEquals, ExprGreaterThan, ExprBlock, ExprVariable, ExprParenthesized, ExprIfElse, ExprMatch, ExprWhile, ExprFunctionCall, ExprFunctionDefinition, ExprStructDefinition, ExprStructInitialization, ExprImplBlock, Expr, ExprFormatStringPart, ExprEnumDefinition, ExprEnumInitialization, ExprAccess, FieldOrMethod, ExprFor};
 use diagnostic::Diagnostics;
 use crate::common::MetaInfo;
 
@@ -33,6 +33,7 @@ pub trait Visitor {
     fn visit_if_else(&self, _: &Diagnostics, _: &MetaInfo, _: &ExprIfElse) {}
     fn visit_match(&self, _: &Diagnostics, _: &MetaInfo, _: &ExprMatch) {}
     fn visit_while(&self, _: &Diagnostics, _: &MetaInfo, _: &ExprWhile) {}
+    fn visit_for(&self, _: &Diagnostics, _: &MetaInfo, _: &ExprFor) {}
     fn visit_function_call(&self, _: &Diagnostics, _: &MetaInfo, _: &ExprFunctionCall) {}
     fn visit_function_definition(&self, _: &Diagnostics, _: &MetaInfo, _: &ExprFunctionDefinition) {}
     fn visit_struct_definition(&self, _: &Diagnostics, _: &MetaInfo, _: &ExprStructDefinition) {}
@@ -197,6 +198,11 @@ impl<'a, 'b, 'i, 'v> VisitorDriver<'a, 'b, 'i, 'v> {
                 visit!(self, visit_while, wh);
                 self.visit_expr(wh.condition);
                 self.visit_exprs(&wh.block.body.exprs);
+            }
+            Expr::For(fo) => {
+                visit!(self, visit_for, fo);
+                self.visit_expr(fo.expr);
+                self.visit_exprs(&fo.block.body.exprs);
             }
             Expr::FunctionCall(fc) => {
                 visit!(self, visit_function_call, fc);

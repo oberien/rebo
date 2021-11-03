@@ -110,6 +110,8 @@ gen_tokens! {
     If, TokenIf, "if", {}, (fmt = "if "), (Copy, Eq, Hash);
     Else, TokenElse, "else", {}, (fmt = "else "), (Copy, Eq, Hash);
     While, TokenWhile, "while", {}, (fmt = "while "), (Copy, Eq, Hash);
+    For, TokenFor, "for", {}, (fmt = "for "), (Copy, Eq, Hash);
+    In, TokenIn, "in", {}, (fmt = "in "), (Copy, Eq, Hash);
     // types
     StringType, TokenStringType, "string", {}, (fmt = "string "), (Copy, Eq, Hash);
     IntType, TokenIntType, "int", {}, (fmt = "int "), (Copy, Eq, Hash);

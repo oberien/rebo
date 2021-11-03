@@ -265,6 +265,8 @@ impl_for_tokens! {
     If, TokenIf;
     Else, TokenElse;
     While, TokenWhile;
+    For, TokenFor;
+    In, TokenIn;
     // types
     StringType, TokenStringType;
     IntType, TokenIntType;

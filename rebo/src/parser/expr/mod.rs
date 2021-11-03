@@ -6,7 +6,7 @@ use std::fmt::{self, Write, Display, Formatter, Debug};
 use derive_more::Display;
 use crate::parser::scope::BindingId;
 use crate::util::PadFmt;
-use crate::lexer::{TokenOpenParen, TokenCloseParen, TokenIdent, TokenInteger, TokenFloat, TokenBool, TokenDqString, TokenType, TokenStringType, TokenIntType, TokenFloatType, TokenBoolType, Token, TokenLet, TokenColon, TokenMut, TokenAssign, TokenOpenCurly, TokenCloseCurly, TokenComma, TokenArrow, TokenFn, TokenBang, TokenPlus, TokenMinus, TokenStar, TokenSlash, TokenDoubleAmp, TokenDoublePipe, TokenLessThan, TokenLessEquals, TokenEquals, TokenNotEquals, TokenGreaterEquals, TokenGreaterThan, TokenStruct, TokenDot, TokenIf, TokenElse, TokenWhile, TokenFormatString, TokenFormatStringPart, Lexer, TokenMatch, TokenFatArrow, TokenEnum, TokenDoubleColon, TokenImpl};
+use crate::lexer::{TokenOpenParen, TokenCloseParen, TokenIdent, TokenInteger, TokenFloat, TokenBool, TokenDqString, TokenType, TokenStringType, TokenIntType, TokenFloatType, TokenBoolType, Token, TokenLet, TokenColon, TokenMut, TokenAssign, TokenOpenCurly, TokenCloseCurly, TokenComma, TokenArrow, TokenFn, TokenBang, TokenPlus, TokenMinus, TokenStar, TokenSlash, TokenDoubleAmp, TokenDoublePipe, TokenLessThan, TokenLessEquals, TokenEquals, TokenNotEquals, TokenGreaterEquals, TokenGreaterThan, TokenStruct, TokenDot, TokenIf, TokenElse, TokenWhile, TokenFormatString, TokenFormatStringPart, Lexer, TokenMatch, TokenFatArrow, TokenEnum, TokenDoubleColon, TokenImpl, TokenFor, TokenIn};
 use crate::parser::{Parse, InternalError, Parser, Expected};
 use crate::error_codes::ErrorCode;
 use std::borrow::Cow;
@@ -290,6 +290,8 @@ pub enum Expr<'a, 'i> {
     Match(ExprMatch<'a, 'i>),
     /// while expr {...}
     While(ExprWhile<'a, 'i>),
+    /// for binding in expr {...}
+    For(ExprFor<'a, 'i>),
     /// (ident::)*ident(expr, expr, ...)
     FunctionCall(ExprFunctionCall<'a, 'i>),
     /// fn ident(ident: typ, ident: typ, ...) -> typ { expr... }
@@ -377,6 +379,7 @@ impl<'a, 'i> Expr<'a, 'i> {
             |parser: &mut Parser<'a, '_, 'i>, depth| Ok(parser.arena.alloc(Expr::IfElse(ExprIfElse::parse(parser, depth)?))),
             |parser: &mut Parser<'a, '_, 'i>, depth| Ok(parser.arena.alloc(Expr::Match(ExprMatch::parse(parser, depth)?))),
             |parser: &mut Parser<'a, '_, 'i>, depth| Ok(parser.arena.alloc(Expr::While(ExprWhile::parse(parser, depth)?))),
+            |parser: &mut Parser<'a, '_, 'i>, depth| Ok(parser.arena.alloc(Expr::For(ExprFor::parse(parser, depth)?))),
             |parser: &mut Parser<'a, '_, 'i>, depth| Ok(parser.arena.alloc(Expr::Parenthesized(ExprParenthesized::parse(parser, depth)?))),
             |parser: &mut Parser<'a, '_, 'i>, depth| Ok(parser.arena.alloc(Expr::Block(ExprBlock::parse(parser, depth)?))),
             |parser: &mut Parser<'a, '_, 'i>, depth| Ok(parser.arena.alloc(Expr::BoolNot(ExprBoolNot::parse(parser, depth)?))),
@@ -1311,6 +1314,40 @@ impl<'a, 'i> Spanned for ExprWhile<'a, 'i> {
 impl<'a, 'i> Display for ExprWhile<'a, 'i> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "while {} {}", self.condition, self.block)
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct ExprFor<'a, 'i> {
+    pub for_token: TokenFor,
+    pub binding: Binding<'i>,
+    pub in_token: TokenIn,
+    pub expr: &'a Expr<'a, 'i>,
+    pub block: ExprBlock<'a, 'i>,
+}
+impl<'a, 'i> Parse<'a, 'i> for ExprFor<'a, 'i> {
+    fn parse_marked(parser: &mut Parser<'a, '_, 'i>, depth: Depth) -> Result<Self, InternalError> {
+        let for_token = parser.parse(depth.next())?;
+        let binding = Binding::parse_new(parser, depth.next())?;
+        let in_token = parser.parse(depth.next())?;
+        let expr = Expr::try_parse_until_including(parser, ParseUntil::All, depth.next())?;
+        Ok(ExprFor {
+            for_token,
+            binding,
+            in_token,
+            expr,
+            block: parser.parse(depth.next())?,
+        })
+    }
+}
+impl<'a, 'i> Spanned for ExprFor<'a, 'i> {
+    fn span(&self) -> Span {
+        Span::new(self.for_token.span.file, self.for_token.span.start, self.block.span().end)
+    }
+}
+impl<'a, 'i> Display for ExprFor<'a, 'i> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "for {} in {} {}", self.binding, self.expr, self.block)
     }
 }
 
