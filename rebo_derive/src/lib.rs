@@ -33,7 +33,6 @@ pub fn function(_args: TokenStream, input: TokenStream) -> TokenStream {
     let workaround_ident = format!("{}_workaround_issue_86672", ident);
     let workaround_ident = Ident::new(&workaround_ident, ident.span());
     let mut input_pats = Vec::new();
-    let mut input_muts = Vec::new();
     let mut input_types = Vec::new();
 
     for arg in inputs {
@@ -44,10 +43,6 @@ pub fn function(_args: TokenStream, input: TokenStream) -> TokenStream {
                     abort!(attrs[0], "argument attributes are not supported for static rebo functions");
                 }
                 if let Pat::Ident(PatIdent { mutability, .. }) = &*pat {
-                    match mutability {
-                        Some(_) => input_muts.push(quote::quote!(::rebo::common::Mutability::Mutable)),
-                        None => input_muts.push(quote::quote!(::rebo::common::Mutability::Immutable)),
-                    }
                 } else {
                     abort!(pat, "arguments must be identifiers for static rebo functions");
                 }
@@ -67,22 +62,22 @@ pub fn function(_args: TokenStream, input: TokenStream) -> TokenStream {
     }
 
     let res = quote::quote! {
-        #vis #constness #asyncness #unsafety #abi fn #fn_ident #generics (_expr_span: ::rebo::Span, vm: &mut ::rebo::vm::VmContext, args: ::std::vec::Vec<::rebo::common::Value>) -> ::rebo::common::Value {
+        #vis #constness #asyncness #unsafety #abi fn #fn_ident #generics (_expr_span: ::rebo::Span, vm: &mut ::rebo::VmContext, args: ::std::vec::Vec<::rebo::Value>) -> ::rebo::Value {
             let scopes = vm.scopes();
-            let (#(#input_pats,)*): (#(#input_types,)*) = ::rebo::common::FromValues::from_values(args.into_iter());
+            let (#(#input_pats,)*): (#(#input_types,)*) = ::rebo::FromValues::from_values(args.into_iter());
             let res: #output = #block;
-            ::rebo::common::IntoValue::into_value(res)
+            ::rebo::IntoValue::into_value(res)
         }
 
         #[allow(non_upper_case_globals)]
-        const #workaround_ident: &'static [::rebo::typeck::types::Type] =
-            &[#(::rebo::typeck::types::Type::Specific(<#input_types as ::rebo::common::FromValue>::TYPE)),*];
+        const #workaround_ident: &'static [::rebo::Type] =
+            &[#(::rebo::Type::Specific(<#input_types as ::rebo::FromValue>::TYPE)),*];
         #[allow(non_upper_case_globals)]
-        const #ident: ::rebo::common::ExternalFunction = ::rebo::common::ExternalFunction {
-            typ: ::rebo::typeck::types::FunctionType {
+        const #ident: ::rebo::ExternalFunction = ::rebo::ExternalFunction {
+            typ: ::rebo::FunctionType {
                 generics: ::std::borrow::Cow::Borrowed(&[]),
                 args: ::std::borrow::Cow::Borrowed(#workaround_ident),
-                ret: ::rebo::typeck::types::Type::Specific(<#output as ::rebo::common::FromValue>::TYPE),
+                ret: ::rebo::Type::Specific(<#output as ::rebo::FromValue>::TYPE),
             },
             imp: #fn_ident,
         };

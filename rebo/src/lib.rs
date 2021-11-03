@@ -9,10 +9,7 @@ pub use diagnostic::{Diagnostics, Span};
 use itertools::Itertools;
 use typed_arena::Arena;
 
-pub use rebo_derive::function;
-
-// use crate::typeck::Typechecker;
-use crate::common::{ExternalFunction, MetaInfo};
+use crate::common::MetaInfo;
 use crate::lexer::Lexer;
 use crate::parser::{Ast, Parser};
 use crate::vm::Vm;
@@ -20,7 +17,6 @@ use crate::vm::Vm;
 mod error_codes;
 mod lexer;
 mod parser;
-// mod typeck;
 mod typeck;
 mod lints;
 mod vm;
@@ -29,6 +25,11 @@ mod util;
 mod common;
 #[cfg(test)]
 mod tests;
+
+pub use rebo_derive::function;
+pub use vm::VmContext;
+pub use common::{Value, FromValue, FromValues, IntoValue, ExternalFunction};
+pub use typeck::types::{Type, FunctionType};
 
 const EXTERNAL_SOURCE: &str = "defined externally";
 lazy_static::lazy_static! {
