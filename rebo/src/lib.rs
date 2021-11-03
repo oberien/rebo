@@ -12,7 +12,7 @@ use typed_arena::Arena;
 pub use rebo_derive::function;
 
 // use crate::typeck::Typechecker;
-use crate::common::MetaInfo;
+use crate::common::{ExternalFunction, MetaInfo};
 use crate::lexer::Lexer;
 use crate::parser::{Ast, Parser};
 use crate::vm::Vm;
@@ -42,6 +42,9 @@ pub enum ReturnValue {
 }
 
 pub fn run(filename: String, code: String) -> ReturnValue {
+    run_with_functions(filename, code, [])
+}
+pub fn run_with_functions(filename: String, code: String, functions: impl IntoIterator<Item = (&'static str, ExternalFunction)>) -> ReturnValue {
     let diagnostics = Diagnostics::new();
     // register file 0 for external sources
     let external = diagnostics.add_file("external".to_string(), EXTERNAL_SOURCE.to_string());
@@ -51,6 +54,11 @@ pub fn run(filename: String, code: String) -> ReturnValue {
     let arena = Arena::new();
     let mut meta_info = MetaInfo::new();
     stdlib::add_to_meta_info(&diagnostics, &arena, &mut meta_info);
+
+    // add external functions defined by library user
+    for (name, function) in functions {
+        meta_info.add_external_function(&diagnostics, name, function);
+    }
 
     // lex
     let (file, _code) = diagnostics.add_file(filename, code);
