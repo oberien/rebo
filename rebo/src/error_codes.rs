@@ -60,6 +60,7 @@ pub enum ErrorCode {
     MissingGeneric,
     TooManyGenerics,
     ListStructInitialization,
+    ErrorReadingIncludedFile,
 
     Panic,
     AssertionFailed,
@@ -129,6 +130,7 @@ impl diagnostic::ErrorCode for ErrorCode {
             MissingGeneric => "0059",
             TooManyGenerics => "0060",
             ListStructInitialization => "0061",
+            ErrorReadingIncludedFile => "0062",
 
             Panic => "9999",
             AssertionFailed => "9998",
@@ -197,6 +199,7 @@ impl diagnostic::ErrorCode for ErrorCode {
             MissingGeneric => "missing generic",
             TooManyGenerics => "too many generics",
             ListStructInitialization => "`List` not allowed in struct initializer",
+            ErrorReadingIncludedFile => "error reading included file",
 
             Panic => "explicit panic",
             AssertionFailed => "assertion failed",

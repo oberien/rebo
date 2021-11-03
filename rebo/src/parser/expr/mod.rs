@@ -6,7 +6,7 @@ use std::fmt::{self, Write, Display, Formatter, Debug};
 use derive_more::Display;
 use crate::parser::scope::BindingId;
 use crate::util::PadFmt;
-use crate::lexer::{TokenOpenParen, TokenCloseParen, TokenIdent, TokenInteger, TokenFloat, TokenBool, TokenDqString, TokenType, TokenStringType, TokenIntType, TokenFloatType, TokenBoolType, Token, TokenLet, TokenColon, TokenMut, TokenAssign, TokenOpenCurly, TokenCloseCurly, TokenComma, TokenArrow, TokenFn, TokenBang, TokenPlus, TokenMinus, TokenStar, TokenSlash, TokenDoubleAmp, TokenDoublePipe, TokenLessThan, TokenLessEquals, TokenEquals, TokenNotEquals, TokenGreaterEquals, TokenGreaterThan, TokenStruct, TokenDot, TokenIf, TokenElse, TokenWhile, TokenFormatString, TokenFormatStringPart, Lexer, TokenMatch, TokenFatArrow, TokenEnum, TokenDoubleColon, TokenImpl, TokenFor, TokenIn, TokenStatic};
+use crate::lexer::{TokenOpenParen, TokenCloseParen, TokenIdent, TokenInteger, TokenFloat, TokenBool, TokenDqString, TokenType, TokenStringType, TokenIntType, TokenFloatType, TokenBoolType, Token, TokenLet, TokenColon, TokenMut, TokenAssign, TokenOpenCurly, TokenCloseCurly, TokenComma, TokenArrow, TokenFn, TokenBang, TokenPlus, TokenMinus, TokenStar, TokenSlash, TokenDoubleAmp, TokenDoublePipe, TokenLessThan, TokenLessEquals, TokenEquals, TokenNotEquals, TokenGreaterEquals, TokenGreaterThan, TokenStruct, TokenDot, TokenIf, TokenElse, TokenWhile, TokenFormatString, TokenFormatStringPart, Lexer, TokenMatch, TokenFatArrow, TokenEnum, TokenDoubleColon, TokenImpl, TokenFor, TokenIn, TokenStatic, TokenInclude};
 use crate::parser::{Parse, InternalError, Parser, Expected};
 use crate::error_codes::ErrorCode;
 use std::borrow::Cow;
@@ -376,6 +376,45 @@ impl<'a, 'i> Expr<'a, 'i> {
                     _ => unreachable!("we just created you"),
                 }
                 Ok(impl_block)
+            },
+            |parser: &mut Parser<'a, '_, 'i>, depth| {
+                let include = ExprInclude::parse(parser, depth)?;
+                dbg!(&include);
+
+                // if parser.is_in_first_pass {
+                //     // ignore the include in the first pass
+                //     // just return anything to consume the tokens
+                //     return Ok(&*parser.arena.alloc(Expr::Literal(ExprLiteral::Unit(ExprUnit {
+                //         open: TokenOpenParen { span: Span::new(include.include_token.span.file, include.include_token.span.start, include.file.span.end) },
+                //         close: TokenCloseParen { span: Span::new(include.include_token.span.file, include.include_token.span.start, include.file.span.end) },
+                //     }))));
+                // }
+                //
+                let code = match ::std::fs::read_to_string(&include.file.string) {
+                    Ok(code) => code,
+                    Err(e) => {
+                        parser.diagnostics.error(ErrorCode::ErrorReadingIncludedFile)
+                            .with_error_label(include.span(), e.to_string())
+                            .emit();
+                        return Err(InternalError::Backtrack(include.span(), Cow::Borrowed(&[])));
+                    }
+                };
+                let (file, _) = parser.diagnostics.add_file(include.file.string.clone(), code);
+                let lexer = Lexer::new(parser.diagnostics, file);
+                let old_lexer = ::std::mem::replace(&mut parser.lexer, lexer);
+                let body_res = parser.parse_file_content();
+                parser.lexer = old_lexer;
+                let body = match body_res {
+                    Ok(body) => body,
+                    Err(_) => return Err(InternalError::Backtrack(include.span(), Cow::Borrowed(&[]))),
+                };
+                let block = &*parser.arena.alloc(Expr::Block(ExprBlock {
+                    open: TokenOpenCurly { span: Span::new(include.include_token.span.file, include.include_token.span.start, include.include_token.span.start) },
+                    body,
+                    close: TokenCloseCurly { span: Span::new(include.file.span.file, include.file.span.end, include.file.span.end) },
+                }));
+
+                Ok(block)
             },
             |parser: &mut Parser<'a, '_, 'i>, depth| Ok(parser.arena.alloc(Expr::StructInitialization(ExprStructInitialization::parse(parser, depth)?))),
             |parser: &mut Parser<'a, '_, 'i>, depth| Ok(parser.arena.alloc(Expr::IfElse(ExprIfElse::parse(parser, depth)?))),
@@ -1839,5 +1878,29 @@ impl<'a, 'i> Display for ExprImplBlock<'a, 'i> {
             writeln!(padded, "{}", function)?;
         }
         writeln!(f, "}}")
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct ExprInclude {
+    pub include_token: TokenInclude,
+    pub file: TokenDqString,
+}
+impl<'a, 'i> Parse<'a, 'i> for ExprInclude {
+    fn parse_marked(parser: &mut Parser<'a, '_, 'i>, depth: Depth) -> Result<Self, InternalError> {
+        Ok(ExprInclude {
+            include_token: parser.parse(depth.next())?,
+            file: parser.parse(depth.next())?,
+        })
+    }
+}
+impl Spanned for ExprInclude {
+    fn span(&self) -> Span {
+        Span::new(self.include_token.span.file, self.include_token.span.start, self.file.span.end)
+    }
+}
+impl Display for ExprInclude {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        writeln!(f, "include {}", self.file)
     }
 }

@@ -268,6 +268,7 @@ impl_for_tokens! {
     For, TokenFor;
     In, TokenIn;
     Static, TokenStatic;
+    Include, TokenInclude;
     // types
     StringType, TokenStringType;
     IntType, TokenIntType;

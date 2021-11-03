@@ -113,6 +113,7 @@ gen_tokens! {
     For, TokenFor, "for", {}, (fmt = "for "), (Copy, Eq, Hash);
     In, TokenIn, "in", {}, (fmt = "in "), (Copy, Eq, Hash);
     Static, TokenStatic, "static", {}, (fmt = "static "), (Copy, Eq, Hash);
+    Include, TokenInclude, "include", {}, (fmt = "include "), (Copy, Eq, Hash);
     // types
     StringType, TokenStringType, "string", {}, (fmt = "string "), (Copy, Eq, Hash);
     IntType, TokenIntType, "int", {}, (fmt = "int "), (Copy, Eq, Hash);

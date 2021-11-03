@@ -198,3 +198,7 @@ fn use_static() {
     MY_STATIC = 21;
 }
 
+// includes
+print(include "test-include.re");
+print(MY_INCLUDED_STATIC);
+print(included_fn());

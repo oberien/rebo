@@ -129,13 +129,8 @@ impl<'a, 'b, 'i> Parser<'a, 'b, 'i> {
     }
 
     pub fn parse_ast(mut self) -> Result<Ast<'a, 'i>, Error> {
-        self.first_pass();
         trace!("parse_ast");
-
-        // add statics to global scope
-        self.add_statics();
-        // file scope
-        let body: BlockBody = match self.parse(Depth::start()) {
+        let body: BlockBody = match self.parse_file_content() {
             Ok(body) => body,
             Err(InternalError::Backtrack(span, expected)) => {
                 self.diagnostic_expected(ErrorCode::InvalidExpression, span, &expected);
@@ -150,6 +145,13 @@ impl<'a, 'b, 'i> Parser<'a, 'b, 'i> {
             exprs: body.exprs,
             bindings: self.bindings,
         })
+    }
+    fn parse_file_content(&mut self) -> Result<BlockBody<'a, 'i>, InternalError> {
+        self.first_pass();
+        // add statics to global scope
+        self.add_statics();
+        // file scope
+        Ok(self.parse(Depth::start())?)
     }
 
     /// Parse struct and enum definitions
