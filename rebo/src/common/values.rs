@@ -15,6 +15,7 @@ use itertools::Itertools;
 use crate::typeck::types::{SpecificType, FunctionType};
 use crate::common::MetaInfo;
 use crate::parser::Spanned;
+use std::collections::BTreeMap;
 
 pub trait FromValues {
     fn from_values(values: impl Iterator<Item = Value>) -> Self;
@@ -73,7 +74,7 @@ pub trait IntoValue {
     fn into_value(self) -> Value;
 }
 
-#[derive(Debug, Clone, PartialOrd, PartialEq)]
+#[derive(Debug, Clone, PartialOrd, Ord, PartialEq, Eq)]
 pub enum Value {
     Unit,
     Integer(i64),
@@ -83,6 +84,7 @@ pub enum Value {
     Struct(StructArc),
     Enum(EnumArc),
     List(ListArc),
+    Map(MapArc),
 }
 
 impl Value {
@@ -110,6 +112,12 @@ impl Value {
             _ => panic!("{}", msg),
         }
     }
+    pub fn expect_map(self, msg: &'static str) -> MapArc {
+        match self {
+            Value::Map(m) => m,
+            _ => panic!("{}", msg),
+        }
+    }
     pub fn type_name(&self) -> String {
         match self {
             Value::Unit => "unit".to_string(),
@@ -120,6 +128,7 @@ impl Value {
             Value::Struct(s) => s.s.lock().borrow().name.clone(),
             Value::Enum(e) => e.e.lock().borrow().name.clone(),
             Value::List(_) => "List".to_string(),
+            Value::Map(_) => "Map".to_string(),
         }
     }
 }
@@ -154,6 +163,11 @@ impl Display for Value {
                 let l = l.list.lock();
                 let l = l.borrow();
                 write!(f, "[{}]", l.iter().join(", "))
+            }
+            Value::Map(m) => {
+                let m = m.map.lock();
+                let m = m.borrow();
+                write!(f, "{{{}}}", m.iter().map(|(k, v)| format!("{} => {}", k, v)).join(", "))
             }
         }
     }
@@ -197,6 +211,21 @@ impl PartialEq for FuzzyFloat {
         }
     }
 }
+impl Ord for FuzzyFloat {
+    fn cmp(&self, other: &Self) -> Ordering {
+        if self.0.is_nan() && other.0.is_nan() {
+            Ordering::Equal
+        } else if self.eq(other) {
+            Ordering::Equal
+        } else {
+            match self.0.partial_cmp(&other.0) {
+                Some(val) => val,
+                None => Ordering::Equal,
+            }
+        }
+    }
+}
+impl Eq for FuzzyFloat {}
 impl Add<FuzzyFloat> for FuzzyFloat {
     type Output = FuzzyFloat;
     fn add(self, rhs: FuzzyFloat) -> Self::Output { FuzzyFloat(self.0 + rhs.0) }
@@ -289,12 +318,18 @@ impl PartialOrd for StructArc {
         self.s.lock().borrow().partial_cmp(&other.s.lock().borrow())
     }
 }
+impl Ord for StructArc {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.s.lock().borrow().cmp(&other.s.lock().borrow())
+    }
+}
 impl PartialEq for StructArc {
     fn eq(&self, other: &Self) -> bool {
         self.s.lock().borrow().eq(&other.s.lock().borrow())
     }
 }
-#[derive(Debug, Clone, PartialOrd, PartialEq)]
+impl Eq for StructArc {}
+#[derive(Debug, Clone, PartialOrd, Ord, PartialEq, Eq)]
 pub struct Struct {
     pub name: String,
     pub fields: Vec<(String, Value)>,
@@ -309,12 +344,18 @@ impl PartialOrd for EnumArc {
         self.e.lock().borrow().partial_cmp(&other.e.lock().borrow())
     }
 }
+impl Ord for EnumArc {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.e.lock().borrow().cmp(&other.e.lock().borrow())
+    }
+}
 impl PartialEq for EnumArc {
     fn eq(&self, other: &Self) -> bool {
         self.e.lock().borrow().eq(&other.e.lock().borrow())
     }
 }
-#[derive(Debug, Clone, PartialOrd, PartialEq)]
+impl Eq for EnumArc {}
+#[derive(Debug, Clone, PartialOrd, Ord, PartialEq, Eq)]
 pub struct Enum {
     pub name: String,
     pub variant: String,
@@ -330,11 +371,38 @@ impl PartialOrd for ListArc {
         self.list.lock().borrow().partial_cmp(&other.list.lock().borrow())
     }
 }
+impl Ord for ListArc {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.list.lock().borrow().cmp(&other.list.lock().borrow())
+    }
+}
 impl PartialEq for ListArc {
     fn eq(&self, other: &Self) -> bool {
         self.list.lock().borrow().eq(&*other.list.lock().borrow())
     }
 }
+impl Eq for ListArc {}
+
+#[derive(Debug, Clone)]
+pub struct MapArc {
+    pub map: Arc<ReentrantMutex<RefCell<BTreeMap<Value, Value>>>>,
+}
+impl PartialOrd for MapArc {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        self.map.lock().borrow().partial_cmp(&other.map.lock().borrow())
+    }
+}
+impl Ord for MapArc {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.map.lock().borrow().cmp(&other.map.lock().borrow())
+    }
+}
+impl PartialEq for MapArc {
+    fn eq(&self, other: &Self) -> bool {
+        self.map.lock().borrow().eq(&*other.map.lock().borrow())
+    }
+}
+impl Eq for MapArc {}
 
 macro_rules! impl_from_into {
     ($ty:ty, $name:ident) => {

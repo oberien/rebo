@@ -10,7 +10,7 @@ use parking_lot::ReentrantMutex;
 use std::sync::Arc;
 use std::cell::RefCell;
 
-pub fn add_list<'a, 'i>(diagnostics: &'i Diagnostics, arena: &'a Arena<Expr<'a, 'i>>, meta_info: &mut MetaInfo<'a, 'i>, option_t: Span) {
+pub fn add_list<'a, 'i>(diagnostics: &'i Diagnostics, arena: &'a Arena<Expr<'a, 'i>>, meta_info: &mut MetaInfo<'a, 'i>, option_t: Span) -> Span {
     let code = "struct List<T> {}".to_string();
     let (file, _) = diagnostics.add_file("list.rs".to_string(), code);
 
@@ -63,6 +63,7 @@ pub fn add_list<'a, 'i>(diagnostics: &'i Diagnostics, arena: &'a Arena<Expr<'a, 
         },
         imp: list_get,
     });
+    list_t
 }
 
 fn list_new(_expr_span: Span, _vm: &mut VmContext, _values: Vec<Value>) -> Value {

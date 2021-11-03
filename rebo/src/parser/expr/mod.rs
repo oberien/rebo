@@ -1153,6 +1153,7 @@ impl<'a, 'i> Parse<'a, 'i> for BlockBody<'a, 'i> {
                     | Expr::IfElse(_)
                     | Expr::Match(_)
                     | Expr::While(_)
+                    | Expr::For(_)
                     | Expr::Block(_) => Last::Terminated,
                     _ => Last::Unterminated(expr.span()),
                 };
