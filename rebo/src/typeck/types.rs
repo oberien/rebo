@@ -49,6 +49,7 @@ pub enum ResolvableSpecificType {
 }
 #[derive(Debug, Clone, PartialOrd, Ord, PartialEq, Eq, Hash)]
 pub struct FunctionType {
+    pub is_method: bool,
     pub generics: Cow<'static, [Span]>,
     pub args: Cow<'static, [Type]>,
     pub ret: Type,

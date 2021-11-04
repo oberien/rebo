@@ -258,6 +258,7 @@ impl<'i> Graph<'i> {
                 Function::Rebo(..) => {
                     let fun = &meta_info.rebo_functions[name];
                     let typ = FunctionType {
+                        is_method: fun.self_arg.is_some(),
                         generics: fun.generics.iter().flat_map(|g| &g.generics).flatten()
                             .map(|g| g.def_ident.span)
                             .collect(),
@@ -279,6 +280,7 @@ impl<'i> Graph<'i> {
                         .find(|variant| variant.name.ident == variant_name)
                         .unwrap();
                     let typ = FunctionType {
+                        is_method: false,
                         generics: get_user_type_generics(meta_info, &enum_name).into_iter()
                             .map(|(span, _typ)| span)
                             .collect(),

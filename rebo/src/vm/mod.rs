@@ -64,7 +64,8 @@ impl<'a, 'i> Vm<'a, 'i> {
         let MetaInfo { functions, rebo_functions, user_types: _, statics, function_types: _, struct_types, enum_types: _, types: _ } = meta_info;
         let scopes = Scopes::new();
         let root_scope = Scope::new();
-        scopes.push_scope(root_scope);
+        // we don't want to drop the root-scope, it should exist at all times
+        std::mem::forget(scopes.push_scope(root_scope));
         Vm {
             functions,
             instructions_since_last_interrupt: 0,

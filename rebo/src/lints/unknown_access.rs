@@ -54,7 +54,15 @@ impl Visitor for UnknownAccess {
                             diag.emit();
                             return
                         }
-                        Some(Function::Rust(_)) => TypeVar::new(fn_call.span()),
+                        Some(Function::Rust(_)) => {
+                            let fn_typ = &meta_info.function_types[fn_name.as_str()];
+                            if !fn_typ.is_method {
+                                diagnostics.error(ErrorCode::NotAMethod)
+                                    .with_error_label(fn_call.name.span, format!("`{}` is an external function and not a method", fn_name))
+                                    .emit();
+                            }
+                            TypeVar::new(fn_call.span())
+                        },
                         Some(Function::EnumInitializer(_, _)) => unreachable!("can't call an EnumInitializer as self-method"),
                         Some(Function::Rebo(_, _)) => {
                             let fun = &meta_info.rebo_functions[fn_name.as_str()];

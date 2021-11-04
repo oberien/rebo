@@ -28,6 +28,7 @@ pub fn add_list<'a, 'i>(diagnostics: &'i Diagnostics, arena: &'a Arena<Expr<'a, 
 
     meta_info.add_external_function(diagnostics, "List::new", ExternalFunction {
         typ: FunctionType {
+            is_method: false,
             generics: Cow::Owned(vec![list_t]),
             args: Cow::Borrowed(&[]),
             ret: Type::Specific(SpecificType::Struct("List".to_string(), vec![(list_t, Type::Top)]))
@@ -36,6 +37,7 @@ pub fn add_list<'a, 'i>(diagnostics: &'i Diagnostics, arena: &'a Arena<Expr<'a, 
     });
     meta_info.add_external_function(diagnostics, "List::of", ExternalFunction {
         typ: FunctionType {
+            is_method: false,
             generics: Cow::Owned(vec![list_t]),
             args: Cow::Owned(vec![Type::TypedVarargs(SpecificType::Generic(list_t))]),
             ret: Type::Specific(SpecificType::Struct("List".to_string(), vec![(list_t, Type::Specific(SpecificType::Generic(list_t)))]))
@@ -44,6 +46,7 @@ pub fn add_list<'a, 'i>(diagnostics: &'i Diagnostics, arena: &'a Arena<Expr<'a, 
     });
     meta_info.add_external_function(diagnostics, "List::push", ExternalFunction {
         typ: FunctionType {
+            is_method: true,
             generics: Cow::Owned(vec![list_t]),
             args: Cow::Owned(vec![
                 Type::Specific(SpecificType::Struct("List".to_string(), vec![(list_t, Type::Top)])),
@@ -55,6 +58,7 @@ pub fn add_list<'a, 'i>(diagnostics: &'i Diagnostics, arena: &'a Arena<Expr<'a, 
     });
     meta_info.add_external_function(diagnostics, "List::get", ExternalFunction {
         typ: FunctionType {
+            is_method: true,
             generics: Cow::Owned(vec![list_t]),
             args: Cow::Owned(vec![
                 Type::Specific(SpecificType::Struct("List".to_string(), vec![(list_t, Type::Top)])),

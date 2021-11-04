@@ -34,15 +34,19 @@ pub fn function(_args: TokenStream, input: TokenStream) -> TokenStream {
     let workaround_ident = Ident::new(&workaround_ident, ident.span());
     let mut input_pats = Vec::new();
     let mut input_types = Vec::new();
+    let mut is_method = false;
 
     for arg in inputs {
         match arg {
-            FnArg::Receiver(recv) => abort!(recv, "self-arguments aren't allowed in static rebo functions"),
+            FnArg::Receiver(recv) => abort!(recv, "self-arguments without type aren't allowed in rebo functions"),
             FnArg::Typed(PatType { attrs, pat, colon_token: _, ty }) => {
                 if !attrs.is_empty() {
                     abort!(attrs[0], "argument attributes are not supported for static rebo functions");
                 }
-                if let Pat::Ident(PatIdent { .. }) = &*pat {
+                if let Pat::Ident(PatIdent { ident, .. }) = &*pat {
+                    if ident.to_string() == "this" {
+                        is_method = true;
+                    }
                 } else {
                     abort!(pat, "arguments must be identifiers for static rebo functions");
                 }
@@ -75,6 +79,7 @@ pub fn function(_args: TokenStream, input: TokenStream) -> TokenStream {
         #[allow(non_upper_case_globals)]
         const #ident: ::rebo::ExternalFunction = ::rebo::ExternalFunction {
             typ: ::rebo::FunctionType {
+                is_method: #is_method,
                 generics: ::std::borrow::Cow::Borrowed(&[]),
                 args: ::std::borrow::Cow::Borrowed(#workaround_ident),
                 ret: ::rebo::Type::Specific(<#output as ::rebo::FromValue>::TYPE),

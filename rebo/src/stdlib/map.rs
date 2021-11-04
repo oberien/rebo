@@ -32,6 +32,7 @@ pub fn add_map<'a, 'i>(diagnostics: &'i Diagnostics, arena: &'a Arena<Expr<'a, '
 
     meta_info.add_external_function(diagnostics, "Map::new", ExternalFunction {
         typ: FunctionType {
+            is_method: false,
             generics: Cow::Owned(vec![map_k, map_v]),
             args: Cow::Borrowed(&[]),
             ret: Type::Specific(SpecificType::Struct("Map".to_string(), vec![(map_k, Type::Top), (map_v, Type::Top)]))
@@ -40,6 +41,7 @@ pub fn add_map<'a, 'i>(diagnostics: &'i Diagnostics, arena: &'a Arena<Expr<'a, '
     });
     meta_info.add_external_function(diagnostics, "Map::insert", ExternalFunction {
         typ: FunctionType {
+            is_method: true,
             generics: Cow::Owned(vec![map_k, map_v]),
             args: Cow::Owned(vec![
                 Type::Specific(SpecificType::Struct("Map".to_string(), vec![(map_k, Type::Top), (map_v, Type::Top)])),
@@ -52,6 +54,7 @@ pub fn add_map<'a, 'i>(diagnostics: &'i Diagnostics, arena: &'a Arena<Expr<'a, '
     });
     meta_info.add_external_function(diagnostics, "Map::get", ExternalFunction {
         typ: FunctionType {
+            is_method: true,
             generics: Cow::Owned(vec![map_k, map_v]),
             args: Cow::Owned(vec![
                 Type::Specific(SpecificType::Struct("Map".to_string(), vec![(map_k, Type::Top), (map_v, Type::Top)])),
@@ -63,6 +66,7 @@ pub fn add_map<'a, 'i>(diagnostics: &'i Diagnostics, arena: &'a Arena<Expr<'a, '
     });
     meta_info.add_external_function(diagnostics, "Map::remove", ExternalFunction {
         typ: FunctionType {
+            is_method: true,
             generics: Cow::Owned(vec![map_k, map_v]),
             args: Cow::Owned(vec![
                 Type::Specific(SpecificType::Struct("Map".to_string(), vec![(map_k, Type::Top), (map_v, Type::Top)])),
@@ -74,6 +78,7 @@ pub fn add_map<'a, 'i>(diagnostics: &'i Diagnostics, arena: &'a Arena<Expr<'a, '
     });
     meta_info.add_external_function(diagnostics, "Map::keys", ExternalFunction {
         typ: FunctionType {
+            is_method: true,
             generics: Cow::Owned(vec![map_k, map_v]),
             args: Cow::Owned(vec![
                 Type::Specific(SpecificType::Struct("Map".to_string(), vec![(map_k, Type::Top), (map_v, Type::Top)])),
@@ -84,6 +89,7 @@ pub fn add_map<'a, 'i>(diagnostics: &'i Diagnostics, arena: &'a Arena<Expr<'a, '
     });
     meta_info.add_external_function(diagnostics, "Map::values", ExternalFunction {
         typ: FunctionType {
+            is_method: true,
             generics: Cow::Owned(vec![map_k, map_v]),
             args: Cow::Owned(vec![
                 Type::Specific(SpecificType::Struct("Map".to_string(), vec![(map_k, Type::Top), (map_v, Type::Top)])),

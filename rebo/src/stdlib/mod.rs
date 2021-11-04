@@ -32,6 +32,7 @@ pub fn add_to_meta_info<'a, 'i>(stdlib: Stdlib, diagnostics: &'i Diagnostics, ar
     if stdlib.contains(Stdlib::PRINT) {
         meta_info.add_external_function(diagnostics, "print", ExternalFunction {
             typ: FunctionType {
+                is_method: false,
                 generics: Cow::Borrowed(&[]),
                 args: Cow::Borrowed(&[Type::UntypedVarargs]),
                 ret: Type::Specific(SpecificType::Unit),
@@ -49,6 +50,7 @@ pub fn add_to_meta_info<'a, 'i>(stdlib: Stdlib, diagnostics: &'i Diagnostics, ar
     if stdlib.contains(Stdlib::ASSERT) {
         meta_info.add_external_function(diagnostics, "assert", ExternalFunction {
             typ: FunctionType {
+                is_method: false,
                 generics: Cow::Borrowed(&[]),
                 args: Cow::Borrowed(&[Type::Specific(SpecificType::Bool)]),
                 ret: Type::Specific(SpecificType::Unit),
@@ -59,6 +61,7 @@ pub fn add_to_meta_info<'a, 'i>(stdlib: Stdlib, diagnostics: &'i Diagnostics, ar
     if stdlib.contains(Stdlib::PANIC) {
         meta_info.add_external_function(diagnostics, "panic", ExternalFunction {
             typ: FunctionType {
+                is_method: false,
                 generics: Cow::Borrowed(&[]),
                 args: Cow::Borrowed(&[Type::Specific(SpecificType::String)]),
                 ret: Type::Bottom,
@@ -81,16 +84,16 @@ fn add_one(a: i64) -> i64 {
 
 // type conversions
 #[rebo::function]
-fn int_to_float(i: i64) -> FuzzyFloat {
-    FuzzyFloat(i as f64)
+fn int_to_float(this: i64) -> FuzzyFloat {
+    FuzzyFloat(this as f64)
 }
 #[rebo::function]
-fn bool_to_int(b: bool) -> i64 {
-    b as i64
+fn bool_to_int(this: bool) -> i64 {
+    this as i64
 }
 #[rebo::function]
-fn float_to_int(f: FuzzyFloat) -> i64 {
-    f.0 as i64
+fn float_to_int(this: FuzzyFloat) -> i64 {
+    this.0 as i64
 }
 
 fn assert(expr_span: Span, vm: &mut VmContext, mut values: Vec<Value>) -> Result<Value, ExecError> {

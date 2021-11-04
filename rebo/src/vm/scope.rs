@@ -27,6 +27,7 @@ impl Scopes {
         }
     }
 
+    #[must_use]
     pub fn push_scope(&self, scope: Scope) -> ScopeGuard {
         self.scopes.borrow_mut().push(scope);
         ScopeGuard {
