@@ -5,7 +5,7 @@ extern crate self as rebo;
 use std::sync::Mutex;
 use std::time::Instant;
 
-pub use diagnostic::{Diagnostics, Span};
+pub use diagnostic::{Diagnostics, Span, Output};
 use itertools::Itertools;
 use typed_arena::Arena;
 
@@ -48,6 +48,7 @@ pub struct ReboConfig {
     functions: Vec<(&'static str, ExternalFunction)>,
     interrupt_interval: u32,
     interrupt_function: fn(&mut VmContext) -> Result<(), ExecError>,
+    diagnostic_output: Output,
 }
 impl ReboConfig {
     pub fn new() -> ReboConfig {
@@ -56,6 +57,7 @@ impl ReboConfig {
             functions: vec![],
             interrupt_interval: 10000,
             interrupt_function: |_| Ok(()),
+            diagnostic_output: Output::stderr(),
         }
     }
     pub fn stdlib(mut self, stdlib: Stdlib) -> Self {
@@ -74,13 +76,19 @@ impl ReboConfig {
         self.interrupt_function = function;
         self
     }
+    pub fn diagnostic_output(mut self, output: Output) -> Self {
+        self.diagnostic_output = output;
+        self
+    }
 }
 
 pub fn run(filename: String, code: String) -> ReturnValue {
     run_with_config(filename, code, ReboConfig::new())
 }
 pub fn run_with_config(filename: String, code: String, config: ReboConfig) -> ReturnValue {
-    let diagnostics = Diagnostics::new();
+    let ReboConfig { stdlib, functions, interrupt_interval, interrupt_function, diagnostic_output } = config;
+
+    let diagnostics = Diagnostics::with_output(diagnostic_output);
     // register file 0 for external sources
     let external = diagnostics.add_file("external".to_string(), EXTERNAL_SOURCE.to_string());
     *EXTERNAL_SPAN.lock().unwrap() = Some(Span::new(external.0, 0, EXTERNAL_SOURCE.len()));
@@ -88,10 +96,10 @@ pub fn run_with_config(filename: String, code: String, config: ReboConfig) -> Re
     // stdlib
     let arena = Arena::new();
     let mut meta_info = MetaInfo::new();
-    stdlib::add_to_meta_info(config.stdlib, &diagnostics, &arena, &mut meta_info);
+    stdlib::add_to_meta_info(stdlib, &diagnostics, &arena, &mut meta_info);
 
     // add external functions defined by library user
-    for (name, function) in config.functions {
+    for (name, function) in functions {
         meta_info.add_external_function(&diagnostics, name, function);
     }
 
@@ -133,7 +141,7 @@ pub fn run_with_config(filename: String, code: String, config: ReboConfig) -> Re
 
     // run
     let time = Instant::now();
-    let vm = Vm::new(&diagnostics, meta_info, config.interrupt_interval, config.interrupt_function);
+    let vm = Vm::new(&diagnostics, meta_info, interrupt_interval, interrupt_function);
     let result = vm.run(&exprs);
     info!("Execution took {}μs", time.elapsed().as_micros());
     println!("RESULT: {:?}", result);
