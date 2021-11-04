@@ -31,6 +31,7 @@ pub use vm::{VmContext, ExecError};
 pub use common::{Value, FromValue, FromValues, IntoValue, ExternalFunction};
 pub use typeck::types::{Type, FunctionType, SpecificType};
 pub use stdlib::Stdlib;
+use std::path::PathBuf;
 
 const EXTERNAL_SOURCE: &str = "defined externally";
 lazy_static::lazy_static! {
@@ -49,6 +50,7 @@ pub struct ReboConfig {
     interrupt_interval: u32,
     interrupt_function: fn(&mut VmContext) -> Result<(), ExecError>,
     diagnostic_output: Output,
+    include_directory: Option<PathBuf>,
 }
 impl ReboConfig {
     pub fn new() -> ReboConfig {
@@ -58,6 +60,7 @@ impl ReboConfig {
             interrupt_interval: 10000,
             interrupt_function: |_| Ok(()),
             diagnostic_output: Output::stderr(),
+            include_directory: None,
         }
     }
     pub fn stdlib(mut self, stdlib: Stdlib) -> Self {
@@ -80,13 +83,17 @@ impl ReboConfig {
         self.diagnostic_output = output;
         self
     }
+    pub fn include_directory(mut self, dir: PathBuf) -> Self {
+        self.include_directory = Some(dir);
+        self
+    }
 }
 
 pub fn run(filename: String, code: String) -> ReturnValue {
     run_with_config(filename, code, ReboConfig::new())
 }
 pub fn run_with_config(filename: String, code: String, config: ReboConfig) -> ReturnValue {
-    let ReboConfig { stdlib, functions, interrupt_interval, interrupt_function, diagnostic_output } = config;
+    let ReboConfig { stdlib, functions, interrupt_interval, interrupt_function, diagnostic_output, include_directory } = config;
 
     let diagnostics = Diagnostics::with_output(diagnostic_output);
     // register file 0 for external sources
@@ -111,8 +118,9 @@ pub fn run_with_config(filename: String, code: String, config: ReboConfig) -> Re
     info!("TOKENS:\n{}\n", lexer.iter().map(|token| token.to_string()).join(""));
 
     // parse
+    let include_directory = include_directory.unwrap_or_else(|| std::env::current_dir().expect("can't get current working directory"));
     let time = Instant::now();
-    let parser = Parser::new(&arena, lexer, &diagnostics, &mut meta_info);
+    let parser = Parser::new(include_directory, &arena, lexer, &diagnostics, &mut meta_info);
     let ast = parser.parse_ast().unwrap();
     info!("Parsing took {}μs", time.elapsed().as_micros());
     info!("AST:\n{}\n", ast);

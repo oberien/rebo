@@ -379,24 +379,40 @@ impl<'a, 'i> Expr<'a, 'i> {
             },
             |parser: &mut Parser<'a, '_, 'i>, depth| {
                 let include = ExprInclude::parse(parser, depth)?;
-                dbg!(&include);
+                // We don't actually want to return an error, as that would mean that this function
+                // is called several more times when other expressions try to parse expressions.
+                // Instead, we return Unit to consume the tokens, as we did in fact parse the include correctly.
+                let err = Ok(&*parser.arena.alloc(Expr::Literal(ExprLiteral::Unit(ExprUnit {
+                    open: TokenOpenParen { span: Span::new(include.include_token.span.file, include.include_token.span.start, include.file.span.end) },
+                    close: TokenCloseParen { span: Span::new(include.file.span.file, include.file.span.end, include.file.span.end) },
+                }))));
+                let path = parser.include_directory.join(&include.file.string);
+                let path = match path.canonicalize() {
+                    Ok(path) => path,
+                    Err(e) => {
+                        parser.diagnostics.error(ErrorCode::ErrorReadingIncludedFile)
+                            .with_error_label(include.span(), format!("error canonicalizing `{}`", path.display()))
+                            .with_error_label(include.span(), e.to_string())
+                            .emit();
+                        return err;
+                    }
+                };
+                if !path.starts_with(&parser.include_directory) {
+                    parser.diagnostics.error(ErrorCode::ErrorReadingIncludedFile)
+                        .with_error_label(include.span(), "the file in not in the include directory")
+                        .with_error_label(include.span(), format!("included files must be in {}", parser.include_directory.display()))
+                        .emit();
+                    return err;
+                }
 
-                // if parser.is_in_first_pass {
-                //     // ignore the include in the first pass
-                //     // just return anything to consume the tokens
-                //     return Ok(&*parser.arena.alloc(Expr::Literal(ExprLiteral::Unit(ExprUnit {
-                //         open: TokenOpenParen { span: Span::new(include.include_token.span.file, include.include_token.span.start, include.file.span.end) },
-                //         close: TokenCloseParen { span: Span::new(include.include_token.span.file, include.include_token.span.start, include.file.span.end) },
-                //     }))));
-                // }
-                //
-                let code = match ::std::fs::read_to_string(&include.file.string) {
+                let code = match ::std::fs::read_to_string(&path) {
                     Ok(code) => code,
                     Err(e) => {
                         parser.diagnostics.error(ErrorCode::ErrorReadingIncludedFile)
+                            .with_error_label(include.span(), format!("error reading file `{}`", path.display()))
                             .with_error_label(include.span(), e.to_string())
                             .emit();
-                        return Err(InternalError::Backtrack(include.span(), Cow::Borrowed(&[])));
+                        return err;
                     }
                 };
                 let (file, _) = parser.diagnostics.add_file(include.file.string.clone(), code);
@@ -406,7 +422,7 @@ impl<'a, 'i> Expr<'a, 'i> {
                 parser.lexer = old_lexer;
                 let body = match body_res {
                     Ok(body) => body,
-                    Err(_) => return Err(InternalError::Backtrack(include.span(), Cow::Borrowed(&[]))),
+                    Err(_) => return err,
                 };
                 let block = &*parser.arena.alloc(Expr::Block(ExprBlock {
                     open: TokenOpenCurly { span: Span::new(include.include_token.span.file, include.include_token.span.start, include.include_token.span.start) },

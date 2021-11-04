@@ -10,13 +10,14 @@ use parking_lot::ReentrantMutex;
 use std::sync::Arc;
 use std::cell::RefCell;
 use crate::ExecError;
+use std::path::PathBuf;
 
 pub fn add_list<'a, 'i>(diagnostics: &'i Diagnostics, arena: &'a Arena<Expr<'a, 'i>>, meta_info: &mut MetaInfo<'a, 'i>, option_t: Span) -> Span {
     let code = "struct List<T> {}".to_string();
     let (file, _) = diagnostics.add_file("list.rs".to_string(), code);
 
     let lexer = Lexer::new(diagnostics, file);
-    let parser = Parser::new(arena, lexer, diagnostics, meta_info);
+    let parser = Parser::new(PathBuf::new(), arena, lexer, diagnostics, meta_info);
     let ast = parser.parse_ast().unwrap();
     assert_eq!(ast.exprs.len(), 1);
 

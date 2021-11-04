@@ -3,6 +3,7 @@ use typed_arena::Arena;
 use crate::parser::{Expr, Parser};
 use crate::common::MetaInfo;
 use crate::lexer::Lexer;
+use std::path::PathBuf;
 
 const CODE: &str = r#"
 enum Result<T, E> {
@@ -24,6 +25,6 @@ pub fn add_result<'a, 'i>(diagnostics: &'i Diagnostics, arena: &'a Arena<Expr<'a
     let (file, _) = diagnostics.add_file("result.rs".to_string(), CODE.to_string());
 
     let lexer = Lexer::new(diagnostics, file);
-    let parser = Parser::new(arena, lexer, diagnostics, meta_info);
+    let parser = Parser::new(PathBuf::new(), arena, lexer, diagnostics, meta_info);
     parser.parse_ast().unwrap();
 }
