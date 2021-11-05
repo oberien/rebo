@@ -28,7 +28,7 @@ mod tests;
 
 pub use rebo_derive::function;
 pub use vm::{VmContext, ExecError};
-pub use common::{Value, FromValue, FromValues, IntoValue, ExternalFunction};
+pub use common::{Value, FromValue, IntoValue, Typed, ExternalFunction};
 pub use typeck::types::{Type, FunctionType, SpecificType};
 pub use stdlib::Stdlib;
 use std::path::PathBuf;

@@ -68,21 +68,24 @@ pub fn function(_args: TokenStream, input: TokenStream) -> TokenStream {
     let res = quote::quote! {
         #vis #constness #asyncness #unsafety #abi fn #fn_ident #generics (_expr_span: ::rebo::Span, vm: &mut ::rebo::VmContext, args: ::std::vec::Vec<::rebo::Value>) -> ::std::result::Result<::rebo::Value, ::rebo::ExecError> {
             let scopes = vm.scopes();
-            let (#(#input_pats,)*): (#(#input_types,)*) = ::rebo::FromValues::from_values(args.into_iter());
+            let mut args = args.into_iter();
+            #(
+                let #input_pats: #input_types = ::rebo::FromValue::from_value(args.next().unwrap());
+            )*
             let res: #output = #block;
             Ok(::rebo::IntoValue::into_value(res))
         }
 
         #[allow(non_upper_case_globals)]
         const #workaround_ident: &'static [::rebo::Type] =
-            &[#(::rebo::Type::Specific(<#input_types as ::rebo::FromValue>::TYPE)),*];
+            &[#(::rebo::Type::Specific(<#input_types as ::rebo::Typed>::TYPE)),*];
         #[allow(non_upper_case_globals)]
         const #ident: ::rebo::ExternalFunction = ::rebo::ExternalFunction {
             typ: ::rebo::FunctionType {
                 is_method: #is_method,
                 generics: ::std::borrow::Cow::Borrowed(&[]),
                 args: ::std::borrow::Cow::Borrowed(#workaround_ident),
-                ret: ::rebo::Type::Specific(<#output as ::rebo::FromValue>::TYPE),
+                ret: ::rebo::Type::Specific(<#output as ::rebo::Typed>::TYPE),
             },
             imp: #fn_ident,
         };

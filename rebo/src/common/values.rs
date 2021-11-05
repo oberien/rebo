@@ -17,62 +17,16 @@ use crate::common::MetaInfo;
 use crate::parser::Spanned;
 use std::collections::BTreeMap;
 
-pub trait FromValues {
-    fn from_values(values: impl Iterator<Item = Value>) -> Self;
-    fn types() -> Vec<SpecificType>;
-}
-
-impl<T: FromValue> FromValues for T {
-    fn from_values(mut values: impl Iterator<Item = Value>) -> Self {
-        let val = values.next().unwrap();
-        T::from_value(val)
-    }
-    fn types() -> Vec<SpecificType> {
-        vec![T::TYPE]
-    }
-}
-
-macro_rules! impl_from_values {
-    ($last:ident $($name:ident)*) => {
-        impl<$last: FromValues, $($name: FromValue,)*> FromValues for ($($name,)* $last,) {
-            #[allow(unused_mut)]
-            fn from_values(mut values: impl Iterator<Item = Value>) -> Self {
-                ($($name::from_value(values.next().unwrap()),)* $last::from_values(values),)
-            }
-            fn types() -> Vec<SpecificType> {
-                let mut res = vec![$($name::TYPE,)*];
-                res.extend($last::types());
-                res
-            }
-        }
-    }
-}
-
-impl_from_values!(A);
-impl_from_values!(A B);
-impl_from_values!(A B C);
-impl_from_values!(A B C D);
-impl_from_values!(A B C D E);
-impl_from_values!(A B C D E F);
-impl_from_values!(A B C D E F G);
-impl_from_values!(A B C D E F G H);
-impl_from_values!(A B C D E F G H I);
-impl_from_values!(A B C D E F G H I J);
-impl_from_values!(A B C D E F G H I J K);
-impl_from_values!(A B C D E F G H I J K L);
-impl_from_values!(A B C D E F G H I J K L M);
-impl_from_values!(A B C D E F G H I J K L M N);
-impl_from_values!(A B C D E F G H I J K L M N O);
-
-pub trait FromValue {
-    const TYPE: SpecificType;
+pub trait FromValue: Typed {
     fn from_value(value: Value) -> Self;
 }
-
-pub trait IntoValue {
-    const TYPE: SpecificType;
+pub trait IntoValue: Typed {
     fn into_value(self) -> Value;
 }
+pub trait Typed {
+    const TYPE: SpecificType;
+}
+
 
 #[derive(Debug, Clone, PartialOrd, Ord, PartialEq, Eq)]
 pub enum Value {
@@ -406,8 +360,10 @@ impl Eq for MapArc {}
 
 macro_rules! impl_from_into {
     ($ty:ty, $name:ident) => {
-        impl FromValue for $ty {
+        impl Typed for $ty {
             const TYPE: SpecificType = SpecificType::$name;
+        }
+        impl FromValue for $ty {
             fn from_value(value: Value) -> Self {
                 match value {
                     Value::$name(val) => val,
@@ -416,7 +372,6 @@ macro_rules! impl_from_into {
             }
         }
         impl IntoValue for $ty {
-            const TYPE: SpecificType = SpecificType::$name;
             fn into_value(self) -> Value {
                 Value::$name(self)
             }
@@ -425,7 +380,6 @@ macro_rules! impl_from_into {
 }
 
 impl FromValue for () {
-    const TYPE: SpecificType = SpecificType::Unit;
     fn from_value(value: Value) -> Self {
         match value {
             Value::Unit => (),
@@ -434,10 +388,12 @@ impl FromValue for () {
     }
 }
 impl IntoValue for () {
-    const TYPE: SpecificType = SpecificType::Unit;
     fn into_value(self) -> Value {
         Value::Unit
     }
+}
+impl Typed for () {
+    const TYPE: SpecificType = SpecificType::Unit;
 }
 
 impl_from_into!(i64, Integer);

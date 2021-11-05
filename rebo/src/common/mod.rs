@@ -4,7 +4,7 @@ use std::fmt::{self, Display, Formatter};
 use diagnostic::{Diagnostics, Span};
 use indexmap::map::IndexMap;
 
-pub use values::{FromValue, FromValues, Function, ExternalFunction, FuzzyFloat, IntoValue, Struct, StructArc, Enum, EnumArc, Value, ListArc, MapArc};
+pub use values::{Typed, FromValue, Function, ExternalFunction, FuzzyFloat, IntoValue, Struct, StructArc, Enum, EnumArc, Value, ListArc, MapArc};
 
 use crate::error_codes::ErrorCode;
 use crate::EXTERNAL_SPAN;
