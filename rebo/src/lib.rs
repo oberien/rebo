@@ -2,7 +2,6 @@
 extern crate log;
 extern crate self as rebo;
 
-use std::sync::Mutex;
 use std::time::Instant;
 
 pub use diagnostic::{Diagnostics, Span, Output};
@@ -32,11 +31,10 @@ pub use common::{Value, FromValue, IntoValue, Typed, ExternalFunction};
 pub use typeck::types::{Type, FunctionType, SpecificType};
 pub use stdlib::Stdlib;
 use std::path::PathBuf;
+use diagnostic::FileId;
 
 const EXTERNAL_SOURCE: &str = "defined externally";
-lazy_static::lazy_static! {
-    pub static ref EXTERNAL_SPAN: Mutex<Option<Span>> = Mutex::new(None);
-}
+const EXTERNAL_SPAN: Span = Span::new(FileId::synthetic("external.re"), 0, EXTERNAL_SOURCE.len());
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum ReturnValue {
@@ -96,9 +94,8 @@ pub fn run_with_config(filename: String, code: String, config: ReboConfig) -> Re
     let ReboConfig { stdlib, functions, interrupt_interval, interrupt_function, diagnostic_output, include_directory } = config;
 
     let diagnostics = Diagnostics::with_output(diagnostic_output);
-    // register file 0 for external sources
-    let external = diagnostics.add_file("external".to_string(), EXTERNAL_SOURCE.to_string());
-    *EXTERNAL_SPAN.lock().unwrap() = Some(Span::new(external.0, 0, EXTERNAL_SOURCE.len()));
+    // register file for external sources
+    diagnostics.add_synthetic_file("external.re", EXTERNAL_SOURCE.to_string());
 
     // stdlib
     let arena = Arena::new();

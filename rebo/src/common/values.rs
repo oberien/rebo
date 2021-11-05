@@ -220,7 +220,7 @@ impl Function {
     pub fn span(&self, meta_info: &MetaInfo) -> Span {
         match self {
             Function::Rebo(name, _args) => meta_info.rebo_functions[name.as_str()].span(),
-            Function::Rust(_) => EXTERNAL_SPAN.lock().unwrap().unwrap(),
+            Function::Rust(_) => EXTERNAL_SPAN,
             Function::EnumInitializer(enum_name, variant_name) => meta_info.user_types[enum_name.as_str()].variant_initializer_span(variant_name).unwrap(),
         }
     }

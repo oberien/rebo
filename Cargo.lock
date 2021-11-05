@@ -124,7 +124,7 @@ dependencies = [
 [[package]]
 name = "diagnostic"
 version = "0.1.0"
-source = "git+https://github.com/oberien/diagnostic?rev=39bdd04#39bdd04d32d5520328a4d7bea13885763fb953b3"
+source = "git+https://github.com/oberien/diagnostic?rev=8138820#8138820a5fdd44a2611370331cbe3fd220c02c6c"
 dependencies = [
  "appendlist",
  "backtrace",

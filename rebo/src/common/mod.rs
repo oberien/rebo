@@ -109,7 +109,7 @@ impl<'a, 'i> MetaInfo<'a, 'i> {
         self.rebo_functions.insert(name, fun);
     }
     pub fn add_external_function(&mut self, diagnostics: &Diagnostics, name: &'static str, fun: ExternalFunction) {
-        if self.check_existing_function(diagnostics, name, EXTERNAL_SPAN.lock().unwrap().unwrap()) {
+        if self.check_existing_function(diagnostics, name, EXTERNAL_SPAN) {
             return;
         }
         self.functions.insert(Cow::Borrowed(name), Function::Rust(fun.imp));
