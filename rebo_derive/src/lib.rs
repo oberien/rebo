@@ -36,9 +36,22 @@ pub fn function(_args: TokenStream, input: TokenStream) -> TokenStream {
     let mut input_types = Vec::new();
     let mut is_method = false;
 
+    if let Some(constness) = constness {
+        abort!(constness, "const rebo functions are not allowed");
+    }
+    if let Some(asyncness) = asyncness {
+        abort!(asyncness, "async rebo functions are not allowed");
+    }
+    if let Some(unsafety) = unsafety {
+        abort!(unsafety, "unsafe rebo functions are not allowed; use an internal unsafe block instead");
+    }
+    if let Some(abi) = abi {
+        abort!(abi, "non-default abi rebo functions are not allowed");
+    }
+
     for arg in inputs {
         match arg {
-            FnArg::Receiver(recv) => abort!(recv, "self-arguments without type aren't allowed in rebo functions"),
+            FnArg::Receiver(recv) => abort!(recv, "self-arguments aren't allowed by rust"),
             FnArg::Typed(PatType { attrs, pat, colon_token: _, ty }) => {
                 if !attrs.is_empty() {
                     abort!(attrs[0], "argument attributes are not supported for static rebo functions");
@@ -66,7 +79,7 @@ pub fn function(_args: TokenStream, input: TokenStream) -> TokenStream {
     }
 
     let res = quote::quote! {
-        #vis #constness #asyncness #unsafety #abi fn #fn_ident #generics (_expr_span: ::rebo::Span, vm: &mut ::rebo::VmContext, args: ::std::vec::Vec<::rebo::Value>) -> ::std::result::Result<::rebo::Value, ::rebo::ExecError> {
+        fn #fn_ident #generics (_expr_span: ::rebo::Span, vm: &mut ::rebo::VmContext, args: ::std::vec::Vec<::rebo::Value>) -> ::std::result::Result<::rebo::Value, ::rebo::ExecError> {
             let scopes = vm.scopes();
             let mut args = args.into_iter();
             #(
@@ -80,7 +93,7 @@ pub fn function(_args: TokenStream, input: TokenStream) -> TokenStream {
         const #workaround_ident: &'static [::rebo::Type] =
             &[#(::rebo::Type::Specific(<#input_types as ::rebo::Typed>::TYPE)),*];
         #[allow(non_upper_case_globals)]
-        const #ident: ::rebo::ExternalFunction = ::rebo::ExternalFunction {
+        #vis const #ident: ::rebo::ExternalFunction = ::rebo::ExternalFunction {
             typ: ::rebo::FunctionType {
                 is_method: #is_method,
                 generics: ::std::borrow::Cow::Borrowed(&[]),
