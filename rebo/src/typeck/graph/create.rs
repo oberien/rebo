@@ -7,8 +7,10 @@ use diagnostic::{Diagnostics, Span};
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::rc::Rc;
+use std::ops::Deref;
 use crate::error_codes::ErrorCode;
 use std::sync::atomic::{Ordering, AtomicU64};
+use crate::CowVec;
 
 #[derive(Clone)]
 pub(super) struct FunctionGenerics {
@@ -86,12 +88,12 @@ impl FunctionGenerics {
             SpecificType::Struct(name, generics) => (
                 |generics, name| ResolvableSpecificType::Struct(name, generics),
                 generics,
-                name.clone(),
+                name.clone().into_owned(),
             ),
             SpecificType::Enum(name, generics) => (
                 |generics, name| ResolvableSpecificType::Enum(name, generics),
                 generics,
-                name.clone()
+                name.clone().into_owned()
             ),
             &SpecificType::Generic(span) => if self.contains_ununifyable(span) {
                 graph.add_reduce_constraint(from, to, vec![ResolvableSpecificType::UnUnifyableGeneric(span)]);
@@ -147,13 +149,13 @@ fn convert_expr_type(typ: &ExprType, diagnostics: &Diagnostics, meta_info: &Meta
         ExprType::UserType(ut, generics) => {
             let (type_constructor, typ_span, expected_generics, name): (fn(_, _) -> _, _, _, _) = match meta_info.user_types.get(ut.ident) {
                 Some(UserType::Struct(s)) => (
-                    |generics, name| Type::Specific(SpecificType::Struct(name, generics)),
+                    |generics, name| Type::Specific(SpecificType::Struct(Cow::Owned(name), CowVec::Owned(generics))),
                     s.name.span,
                     s.generics.as_ref(),
                     s.name.ident.to_string(),
                 ),
                 Some(UserType::Enum(e)) => (
-                    |generics, name| Type::Specific(SpecificType::Enum(name, generics)),
+                    |generics, name| Type::Specific(SpecificType::Enum(Cow::Owned(name), CowVec::Owned(generics))),
                     e.name.span,
                     e.generics.as_ref(),
                     e.name.ident.to_string(),
@@ -253,6 +255,30 @@ impl<'i> Graph<'i> {
                 }
             }
         }
+
+        // verify that all external types were defined correctly and match our internal types
+        for (name, typ) in &meta_info.external_types {
+            let (internal_generics, external_generics) = match typ {
+                SpecificType::Struct(_name, generics) => (
+                    &meta_info.struct_types[name.as_str()].generics,
+                    generics,
+                ),
+                SpecificType::Enum(_name, generics) => (
+                    &meta_info.enum_types[name.as_str()].generics,
+                    generics,
+                ),
+                _ => panic!("external type `{}` is not a Struct or Enum but a `{:?}`", name, typ),
+            };
+            let matches = external_generics.iter().map(|(span, _)| span).zip(internal_generics.deref())
+                .find(|(ext, int)| ext != int);
+            assert!(matches.is_none(), "Generic `{}::{}` of ExternalType-definition (`{:?}`) doesn't equal parsed generic (`{:?}`)",
+                name,
+                diagnostics.resolve_span(*matches.unwrap().1),
+                matches.unwrap().0,
+                matches.unwrap().1,
+            );
+        }
+
         for (name, fun) in &meta_info.functions {
             match fun {
                 Function::Rebo(..) => {
@@ -287,7 +313,7 @@ impl<'i> Graph<'i> {
                         args: Cow::Owned(variant.fields.as_ref().unwrap().1.iter()
                             .map(|typ| convert_expr_type(typ, diagnostics, meta_info))
                             .collect()),
-                        ret: Type::Specific(SpecificType::Enum(enum_name.clone(), get_user_type_generics(meta_info, &enum_name))),
+                        ret: Type::Specific(SpecificType::Enum(Cow::Owned(enum_name.clone()), CowVec::Owned(get_user_type_generics(meta_info, &enum_name)))),
                     };
                     meta_info.function_types.insert(name.clone(), typ);
                 }
@@ -469,7 +495,7 @@ impl<'i> Graph<'i> {
                         ExprMatchPattern::Variant(variant) => {
                             let pat_node = Node::type_var(pat.span());
                             self.add_node(pat_node);
-                            let typ = SpecificType::Enum(variant.enum_name.ident.to_string(), get_user_type_generics(meta_info, variant.enum_name.ident));
+                            let typ = SpecificType::Enum(Cow::Owned(variant.enum_name.ident.to_string()), CowVec::Owned(get_user_type_generics(meta_info, variant.enum_name.ident)));
                             function_generics.apply_specific_type_reduce(pat_node, pat_node, &typ, self);
                             self.add_eq_constraint(expr_node, pat_node);
 
@@ -573,7 +599,7 @@ impl<'i> Graph<'i> {
             Expr::StructDefinition(_) => self.add_reduce_constraint(node, node, vec![ResolvableSpecificType::Unit]),
             Expr::StructInitialization(ExprStructInitialization { name, fields, .. }) => {
                 let generics = get_user_type_generics(meta_info, name.ident);
-                let typ = SpecificType::Struct(name.ident.to_string(), generics.clone());
+                let typ = SpecificType::Struct(Cow::Owned(name.ident.to_string()), CowVec::Owned(generics.clone()));
                 let struct_def_span = match meta_info.user_types.get(name.ident) {
                     Some(user_type) => user_type.span(),
                     None => return node,
@@ -618,7 +644,7 @@ impl<'i> Graph<'i> {
                     self.add_node(synthetic);
                     function_generics.insert_generic(synthetic);
                 }
-                let typ = SpecificType::Enum(enum_init.enum_name.ident.to_string(), generics);
+                let typ = SpecificType::Enum(Cow::Owned(enum_init.enum_name.ident.to_string()), CowVec::Owned(generics));
                 function_generics.apply_specific_type_reduce(node, node, &typ, self);
             },
             Expr::ImplBlock(ExprImplBlock { functions, .. }) => {

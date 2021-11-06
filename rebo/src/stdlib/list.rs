@@ -1,104 +1,86 @@
 use diagnostic::{Diagnostics, Span};
 use typed_arena::Arena;
-use crate::parser::{Expr, Parser};
-use crate::common::{MetaInfo, Value, ExternalFunction, ListArc, EnumArc, Enum};
-use crate::lexer::Lexer;
-use crate::vm::VmContext;
-use crate::typeck::types::{FunctionType, Type, SpecificType};
+use crate::parser::Expr;
+use crate::common::{MetaInfo, Value, ListArc};
+use crate::typeck::types::{Type, SpecificType};
 use std::borrow::Cow;
 use parking_lot::ReentrantMutex;
 use std::sync::Arc;
 use std::cell::RefCell;
-use crate::ExecError;
-use std::path::PathBuf;
+use std::marker::PhantomData;
+use crate::{CowVec, ExternalType, FileId, FromValue, IntoValue, Typed};
 
-pub fn add_list<'a, 'i>(diagnostics: &'i Diagnostics, arena: &'a Arena<Expr<'a, 'i>>, meta_info: &mut MetaInfo<'a, 'i>, option_t: Span) -> Span {
-    let code = "struct List<T> {}".to_string();
-    let (file, _) = diagnostics.add_file("list.rs".to_string(), code);
-
-    let lexer = Lexer::new(diagnostics, file);
-    let parser = Parser::new(PathBuf::new(), arena, lexer, diagnostics, meta_info);
-    let ast = parser.parse_ast().unwrap();
-    assert_eq!(ast.exprs.len(), 1);
-
-    let struct_def = match ast.exprs[0] {
-        Expr::StructDefinition(struct_def) => struct_def,
-        _ => unreachable!(),
-    };
-    let list_t = struct_def.generics.as_ref().unwrap().generics.as_ref().unwrap().iter().next().unwrap().def_ident.span;
-
-    meta_info.add_external_function(diagnostics, "List::new", ExternalFunction {
-        typ: FunctionType {
-            is_method: false,
-            generics: Cow::Owned(vec![list_t]),
-            args: Cow::Borrowed(&[]),
-            ret: Type::Specific(SpecificType::Struct("List".to_string(), vec![(list_t, Type::Top)]))
-        },
-        imp: list_new,
-    });
-    meta_info.add_external_function(diagnostics, "List::of", ExternalFunction {
-        typ: FunctionType {
-            is_method: false,
-            generics: Cow::Owned(vec![list_t]),
-            args: Cow::Owned(vec![Type::TypedVarargs(SpecificType::Generic(list_t))]),
-            ret: Type::Specific(SpecificType::Struct("List".to_string(), vec![(list_t, Type::Specific(SpecificType::Generic(list_t)))]))
-        },
-        imp: list_of,
-    });
-    meta_info.add_external_function(diagnostics, "List::push", ExternalFunction {
-        typ: FunctionType {
-            is_method: true,
-            generics: Cow::Owned(vec![list_t]),
-            args: Cow::Owned(vec![
-                Type::Specific(SpecificType::Struct("List".to_string(), vec![(list_t, Type::Top)])),
-                Type::Specific(SpecificType::Generic(list_t)),
-            ]),
-            ret: Type::Specific(SpecificType::Unit),
-        },
-        imp: list_push,
-    });
-    meta_info.add_external_function(diagnostics, "List::get", ExternalFunction {
-        typ: FunctionType {
-            is_method: true,
-            generics: Cow::Owned(vec![list_t]),
-            args: Cow::Owned(vec![
-                Type::Specific(SpecificType::Struct("List".to_string(), vec![(list_t, Type::Top)])),
-                Type::Specific(SpecificType::Integer),
-            ]),
-            ret: Type::Specific(SpecificType::Enum("Option".to_string(), vec![(option_t, Type::Specific(SpecificType::Generic(list_t)))])),
-        },
-        imp: list_get,
-    });
-    list_t
+pub struct List<T> {
+    arc: ListArc,
+    _marker: PhantomData<T>,
+}
+impl<T> List<T> {
+    pub fn new(vec: Vec<Value>) -> List<T> {
+        List {
+            arc: ListArc { list: Arc::new(ReentrantMutex::new(RefCell::new(vec))) },
+            _marker: PhantomData,
+        }
+    }
 }
 
-fn list_new(_expr_span: Span, _vm: &mut VmContext, _values: Vec<Value>) -> Result<Value, ExecError> {
-    Ok(Value::List(ListArc { list: Arc::new(ReentrantMutex::new(RefCell::new(Vec::new()))) }))
+const FILE_NAME: &'static str = "external-List.re";
+const LIST_T: Span = Span::new(FileId::synthetic(FILE_NAME), 12, 13);
+
+impl<T: FromValue + IntoValue> ExternalType for List<T> {
+    const CODE: &'static str = "struct List<T> {\n    /* ... */\n}";
+    const FILE_NAME: &'static str = FILE_NAME;
+}
+impl<T: FromValue> FromValue for List<T> {
+    fn from_value(value: Value) -> Self {
+        match value {
+            Value::List(arc) => List { arc, _marker: PhantomData },
+            _ => unreachable!("List::from_value called with non-List"),
+        }
+    }
+}
+impl<T: IntoValue> IntoValue for List<T> {
+    fn into_value(self) -> Value {
+        Value::List(self.arc)
+    }
+}
+impl<T> Typed for List<T> {
+    const TYPE: SpecificType = SpecificType::Struct(
+        Cow::Borrowed("List"),
+        CowVec::Borrowed(&[(LIST_T, Type::Top)]),
+    );
 }
 
-fn list_push(_expr_span: Span, _vm: &mut VmContext, mut values: Vec<Value>) -> Result<Value, ExecError> {
-    let list = values.remove(0).expect_list("List::push called with non-list self argument");
-    let value = values.remove(0);
-    let list = list.list.lock();
-    list.borrow_mut().push(value);
-    Ok(Value::Unit)
-}
-fn list_of(_expr_span: Span, _vm: &mut VmContext, values: Vec<Value>) -> Result<Value, ExecError> {
-    Ok(Value::List(ListArc { list: Arc::new(ReentrantMutex::new(RefCell::new(values))) }))
+pub fn add_list<'a, 'i>(diagnostics: &'i Diagnostics, arena: &'a Arena<Expr<'a, 'i>>, meta_info: &mut MetaInfo<'a, 'i>) {
+    meta_info.add_external_type::<List<Value>>(arena, diagnostics);
+    meta_info.add_external_function(diagnostics, list_new);
+    meta_info.add_external_function(diagnostics, list_of);
+    meta_info.add_external_function(diagnostics, list_push);
+    meta_info.add_external_function(diagnostics, list_get);
 }
 
-fn list_get(_expr_span: Span, _vm: &mut VmContext, mut values: Vec<Value>) -> Result<Value, ExecError> {
-    let list = values.remove(0).expect_list("List::get called with non-list self argument");
-    let index = values.remove(0).expect_int("List::get called with non-int index");
-    let list = list.list.lock();
-    let (variant, fields) = match list.borrow().get(index as usize) {
-        Some(v) => ("Some".to_string(), vec![v.clone()]),
-        None => ("None".to_string(), vec![]),
-    };
-    Ok(Value::Enum(EnumArc { e: Arc::new(ReentrantMutex::new(RefCell::new(Enum {
-        name: "Option".to_string(),
-        variant,
-        fields,
-    })))}))
+#[rebo::function("List::new")]
+fn list_new<T>() -> List<T> {
+    List::new(Vec::new())
+}
+
+#[rebo::function(raw("List::of"))]
+fn list_of<T>(..: T) -> List<T> {
+    List::new(args.collect())
+}
+
+#[rebo::function("List::push")]
+fn list_push<T>(this: List<T>, value: T) {
+    let this = this.arc.list.lock();
+    this.borrow_mut().push(value);
+}
+
+#[rebo::function("List::get")]
+fn list_get<T>(this: List<T>, index: i64) -> Option<T> {
+    let this = this.arc.list.lock();
+    let this = this.borrow();
+    match this.get(index as usize).cloned() {
+        Some(v) => Some(v),
+        None => None,
+    }
 }
 

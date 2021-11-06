@@ -1805,8 +1805,6 @@ impl<'a, 'i> Parse<'a, 'i> for ExprImplBlock<'a, 'i> {
                                 .with_error_label(generic.def_ident.span, format!("expected generic name `{}`, found `{}`", expected.def_ident.ident, generic.def_ident.ident))
                                 .with_note("generics of a type must have the same name in the type def and impl-block")
                                 .emit();
-                        } else {
-                            generic.def_ident = expected.def_ident;
                         }
                     },
                     Some((Some(expected), None)) => parser.diagnostics.error(ErrorCode::MissingGeneric)

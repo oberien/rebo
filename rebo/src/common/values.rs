@@ -17,16 +17,19 @@ use crate::common::MetaInfo;
 use crate::parser::Spanned;
 use std::collections::BTreeMap;
 
-pub trait FromValue: Typed {
+pub trait ExternalType: FromValue + IntoValue + Typed {
+    const CODE: &'static str;
+    const FILE_NAME: &'static str;
+}
+pub trait FromValue {
     fn from_value(value: Value) -> Self;
 }
-pub trait IntoValue: Typed {
+pub trait IntoValue {
     fn into_value(self) -> Value;
 }
 pub trait Typed {
     const TYPE: SpecificType;
 }
-
 
 #[derive(Debug, Clone, PartialOrd, Ord, PartialEq, Eq)]
 pub enum Value {
@@ -203,6 +206,13 @@ impl Display for FuzzyFloat {
 }
 
 pub struct ExternalFunction {
+    /// Name to inject the function with into rebo
+    pub name: &'static str,
+    /// The code that should be shown in error messages.
+    /// It must include all generics and the spans of the generics must be used
+    /// in the `typ` field with synthetic spans with the file_name.
+    pub code: &'static str,
+    pub file_name: &'static str,
     pub typ: FunctionType,
     pub imp: RustFunction,
 }
@@ -400,3 +410,14 @@ impl_from_into!(i64, Integer);
 impl_from_into!(FuzzyFloat, Float);
 impl_from_into!(bool, Bool);
 impl_from_into!(String, String);
+
+impl FromValue for Value {
+    fn from_value(value: Value) -> Self {
+        value
+    }
+}
+impl IntoValue for Value {
+    fn into_value(self) -> Value {
+        self
+    }
+}

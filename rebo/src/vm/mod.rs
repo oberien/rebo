@@ -61,7 +61,7 @@ impl<'a, 'i> VmContext<'a, 'i> {
 
 impl<'a, 'i> Vm<'a, 'i> {
     pub fn new(diagnostics: &'i Diagnostics, meta_info: MetaInfo<'a, 'i>, interrupt_interval: u32, interrupt_function: fn(&mut VmContext) -> Result<(), ExecError>) -> Self {
-        let MetaInfo { functions, rebo_functions, user_types: _, statics, function_types: _, struct_types, enum_types: _, types: _ } = meta_info;
+        let MetaInfo { functions, rebo_functions, user_types: _, statics, function_types: _, struct_types, enum_types: _, types: _, external_types: _ } = meta_info;
         let scopes = Scopes::new();
         let root_scope = Scope::new();
         // we don't want to drop the root-scope, it should exist at all times

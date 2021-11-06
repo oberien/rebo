@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use diagnostic::Diagnostics;
 use crate::typeck::graph::{Graph, Constraint, Node};
 use crate::common::MetaInfo;
@@ -5,6 +6,7 @@ use crate::error_codes::ErrorCode;
 use itertools::Itertools;
 use crate::typeck::types::{Type, SpecificType, ResolvableSpecificType};
 use std::collections::HashSet;
+use crate::util::CowVec;
 
 impl<'i> Graph<'i> {
     pub fn check(&self, diagnostics: &Diagnostics, meta_info: &mut MetaInfo) {
@@ -29,16 +31,16 @@ impl<'i> Graph<'i> {
                 ResolvableSpecificType::Float => SpecificType::Float,
                 ResolvableSpecificType::String => SpecificType::String,
                 ResolvableSpecificType::Struct(name, generics) => SpecificType::Struct(
-                    name.clone(),
-                    generics.iter().copied()
+                    Cow::Owned(name.clone()),
+                    CowVec::Owned(generics.iter().copied()
                         .map(|node| (node.span(), self.try_convert_possible_types(already_errored, diagnostics, meta_info, node).unwrap_or(Type::Top)))
-                        .collect(),
+                        .collect()),
                 ),
                 ResolvableSpecificType::Enum(name, generics) => SpecificType::Enum(
-                    name.clone(),
-                    generics.iter().copied()
+                    Cow::Owned(name.clone()),
+                    CowVec::Owned(generics.iter().copied()
                         .map(|node| (node.span(), self.try_convert_possible_types(already_errored, diagnostics, meta_info, node).unwrap_or(Type::Top)))
-                        .collect(),
+                        .collect()),
                 ),
                 &ResolvableSpecificType::UnUnifyableGeneric(span) => SpecificType::Generic(span),
             }));

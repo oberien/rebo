@@ -1,3 +1,4 @@
+use std::ops::Deref;
 use crate::lints::visitor::Visitor;
 use diagnostic::Diagnostics;
 use crate::common::MetaInfo;
@@ -40,7 +41,7 @@ impl Visitor for StructDefLints {
 
 fn check_struct_recursion(diagnostics: &Diagnostics, meta_info: &MetaInfo, struct_name: &TokenIdent, field_typ: &Type, field_path: Vec<&str>) {
     let field_struct_name = match &field_typ {
-        Type::Specific(SpecificType::Struct(s, _)) => s.as_str(),
+        Type::Specific(SpecificType::Struct(s, _)) => s,
         _ => return,
     };
     // As we check every single struct, we only need to check if any recursive field is of the
@@ -55,7 +56,7 @@ fn check_struct_recursion(diagnostics: &Diagnostics, meta_info: &MetaInfo, struc
             .emit();
         return
     }
-    let typ = match meta_info.struct_types.get(field_struct_name) {
+    let typ = match meta_info.struct_types.get(field_struct_name.deref()) {
         Some(typ) => typ,
         None => return,
     };

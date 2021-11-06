@@ -1,12 +1,15 @@
-use diagnostic::Diagnostics;
-use typed_arena::Arena;
-use crate::parser::{Expr, Parser};
-use crate::common::MetaInfo;
-use crate::lexer::Lexer;
-use std::path::PathBuf;
+use std::borrow::Cow;
+use std::cell::RefCell;
+use std::sync::Arc;
+use parking_lot::ReentrantMutex;
+use crate::{CowVec, Enum, EnumArc, ExternalType, FileId, FromValue, IntoValue, Span, SpecificType, Type, Typed, Value};
 
-const CODE: &str = r#"
-enum Result<T, E> {
+const FILE_NAME: &'static str = "external-Result.re";
+const RESULT_T: Span = Span::new(FileId::synthetic(FILE_NAME), 12, 13);
+const RESULT_E: Span = Span::new(FileId::synthetic(FILE_NAME), 15, 16);
+
+impl<T: FromValue + IntoValue, E: FromValue + IntoValue> ExternalType for Result<T, E> {
+    const CODE: &'static str = r#"enum Result<T, E> {
     Ok(T),
     Err(E),
 }
@@ -20,11 +23,43 @@ impl Result<T, E> {
     }
 }
 "#;
-
-pub fn add_result<'a, 'i>(diagnostics: &'i Diagnostics, arena: &'a Arena<Expr<'a, 'i>>, meta_info: &mut MetaInfo<'a, 'i>) {
-    let (file, _) = diagnostics.add_file("result.rs".to_string(), CODE.to_string());
-
-    let lexer = Lexer::new(diagnostics, file);
-    let parser = Parser::new(PathBuf::new(), arena, lexer, diagnostics, meta_info);
-    parser.parse_ast().unwrap();
+    const FILE_NAME: &'static str = FILE_NAME;
+}
+impl<T: FromValue, E: FromValue> FromValue for Result<T, E> {
+    fn from_value(value: Value) -> Self {
+        match value {
+            Value::Enum(e) => {
+                let e = e.e.lock();
+                let e = e.borrow();
+                assert_eq!(e.name, "Result", "Result::from_value called with non-Result enum");
+                match e.variant.as_str() {
+                    "Ok" => Ok(FromValue::from_value(e.fields[0].clone())),
+                    "Err" => Err(FromValue::from_value(e.fields[0].clone())),
+                    variant => unreachable!("Result::from_value called with Result with unknown variant `{}`", variant),
+                }
+            }
+            _ => unreachable!("Result::from_value called with non-enum"),
+        }
+    }
+}
+impl<T: IntoValue, E: IntoValue> IntoValue for Result<T, E> {
+    fn into_value(self) -> Value {
+        let (variant, fields) = match self {
+            Ok(t) => ("Ok", vec![t.into_value()]),
+            Err(e) => ("Err", vec![e.into_value()]),
+        };
+        Value::Enum(EnumArc {
+            e: Arc::new(ReentrantMutex::new(RefCell::new(Enum {
+                name: "Result".to_string(),
+                variant: variant.to_string(),
+                fields,
+            })))
+        })
+    }
+}
+impl<T, E> Typed for Result<T, E> {
+    const TYPE: SpecificType = SpecificType::Enum(
+        Cow::Borrowed("Result"),
+        CowVec::Borrowed(&[(RESULT_T, Type::Top), (RESULT_E, Type::Top)]),
+    );
 }

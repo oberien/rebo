@@ -4,13 +4,13 @@ extern crate self as rebo;
 
 use std::time::Instant;
 
-pub use diagnostic::{Diagnostics, Span, Output};
+pub use diagnostic::{Diagnostics, Span, Output, FileId};
 use itertools::Itertools;
 use typed_arena::Arena;
 
 use crate::common::MetaInfo;
 use crate::lexer::Lexer;
-use crate::parser::{Ast, Parser};
+use crate::parser::{Ast, Expr, Parser};
 use crate::vm::Vm;
 
 mod error_codes;
@@ -25,13 +25,15 @@ mod common;
 #[cfg(test)]
 mod tests;
 
-pub use rebo_derive::function;
+pub use rebo_derive::{function, ExternalType};
 pub use vm::{VmContext, ExecError};
-pub use common::{Value, FromValue, IntoValue, Typed, ExternalFunction};
+pub use common::{Value, FromValue, IntoValue, Typed, ExternalFunction, ExternalType};
+#[doc(hidden)] // only used for the derive macros
+pub use common::{StructArc, Struct, EnumArc, Enum};
 pub use typeck::types::{Type, FunctionType, SpecificType};
 pub use stdlib::Stdlib;
+pub use util::CowVec;
 use std::path::PathBuf;
-use diagnostic::FileId;
 
 const EXTERNAL_SOURCE: &str = "defined externally";
 const EXTERNAL_SPAN: Span = Span::new(FileId::synthetic("external.re"), 0, EXTERNAL_SOURCE.len());
@@ -42,13 +44,25 @@ pub enum ReturnValue {
     Diagnostics(u32),
 }
 
+pub struct ExternalTypes<'a, 'b, 'i> {
+    arena: &'a Arena<Expr<'a, 'i>>,
+    diagnostics: &'i Diagnostics,
+    meta_info: &'b mut MetaInfo<'a, 'i>,
+}
+impl<'a, 'b, 'i> ExternalTypes<'a, 'b, 'i> {
+    pub fn add_external_type<T: ExternalType>(&mut self) {
+        self.meta_info.add_external_type::<T>(self.arena, self.diagnostics);
+    }
+}
+
 pub struct ReboConfig {
     stdlib: Stdlib,
-    functions: Vec<(&'static str, ExternalFunction)>,
+    functions: Vec<ExternalFunction>,
     interrupt_interval: u32,
     interrupt_function: fn(&mut VmContext) -> Result<(), ExecError>,
     diagnostic_output: Output,
     include_directory: Option<PathBuf>,
+    external_type_adder: fn(&mut ExternalTypes),
 }
 impl ReboConfig {
     pub fn new() -> ReboConfig {
@@ -59,14 +73,15 @@ impl ReboConfig {
             interrupt_function: |_| Ok(()),
             diagnostic_output: Output::stderr(),
             include_directory: None,
+            external_type_adder: |_| (),
         }
     }
     pub fn stdlib(mut self, stdlib: Stdlib) -> Self {
         self.stdlib = stdlib;
         self
     }
-    pub fn add_function(mut self, name: &'static str, function: ExternalFunction) -> Self {
-        self.functions.push((name, function));
+    pub fn add_function(mut self, function: ExternalFunction) -> Self {
+        self.functions.push(function);
         self
     }
     pub fn interrupt_interval(mut self, interval: u32) -> Self {
@@ -85,13 +100,17 @@ impl ReboConfig {
         self.include_directory = Some(dir);
         self
     }
+    pub fn external_type_adder(mut self, adder: fn(&mut ExternalTypes)) -> Self {
+        self.external_type_adder = adder;
+        self
+    }
 }
 
 pub fn run(filename: String, code: String) -> ReturnValue {
     run_with_config(filename, code, ReboConfig::new())
 }
 pub fn run_with_config(filename: String, code: String, config: ReboConfig) -> ReturnValue {
-    let ReboConfig { stdlib, functions, interrupt_interval, interrupt_function, diagnostic_output, include_directory } = config;
+    let ReboConfig { stdlib, functions, interrupt_interval, interrupt_function, diagnostic_output, include_directory, external_type_adder } = config;
 
     let diagnostics = Diagnostics::with_output(diagnostic_output);
     // register file for external sources
@@ -102,9 +121,17 @@ pub fn run_with_config(filename: String, code: String, config: ReboConfig) -> Re
     let mut meta_info = MetaInfo::new();
     stdlib::add_to_meta_info(stdlib, &diagnostics, &arena, &mut meta_info);
 
+    // add external types defined by library user
+    let mut external_types = ExternalTypes {
+        arena: &arena,
+        diagnostics: &diagnostics,
+        meta_info: &mut meta_info
+    };
+    external_type_adder(&mut external_types);
+
     // add external functions defined by library user
-    for (name, function) in functions {
-        meta_info.add_external_function(&diagnostics, name, function);
+    for function in functions {
+        meta_info.add_external_function(&diagnostics, function);
     }
 
     // lex

@@ -1,14 +1,17 @@
 use std::borrow::Cow;
 use std::fmt::{self, Display, Formatter};
+use std::path::PathBuf;
 
 use diagnostic::{Diagnostics, Span};
 use indexmap::map::IndexMap;
+use typed_arena::Arena;
 
-pub use values::{Typed, FromValue, Function, ExternalFunction, FuzzyFloat, IntoValue, Struct, StructArc, Enum, EnumArc, Value, ListArc, MapArc};
+pub use values::{Typed, FromValue, Function, ExternalFunction, ExternalType, FuzzyFloat, IntoValue, Struct, StructArc, Enum, EnumArc, Value, ListArc, MapArc};
 
 use crate::error_codes::ErrorCode;
-use crate::EXTERNAL_SPAN;
-use crate::parser::{ExprEnumDefinition, ExprFunctionDefinition, ExprPatternTyped, ExprPatternUntyped, ExprStructDefinition, Spanned, ExprGenerics, ExprStatic, ExprPattern};
+use crate::{EXTERNAL_SPAN, SpecificType};
+use crate::lexer::Lexer;
+use crate::parser::{ExprEnumDefinition, ExprFunctionDefinition, ExprPatternTyped, ExprPatternUntyped, ExprStructDefinition, Spanned, ExprGenerics, ExprStatic, ExprPattern, Expr, Parser};
 use crate::typeck::types::{EnumType, FunctionType, StructType, Type};
 use crate::typeck::TypeVar;
 
@@ -84,6 +87,7 @@ pub struct MetaInfo<'a, 'i> {
     ///
     /// Available after typeck.
     pub types: IndexMap<TypeVar, Type>,
+    pub external_types: IndexMap<String, SpecificType>,
 }
 impl<'a, 'i> MetaInfo<'a, 'i> {
     pub fn new() -> Self {
@@ -96,6 +100,7 @@ impl<'a, 'i> MetaInfo<'a, 'i> {
             struct_types: IndexMap::new(),
             enum_types: IndexMap::new(),
             types: IndexMap::new(),
+            external_types: IndexMap::new(),
         }
     }
 
@@ -108,12 +113,13 @@ impl<'a, 'i> MetaInfo<'a, 'i> {
         self.functions.insert(name.clone(), function);
         self.rebo_functions.insert(name, fun);
     }
-    pub fn add_external_function(&mut self, diagnostics: &Diagnostics, name: &'static str, fun: ExternalFunction) {
-        if self.check_existing_function(diagnostics, name, EXTERNAL_SPAN) {
+    pub fn add_external_function(&mut self, diagnostics: &Diagnostics, fun: ExternalFunction) {
+        if self.check_existing_function(diagnostics, fun.name, EXTERNAL_SPAN) {
             return;
         }
-        self.functions.insert(Cow::Borrowed(name), Function::Rust(fun.imp));
-        self.function_types.insert(Cow::Borrowed(name), fun.typ);
+        diagnostics.add_synthetic_file(fun.file_name, fun.code.to_string());
+        self.functions.insert(Cow::Borrowed(fun.name), Function::Rust(fun.imp));
+        self.function_types.insert(Cow::Borrowed(fun.name), fun.typ);
     }
     fn add_enum_initializer_function(&mut self, diagnostics: &Diagnostics, enum_name: String, variant_name: String) {
         let name = format!("{}::{}", enum_name, variant_name);
@@ -149,6 +155,14 @@ impl<'a, 'i> MetaInfo<'a, 'i> {
             return true;
         }
         false
+    }
+    pub fn add_external_type<T: ExternalType>(&mut self, arena: &'a Arena<Expr<'a, 'i>>, diagnostics: &'i Diagnostics) {
+        let (file, _) = diagnostics.add_synthetic_file(T::FILE_NAME, T::CODE.to_string());
+        self.external_types.insert(T::TYPE.type_name(), T::TYPE);
+
+        let lexer = Lexer::new(diagnostics, file);
+        let parser = Parser::new(PathBuf::new(), arena, lexer, diagnostics, self);
+        parser.parse_ast().unwrap();
     }
     pub fn add_enum(&mut self, diagnostics: &Diagnostics, enum_def: &'a ExprEnumDefinition<'a, 'i>) {
         self.add_user_type(diagnostics, enum_def.name.ident, UserType::Enum(enum_def));

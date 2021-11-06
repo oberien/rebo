@@ -1,4 +1,35 @@
 use std::fmt;
+use std::ops::Deref;
+
+/// Workaround for <https://github.com/rust-lang/rust/issues/89940>
+#[derive(Debug, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
+pub enum CowVec<'a, T> {
+    Borrowed(&'a [T]),
+    Owned(Vec<T>),
+}
+impl<'a, T: Clone> CowVec<'a, T> {
+    pub fn to_owned(&self) -> Vec<T> {
+        self.deref().to_vec()
+    }
+}
+impl<'a, T> Deref for CowVec<'a, T> {
+    type Target = [T];
+
+    fn deref(&self) -> &Self::Target {
+        match self {
+            CowVec::Borrowed(b) => b,
+            CowVec::Owned(v) => v,
+        }
+    }
+}
+impl<'a, 'b, T> IntoIterator for &'b CowVec<'a, T> {
+    type Item = &'b T;
+    type IntoIter = std::slice::Iter<'b, T>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.deref().iter()
+    }
+}
 
 pub struct PadFmt<T: fmt::Write> {
     f: T,

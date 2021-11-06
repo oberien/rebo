@@ -3,6 +3,7 @@ use std::borrow::Cow;
 use strum_macros::{EnumDiscriminants, EnumIter};
 use crate::parser::ExprLiteral;
 use diagnostic::Span;
+use crate::CowVec;
 use crate::typeck::graph::Node;
 
 #[derive(Debug, Clone, PartialOrd, Ord, PartialEq, Eq, Hash)]
@@ -25,9 +26,9 @@ pub enum SpecificType {
     Bool,
     String,
     /// struct name, generics
-    Struct(String, Vec<(Span, Type)>),
+    Struct(Cow<'static, str>, CowVec<'static, (Span, Type)>),
     /// enum name, generics
-    Enum(String, Vec<(Span, Type)>),
+    Enum(Cow<'static, str>, CowVec<'static, (Span, Type)>),
     /// def_ident-span
     Generic(Span),
 }
@@ -118,8 +119,8 @@ impl SpecificType {
             SpecificType::Float => "float".to_string(),
             SpecificType::Bool => "bool".to_string(),
             SpecificType::String => "string".to_string(),
-            SpecificType::Struct(name, _) => name.clone(),
-            SpecificType::Enum(name, _) => name.clone(),
+            SpecificType::Struct(name, _) => name.clone().into_owned(),
+            SpecificType::Enum(name, _) => name.clone().into_owned(),
             SpecificType::Generic(Span { file, start, end }) => format!("<{}:{}:{}>", file, start, end),
         }
     }
@@ -202,7 +203,7 @@ impl fmt::Display for Type {
                 write!(f, "varargs...")
             },
             Type::Top => write!(f, "any"),
-            Type::Bottom => write!(f, "⊥"),
+            Type::Bottom => write!(f, "!"),
         }
     }
 }

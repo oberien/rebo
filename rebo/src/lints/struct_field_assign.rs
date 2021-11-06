@@ -1,3 +1,4 @@
+use std::ops::Deref;
 use crate::lints::visitor::Visitor;
 use diagnostic::Diagnostics;
 use crate::common::MetaInfo;
@@ -31,7 +32,7 @@ fn check_non_struct_field_access(diagnostics: &Diagnostics, meta_info: &MetaInfo
                 return
             }
         };
-        let struct_type = &meta_info.struct_types[struct_name.as_str()];
+        let struct_type = &meta_info.struct_types[struct_name.deref()];
         let field_type = struct_type.get_field(field.ident);
         match field_type {
             Some(field_typ) => {

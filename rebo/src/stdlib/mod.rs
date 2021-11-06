@@ -1,10 +1,8 @@
-use crate::common::{Value, MetaInfo, ExternalFunction, FuzzyFloat};
-use crate::vm::VmContext;
+use crate::common::{Value, MetaInfo, FuzzyFloat};
 use crate as rebo;
-use std::borrow::Cow;
 use itertools::Itertools;
-use diagnostic::{Diagnostics, Span};
-use crate::typeck::types::{FunctionType, Type, SpecificType};
+use diagnostic::Diagnostics;
+use crate::typeck::types::{Type, SpecificType};
 use crate::error_codes::ErrorCode;
 use crate::parser::Expr;
 use typed_arena::Arena;
@@ -24,80 +22,60 @@ bitflags::bitflags! {
 }
 
 pub fn add_to_meta_info<'a, 'i>(stdlib: Stdlib, diagnostics: &'i Diagnostics, arena: &'a Arena<Expr<'a, 'i>>, meta_info: &mut MetaInfo<'a, 'i>) {
-    let option_t = option::add_option(diagnostics, arena, meta_info);
-    result::add_result(diagnostics, arena, meta_info);
-    let list_t = list::add_list(diagnostics, arena, meta_info, option_t);
-    map::add_map(diagnostics, arena, meta_info, option_t, list_t);
+    meta_info.add_external_type::<Option<Value>>(arena, diagnostics);
+    meta_info.add_external_type::<Result<Value, Value>>(arena, diagnostics);
+    list::add_list(diagnostics, arena, meta_info);
+    map::add_map(diagnostics, arena, meta_info);
 
     if stdlib.contains(Stdlib::PRINT) {
-        meta_info.add_external_function(diagnostics, "print", ExternalFunction {
-            typ: FunctionType {
-                is_method: false,
-                generics: Cow::Borrowed(&[]),
-                args: Cow::Borrowed(&[Type::UntypedVarargs]),
-                ret: Type::Specific(SpecificType::Unit),
-            },
-            imp: print,
-        });
+        meta_info.add_external_function(diagnostics, print);
     }
 
-    meta_info.add_external_function(diagnostics, "add_one", add_one);
+    meta_info.add_external_function(diagnostics, add_one);
 
-    meta_info.add_external_function(diagnostics, "int::to_float", int_to_float);
-    meta_info.add_external_function(diagnostics, "float::to_int", float_to_int);
-    meta_info.add_external_function(diagnostics, "bool::to_int", bool_to_int);
+    meta_info.add_external_function(diagnostics, int_to_float);
+    meta_info.add_external_function(diagnostics, float_to_int);
+    meta_info.add_external_function(diagnostics, bool_to_int);
 
     if stdlib.contains(Stdlib::ASSERT) {
-        meta_info.add_external_function(diagnostics, "assert", ExternalFunction {
-            typ: FunctionType {
-                is_method: false,
-                generics: Cow::Borrowed(&[]),
-                args: Cow::Borrowed(&[Type::Specific(SpecificType::Bool)]),
-                ret: Type::Specific(SpecificType::Unit),
-            },
-            imp: assert,
-        });
+        meta_info.add_external_function(diagnostics, assert);
     }
     if stdlib.contains(Stdlib::PANIC) {
-        meta_info.add_external_function(diagnostics, "panic", ExternalFunction {
-            typ: FunctionType {
-                is_method: false,
-                generics: Cow::Borrowed(&[]),
-                args: Cow::Borrowed(&[Type::Specific(SpecificType::String)]),
-                ret: Type::Bottom,
-            },
-            imp: panic,
-        });
+        meta_info.add_external_function(diagnostics, panic);
     }
 }
 
-fn print(_expr_span: Span, _vm: &mut VmContext, values: Vec<Value>) -> Result<Value, ExecError> {
-    let joined = values.iter().map(ToString::to_string).join(", ");
+// #[derive(rebo::ExternalType)]
+// pub struct Foo {}
+
+#[rebo::function(raw("print"))]
+fn print(..: _) {
+    let joined = args.join(", ");
     println!("{}", joined);
-    Ok(Value::Unit)
 }
 
-#[rebo::function]
+#[rebo::function("add_one")]
 fn add_one(a: i64) -> i64 {
     a + 1
 }
 
 // type conversions
-#[rebo::function]
+#[rebo::function("int::to_float")]
 fn int_to_float(this: i64) -> FuzzyFloat {
     FuzzyFloat(this as f64)
 }
-#[rebo::function]
+#[rebo::function("bool::to_int")]
 fn bool_to_int(this: bool) -> i64 {
     this as i64
 }
-#[rebo::function]
+#[rebo::function("float::to_int")]
 fn float_to_int(this: FuzzyFloat) -> i64 {
     this.0 as i64
 }
 
-fn assert(expr_span: Span, vm: &mut VmContext, mut values: Vec<Value>) -> Result<Value, ExecError> {
-    if !values.remove(0).expect_bool("assert called with non-bool") {
+#[rebo::function(raw("assert", return Type::Specific(SpecificType::Unit)))]
+fn assert(condition: bool) -> Result<Value, ExecError> {
+    if !condition {
         vm.diagnostics().error(ErrorCode::AssertionFailed)
             .with_error_label(expr_span, "this assertion failed")
             .emit();
@@ -106,9 +84,10 @@ fn assert(expr_span: Span, vm: &mut VmContext, mut values: Vec<Value>) -> Result
         Ok(Value::Unit)
     }
 }
-fn panic(expr_span: Span, vm: &mut VmContext, mut values: Vec<Value>) -> Result<Value, ExecError> {
+#[rebo::function(raw("panic", return Type::Top))]
+fn panic(message: String) -> Result<Value, ExecError> {
     vm.diagnostics().error(ErrorCode::Panic)
-        .with_error_label(expr_span, values.remove(0).expect_string("panic called with non-string"))
+        .with_error_label(expr_span, message)
         .emit();
     Err(ExecError::Panic)
 }
