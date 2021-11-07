@@ -7,8 +7,10 @@ use unzip3::Unzip3;
 use crate::util;
 
 pub fn enum_type(e: ItemEnum) -> TokenStream {
-    let ItemEnum { attrs: _, vis: _, enum_token: _, ident, generics, brace_token: _, variants } = e;
+    let ItemEnum { attrs: _, vis, enum_token: _, ident, generics, brace_token: _, variants } = e;
     let ident_string = ident.to_string();
+    let value_ident = format!("_{}UnitStruct", ident);
+    let value_ident = Ident::new(&value_ident, ident.span());
 
     let (variant_names, variant_name_strings, field_types) = variants.iter()
         .map(|variant| {
@@ -64,6 +66,11 @@ pub fn enum_type(e: ItemEnum) -> TokenStream {
         }).collect::<Vec<_>>();
 
     (quote::quote! {
+        struct #value_ident;
+        #vis const #ident: #value_ident = #value_ident;
+        impl ::rebo::ExternalTypeType for #value_ident {
+            type Type = #ident;
+        }
         impl<#(#generic_idents: ::rebo::FromValue + ::rebo::IntoValue),*> ::rebo::ExternalType for #ident<#(#generic_idents),*> {
             const CODE: &'static str = #code;
             const FILE_NAME: &'static str = #code_filename;
@@ -117,8 +124,10 @@ pub fn enum_type(e: ItemEnum) -> TokenStream {
 }
 
 pub fn struct_type(s: ItemStruct) -> TokenStream {
-    let ItemStruct { attrs: _, vis: _, struct_token: _, ident, generics, fields, semi_token: _ } = s;
+    let ItemStruct { attrs: _, vis, struct_token: _, ident, generics, fields, semi_token: _ } = s;
     let ident_string = ident.to_string();
+    let value_ident = format!("_{}UnitStruct", ident);
+    let value_ident = Ident::new(&value_ident, ident.span());
 
     let (field_names, field_name_strings, field_types) = match &fields {
         Fields::Named(named) => named.named.iter()
@@ -146,6 +155,11 @@ pub fn struct_type(s: ItemStruct) -> TokenStream {
     let generic_spans = util::generic_spans(&generic_idents, &code_filename, &code);
 
     (quote::quote! {
+        struct #value_ident;
+        #vis const #ident: #value_ident = #value_ident;
+        impl ::rebo::ExternalTypeType for #value_ident {
+            type Type = #ident;
+        }
         impl<#(#generic_idents: ::rebo::FromValue + ::rebo::IntoValue),*> ::rebo::ExternalType for #ident<#(#generic_idents),*> {
             const CODE: &'static str = #code;
             const FILE_NAME: &'static str = #code_filename;

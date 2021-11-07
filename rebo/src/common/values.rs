@@ -10,13 +10,16 @@ use parking_lot::ReentrantMutex;
 use std::cell::RefCell;
 use crate::parser::{ExprLiteral, ExprInteger, ExprFloat, ExprBool, ExprString};
 use diagnostic::Span;
-use crate::EXTERNAL_SPAN;
+use crate::{EXTERNAL_SPAN, Type};
 use itertools::Itertools;
 use crate::typeck::types::{SpecificType, FunctionType};
 use crate::common::MetaInfo;
 use crate::parser::Spanned;
 use std::collections::BTreeMap;
 
+pub trait ExternalTypeType {
+    type Type: ExternalType;
+}
 pub trait ExternalType: FromValue + IntoValue + Typed {
     const CODE: &'static str;
     const FILE_NAME: &'static str;

@@ -27,7 +27,7 @@ mod tests;
 
 pub use rebo_derive::{function, ExternalType};
 pub use vm::{VmContext, ExecError};
-pub use common::{Value, FromValue, IntoValue, Typed, ExternalFunction, ExternalType};
+pub use common::{Value, FromValue, IntoValue, Typed, ExternalFunction, ExternalType, ExternalTypeType};
 #[doc(hidden)] // only used for the derive macros
 pub use common::{StructArc, Struct, EnumArc, Enum};
 pub use typeck::types::{Type, FunctionType, SpecificType};
@@ -44,17 +44,6 @@ pub enum ReturnValue {
     Diagnostics(u32),
 }
 
-pub struct ExternalTypes<'a, 'b, 'i> {
-    arena: &'a Arena<Expr<'a, 'i>>,
-    diagnostics: &'i Diagnostics,
-    meta_info: &'b mut MetaInfo<'a, 'i>,
-}
-impl<'a, 'b, 'i> ExternalTypes<'a, 'b, 'i> {
-    pub fn add_external_type<T: ExternalType>(&mut self) {
-        self.meta_info.add_external_type::<T>(self.arena, self.diagnostics);
-    }
-}
-
 pub struct ReboConfig {
     stdlib: Stdlib,
     functions: Vec<ExternalFunction>,
@@ -62,7 +51,7 @@ pub struct ReboConfig {
     interrupt_function: fn(&mut VmContext) -> Result<(), ExecError>,
     diagnostic_output: Output,
     include_directory: Option<PathBuf>,
-    external_type_adder: fn(&mut ExternalTypes),
+    external_type_adder_functions: Vec<for<'a, 'b, 'i> fn(&'a Arena<Expr<'a, 'i>>, &'i Diagnostics, &'b mut MetaInfo<'a, 'i>)>,
 }
 impl ReboConfig {
     pub fn new() -> ReboConfig {
@@ -73,7 +62,7 @@ impl ReboConfig {
             interrupt_function: |_| Ok(()),
             diagnostic_output: Output::stderr(),
             include_directory: None,
-            external_type_adder: |_| (),
+            external_type_adder_functions: Vec::new(),
         }
     }
     pub fn stdlib(mut self, stdlib: Stdlib) -> Self {
@@ -100,17 +89,20 @@ impl ReboConfig {
         self.include_directory = Some(dir);
         self
     }
-    pub fn external_type_adder(mut self, adder: fn(&mut ExternalTypes)) -> Self {
-        self.external_type_adder = adder;
+    pub fn add_external_type<T: ExternalTypeType>(mut self, _: T) -> Self {
+        self.external_type_adder_functions.push(add_external_type::<T::Type>);
         self
     }
+}
+pub fn add_external_type<'a, 'b, 'i, T: ExternalType>(arena: &'a Arena<Expr<'a, 'i>>, diagnostics: &'i Diagnostics, meta_info: &'b mut MetaInfo<'a, 'i>) {
+    meta_info.add_external_type::<T>(arena, diagnostics);
 }
 
 pub fn run(filename: String, code: String) -> ReturnValue {
     run_with_config(filename, code, ReboConfig::new())
 }
 pub fn run_with_config(filename: String, code: String, config: ReboConfig) -> ReturnValue {
-    let ReboConfig { stdlib, functions, interrupt_interval, interrupt_function, diagnostic_output, include_directory, external_type_adder } = config;
+    let ReboConfig { stdlib, functions, interrupt_interval, interrupt_function, diagnostic_output, include_directory, external_type_adder_functions } = config;
 
     let diagnostics = Diagnostics::with_output(diagnostic_output);
     // register file for external sources
@@ -122,12 +114,9 @@ pub fn run_with_config(filename: String, code: String, config: ReboConfig) -> Re
     stdlib::add_to_meta_info(stdlib, &diagnostics, &arena, &mut meta_info);
 
     // add external types defined by library user
-    let mut external_types = ExternalTypes {
-        arena: &arena,
-        diagnostics: &diagnostics,
-        meta_info: &mut meta_info
-    };
-    external_type_adder(&mut external_types);
+    for adder_function in external_type_adder_functions {
+        adder_function(&arena, &diagnostics, &mut meta_info);
+    }
 
     // add external functions defined by library user
     for function in functions {

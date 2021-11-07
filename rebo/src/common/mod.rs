@@ -6,7 +6,7 @@ use diagnostic::{Diagnostics, Span};
 use indexmap::map::IndexMap;
 use typed_arena::Arena;
 
-pub use values::{Typed, FromValue, Function, ExternalFunction, ExternalType, FuzzyFloat, IntoValue, Struct, StructArc, Enum, EnumArc, Value, ListArc, MapArc};
+pub use values::{Typed, FromValue, Function, ExternalFunction, ExternalType, ExternalTypeType, FuzzyFloat, IntoValue, Struct, StructArc, Enum, EnumArc, Value, ListArc, MapArc};
 
 use crate::error_codes::ErrorCode;
 use crate::{EXTERNAL_SPAN, SpecificType};
