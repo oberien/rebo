@@ -47,57 +47,63 @@ pub fn enum_type(e: ItemEnum) -> TokenStream {
         .map(|(name, types)| format!("    {}{},\n", name, if types.is_empty() {
             "".to_string()
         } else {
-            types.iter().map(|typ| quote::quote!(#typ).to_string()).join(", ")
+            format!("({})", types.iter().map(|typ| quote::quote!(#typ).to_string()).join(", "))
         })).join("");
     let code = format!("enum {}{} {{\n{}}}", ident, generics_string, variants_string);
 
     let generic_spans = util::generic_spans(&generic_idents, &code_filename, &code);
+    let from_values = field_types.iter()
+        .map(|types| if types.is_empty() {
+            quote::quote!()
+        } else {
+            quote::quote! {
+                (#(
+                    <#types as ::rebo::FromValue>::from_value(fields.next().unwrap()),
+                )*)
+            }
+        }).collect::<Vec<_>>();
 
     (quote::quote! {
-        // impl ::rebo::ExternalType for #ident {
-        //     const CODE: &'static str = #code;
-        //     const FILE_NAME: &'static str = #code_filename;
-        // }
-        // impl ::rebo::FromValue for #ident {
-        //     fn from_value(value: ::rebo::Value) -> Self {
-        //         match value {
-        //             ::rebo::Value::Enum(e) => {
-        //                 let e = e.e.lock();
-        //                 let e = e.borrow();
-        //                 let fields = e.fields.iter().cloned();
-        //                 match e.variant.as_str() {
-        //                     #(
-        //                         #variant_name_strings => #idents::#variant_names(
-        //                             #(
-        //                                 <#field_types as ::rebo::FromValue>::from_value(fields.next().unwrap()),
-        //                             )*
-        //                         ),
-        //                     )*
-        //                     var => unreachable!("{}::from_value called with unknown variant `{}`", #ident_string, var),
-        //                 }
-        //             }
-        //             _ => unreachable!("{}::from_value called with non-{}", #ident_string, #ident_string),
-        //         }
-        //     }
-        // }
-        // impl ::rebo::IntoValue for #ident {
-        //     fn into_value(self) -> ::rebo::Value {
-        //         match self {
-        //             #(
-        //                 #idents::#variant_names(#field_names) => ::rebo::Value::Enum(::rebo::EnumArc::new(::rebo::Enum {
-        //                     name: #ident_strings.to_string(),
-        //                     variant: #variant_names,
-        //                     fields: vec![
-        //                         #(
-        //                             <#field_types as ::rebo::IntoValue>::into_value(#field_names),
-        //                         )*
-        //                     ],
-        //                 })),
-        //             )*
-        //         }
-        //     }
-        // }
-        impl<#(#generic_idents,)*> ::rebo::Typed for #ident {
+        impl<#(#generic_idents: ::rebo::FromValue + ::rebo::IntoValue),*> ::rebo::ExternalType for #ident<#(#generic_idents),*> {
+            const CODE: &'static str = #code;
+            const FILE_NAME: &'static str = #code_filename;
+        }
+        impl<#(#generic_idents: ::rebo::FromValue),*> ::rebo::FromValue for #ident<#(#generic_idents),*> {
+            fn from_value(value: ::rebo::Value) -> Self {
+                match value {
+                    ::rebo::Value::Enum(e) => {
+                        let e = e.e.lock();
+                        let e = e.borrow();
+                        let mut fields = e.fields.iter().cloned();
+                        match e.variant.as_str() {
+                            #(
+                                #variant_name_strings => #idents::#variant_names#from_values,
+                            )*
+                            var => unreachable!("{}::from_value called with unknown variant `{}`", #ident_string, var),
+                        }
+                    }
+                    _ => unreachable!("{}::from_value called with non-{}", #ident_string, #ident_string),
+                }
+            }
+        }
+        impl<#(#generic_idents: ::rebo::IntoValue),*> ::rebo::IntoValue for #ident<#(#generic_idents),*> {
+            fn into_value(self) -> ::rebo::Value {
+                match self {
+                    #(
+                        #idents::#variant_names#field_names => ::rebo::Value::Enum(::rebo::EnumArc::new(::rebo::Enum {
+                            name: #ident_strings.to_string(),
+                            variant: #variant_name_strings.to_string(),
+                            fields: vec![
+                                #(
+                                    <#field_types as ::rebo::IntoValue>::into_value#field_names,
+                                )*
+                            ],
+                        })),
+                    )*
+                }
+            }
+        }
+        impl<#(#generic_idents),*> ::rebo::Typed for #ident<#(#generic_idents),*> {
             const TYPE: ::rebo::SpecificType = ::rebo::SpecificType::Enum(
                 ::std::borrow::Cow::Borrowed(#ident_string),
                 ::rebo::CowVec::Borrowed(&[
