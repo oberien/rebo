@@ -97,7 +97,7 @@ pub fn enum_type(e: ItemEnum) -> TokenStream {
         //         }
         //     }
         // }
-        impl ::rebo::Typed for #ident {
+        impl<#(#generic_idents,)*> ::rebo::Typed for #ident {
             const TYPE: ::rebo::SpecificType = ::rebo::SpecificType::Enum(
                 ::std::borrow::Cow::Borrowed(#ident_string),
                 ::rebo::CowVec::Borrowed(&[
@@ -140,11 +140,11 @@ pub fn struct_type(s: ItemStruct) -> TokenStream {
     let generic_spans = util::generic_spans(&generic_idents, &code_filename, &code);
 
     (quote::quote! {
-        impl ::rebo::ExternalType for #ident {
+        impl<#(#generic_idents: ::rebo::FromValue + ::rebo::IntoValue),*> ::rebo::ExternalType for #ident<#(#generic_idents),*> {
             const CODE: &'static str = #code;
             const FILE_NAME: &'static str = #code_filename;
         }
-        impl ::rebo::FromValue for #ident {
+        impl<#(#generic_idents: ::rebo::FromValue),*> ::rebo::FromValue for #ident<#(#generic_idents),*> {
             fn from_value(value: ::rebo::Value) -> Self {
                 match value {
                     ::rebo::Value::Struct(s) => {
@@ -161,7 +161,7 @@ pub fn struct_type(s: ItemStruct) -> TokenStream {
                 }
             }
         }
-        impl ::rebo::IntoValue for #ident {
+        impl<#(#generic_idents: ::rebo::IntoValue),*> ::rebo::IntoValue for #ident<#(#generic_idents),*> {
             fn into_value(self) -> ::rebo::Value {
                 ::rebo::Value::Struct(::rebo::StructArc::new(::rebo::Struct {
                     name: #ident_string.to_string(),
@@ -173,7 +173,7 @@ pub fn struct_type(s: ItemStruct) -> TokenStream {
                 }))
             }
         }
-        impl ::rebo::Typed for #ident {
+        impl<#(#generic_idents),*> ::rebo::Typed for #ident<#(#generic_idents),*> {
             const TYPE: ::rebo::SpecificType = ::rebo::SpecificType::Struct(
                 ::std::borrow::Cow::Borrowed(#ident_string),
                 ::rebo::CowVec::Borrowed(&[

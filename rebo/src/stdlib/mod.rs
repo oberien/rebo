@@ -46,15 +46,26 @@ pub fn add_to_meta_info<'a, 'i>(stdlib: Stdlib, diagnostics: &'i Diagnostics, ar
 }
 
 #[derive(rebo::ExternalType)]
+pub struct Foo2 {
+    foo: i64,
+}
+#[derive(rebo::ExternalType)]
 pub struct Foo<T> {
     foo: T,
 }
-#[derive(rebo::ExternalType)]
-pub enum Bar<T> {
-    Foo(Foo<T>),
-    Bar(T),
-    Baz,
-}
+
+// #[derive(rebo::ExternalType)]
+// pub enum Bar<T> {
+//     Foo(Foo<T>),
+//     Bar(T),
+//     Baz,
+// }
+// #[derive(rebo::ExternalType)]
+// pub enum Bar2 {
+//     Foo(Foo2),
+//     Bar(i64),
+//     Baz,
+// }
 
 #[rebo::function(raw("print"))]
 fn print(..: _) {
