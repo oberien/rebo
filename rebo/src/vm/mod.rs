@@ -336,10 +336,10 @@ impl<'a, 'i> Vm<'a, 'i> {
                 // TODO: O(n²log(n)) probably isn't the best but we need the correct order of the type-definition for comparisons
                 let typ = &self.struct_types[name.ident];
                 field_values.sort_by_key(|(field, _)| typ.fields.iter().position(|(name, _)| field == name));
-                Ok(Value::Struct(StructArc { s: Arc::new(ReentrantMutex::new(RefCell::new(Struct {
+                Ok(Value::Struct(StructArc::new(Struct {
                     name: name.ident.to_string(),
                     fields: field_values,
-                })))}))
+                })))
             }
             Expr::EnumDefinition(ExprEnumDefinition { .. }) => Ok(Value::Unit),
             Expr::EnumInitialization(ExprEnumInitialization { enum_name, variant_name, .. }) => {

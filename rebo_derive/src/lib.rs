@@ -14,6 +14,7 @@ pub fn function(args: TokenStream, input: TokenStream) -> TokenStream {
     function::function(args, input)
 }
 
+#[proc_macro_error]
 #[proc_macro_derive(ExternalType)]
 pub fn rebo_type(input: TokenStream) -> TokenStream {
     match parse_macro_input!(input as Item) {
@@ -25,6 +26,7 @@ pub fn rebo_type(input: TokenStream) -> TokenStream {
 
 /// For internal use only
 #[doc(hidden)]
+#[proc_macro_error]
 #[proc_macro_derive(Functions, attributes(function))]
 pub fn functions(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);

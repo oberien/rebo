@@ -277,6 +277,11 @@ impl PartialEq for Function {
 pub struct StructArc {
     pub s: Arc<ReentrantMutex<RefCell<Struct>>>,
 }
+impl StructArc {
+    pub fn new(s: Struct) -> StructArc {
+        StructArc { s: Arc::new(ReentrantMutex::new(RefCell::new(s))) }
+    }
+}
 impl PartialOrd for StructArc {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         self.s.lock().borrow().partial_cmp(&other.s.lock().borrow())
@@ -302,6 +307,11 @@ pub struct Struct {
 #[derive(Debug, Clone)]
 pub struct EnumArc {
     pub e: Arc<ReentrantMutex<RefCell<Enum>>>,
+}
+impl EnumArc {
+    pub fn new(e: Enum) -> EnumArc {
+        EnumArc { e: Arc::new(ReentrantMutex::new(RefCell::new(e))) }
+    }
 }
 impl PartialOrd for EnumArc {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
