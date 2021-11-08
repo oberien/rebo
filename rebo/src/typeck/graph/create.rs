@@ -1,6 +1,6 @@
 use crate::typeck::graph::{Graph, Node, PossibleTypes, Constraint};
 use crate::parser::{Expr, Spanned, ExprFormatString, ExprFormatStringPart, ExprBind, ExprPattern, ExprPatternTyped, ExprPatternUntyped, ExprAssign, ExprAssignLhs, ExprVariable, ExprFieldAccess, ExprBoolNot, ExprAdd, ExprSub, ExprMul, ExprDiv, ExprBoolAnd, ExprBoolOr, ExprLessThan, ExprLessEquals, ExprEquals, ExprNotEquals, ExprGreaterEquals, ExprGreaterThan, ExprBlock, BlockBody, ExprParenthesized, ExprMatch, ExprMatchPattern, ExprWhile, ExprFunctionCall, ExprFunctionDefinition, ExprStructInitialization, ExprImplBlock, ExprType, ExprGenerics, ExprAccess, FieldOrMethod, ExprFor, ExprStatic};
-use crate::common::{MetaInfo, UserType, Function};
+use crate::common::{MetaInfo, UserType, Function, RequiredReboFunctionStruct};
 use itertools::Either;
 use crate::typeck::types::{StructType, EnumType, EnumTypeVariant, SpecificType, FunctionType, Type, ResolvableSpecificType};
 use diagnostic::{Diagnostics, Span};
@@ -10,7 +10,7 @@ use std::rc::Rc;
 use std::ops::Deref;
 use crate::error_codes::ErrorCode;
 use std::sync::atomic::{Ordering, AtomicU64};
-use crate::CowVec;
+use crate::{CowVec, EXTERNAL_SPAN};
 
 #[derive(Clone)]
 pub(super) struct FunctionGenerics {
@@ -279,6 +279,7 @@ impl<'i> Graph<'i> {
             );
         }
 
+        // add function types
         for (name, fun) in &meta_info.functions {
             match fun {
                 Function::Rebo(..) => {
@@ -318,6 +319,57 @@ impl<'i> Graph<'i> {
                     meta_info.function_types.insert(name.clone(), typ);
                 }
                 Function::Rust(_) => (),
+            }
+        }
+
+        // check that required rebo functions are there and have the correct types
+        for rrf in &meta_info.required_rebo_functions {
+            let RequiredReboFunctionStruct { name, is_method, generics, args, ret } = rrf;
+            let metfun = if *is_method { "method" } else { "function" };
+            let typ = match meta_info.function_types.get(*name) {
+                Some(typ) => typ,
+                None => {
+                    diagnostics.error(ErrorCode::RequiredReboFunctionUnavailable)
+                        .with_error_label(EXTERNAL_SPAN, format!("couldn't find {} {}", metfun, name))
+                        .emit();
+                    continue;
+                }
+            };
+            let fun = &meta_info.rebo_functions[*name];
+            if typ.is_method != *is_method {
+                diagnostics.error(ErrorCode::RequiredReboFunctionDiffers)
+                    .with_error_label(fun.name.span(), format!("expected this to be a {}", metfun))
+                    .emit();
+            }
+            if typ.generics.len() != generics.len() {
+                diagnostics.error(ErrorCode::RequiredReboFunctionDiffers)
+                    .with_error_label(fun.name.span(), format!("expected {} generics, got {}", generics.len(), typ.generics.len()))
+                    .emit();
+            }
+            for ((span, generic), expected) in typ.generics.iter().map(|&span| (span, diagnostics.resolve_span(span))).zip(*generics) {
+                if generic != *expected {
+                    diagnostics.error(ErrorCode::RequiredReboFunctionDiffers)
+                        .with_error_label(span, format!("expected generic named `{}`", expected))
+                        .emit();
+                }
+            }
+            if typ.args.len() != args.len() {
+                diagnostics.error(ErrorCode::RequiredReboFunctionDiffers)
+                    .with_error_label(Span::new(fun.open.span.file, fun.open.span.start, fun.close.span.end), format!("expected {} args, found {}", args.len(), typ.args.len()))
+                    .emit();
+            }
+            let arg_spans: Vec<_> = fun.self_arg.iter().map(|a| a.span()).chain(fun.args.iter().map(|a| a.span())).collect();
+            for (i, (arg, expected)) in typ.args.iter().zip(*args).enumerate() {
+                if arg != expected {
+                    diagnostics.error(ErrorCode::RequiredReboFunctionDiffers)
+                        .with_error_label(arg_spans[i], format!("expected type `{}`, found type `{}`", expected, arg))
+                        .emit();
+                }
+            }
+            if *ret != typ.ret {
+                diagnostics.error(ErrorCode::RequiredReboFunctionDiffers)
+                    .with_error_label(Span::new(fun.close.span.file, fun.close.span.end, fun.body.span().start), format!("expected return type `{}`, found `{}`", ret, typ.ret))
+                    .emit();
             }
         }
 

@@ -1,39 +1,24 @@
-use std::borrow::Cow;
 use std::cell::RefCell;
 use std::sync::Arc;
 
-use indexmap::map::IndexMap;
 use parking_lot::ReentrantMutex;
 
-use crate::common::{Depth, Enum, EnumArc, Function, FuzzyFloat, MetaInfo, Struct, StructArc, Value};
+use crate::common::{Depth, Enum, EnumArc, Function, FuzzyFloat, MetaInfo, RequiredReboFunction, RequiredReboFunctionStruct, Struct, StructArc, Value};
 use crate::lexer::{TokenBool, TokenDqString, TokenFloat, TokenIdent, TokenInteger};
-use crate::parser::{Binding, BlockBody, Expr, ExprAdd, ExprAssign, ExprAssignLhs, ExprBind, ExprBlock, ExprBool, ExprBoolAnd, ExprBoolNot, ExprBoolOr, ExprDiv, ExprEnumDefinition, ExprEnumInitialization, ExprEquals, ExprFieldAccess, ExprFloat, ExprFormatString, ExprFormatStringPart, ExprFunctionCall, ExprFunctionDefinition, ExprGreaterEquals, ExprGreaterThan, ExprIfElse, ExprInteger, ExprLessEquals, ExprLessThan, ExprLiteral, ExprMatch, ExprMatchPattern, ExprMul, ExprNotEquals, ExprParenthesized, ExprPattern, ExprPatternTyped, ExprPatternUntyped, ExprString, ExprStructDefinition, ExprStructInitialization, ExprSub, ExprVariable, ExprWhile, ExprAccess, FieldOrMethod, Spanned, ExprFor, ExprStatic};
-use crate::typeck::types::StructType;
+use crate::parser::{Binding, BlockBody, Expr, ExprAdd, ExprAssign, ExprAssignLhs, ExprBind, ExprBlock, ExprBool, ExprBoolAnd, ExprBoolNot, ExprBoolOr, ExprDiv, ExprEnumDefinition, ExprEnumInitialization, ExprEquals, ExprFieldAccess, ExprFloat, ExprFormatString, ExprFormatStringPart, ExprFunctionCall, ExprFunctionDefinition, ExprGreaterEquals, ExprGreaterThan, ExprIfElse, ExprInteger, ExprLessEquals, ExprLessThan, ExprLiteral, ExprMatch, ExprMatchPattern, ExprMul, ExprNotEquals, ExprParenthesized, ExprPattern, ExprPatternTyped, ExprPatternUntyped, ExprString, ExprStructDefinition, ExprStructInitialization, ExprSub, ExprVariable, ExprWhile, ExprAccess, FieldOrMethod, Spanned, ExprFor};
 pub use crate::vm::scope::{Scopes, Scope};
 use diagnostic::{Diagnostics, Span};
-use std::ops::{Deref, DerefMut};
+use crate::EXTERNAL_SPAN;
 
 mod scope;
 
-pub struct Vm<'a, 'i> {
-    functions: IndexMap<Cow<'i, str>, Function>,
+pub struct Vm<'a, 'b, 'i> {
     interrupt_interval: u32,
     instructions_since_last_interrupt: u32,
     interrupt_function: fn(&mut VmContext) -> Result<(), ExecError>,
-    ctx: VmContext<'a, 'i>,
-}
-
-impl<'a, 'i> Deref for Vm<'a, 'i> {
-    type Target = VmContext<'a, 'i>;
-
-    fn deref(&self) -> &Self::Target {
-        &self.ctx
-    }
-}
-impl<'a, 'i> DerefMut for Vm<'a, 'i> {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.ctx
-    }
+    diagnostics: &'i Diagnostics,
+    scopes: Scopes,
+    meta_info: &'b MetaInfo<'a, 'i>,
 }
 
 #[derive(Debug)]
@@ -41,50 +26,44 @@ pub enum ExecError {
     Panic,
 }
 
-pub struct VmContext<'a, 'i> {
-    diagnostics: &'i Diagnostics,
-    scopes: Scopes,
-    rebo_functions: IndexMap<Cow<'i, str>, &'a ExprFunctionDefinition<'a, 'i>>,
-    struct_types: IndexMap<&'i str, StructType>,
-    statics: IndexMap<&'i str, &'a ExprStatic<'a, 'i>>,
+/// Passed to external functions
+pub struct VmContext<'a, 'b, 'vm, 'i> {
+    vm: &'vm mut Vm<'a, 'b, 'i>,
 }
 
-impl<'a, 'i> VmContext<'a, 'i> {
-    pub fn scopes(&mut self) -> &mut Scopes {
-        &mut self.scopes
-    }
-
+impl<'a, 'b, 'vm, 'i> VmContext<'a, 'b, 'vm, 'i> {
     pub fn diagnostics(&self) -> &Diagnostics {
-        self.diagnostics
+        self.vm.diagnostics
+    }
+
+    pub fn call_required_rebo_function<T: RequiredReboFunction>(&mut self, args: Vec<Value>) -> Result<Value, ExecError> {
+        if !self.vm.meta_info.required_rebo_functions.contains(&RequiredReboFunctionStruct::from_required_rebo_function::<T>()) {
+            panic!("required rebo function `{}` wasn't registered via `ReboConfig`", T::NAME);
+        }
+        self.vm.call_function(T::NAME, EXTERNAL_SPAN, args, Depth::start())
     }
 }
 
-impl<'a, 'i> Vm<'a, 'i> {
-    pub fn new(diagnostics: &'i Diagnostics, meta_info: MetaInfo<'a, 'i>, interrupt_interval: u32, interrupt_function: fn(&mut VmContext) -> Result<(), ExecError>) -> Self {
-        let MetaInfo { functions, rebo_functions, user_types: _, statics, function_types: _, struct_types, enum_types: _, types: _, external_types: _ } = meta_info;
+impl<'a, 'b, 'i> Vm<'a, 'b, 'i> {
+    pub fn new(diagnostics: &'i Diagnostics, meta_info: &'b MetaInfo<'a, 'i>, interrupt_interval: u32, interrupt_function: fn(&mut VmContext) -> Result<(), ExecError>) -> Self {
         let scopes = Scopes::new();
         let root_scope = Scope::new();
         // we don't want to drop the root-scope, it should exist at all times
         std::mem::forget(scopes.push_scope(root_scope));
         Vm {
-            functions,
             instructions_since_last_interrupt: 0,
             interrupt_interval,
             interrupt_function,
-            ctx: VmContext {
-                diagnostics,
-                scopes,
-                rebo_functions,
-                struct_types,
-                statics
-            }
+            diagnostics,
+            scopes,
+            meta_info,
         }
     }
 
     pub fn run(mut self, ast: &[&Expr]) -> Result<Value, ExecError> {
         trace!("run");
         // add statics
-        for static_def in self.statics.clone().values() {
+        for static_def in self.meta_info.statics.clone().values() {
             let binding = match &static_def.pattern {
                 ExprPattern::Typed(typed) => typed.pattern.binding,
                 ExprPattern::Untyped(untyped) => untyped.binding,
@@ -121,7 +100,9 @@ impl<'a, 'i> Vm<'a, 'i> {
         self.instructions_since_last_interrupt += 1;
         if self.instructions_since_last_interrupt > self.interrupt_interval {
             self.instructions_since_last_interrupt = 0;
-            (self.interrupt_function)(&mut self.ctx)?;
+            let interrupt_function = self.interrupt_function;
+            let mut ctx = VmContext { vm: self };
+            interrupt_function(&mut ctx)?;
         }
         match expr {
             Expr::Literal(ExprLiteral::Unit(_)) => Ok(Value::Unit),
@@ -334,7 +315,7 @@ impl<'a, 'i> Vm<'a, 'i> {
                     field_values.push((field.ident.to_string(), self.eval_expr(expr, depth.next())?));
                 }
                 // TODO: O(n²log(n)) probably isn't the best but we need the correct order of the type-definition for comparisons
-                let typ = &self.struct_types[name.ident];
+                let typ = &self.meta_info.struct_types[name.ident];
                 field_values.sort_by_key(|(field, _)| typ.fields.iter().position(|(name, _)| field == name));
                 Ok(Value::Struct(StructArc::new(Struct {
                     name: name.ident.to_string(),
@@ -367,17 +348,17 @@ impl<'a, 'i> Vm<'a, 'i> {
     }
     fn call_function(&mut self, name: &str, expr_span: Span, args: Vec<Value>, depth: Depth) -> Result<Value, ExecError> {
         trace!("{}call_function: {}({:?})", depth, name, args);
-        match &self.functions[name] {
-            Function::Rust(f) => f(expr_span, &mut self.ctx, args),
+        match &self.meta_info.functions[name] {
+            Function::Rust(f) => (*f)(expr_span, &mut VmContext { vm: self }, args),
             Function::Rebo(name, arg_binding_ids) => {
                 let mut scope = Scope::new();
                 for (&id, val) in arg_binding_ids.iter().zip(args) {
                     scope.create(id, val);
                 }
-                let _guard = self.ctx.scopes.push_scope(scope);
+                let _guard = self.scopes.push_scope(scope);
 
                 let mut last = None;
-                let fun = self.rebo_functions[name.as_str()];
+                let fun = self.meta_info.rebo_functions[name.as_str()];
                 for expr in &fun.body.body.exprs {
                     last = Some(self.eval_expr(expr, depth.next())?);
                 }

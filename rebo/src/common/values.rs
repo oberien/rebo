@@ -219,6 +219,32 @@ pub struct ExternalFunction {
     pub typ: FunctionType,
     pub imp: RustFunction,
 }
+pub trait RequiredReboFunction {
+    const NAME: &'static str;
+    const IS_METHOD: bool;
+    const GENERICS: &'static [&'static str];
+    const ARGS: &'static [Type];
+    const RET: Type;
+}
+#[derive(Debug, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
+pub struct RequiredReboFunctionStruct {
+    pub name: &'static str,
+    pub is_method: bool,
+    pub generics: &'static [&'static str],
+    pub args: &'static [Type],
+    pub ret: Type,
+}
+impl RequiredReboFunctionStruct {
+    pub fn from_required_rebo_function<T: RequiredReboFunction>() -> Self {
+        RequiredReboFunctionStruct {
+            name: T::NAME,
+            is_method: T::IS_METHOD,
+            generics: T::GENERICS,
+            args: T::ARGS,
+            ret: T::RET,
+        }
+    }
+}
 
 pub type RustFunction = fn(expr_span: Span, &mut VmContext, Vec<Value>) -> Result<Value, ExecError>;
 #[derive(Clone)]
@@ -432,5 +458,30 @@ impl FromValue for Value {
 impl IntoValue for Value {
     fn into_value(self) -> Value {
         self
+    }
+}
+
+macro_rules! impl_int_types_into {
+    ($($t:ty),*) => {
+        $(
+            impl Typed for $t {
+                const TYPE: SpecificType = SpecificType::Integer;
+            }
+            impl IntoValue for $t {
+                fn into_value(self) -> Value {
+                    Value::Integer(self as i64)
+                }
+            }
+        )*
+    }
+}
+
+impl_int_types_into!(u8, i8, u16, i16, u32, i32);
+impl Typed for f32 {
+    const TYPE: SpecificType = SpecificType::Float;
+}
+impl IntoValue for f32 {
+    fn into_value(self) -> Value {
+        Value::Float(FuzzyFloat(self as f64))
     }
 }

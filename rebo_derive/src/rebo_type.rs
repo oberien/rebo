@@ -67,6 +67,7 @@ pub fn enum_type(e: ItemEnum) -> TokenStream {
 
     (quote::quote! {
         struct #value_ident;
+        #[allow(non_upper_case_globals)]
         #vis const #ident: #value_ident = #value_ident;
         impl ::rebo::ExternalTypeType for #value_ident {
             type Type = #ident;
@@ -156,6 +157,7 @@ pub fn struct_type(s: ItemStruct) -> TokenStream {
 
     (quote::quote! {
         struct #value_ident;
+        #[allow(non_upper_case_globals)]
         #vis const #ident: #value_ident = #value_ident;
         impl ::rebo::ExternalTypeType for #value_ident {
             type Type = #ident;

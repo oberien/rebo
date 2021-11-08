@@ -4,9 +4,10 @@ use std::path::PathBuf;
 
 use diagnostic::{Diagnostics, Span};
 use indexmap::map::IndexMap;
+use indexmap::set::IndexSet;
 use typed_arena::Arena;
 
-pub use values::{Typed, FromValue, Function, ExternalFunction, ExternalType, ExternalTypeType, FuzzyFloat, IntoValue, Struct, StructArc, Enum, EnumArc, Value, ListArc, MapArc};
+pub use values::{Typed, FromValue, Function, ExternalFunction, RequiredReboFunction, RequiredReboFunctionStruct, ExternalType, ExternalTypeType, FuzzyFloat, IntoValue, Struct, StructArc, Enum, EnumArc, Value, ListArc, MapArc};
 
 use crate::error_codes::ErrorCode;
 use crate::{EXTERNAL_SPAN, SpecificType};
@@ -88,6 +89,7 @@ pub struct MetaInfo<'a, 'i> {
     /// Available after typeck.
     pub types: IndexMap<TypeVar, Type>,
     pub external_types: IndexMap<String, SpecificType>,
+    pub required_rebo_functions: IndexSet<RequiredReboFunctionStruct>,
 }
 impl<'a, 'i> MetaInfo<'a, 'i> {
     pub fn new() -> Self {
@@ -101,6 +103,7 @@ impl<'a, 'i> MetaInfo<'a, 'i> {
             enum_types: IndexMap::new(),
             types: IndexMap::new(),
             external_types: IndexMap::new(),
+            required_rebo_functions: IndexSet::new(),
         }
     }
 
@@ -155,6 +158,12 @@ impl<'a, 'i> MetaInfo<'a, 'i> {
             return true;
         }
         false
+    }
+    pub fn add_required_rebo_function(&mut self, required_rebo_function: RequiredReboFunctionStruct) {
+        if self.required_rebo_functions.contains(&required_rebo_function) {
+            panic!("Required rebo function `{}` already added previously", required_rebo_function.name);
+        }
+        self.required_rebo_functions.insert(required_rebo_function);
     }
     pub fn add_external_type<T: ExternalType>(&mut self, arena: &'a Arena<Expr<'a, 'i>>, diagnostics: &'i Diagnostics) {
         let (file, _) = diagnostics.add_synthetic_file(T::FILE_NAME, T::CODE.to_string());

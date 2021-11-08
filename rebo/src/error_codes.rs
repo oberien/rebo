@@ -61,6 +61,8 @@ pub enum ErrorCode {
     TooManyGenerics,
     ListStructInitialization,
     ErrorReadingIncludedFile,
+    RequiredReboFunctionUnavailable,
+    RequiredReboFunctionDiffers,
 
     Panic,
     AssertionFailed,
@@ -131,6 +133,8 @@ impl diagnostic::ErrorCode for ErrorCode {
             TooManyGenerics => "0060",
             ListStructInitialization => "0061",
             ErrorReadingIncludedFile => "0062",
+            RequiredReboFunctionUnavailable => "0063",
+            RequiredReboFunctionDiffers => "0064",
 
             Panic => "9999",
             AssertionFailed => "9998",
@@ -200,6 +204,8 @@ impl diagnostic::ErrorCode for ErrorCode {
             TooManyGenerics => "too many generics",
             ListStructInitialization => "`List` not allowed in struct initializer",
             ErrorReadingIncludedFile => "error reading included file",
+            RequiredReboFunctionUnavailable => "required rebo function doesn't exist",
+            RequiredReboFunctionDiffers => "required rebo function does not match found implementation",
 
             Panic => "explicit panic",
             AssertionFailed => "assertion failed",
