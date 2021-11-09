@@ -16,6 +16,7 @@ use crate::typeck::types::{SpecificType, FunctionType};
 use crate::common::MetaInfo;
 use crate::parser::Spanned;
 use std::collections::BTreeMap;
+use std::convert::TryInto;
 
 pub trait ExternalTypeType {
     type Type: ExternalType;
@@ -461,7 +462,7 @@ impl IntoValue for Value {
     }
 }
 
-macro_rules! impl_int_types_into {
+macro_rules! impl_int_types {
     ($($t:ty),*) => {
         $(
             impl Typed for $t {
@@ -469,14 +470,24 @@ macro_rules! impl_int_types_into {
             }
             impl IntoValue for $t {
                 fn into_value(self) -> Value {
-                    Value::Integer(self as i64)
+                    Value::Integer(self.try_into().unwrap_or_else(|e| panic!("can't convert `{}_{}` to i64: {}", self, stringify!($t), e)))
+                }
+            }
+            impl FromValue for $t {
+                fn from_value(value: Value) -> $t {
+                    match value {
+                        Value::Integer(i) => {
+                            i.try_into().unwrap_or_else(|e| panic!("can't convert `{}_i64` to {}: {}", i, stringify!($t), e))
+                        }
+                        _ => unreachable!("{}::from_value called with non-integer: {:?}", stringify!($t), value),
+                    }
                 }
             }
         )*
     }
 }
 
-impl_int_types_into!(u8, i8, u16, i16, u32, i32);
+impl_int_types!(u8, i8, u16, i16, u32, i32, u64);
 impl Typed for f32 {
     const TYPE: SpecificType = SpecificType::Float;
 }
@@ -485,3 +496,33 @@ impl IntoValue for f32 {
         Value::Float(FuzzyFloat(self as f64))
     }
 }
+impl FromValue for f32 {
+    fn from_value(value: Value) -> f32 {
+        match value {
+            Value::Float(i) => {
+                i.0 as f32
+            }
+            _ => unreachable!("f32::from_value called with non-float: {:?}", value),
+        }
+    }
+}
+
+impl Typed for f64 {
+    const TYPE: SpecificType = SpecificType::Float;
+}
+impl IntoValue for f64 {
+    fn into_value(self) -> Value {
+        Value::Float(FuzzyFloat(self))
+    }
+}
+impl FromValue for f64 {
+    fn from_value(value: Value) -> f64 {
+        match value {
+            Value::Float(i) => {
+                i.0
+            }
+            _ => unreachable!("f64::from_value called with non-float: {:?}", value),
+        }
+    }
+}
+
