@@ -10,11 +10,9 @@ use parking_lot::ReentrantMutex;
 use std::cell::RefCell;
 use crate::parser::{ExprLiteral, ExprInteger, ExprFloat, ExprBool, ExprString};
 use diagnostic::Span;
-use crate::{EXTERNAL_SPAN, Type};
+use crate::Type;
 use itertools::Itertools;
 use crate::typeck::types::{SpecificType, FunctionType};
-use crate::common::MetaInfo;
-use crate::parser::Spanned;
 use std::collections::BTreeMap;
 use std::convert::TryInto;
 
@@ -219,6 +217,7 @@ impl Display for FuzzyFloat {
     }
 }
 
+#[derive(Clone)]
 pub struct ExternalFunction {
     /// Name to inject the function with into rebo
     pub name: &'static str,
@@ -229,6 +228,17 @@ pub struct ExternalFunction {
     pub file_name: &'static str,
     pub typ: FunctionType,
     pub imp: RustFunction,
+}
+impl Debug for ExternalFunction {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ExternalFunction")
+            .field("name", &self.code)
+            .field("code", &self.code)
+            .field("file_name", &self.file_name)
+            .field("typ", &self.typ)
+            .field("impl", &"...")
+            .finish()
+    }
 }
 pub trait RequiredReboFunction {
     const NAME: &'static str;
@@ -260,21 +270,12 @@ impl RequiredReboFunctionStruct {
 pub type RustFunction = fn(expr_span: Span, &mut VmContext, Vec<Value>) -> Result<Value, ExecError>;
 #[derive(Clone)]
 pub enum Function {
+    /// fn-pointer
     Rust(RustFunction),
     /// function name, argument binding ids, definition span
     Rebo(String, Vec<BindingId>),
     /// enum name, variant name, variant definition span
     EnumInitializer(String, String)
-}
-impl Function {
-    #[allow(unused)]
-    pub fn span(&self, meta_info: &MetaInfo) -> Span {
-        match self {
-            Function::Rebo(name, _args) => meta_info.rebo_functions[name.as_str()].span(),
-            Function::Rust(_) => EXTERNAL_SPAN,
-            Function::EnumInitializer(enum_name, variant_name) => meta_info.user_types[enum_name.as_str()].variant_initializer_span(variant_name).unwrap(),
-        }
-    }
 }
 impl fmt::Debug for Function {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

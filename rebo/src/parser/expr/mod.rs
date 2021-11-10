@@ -14,7 +14,7 @@ use crate::parser::parse::{Separated, Spanned, Scoped};
 use crate::parser::precedence::{BooleanExpr, Math};
 use diagnostic::Span;
 use itertools::{Itertools, Either};
-use crate::common::Depth;
+use crate::common::{Depth, UserType};
 use indexmap::set::IndexSet;
 
 // make trace! here log as if this still was the parser module
@@ -74,15 +74,13 @@ impl<'i> Binding<'i> {
             None => ident,
             Some((_colon, rest)) => {
                 let span = Span::new(ident.span.file, ident.span.start, rest.span.end);
-                dbg!(span);
-                dbg!(parser.diagnostics.resolve_span(span));
                 TokenIdent {
                     span,
                     ident: parser.diagnostics.resolve_span(span),
                 }
             }
         };
-        let binding = match dbg!(parser.get_binding(ident.ident)) {
+        let binding = match parser.get_binding(ident.ident) {
             Some(binding) => binding,
             None if ident.ident.contains("::") => parser.add_rogue_binding(ident, Some(TokenMut { span: ident.span })),
             None => parser.diagnostic_unknown_identifier(ident, |d| d.with_info_label(ident.span, format!("use `let {} = ...` to create a new binding", ident))),
@@ -1784,11 +1782,19 @@ pub struct ExprEnumInitialization<'i> {
 }
 impl<'a, 'i> Parse<'a, 'i> for ExprEnumInitialization<'i> {
     fn parse_marked(parser: &mut Parser<'a, '_, 'i>, depth: Depth) -> Result<Self, InternalError> {
-        Ok(ExprEnumInitialization {
-            enum_name: parser.parse(depth.next())?,
-            double_colon: parser.parse(depth.next())?,
-            variant_name: parser.parse(depth.next())?,
-        })
+        let enum_name: TokenIdent = parser.parse(depth.next())?;
+        let double_colon = parser.parse(depth.next())?;
+        let variant_name: TokenIdent = parser.parse(depth.last())?;
+        match parser.meta_info.user_types.get(enum_name.ident) {
+            Some(UserType::Enum(e)) if e.variants.iter().any(|v| v.name.ident == variant_name.ident) => {
+                Ok(ExprEnumInitialization {
+                    enum_name,
+                    double_colon,
+                    variant_name,
+                })
+            }
+            _ => Err(InternalError::Backtrack(enum_name.span, Cow::Borrowed(&[Expected::Token(TokenType::Ident)])))
+        }
     }
 }
 impl<'i> Spanned for ExprEnumInitialization<'i> {

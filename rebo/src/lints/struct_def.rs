@@ -1,4 +1,3 @@
-use std::ops::Deref;
 use crate::lints::visitor::Visitor;
 use diagnostic::Diagnostics;
 use crate::common::MetaInfo;
@@ -56,7 +55,7 @@ fn check_struct_recursion(diagnostics: &Diagnostics, meta_info: &MetaInfo, struc
             .emit();
         return
     }
-    let typ = match meta_info.struct_types.get(field_struct_name.deref()) {
+    let typ = match meta_info.struct_types.get(field_struct_name.as_ref()) {
         Some(typ) => typ,
         None => return,
     };

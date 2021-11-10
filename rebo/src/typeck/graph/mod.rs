@@ -8,7 +8,7 @@ use indexmap::map::IndexMap;
 use itertools::Itertools;
 use petgraph::Direction;
 use petgraph::dot::{Config, Dot};
-use petgraph::graph::EdgeReference;
+use petgraph::graph::{EdgeIndex, EdgeReference};
 use petgraph::prelude::{DiGraph, EdgeRef, NodeIndex};
 use strum::IntoEnumIterator;
 
@@ -164,10 +164,10 @@ impl<'i> Graph<'i> {
         self.graph_indices.keys().copied()
     }
 
-    fn incoming(&self, node: Node) -> Vec<(Constraint, Node)> {
+    fn incoming(&self, node: Node) -> Vec<(EdgeIndex, Constraint, Node)> {
         let ix = self.graph_indices[&node];
         self.graph.edges_directed(ix, Direction::Incoming)
-            .map(|edge| (edge.weight().clone(), *self.graph.node_weight(edge.source()).unwrap()))
+            .map(|edge| (edge.id(), edge.weight().clone(), *self.graph.node_weight(edge.source()).unwrap()))
             .collect()
     }
 

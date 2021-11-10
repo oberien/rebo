@@ -1,4 +1,3 @@
-use std::ops::Deref;
 use crate::lints::visitor::Visitor;
 use crate::parser::{Spanned, ExprAccess, FieldOrMethod};
 use crate::common::{MetaInfo, Function};
@@ -31,7 +30,7 @@ impl Visitor for UnknownAccess {
                             return
                         }
                     };
-                    match meta_info.struct_types[struct_name.deref()].get_field(field.ident) {
+                    match meta_info.struct_types[struct_name.as_ref()].get_field(field.ident) {
                         Some(_) => TypeVar::new(field.span),
                         None => {
                             diagnostics.error(ErrorCode::UnknownFieldAccess)

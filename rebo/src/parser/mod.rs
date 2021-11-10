@@ -25,7 +25,6 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use std::path::PathBuf;
 use indexmap::set::IndexSet;
-use crate::EXTERNAL_SPAN;
 
 #[derive(Debug, Clone)]
 pub enum Error {
@@ -176,11 +175,14 @@ impl<'a, 'b, 'i> Parser<'a, 'b, 'i> {
         // add functions to scope
         for (name, function) in self.meta_info.functions.clone() {
             let ident = match function {
-                Function::Rust(_) => TokenIdent {
-                    span: EXTERNAL_SPAN,
-                    ident: match name {
-                        Cow::Borrowed(s) => s,
-                        Cow::Owned(_) => unreachable!("external function name isn't &'static str: {}", name),
+                Function::Rust(_) => {
+                    let ext = &self.meta_info.external_functions[name.as_ref()];
+                    TokenIdent {
+                        span: Span::new(FileId::synthetic(ext.file_name), 0, ext.code.len()),
+                        ident: match name {
+                            Cow::Borrowed(s) => s,
+                            Cow::Owned(_) => unreachable!("external function name isn't &'static str: {}", name),
+                        }
                     }
                 },
                 Function::EnumInitializer(enum_name, variant) => {
@@ -192,12 +194,12 @@ impl<'a, 'b, 'i> Parser<'a, 'b, 'i> {
                 // added separately
                 Function::Rebo(..) => continue,
             };
-            let binding = self.add_binding_raw(name.into_owned(), ident);
-            self.meta_info.function_bindings.insert(binding);
+            let binding = self.add_binding_raw(name.clone().into_owned(), ident);
+            self.meta_info.function_bindings.insert(binding, name.into_owned());
         }
         for (name, ident) in self.rebo_function_names.clone() {
-            let binding = self.add_binding_raw(name, ident);
-            self.meta_info.function_bindings.insert(binding);
+            let binding = self.add_binding_raw(name.clone(), ident);
+            self.meta_info.function_bindings.insert(binding, name);
         }
     }
 

@@ -10,7 +10,7 @@ use typed_arena::Arena;
 pub use values::{Typed, FromValue, Function, ExternalFunction, RequiredReboFunction, RequiredReboFunctionStruct, ExternalType, ExternalTypeType, FuzzyFloat, IntoValue, Struct, StructArc, Enum, EnumArc, Value, ListArc, MapArc};
 
 use crate::error_codes::ErrorCode;
-use crate::{EXTERNAL_SPAN, SpecificType};
+use crate::{FileId, SpecificType};
 use crate::lexer::Lexer;
 use crate::parser::{ExprEnumDefinition, ExprFunctionDefinition, ExprPatternTyped, ExprPatternUntyped, ExprStructDefinition, Spanned, ExprGenerics, ExprStatic, ExprPattern, Expr, Parser, Binding};
 use crate::typeck::types::{EnumType, FunctionType, StructType, Type};
@@ -66,14 +66,18 @@ pub struct MetaInfo<'a, 'i> {
     /// Used for function resolution in the parser's second pass.
     /// Also used in the vm to look up function implementations.
     pub functions: IndexMap<Cow<'i, str>, Function>,
-    /// list of the bindings of functions
+    /// map of the bindings of functions to their function-names
     ///
     /// Available after the parser.
-    pub function_bindings: IndexSet<Binding<'i>>,
+    pub function_bindings: IndexMap<Binding<'i>, String>,
     /// functions or associated functions found in the code
     ///
     /// Available after the parser.
     pub rebo_functions: IndexMap<Cow<'i, str>, &'a ExprFunctionDefinition<'a, 'i>>,
+    /// functions defined in rust
+    ///
+    /// Available before the parser.
+    pub external_functions: IndexMap<&'static str, ExternalFunction>,
     /// enum and struct definitions found in the code
     ///
     /// Available after the first pass of the parser.
@@ -106,8 +110,9 @@ impl<'a, 'i> MetaInfo<'a, 'i> {
     pub fn new() -> Self {
         MetaInfo {
             functions: IndexMap::new(),
-            function_bindings: IndexSet::new(),
+            function_bindings: IndexMap::new(),
             rebo_functions: IndexMap::new(),
+            external_functions: IndexMap::new(),
             user_types: IndexMap::new(),
             statics: IndexMap::new(),
             function_types: IndexMap::new(),
@@ -129,10 +134,11 @@ impl<'a, 'i> MetaInfo<'a, 'i> {
         self.rebo_functions.insert(name, fun);
     }
     pub fn add_external_function(&mut self, diagnostics: &Diagnostics, fun: ExternalFunction) {
-        if self.check_existing_function(diagnostics, fun.name, EXTERNAL_SPAN) {
+        diagnostics.add_synthetic_file(fun.file_name, fun.code.to_string());
+        if self.check_existing_function(diagnostics, fun.name, Span::new(FileId::synthetic(fun.file_name), 0, fun.code.len())) {
             return;
         }
-        diagnostics.add_synthetic_file(fun.file_name, fun.code.to_string());
+        self.external_functions.insert(fun.name, fun.clone());
         self.functions.insert(Cow::Borrowed(fun.name), Function::Rust(fun.imp));
         self.function_types.insert(Cow::Borrowed(fun.name), fun.typ);
     }

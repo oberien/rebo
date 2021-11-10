@@ -1,21 +1,3 @@
-struct Foo {
-    a: int,
-    b: string,
-}
-// methods
-impl Foo {
-    fn new(a: int, b: string) -> Foo {
-        Foo { a: a, b: b }
-    }
-    fn a(self) -> int {
-        self.a
-    }
-    fn b(self) -> string {
-        self.b
-    }
-}
-let foo = Foo::new(42, "uiae");
-/*
 print(foo(10, 20));
 fn foo(mut x: int, mut y: int) -> int {
     x = x + 10;
@@ -220,3 +202,8 @@ fn use_static() {
 print(include "test-include.re");
 print(MY_INCLUDED_STATIC);
 print(included_fn());
+
+// functions as first-class citizens
+let new: fn<T>() -> List<T> = List::new;
+let out = print;
+out(new());

@@ -63,7 +63,7 @@ impl<'i> Graph<'i> {
                 .with_info_label(node.span(), "must be a single type")
                 .with_info_label(node.span(), format!("inferred `{}`", types.iter().join(", ")))
         };
-        for (constraint, incoming) in self.incoming(node) {
+        for (_, constraint, incoming) in self.incoming(node) {
             let msg = match constraint {
                 Constraint::Eq => format!("must have same type as this (`{}`)", self.possible_types(incoming).iter().join(", ")),
                 Constraint::Reduce(reduce) => {

@@ -7,8 +7,7 @@ use crate::common::{Depth, Enum, EnumArc, Function, FuzzyFloat, MetaInfo, Requir
 use crate::lexer::{TokenBool, TokenDqString, TokenFloat, TokenIdent, TokenInteger};
 use crate::parser::{Binding, BlockBody, Expr, ExprAdd, ExprAssign, ExprAssignLhs, ExprBind, ExprBlock, ExprBool, ExprBoolAnd, ExprBoolNot, ExprBoolOr, ExprDiv, ExprEnumDefinition, ExprEnumInitialization, ExprEquals, ExprFieldAccess, ExprFloat, ExprFormatString, ExprFormatStringPart, ExprFunctionCall, ExprFunctionDefinition, ExprGreaterEquals, ExprGreaterThan, ExprIfElse, ExprInteger, ExprLessEquals, ExprLessThan, ExprLiteral, ExprMatch, ExprMatchPattern, ExprMul, ExprNotEquals, ExprParenthesized, ExprPattern, ExprPatternTyped, ExprPatternUntyped, ExprString, ExprStructDefinition, ExprStructInitialization, ExprSub, ExprVariable, ExprWhile, ExprAccess, FieldOrMethod, Spanned, ExprFor, ExprMethodCall};
 pub use crate::vm::scope::{Scopes, Scope};
-use diagnostic::{Diagnostics, Span};
-use crate::EXTERNAL_SPAN;
+use diagnostic::{Diagnostics, FileId, Span};
 
 mod scope;
 
@@ -40,7 +39,8 @@ impl<'a, 'b, 'vm, 'i> VmContext<'a, 'b, 'vm, 'i> {
         if !self.vm.meta_info.required_rebo_functions.contains(&RequiredReboFunctionStruct::from_required_rebo_function::<T>()) {
             panic!("required rebo function `{}` wasn't registered via `ReboConfig`", T::NAME);
         }
-        self.vm.call_function(T::NAME, EXTERNAL_SPAN, args, Depth::start())
+        let ext = &self.vm.meta_info.external_functions[T::NAME];
+        self.vm.call_function(T::NAME, Span::new(FileId::synthetic(ext.file_name), 0, ext.code.len()), args, Depth::start())
     }
 }
 
@@ -72,8 +72,8 @@ impl<'a, 'b, 'i> Vm<'a, 'b, 'i> {
             self.bind(&binding, value, Depth::start());
         }
         // add functions
-        for binding in &self.meta_info.function_bindings {
-            self.bind(binding, Value::Function(binding.ident.ident.to_string()), Depth::start());
+        for (binding, name) in &self.meta_info.function_bindings {
+            self.bind(binding, Value::Function(name.clone()), Depth::start());
         }
 
         let mut value = None;

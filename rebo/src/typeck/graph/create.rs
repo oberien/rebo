@@ -7,7 +7,6 @@ use diagnostic::{Diagnostics, Span};
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::rc::Rc;
-use std::ops::Deref;
 use crate::error_codes::ErrorCode;
 use std::sync::atomic::{Ordering, AtomicU64};
 use crate::{CowVec, EXTERNAL_SPAN};
@@ -287,7 +286,7 @@ impl<'i> Graph<'i> {
                 ),
                 _ => panic!("external type `{}` is not a Struct or Enum but a `{:?}`", name, typ),
             };
-            let matches = external_generics.iter().map(|(span, _)| span).zip(internal_generics.deref())
+            let matches = external_generics.iter().map(|(span, _)| span).zip(internal_generics.as_ref())
                 .find(|(ext, int)| ext != int);
             assert!(matches.is_none(), "Generic `{}::{}` of ExternalType-definition (`{:?}`) doesn't equal parsed generic (`{:?}`)",
                 name,
@@ -391,8 +390,17 @@ impl<'i> Graph<'i> {
             }
         }
 
-        // resolve local types
         let mut graph = Graph::new(diagnostics);
+
+        // add global function bindings
+        for (binding, name) in &meta_info.function_bindings {
+            let node = Node::type_var(binding.ident.span);
+            graph.add_node(node);
+            let typ = &meta_info.function_types[name.as_str()];
+            graph.add_reduce_constraint(node, node, vec![ResolvableSpecificType::Function(Some(typ.clone()))]);
+        }
+
+        // resolve local types
         let function_generics = FunctionGenerics::new();
         for expr in exprs {
             graph.visit_expr(diagnostics, meta_info, &function_generics, expr);
@@ -627,9 +635,8 @@ impl<'i> Graph<'i> {
             Expr::FunctionCall(ExprFunctionCall { name, args, .. }) => {
                 let var_node = Node::type_var(name.binding.ident.span);
                 self.add_node(var_node);
-                if meta_info.function_bindings.contains(&name.binding) {
-                    dbg!(name.binding.ident.ident);
-                    self.add_reduce_constraint(var_node, var_node, vec![ResolvableSpecificType::Function(Some(meta_info.function_types[name.binding.ident.ident].clone()))]);
+                if let Some(name) = meta_info.function_bindings.get(&name.binding) {
+                    self.add_reduce_constraint(var_node, var_node, vec![ResolvableSpecificType::Function(Some(meta_info.function_types[name.as_str()].clone()))]);
                 }
 
                 let idx = CALL_INDEX.fetch_add(1, Ordering::SeqCst);

@@ -170,8 +170,14 @@ impl fmt::Display for SpecificType {
             SpecificType::Float => write!(f, "float"),
             SpecificType::Bool => write!(f, "bool"),
             SpecificType::String => write!(f, "string"),
-            SpecificType::Struct(name, _) => write!(f, "struct {}", name),
-            SpecificType::Enum(name, _) => write!(f, "enum {}", name),
+            SpecificType::Struct(name, generics) => {
+                let generics = generics.iter().map(|(g, _)| format!("<{}:{}:{}>", g.file, g.start, g.end)).join(", ");
+                write!(f, "struct {}<{}>", name, generics)
+            },
+            SpecificType::Enum(name, generics) => {
+                let generics = generics.iter().map(|(g, _)| format!("<{}:{}:{}>", g.file, g.start, g.end)).join(", ");
+                write!(f, "enum {}<{}>", name, generics)
+            },
             SpecificType::Function(fun) => {
                 let generics = fun.generics.iter().map(|g| format!("<{}:{}:{}>", g.file, g.start, g.end)).join(", ");
                 write!(f, "fn<{}>({}) -> {}", generics, fun.args.iter().join(", "), fun.ret)

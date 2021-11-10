@@ -7,7 +7,6 @@ use std::fmt::{Debug, Formatter};
 use indexmap::set::IndexSet;
 use indexmap::map::{IndexMap, Entry};
 use std::hash::Hash;
-use std::ops::Deref;
 use crate::lexer::{TokenInteger, TokenBool, TokenDqString};
 use itertools::Itertools;
 use crate::typeck::types::{Type, SpecificType};
@@ -111,7 +110,7 @@ impl Visitor for MatchLints {
                 }
             }
             Type::Specific(SpecificType::Enum(name, _)) => {
-                let variants: Vec<_> = meta_info.enum_types[name.deref()].variants.iter()
+                let variants: Vec<_> = meta_info.enum_types[name.as_ref()].variants.iter()
                     .map(|(name, _)| RequiredEnumVariant(name.as_str()))
                     .collect();
                 let mut checker = VariantChecker::new(diagnostics, match_span, Some(&variants));
