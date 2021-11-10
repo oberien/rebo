@@ -36,6 +36,11 @@ impl Visitor for MatchLints {
                     .with_error_label(expr.span(), "")
                     .emit();
             }
+            Type::Specific(SpecificType::Function(_)) => {
+                diagnostics.error(ErrorCode::FunctionMatch)
+                    .with_error_label(expr.span(), "")
+                    .emit();
+            }
             Type::Specific(SpecificType::Struct(_, _)) => {
                 diagnostics.error(ErrorCode::StructMatch)
                     .with_error_label(expr.span(), "")

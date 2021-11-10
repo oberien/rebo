@@ -3,6 +3,7 @@ use std::borrow::Cow;
 use strum_macros::{EnumDiscriminants, EnumIter};
 use crate::parser::ExprLiteral;
 use diagnostic::Span;
+use itertools::Itertools;
 use crate::CowVec;
 use crate::typeck::graph::Node;
 
@@ -29,6 +30,8 @@ pub enum SpecificType {
     Struct(Cow<'static, str>, CowVec<'static, (Span, Type)>),
     /// enum name, generics
     Enum(Cow<'static, str>, CowVec<'static, (Span, Type)>),
+    /// generics, args, ret
+    Function(Box<FunctionType>),
     /// def_ident-span
     Generic(Span),
 }
@@ -44,6 +47,10 @@ pub enum ResolvableSpecificType {
     Struct(String, Vec<Node>),
     /// name, generics
     Enum(String, Vec<Node>),
+    /// generics, args, ret
+    ///
+    /// None means could be any function
+    Function(Option<FunctionType>),
     /// def_ident-span: a generic inside a function definition or impl-block definition, which must not
     /// unify except with itself (or some other generics)
     UnUnifyableGeneric(Span),
@@ -121,6 +128,7 @@ impl SpecificType {
             SpecificType::String => "string".to_string(),
             SpecificType::Struct(name, _) => name.clone().into_owned(),
             SpecificType::Enum(name, _) => name.clone().into_owned(),
+            SpecificType::Function(_) => "function".to_string(),
             SpecificType::Generic(Span { file, start, end }) => format!("<{}:{}:{}>", file, start, end),
         }
     }
@@ -135,6 +143,7 @@ impl ResolvableSpecificType {
             ResolvableSpecificType::String => "string".to_string(),
             ResolvableSpecificType::Struct(name, _) => name.clone(),
             ResolvableSpecificType::Enum(name, _) => name.clone(),
+            ResolvableSpecificType::Function(_) => "function".to_string(),
             ResolvableSpecificType::UnUnifyableGeneric(Span { file, start, end }) => format!("<{}:{}:{}>", file, start, end),
         }
     }
@@ -145,7 +154,8 @@ impl ResolvableSpecificType {
             | ResolvableSpecificType::Float
             | ResolvableSpecificType::Bool
             | ResolvableSpecificType::String
-            | ResolvableSpecificType::UnUnifyableGeneric(_) => Vec::new(),
+            | ResolvableSpecificType::UnUnifyableGeneric(_)
+            | ResolvableSpecificType::Function(_) => Vec::new(),
             ResolvableSpecificType::Struct(_, generics) => generics.clone(),
             ResolvableSpecificType::Enum(_, generics) => generics.clone(),
         }
@@ -162,6 +172,10 @@ impl fmt::Display for SpecificType {
             SpecificType::String => write!(f, "string"),
             SpecificType::Struct(name, _) => write!(f, "struct {}", name),
             SpecificType::Enum(name, _) => write!(f, "enum {}", name),
+            SpecificType::Function(fun) => {
+                let generics = fun.generics.iter().map(|g| format!("<{}:{}:{}>", g.file, g.start, g.end)).join(", ");
+                write!(f, "fn<{}>({}) -> {}", generics, fun.args.iter().join(", "), fun.ret)
+            }
             SpecificType::Generic(Span { file, start, end }) => write!(f, "<{}:{}:{}>", file, start, end),
         }
     }
@@ -176,6 +190,11 @@ impl fmt::Display for ResolvableSpecificType {
             ResolvableSpecificType::String => return write!(f, "string"),
             ResolvableSpecificType::Struct(name, generics) => ("struct", name, generics),
             ResolvableSpecificType::Enum(name, generics) => ("enum", name, generics),
+            ResolvableSpecificType::Function(None) => return write!(f, "fn?"),
+            ResolvableSpecificType::Function(Some(fun)) => {
+                let generics = fun.generics.iter().map(|g| format!("<{}:{}:{}>", g.file, g.start, g.end)).join(", ");
+                return write!(f, "fn<{}>({}) -> {}", generics, fun.args.iter().join(", "), fun.ret)
+            }
             ResolvableSpecificType::UnUnifyableGeneric(Span { file, start, end }) => return write!(f, "<{}:{}:{}>", file, start, end),
         };
         write!(f, "{} {}", typ, name)?;

@@ -46,6 +46,8 @@ pub enum Value {
     Enum(EnumArc),
     List(ListArc),
     Map(MapArc),
+    // function name
+    Function(String),
 }
 
 impl Value {
@@ -79,6 +81,12 @@ impl Value {
             _ => panic!("{}", msg),
         }
     }
+    pub fn expect_function(self, msg: &'static str) -> String {
+        match self {
+            Value::Function(name) => name,
+            _ => panic!("{}", msg),
+        }
+    }
     pub fn type_name(&self) -> String {
         match self {
             Value::Unit => "unit".to_string(),
@@ -88,6 +96,7 @@ impl Value {
             Value::String(_) => "string".to_string(),
             Value::Struct(s) => s.s.lock().borrow().name.clone(),
             Value::Enum(e) => e.e.lock().borrow().name.clone(),
+            Value::Function(_) => "function".to_string(),
             Value::List(_) => "List".to_string(),
             Value::Map(_) => "Map".to_string(),
         }
@@ -120,6 +129,7 @@ impl Display for Value {
                 }
                 Ok(())
             }
+            Value::Function(name) => write!(f, "function {}", name),
             Value::List(l) => {
                 let l = l.list.lock();
                 let l = l.borrow();
@@ -257,6 +267,7 @@ pub enum Function {
     EnumInitializer(String, String)
 }
 impl Function {
+    #[allow(unused)]
     pub fn span(&self, meta_info: &MetaInfo) -> Span {
         match self {
             Function::Rebo(name, _args) => meta_info.rebo_functions[name.as_str()].span(),

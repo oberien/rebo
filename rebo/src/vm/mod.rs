@@ -5,7 +5,7 @@ use parking_lot::ReentrantMutex;
 
 use crate::common::{Depth, Enum, EnumArc, Function, FuzzyFloat, MetaInfo, RequiredReboFunction, RequiredReboFunctionStruct, Struct, StructArc, Value};
 use crate::lexer::{TokenBool, TokenDqString, TokenFloat, TokenIdent, TokenInteger};
-use crate::parser::{Binding, BlockBody, Expr, ExprAdd, ExprAssign, ExprAssignLhs, ExprBind, ExprBlock, ExprBool, ExprBoolAnd, ExprBoolNot, ExprBoolOr, ExprDiv, ExprEnumDefinition, ExprEnumInitialization, ExprEquals, ExprFieldAccess, ExprFloat, ExprFormatString, ExprFormatStringPart, ExprFunctionCall, ExprFunctionDefinition, ExprGreaterEquals, ExprGreaterThan, ExprIfElse, ExprInteger, ExprLessEquals, ExprLessThan, ExprLiteral, ExprMatch, ExprMatchPattern, ExprMul, ExprNotEquals, ExprParenthesized, ExprPattern, ExprPatternTyped, ExprPatternUntyped, ExprString, ExprStructDefinition, ExprStructInitialization, ExprSub, ExprVariable, ExprWhile, ExprAccess, FieldOrMethod, Spanned, ExprFor};
+use crate::parser::{Binding, BlockBody, Expr, ExprAdd, ExprAssign, ExprAssignLhs, ExprBind, ExprBlock, ExprBool, ExprBoolAnd, ExprBoolNot, ExprBoolOr, ExprDiv, ExprEnumDefinition, ExprEnumInitialization, ExprEquals, ExprFieldAccess, ExprFloat, ExprFormatString, ExprFormatStringPart, ExprFunctionCall, ExprFunctionDefinition, ExprGreaterEquals, ExprGreaterThan, ExprIfElse, ExprInteger, ExprLessEquals, ExprLessThan, ExprLiteral, ExprMatch, ExprMatchPattern, ExprMul, ExprNotEquals, ExprParenthesized, ExprPattern, ExprPatternTyped, ExprPatternUntyped, ExprString, ExprStructDefinition, ExprStructInitialization, ExprSub, ExprVariable, ExprWhile, ExprAccess, FieldOrMethod, Spanned, ExprFor, ExprMethodCall};
 pub use crate::vm::scope::{Scopes, Scope};
 use diagnostic::{Diagnostics, Span};
 use crate::EXTERNAL_SPAN;
@@ -71,6 +71,10 @@ impl<'a, 'b, 'i> Vm<'a, 'b, 'i> {
             let value = self.eval_expr(static_def.expr, Depth::start())?;
             self.bind(&binding, value, Depth::start());
         }
+        // add functions
+        for binding in &self.meta_info.function_bindings {
+            self.bind(binding, Value::Function(binding.ident.ident.to_string()), Depth::start());
+        }
 
         let mut value = None;
         for expr in ast {
@@ -127,7 +131,7 @@ impl<'a, 'b, 'i> Vm<'a, 'b, 'i> {
                                 .expect("typechecker ensures all fields exist");
                             val
                         },
-                        FieldOrMethod::Method(ExprFunctionCall { name, args, .. }) => {
+                        FieldOrMethod::Method(ExprMethodCall { name, args, .. }) => {
                             let fn_name = format!("{}::{}", val.type_name(), name.ident);
                             let args = std::iter::once(Ok(val))
                                 .chain(args.iter().map(|expr| self.eval_expr(expr, depth.next())))
@@ -303,8 +307,9 @@ impl<'a, 'b, 'i> Vm<'a, 'b, 'i> {
                 Ok(Value::Unit)
             }
             Expr::FunctionCall(ExprFunctionCall { name, args, .. }) => {
+                let name = self.load_binding(&name.binding, depth.next()).expect_function("called a function on a binding that's not a function");
                 let args = args.iter().map(|expr| self.eval_expr(expr, depth.next())).collect::<Result<_, _>>()?;
-                self.call_function(name.ident, expr.span(), args, depth.last())
+                self.call_function(&name, expr.span(), args, depth.last())
             },
             // ignore function definitions as we have those handled already
             Expr::FunctionDefinition(ExprFunctionDefinition { .. }) => Ok(Value::Unit),

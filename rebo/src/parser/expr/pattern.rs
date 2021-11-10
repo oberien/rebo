@@ -8,6 +8,7 @@ use derive_more::Display;
 use itertools::Itertools;
 
 // make trace! here log as if this still was the parser module
+#[allow(unused)]
 macro_rules! module_path {
     () => {{
         let path = std::module_path!();

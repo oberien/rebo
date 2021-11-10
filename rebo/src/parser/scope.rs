@@ -4,7 +4,7 @@ use std::fmt::{self, Formatter, Display};
 use std::sync::atomic::{AtomicU32, Ordering};
 
 pub struct Scope<'i> {
-    pub idents: IndexMap<&'i str, Binding<'i>>,
+    pub idents: IndexMap<String, Binding<'i>>,
     pub generics: IndexMap<&'i str, Generic<'i>>,
 }
 

@@ -62,6 +62,7 @@ impl PossibleTypes {
                 ResolvableSpecificTypeDiscriminants::Struct => possible_types.push(ResolvableSpecificType::Struct("struct".to_string(), Vec::new())),
                 // Similarly to above, we use "enum" as any enum.
                 ResolvableSpecificTypeDiscriminants::Enum => possible_types.push(ResolvableSpecificType::Enum("enum".to_string(), Vec::new())),
+                ResolvableSpecificTypeDiscriminants::Function => possible_types.push(ResolvableSpecificType::Function(None)),
                 ResolvableSpecificTypeDiscriminants::UnUnifyableGeneric => (),
             }
         }
@@ -78,9 +79,13 @@ pub enum Constraint {
     Reduce(Vec<ResolvableSpecificType>),
     /// accessed field
     FieldAccess(String),
-    /// name of the method (not fully qualified yet), method_call_index (to identify FunctionGenerics), arg-index
+    /// call_index (to identify FunctionGenerics), arg-index
+    FunctionCallArg(u64, usize),
+    /// call_index (to identify FunctionGenerics)
+    FunctionCallReturnType(u64),
+    /// name of the method (not fully qualified yet), call_index (to identify FunctionGenerics), arg-index
     MethodCallArg(String, u64, usize),
-    /// name of the method (not fully qualified yet), method_call_index (to identify FunctionGenerics)
+    /// name of the method (not fully qualified yet), call_index (to identify FunctionGenerics)
     MethodCallReturnType(String, u64),
     /// can be ignored for everything, just there to make the graph look better
     Generic,
@@ -95,6 +100,8 @@ impl Display for Constraint {
             Constraint::FieldAccess(field) => {
                 write!(f, ".{}", field)
             }
+            Constraint::FunctionCallArg(idx, arg) => write!(f, "...[{}]({})", idx, arg),
+            Constraint::FunctionCallReturnType(idx) => write!(f, "...[{}](...) -> ret", idx),
             Constraint::MethodCallArg(name, idx, arg) => write!(f, "{}[{}]({})", name, idx, arg),
             Constraint::MethodCallReturnType(name, idx) => write!(f, "{}[{}](...) -> ret", name, idx),
             Constraint::Generic => write!(f, "Generic"),

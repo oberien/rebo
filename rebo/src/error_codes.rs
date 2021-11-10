@@ -63,6 +63,7 @@ pub enum ErrorCode {
     ErrorReadingIncludedFile,
     RequiredReboFunctionUnavailable,
     RequiredReboFunctionDiffers,
+    FunctionMatch,
 
     Panic,
     AssertionFailed,
@@ -135,6 +136,7 @@ impl diagnostic::ErrorCode for ErrorCode {
             ErrorReadingIncludedFile => "0062",
             RequiredReboFunctionUnavailable => "0063",
             RequiredReboFunctionDiffers => "0064",
+            FunctionMatch => "0065",
 
             Panic => "9999",
             AssertionFailed => "9998",
@@ -206,6 +208,7 @@ impl diagnostic::ErrorCode for ErrorCode {
             ErrorReadingIncludedFile => "error reading included file",
             RequiredReboFunctionUnavailable => "required rebo function doesn't exist",
             RequiredReboFunctionDiffers => "required rebo function does not match found implementation",
+            FunctionMatch => "can't match on a function",
 
             Panic => "explicit panic",
             AssertionFailed => "assertion failed",

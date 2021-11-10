@@ -1,5 +1,5 @@
 use crate::typeck::graph::{Graph, Node, PossibleTypes, Constraint};
-use crate::parser::{Expr, Spanned, ExprFormatString, ExprFormatStringPart, ExprBind, ExprPattern, ExprPatternTyped, ExprPatternUntyped, ExprAssign, ExprAssignLhs, ExprVariable, ExprFieldAccess, ExprBoolNot, ExprAdd, ExprSub, ExprMul, ExprDiv, ExprBoolAnd, ExprBoolOr, ExprLessThan, ExprLessEquals, ExprEquals, ExprNotEquals, ExprGreaterEquals, ExprGreaterThan, ExprBlock, BlockBody, ExprParenthesized, ExprMatch, ExprMatchPattern, ExprWhile, ExprFunctionCall, ExprFunctionDefinition, ExprStructInitialization, ExprImplBlock, ExprType, ExprGenerics, ExprAccess, FieldOrMethod, ExprFor, ExprStatic};
+use crate::parser::{Expr, Spanned, ExprFormatString, ExprFormatStringPart, ExprBind, ExprPattern, ExprPatternTyped, ExprPatternUntyped, ExprAssign, ExprAssignLhs, ExprVariable, ExprFieldAccess, ExprBoolNot, ExprAdd, ExprSub, ExprMul, ExprDiv, ExprBoolAnd, ExprBoolOr, ExprLessThan, ExprLessEquals, ExprEquals, ExprNotEquals, ExprGreaterEquals, ExprGreaterThan, ExprBlock, BlockBody, ExprParenthesized, ExprMatch, ExprMatchPattern, ExprWhile, ExprFunctionCall, ExprFunctionDefinition, ExprStructInitialization, ExprImplBlock, ExprType, ExprGenerics, ExprAccess, FieldOrMethod, ExprFor, ExprStatic, ExprFunctionType};
 use crate::common::{MetaInfo, UserType, Function, RequiredReboFunctionStruct};
 use itertools::Either;
 use crate::typeck::types::{StructType, EnumType, EnumTypeVariant, SpecificType, FunctionType, Type, ResolvableSpecificType};
@@ -11,6 +11,8 @@ use std::ops::Deref;
 use crate::error_codes::ErrorCode;
 use std::sync::atomic::{Ordering, AtomicU64};
 use crate::{CowVec, EXTERNAL_SPAN};
+
+static CALL_INDEX: AtomicU64 = AtomicU64::new(0);
 
 #[derive(Clone)]
 pub(super) struct FunctionGenerics {
@@ -85,6 +87,7 @@ impl FunctionGenerics {
             SpecificType::Integer => { graph.add_reduce_constraint(from, to, vec![ResolvableSpecificType::Integer]); return },
             SpecificType::Float => { graph.add_reduce_constraint(from, to, vec![ResolvableSpecificType::Float]); return },
             SpecificType::String => { graph.add_reduce_constraint(from, to, vec![ResolvableSpecificType::String]); return },
+            SpecificType::Function(fn_type) => { graph.add_reduce_constraint(from, to, vec![ResolvableSpecificType::Function(Some((**fn_type).clone()))]); return },
             SpecificType::Struct(name, generics) => (
                 |generics, name| ResolvableSpecificType::Struct(name, generics),
                 generics,
@@ -210,6 +213,21 @@ fn convert_expr_type(typ: &ExprType, diagnostics: &Diagnostics, meta_info: &Meta
             }
             type_constructor(generics, name)
         },
+        ExprType::Function(f) => {
+            let ExprFunctionType { generics, args, ret_type, .. } = &**f;
+            let generics = generics.iter().flat_map(|g| &g.generics).flatten()
+                .map(|g| g.def_ident.span)
+                .collect();
+            let args = args.iter().map(|arg| convert_expr_type(arg, diagnostics, meta_info)).collect();
+            let ret = ret_type.as_ref().map(|(_, ret)| convert_expr_type(ret, diagnostics, meta_info))
+                .unwrap_or(Type::Specific(SpecificType::Unit));
+            Type::Specific(SpecificType::Function(Box::new(FunctionType {
+                is_method: false,
+                generics,
+                args,
+                ret,
+            })))
+        }
         ExprType::Generic(g) => {
             Type::Specific(SpecificType::Generic(g.def_ident.span))
         },
@@ -285,14 +303,14 @@ impl<'i> Graph<'i> {
                 Function::Rebo(..) => {
                     let fun = &meta_info.rebo_functions[name];
                     let typ = FunctionType {
-                        is_method: fun.self_arg.is_some(),
-                        generics: fun.generics.iter().flat_map(|g| &g.generics).flatten()
+                        is_method: fun.sig.self_arg.is_some(),
+                        generics: fun.sig.generics.iter().flat_map(|g| &g.generics).flatten()
                             .map(|g| g.def_ident.span)
                             .collect(),
-                        args: fun.args.iter().map(|pattern| {
+                        args: fun.sig.args.iter().map(|pattern| {
                             convert_expr_type(&pattern.typ, diagnostics, meta_info)
                         }).collect(),
-                        ret: fun.ret_type.as_ref()
+                        ret: fun.sig.ret_type.as_ref()
                             .map(|(_, typ)| convert_expr_type(typ, diagnostics, meta_info))
                             .unwrap_or(Type::Specific(SpecificType::Unit)),
                     };
@@ -338,12 +356,12 @@ impl<'i> Graph<'i> {
             let fun = &meta_info.rebo_functions[*name];
             if typ.is_method != *is_method {
                 diagnostics.error(ErrorCode::RequiredReboFunctionDiffers)
-                    .with_error_label(fun.name.span(), format!("expected this to be a {}", metfun))
+                    .with_error_label(fun.sig.name.span(), format!("expected this to be a {}", metfun))
                     .emit();
             }
             if typ.generics.len() != generics.len() {
                 diagnostics.error(ErrorCode::RequiredReboFunctionDiffers)
-                    .with_error_label(fun.name.span(), format!("expected {} generics, got {}", generics.len(), typ.generics.len()))
+                    .with_error_label(fun.sig.name.span(), format!("expected {} generics, got {}", generics.len(), typ.generics.len()))
                     .emit();
             }
             for ((span, generic), expected) in typ.generics.iter().map(|&span| (span, diagnostics.resolve_span(span))).zip(*generics) {
@@ -355,10 +373,10 @@ impl<'i> Graph<'i> {
             }
             if typ.args.len() != args.len() {
                 diagnostics.error(ErrorCode::RequiredReboFunctionDiffers)
-                    .with_error_label(Span::new(fun.open.span.file, fun.open.span.start, fun.close.span.end), format!("expected {} args, found {}", args.len(), typ.args.len()))
+                    .with_error_label(Span::new(fun.sig.open.span.file, fun.sig.open.span.start, fun.sig.close.span.end), format!("expected {} args, found {}", args.len(), typ.args.len()))
                     .emit();
             }
-            let arg_spans: Vec<_> = fun.self_arg.iter().map(|a| a.span()).chain(fun.args.iter().map(|a| a.span())).collect();
+            let arg_spans: Vec<_> = fun.sig.self_arg.iter().map(|a| a.span()).chain(fun.sig.args.iter().map(|a| a.span())).collect();
             for (i, (arg, expected)) in typ.args.iter().zip(*args).enumerate() {
                 if arg != expected {
                     diagnostics.error(ErrorCode::RequiredReboFunctionDiffers)
@@ -368,7 +386,7 @@ impl<'i> Graph<'i> {
             }
             if *ret != typ.ret {
                 diagnostics.error(ErrorCode::RequiredReboFunctionDiffers)
-                    .with_error_label(Span::new(fun.close.span.file, fun.close.span.end, fun.body.span().start), format!("expected return type `{}`, found `{}`", ret, typ.ret))
+                    .with_error_label(Span::new(fun.sig.close.span.file, fun.sig.close.span.end, fun.body.span().start), format!("expected return type `{}`, found `{}`", ret, typ.ret))
                     .emit();
             }
         }
@@ -498,12 +516,11 @@ impl<'i> Graph<'i> {
                             field_node
                         }
                         FieldOrMethod::Method(fn_call) => {
-                            static METHOD_CALL_INDEX: AtomicU64 = AtomicU64::new(0);
 
                             let method_call_node = Node::type_var(fn_call.span());
                             self.add_node(method_call_node);
 
-                            let idx = METHOD_CALL_INDEX.fetch_add(1, Ordering::SeqCst);
+                            let idx = CALL_INDEX.fetch_add(1, Ordering::SeqCst);
                             self.add_method_call_ret(access_node, method_call_node, fn_call.name.ident.to_string(), idx);
                             for (i, arg_expr) in fn_call.args.iter().enumerate() {
                                 let arg_node = self.visit_expr(diagnostics, meta_info, function_generics, arg_expr);
@@ -608,41 +625,18 @@ impl<'i> Graph<'i> {
                 self.add_reduce_constraint(node, node, vec![ResolvableSpecificType::Unit]);
             }
             Expr::FunctionCall(ExprFunctionCall { name, args, .. }) => {
-                let fun = match meta_info.function_types.get(name.ident) {
-                    Some(fun) => fun,
-                    None => return node,
-                };
-                let passed_args: Vec<_> = args.iter().map(|expr| self.visit_expr(diagnostics, meta_info, function_generics, expr)).collect();
+                let var_node = Node::type_var(name.binding.ident.span);
+                self.add_node(var_node);
+                if meta_info.function_bindings.contains(&name.binding) {
+                    dbg!(name.binding.ident.ident);
+                    self.add_reduce_constraint(var_node, var_node, vec![ResolvableSpecificType::Function(Some(meta_info.function_types[name.binding.ident.ident].clone()))]);
+                }
 
-                let _guard = function_generics.push_generic_nodes();
-                for &generic_span in &*fun.generics {
-                    let node = Node::synthetic(generic_span);
-                    self.add_node(node);
-                    function_generics.insert_generic(node);
-                }
-                let expected_args = if let Some(Type::UntypedVarargs) = fun.args.last() {
-                    Either::Left(fun.args.iter().chain(std::iter::repeat(&Type::UntypedVarargs)))
-                } else if let Some(t @ Type::TypedVarargs(_)) = fun.args.last() {
-                    Either::Left(fun.args.iter().chain(std::iter::repeat(t)))
-                } else {
-                    Either::Right(fun.args.iter())
-                };
-                for (passed_node, expected) in passed_args.into_iter().zip(expected_args) {
-                    match expected {
-                        Type::Top => (),
-                        Type::Bottom => unreachable!("function argument type is Bottom"),
-                        Type::UntypedVarargs => (),
-                        Type::TypedVarargs(specific)
-                        | Type::Specific(specific) => {
-                            function_generics.apply_specific_type_reduce(node, passed_node, &specific, self);
-                        }
-                    }
-                }
-                match &fun.ret {
-                    Type::UntypedVarargs => unreachable!("function return type is UntypedVarargs"),
-                    Type::TypedVarargs(_) => unreachable!("function return type is TypedVarargs"),
-                    Type::Top | Type::Bottom => (),
-                    Type::Specific(specific) => function_generics.apply_specific_type_reduce(node, node, specific, self),
+                let idx = CALL_INDEX.fetch_add(1, Ordering::SeqCst);
+                self.add_function_call_ret(var_node, node, idx);
+                for (i, arg_expr) in args.iter().enumerate() {
+                    let arg_node = self.visit_expr(diagnostics, meta_info, function_generics, arg_expr);
+                    self.add_function_call_arg(var_node, arg_node, idx, i);
                 }
             }
             Expr::FunctionDefinition(function) => {
@@ -727,15 +721,15 @@ impl<'i> Graph<'i> {
 
     fn visit_function(&mut self, diagnostics: &Diagnostics, meta_info: &MetaInfo, function_generics: &FunctionGenerics, function: &ExprFunctionDefinition) -> Node {
         let _scope_guard = function_generics.push_ununifyable();
-        for generic in function.generics.iter().flat_map(|g| &g.generics).flatten() {
+        for generic in function.sig.generics.iter().flat_map(|g| &g.generics).flatten() {
             function_generics.insert_ununifyable(generic.def_ident.span);
         }
 
         let node = Node::type_var(function.span());
         self.add_node(node);
-        let ExprFunctionDefinition { args, ret_type, body, .. } = function;
+        let ExprFunctionDefinition { sig, body } = function;
 
-        for ExprPatternTyped { pattern: ExprPatternUntyped { binding }, typ, .. } in args {
+        for ExprPatternTyped { pattern: ExprPatternUntyped { binding }, typ, .. } in &sig.args {
             let arg_node = Node::type_var(binding.ident.span);
             self.add_node(arg_node);
             let typ = convert_expr_type(typ, diagnostics, meta_info);
@@ -743,7 +737,7 @@ impl<'i> Graph<'i> {
         }
 
         let body_node = self.visit_block(diagnostics, meta_info, function_generics, body);
-        if let Some((_arrow, ret_type)) = ret_type {
+        if let Some((_arrow, ret_type)) = &sig.ret_type {
             let typ = convert_expr_type(ret_type, diagnostics, meta_info);
             function_generics.apply_type_reduce(node, body_node, &typ, self);
         }
@@ -777,6 +771,12 @@ impl<'i> Graph<'i> {
         self.add_nonduplicate_edge(field_node, struct_node, Constraint::Reduce(vec![ResolvableSpecificType::Struct("struct".to_string(), Vec::new())]));
     }
 
+    fn add_function_call_arg(&mut self, source: Node, arg: Node, function_call_index: u64, arg_index: usize) {
+        self.add_nonduplicate_edge(source, arg, Constraint::FunctionCallArg(function_call_index, arg_index));
+    }
+    fn add_function_call_ret(&mut self, source: Node, function_call_node: Node, function_call_index: u64) {
+        self.add_nonduplicate_edge(source, function_call_node, Constraint::FunctionCallReturnType(function_call_index));
+    }
     fn add_method_call_arg(&mut self, source: Node, arg: Node, method_name: String, method_call_index: u64, arg_index: usize) {
         self.add_nonduplicate_edge(source, arg, Constraint::MethodCallArg(method_name, method_call_index, arg_index));
     }

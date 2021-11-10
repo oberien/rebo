@@ -12,7 +12,7 @@ pub use values::{Typed, FromValue, Function, ExternalFunction, RequiredReboFunct
 use crate::error_codes::ErrorCode;
 use crate::{EXTERNAL_SPAN, SpecificType};
 use crate::lexer::Lexer;
-use crate::parser::{ExprEnumDefinition, ExprFunctionDefinition, ExprPatternTyped, ExprPatternUntyped, ExprStructDefinition, Spanned, ExprGenerics, ExprStatic, ExprPattern, Expr, Parser};
+use crate::parser::{ExprEnumDefinition, ExprFunctionDefinition, ExprPatternTyped, ExprPatternUntyped, ExprStructDefinition, Spanned, ExprGenerics, ExprStatic, ExprPattern, Expr, Parser, Binding};
 use crate::typeck::types::{EnumType, FunctionType, StructType, Type};
 use crate::typeck::TypeVar;
 
@@ -50,6 +50,12 @@ impl<'a, 'i> UserType<'a, 'i> {
             UserType::Enum(e) => e.generics.as_ref(),
         }
     }
+    pub fn unwrap_enum(&self) -> &'a ExprEnumDefinition<'a, 'i> {
+        match self {
+            UserType::Struct(_) => panic!("UserType::unwrap_enum called with struct"),
+            UserType::Enum(e) => e,
+        }
+    }
 }
 
 /// Metadata / information needed before and/or during static analyses
@@ -60,6 +66,10 @@ pub struct MetaInfo<'a, 'i> {
     /// Used for function resolution in the parser's second pass.
     /// Also used in the vm to look up function implementations.
     pub functions: IndexMap<Cow<'i, str>, Function>,
+    /// list of the bindings of functions
+    ///
+    /// Available after the parser.
+    pub function_bindings: IndexSet<Binding<'i>>,
     /// functions or associated functions found in the code
     ///
     /// Available after the parser.
@@ -74,7 +84,8 @@ pub struct MetaInfo<'a, 'i> {
     pub statics: IndexMap<&'i str, &'a ExprStatic<'a, 'i>>,
     /// function types with resolved argument and return types
     ///
-    /// Available after the beginning of typeck.
+    /// Contains external function types before parser.
+    /// Contains all function types after the beginning of typeck.
     pub function_types: IndexMap<Cow<'i, str>, FunctionType>,
     /// struct types with resolved field types
     ///
@@ -95,6 +106,7 @@ impl<'a, 'i> MetaInfo<'a, 'i> {
     pub fn new() -> Self {
         MetaInfo {
             functions: IndexMap::new(),
+            function_bindings: IndexSet::new(),
             rebo_functions: IndexMap::new(),
             user_types: IndexMap::new(),
             statics: IndexMap::new(),
@@ -108,9 +120,9 @@ impl<'a, 'i> MetaInfo<'a, 'i> {
     }
 
     pub fn add_function(&mut self, diagnostics: &Diagnostics, name: Cow<'i, str>, fun: &'a ExprFunctionDefinition<'a, 'i>) {
-        let arg_binding_ids = fun.args.iter().map(|ExprPatternTyped { pattern: ExprPatternUntyped { binding }, .. }| binding.id).collect();
+        let arg_binding_ids = fun.sig.args.iter().map(|ExprPatternTyped { pattern: ExprPatternUntyped { binding }, .. }| binding.id).collect();
         let function = Function::Rebo(name.to_string(), arg_binding_ids);
-        if self.check_existing_function(diagnostics, &name, fun.name.span) {
+        if self.check_existing_function(diagnostics, &name, fun.sig.name.span) {
             return;
         }
         self.functions.insert(name.clone(), function);
@@ -144,7 +156,7 @@ impl<'a, 'i> MetaInfo<'a, 'i> {
         if let Some(existing) = self.functions.get(name) {
             match existing {
                 Function::Rebo(existing_name, _) => {
-                    duplicate(self.rebo_functions[existing_name.as_str()].name.span, span);
+                    duplicate(self.rebo_functions[existing_name.as_str()].sig.name.span, span);
                 }
                 Function::Rust(_) => diagnostics.error(ErrorCode::DuplicateGlobal)
                     .with_error_label(span, "a function with the same name is already provided externally")

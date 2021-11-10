@@ -30,6 +30,8 @@ impl<'i> Graph<'i> {
                 ResolvableSpecificType::Integer => SpecificType::Integer,
                 ResolvableSpecificType::Float => SpecificType::Float,
                 ResolvableSpecificType::String => SpecificType::String,
+                ResolvableSpecificType::Function(Some(typ)) => SpecificType::Function(Box::new(typ.clone())),
+                ResolvableSpecificType::Function(None) => return None,
                 ResolvableSpecificType::Struct(name, generics) => SpecificType::Struct(
                     Cow::Owned(name.clone()),
                     CowVec::Owned(generics.iter().copied()
@@ -84,6 +86,40 @@ impl<'i> Graph<'i> {
                         }
                     }
                 }
+                Constraint::FunctionCallArg(_, arg_index) => {
+                    let function_typ = self.possible_types(incoming);
+                    if function_typ.len() != 1 {
+                        "can't infer type of the function".to_string()
+                    } else {
+                        match &function_typ[0] {
+                            ResolvableSpecificType::Function(Some(fn_typ)) => match fn_typ.args.iter().chain(std::iter::repeat(&Type::UntypedVarargs)).nth(arg_index) {
+                                Some(Type::Top | Type::UntypedVarargs) => "this says the argument can be of any type".to_string(),
+                                Some(Type::Bottom) => unreachable!("fn arg type is bottom"),
+                                Some(Type::TypedVarargs(specific))
+                                | Some(Type::Specific(specific)) => format!("this says the argument must have type {}", specific),
+                                None => unreachable!("iter::repeat ended"),
+                            }
+                            ResolvableSpecificType::Function(None) => "can't infer type of the function".to_string(),
+                            _ => "tried to call a non-function".to_string(),
+                        }
+                    }
+                }
+                Constraint::FunctionCallReturnType(_) => {
+                    let function_typ = self.possible_types(incoming);
+                    if function_typ.len() != 1 {
+                        "can't infer type of the function".to_string()
+                    } else {
+                        match &function_typ[0] {
+                            ResolvableSpecificType::Function(Some(fn_typ)) => match &fn_typ.ret {
+                                Type::Top | Type::UntypedVarargs | Type::TypedVarargs(_) => unreachable!("fn ret type is Top or Varargs"),
+                                Type::Bottom => "this says the return type can be any type".to_string(),
+                                Type::Specific(specific) => format!("this says the return type must be {}", specific),
+                            }
+                            ResolvableSpecificType::Function(None) => "can't infer type of the function".to_string(),
+                            _ => "tried to call a non-function".to_string(),
+                        }
+                    }
+                }
                 Constraint::MethodCallArg(method_name, _, arg_index) => {
                     let field_access_typ = self.possible_types(incoming);
                     if field_access_typ.len() != 1 {
@@ -112,10 +148,9 @@ impl<'i> Graph<'i> {
                         let fn_name = format!("{}::{}", type_name, method_name);
                         match meta_info.function_types.get(fn_name.as_str()) {
                             Some(fn_typ) => match &fn_typ.ret {
-                                Type::Top | Type::UntypedVarargs => unreachable!("fn arg type is bottom"),
+                                Type::Top | Type::UntypedVarargs | Type::TypedVarargs(_) => unreachable!("fn ret type is Top or Varargs"),
                                 Type::Bottom => "this says the return type can be any type".to_string(),
-                                Type::TypedVarargs(specific)
-                                | Type::Specific(specific) => format!("this says the return type must be {}", specific),
+                                Type::Specific(specific) => format!("this says the return type must be {}", specific),
                             }
                             None => format!("can't find function {}", fn_name),
                         }

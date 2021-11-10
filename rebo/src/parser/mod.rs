@@ -5,24 +5,27 @@ use std::collections::{HashMap, BTreeMap, btree_map::Entry, HashSet};
 use typed_arena::Arena;
 use diagnostic::{Span, Diagnostics, DiagnosticBuilder, FileId};
 
-use crate::lexer::{Lexer, Token, TokenType, TokenMut, TokenIdent, TokenOpenCurly, TokenCloseCurly, TokenCloseParen, TokenOpenParen, TokenLineComment, TokenBlockComment};
+use crate::lexer::{Lexer, Token, TokenType, TokenMut, TokenIdent, TokenLineComment, TokenBlockComment};
 use crate::error_codes::ErrorCode;
 
 mod expr;
 mod precedence;
 mod parse;
 mod scope;
+mod first_pass;
 
 pub use expr::*;
 pub use parse::{Parse, Spanned, Separated};
 pub use scope::BindingId;
-use crate::common::{MetaInfo, Depth};
+use crate::common::{MetaInfo, Depth, Function};
 use indexmap::map::IndexMap;
 use itertools::Itertools;
 use crate::parser::scope::Scope;
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::path::PathBuf;
+use indexmap::set::IndexSet;
+use crate::EXTERNAL_SPAN;
 
 #[derive(Debug, Clone)]
 pub enum Error {
@@ -103,6 +106,7 @@ pub struct Parser<'a, 'b, 'i> {
     memoization: IndexMap<(FileId, usize), (&'a Expr<'a, 'i>, ParseUntil)>,
     binding_memoization: BTreeMap<Span, Binding<'i>>,
     generic_memoization: HashSet<Span>,
+    rebo_function_names: IndexSet<(String, TokenIdent<'i>)>,
 }
 
 pub struct ScopeGuard<'i> {
@@ -129,6 +133,7 @@ impl<'a, 'b, 'i> Parser<'a, 'b, 'i> {
             memoization: IndexMap::new(),
             binding_memoization: BTreeMap::new(),
             generic_memoization: HashSet::new(),
+            rebo_function_names: IndexSet::new(),
         }
     }
 
@@ -152,68 +157,11 @@ impl<'a, 'b, 'i> Parser<'a, 'b, 'i> {
     }
     fn parse_file_content(&mut self) -> Result<BlockBody<'a, 'i>, InternalError> {
         self.first_pass();
+        self.second_pass();
         // add statics to global scope
         self.add_statics();
         // file scope
         Ok(self.parse(Depth::start())?)
-    }
-
-    /// Parse struct and enum definitions
-    fn first_pass(&mut self) {
-        trace!("first_pass");
-        // create rogue scopes
-        let old_scopes = ::std::mem::replace(&mut self.scopes, Rc::new(RefCell::new(vec![Scope { idents: IndexMap::new(), generics: IndexMap::new() }])));
-        let mark = self.lexer.mark();
-        let functions: &[for<'x> fn(&'x mut Parser<'a, 'b, 'i>, _) -> Result<_, InternalError>] = &[
-            |parser: &mut Parser<'a, '_, 'i>, depth| {
-                let struct_def = &*parser.arena.alloc(Expr::StructDefinition(ExprStructDefinition::parse_reset(parser, depth)?));
-                match struct_def {
-                    Expr::StructDefinition(struct_def) => {
-                        parser.meta_info.add_struct(parser.diagnostics, struct_def);
-                    },
-                    _ => unreachable!("we just created you"),
-                }
-                Ok(struct_def)
-            },
-            |parser: &mut Parser<'a, '_, 'i>, depth| {
-                let enum_def = &*parser.arena.alloc(Expr::EnumDefinition(ExprEnumDefinition::parse_reset(parser, depth)?));
-                match enum_def {
-                    Expr::EnumDefinition(enum_def) => {
-                        parser.meta_info.add_enum(parser.diagnostics, enum_def);
-                    },
-                    _ => unreachable!("we just created you"),
-                }
-                Ok(enum_def)
-            },
-            |parser: &mut Parser<'a, '_, 'i>, depth| {
-                let static_def = &*parser.arena.alloc(Expr::Static(ExprStatic::parse_reset(parser, depth)?));
-                match static_def {
-                    Expr::Static(static_def) => {
-                        parser.meta_info.add_static(parser.diagnostics, static_def);
-                    },
-                    _ => unreachable!("we just created you"),
-                }
-                Ok(static_def)
-            },
-        ];
-        while self.peek_token(0).is_ok() && !matches!(self.peek_token(0).unwrap(), Token::Eof(_)) {
-            for function in functions {
-                let expr = match function(&mut *self, Depth::start()) {
-                    Ok(expr) => expr,
-                    Err(_) => continue,
-                };
-                self.pre_parsed.insert((expr.span().file, expr.span().start), expr);
-                // consume tokens except last one as that's consumed after the for loop
-                while self.peek_token(0).unwrap().span().end < expr.span().end {
-                    drop(self.next_token());
-                }
-                break;
-            }
-            drop(self.next_token())
-        }
-        // reset token lookahead
-        drop(mark);
-        self.scopes = old_scopes;
     }
 
     fn add_statics(&mut self) {
@@ -224,6 +172,32 @@ impl<'a, 'b, 'i> Parser<'a, 'b, 'i> {
             };
             // the memoized binding will be used
             self.add_binding(binding.ident, binding.mutable);
+        }
+        // add functions to scope
+        for (name, function) in self.meta_info.functions.clone() {
+            let ident = match function {
+                Function::Rust(_) => TokenIdent {
+                    span: EXTERNAL_SPAN,
+                    ident: match name {
+                        Cow::Borrowed(s) => s,
+                        Cow::Owned(_) => unreachable!("external function name isn't &'static str: {}", name),
+                    }
+                },
+                Function::EnumInitializer(enum_name, variant) => {
+                    self.meta_info.user_types[enum_name.as_str()].unwrap_enum().variants.iter()
+                        .map(|var| var.name)
+                        .find(|name| name.ident == variant)
+                        .unwrap()
+                }
+                // added separately
+                Function::Rebo(..) => continue,
+            };
+            let binding = self.add_binding_raw(name.into_owned(), ident);
+            self.meta_info.function_bindings.insert(binding);
+        }
+        for (name, ident) in self.rebo_function_names.clone() {
+            let binding = self.add_binding_raw(name, ident);
+            self.meta_info.function_bindings.insert(binding);
         }
     }
 
@@ -243,7 +217,14 @@ impl<'a, 'b, 'i> Parser<'a, 'b, 'i> {
             }
             Entry::Occupied(occupied) => *occupied.get(),
         };
-        self.scopes.borrow_mut().last_mut().unwrap().idents.insert(binding.ident.ident, binding);
+        self.scopes.borrow_mut().last_mut().unwrap().idents.insert(binding.ident.ident.to_string(), binding);
+        binding
+    }
+    /// Add a raw binding that not come from the source-code itself. Used to add functions as bindings.
+    fn add_binding_raw(&mut self, name: String, ident: TokenIdent<'i>) -> Binding<'i> {
+        let id = BindingId::unique();
+        let binding = Binding { id, mutable: None, ident, rogue: false };
+        self.scopes.borrow_mut().last_mut().unwrap().idents.insert(name, binding);
         binding
     }
     fn get_binding(&self, ident: &str) -> Option<Binding<'i>> {
@@ -307,8 +288,8 @@ impl<'a, 'b, 'i> Parser<'a, 'b, 'i> {
         T::parse_scoped(self, depth)
     }
 
-    fn similar_ident(&self, ident: &'i str) -> Option<&'i str> {
-        crate::util::similar_name(ident, self.scopes.borrow().iter().flat_map(|scope| scope.idents.keys().copied()))
+    fn similar_ident(&self, ident: &str) -> Option<String> {
+        crate::util::similar_name(ident, self.scopes.borrow().iter().flat_map(|scope| scope.idents.keys())).map(|s| s.to_string())
     }
 
     fn diagnostic_unknown_identifier(&mut self, ident: TokenIdent<'i>, f: impl for<'d> FnOnce(DiagnosticBuilder<'d, ErrorCode>) -> DiagnosticBuilder<'d, ErrorCode>) -> Binding<'i> {
@@ -352,48 +333,4 @@ impl<'a, 'b, 'i> Parser<'a, 'b, 'i> {
             }
         }
     }
-
-    /// Consume until excluding the next instance of one of the passed tokens
-    fn consume_until(&mut self, until: &[TokenType]) -> Consumed<'i> {
-        let start_span = match self.peek_token(0) {
-            Ok(token) => token.span(),
-            Err(_) => return Consumed::InstantError,
-        };
-        let mut paren_depth = 0;
-        let mut curly_depth = 0;
-        let mut last_end = start_span.end;
-        loop {
-            match self.peek_token(0) {
-                Ok(token) if until.contains(&token.typ()) && paren_depth == 0 && curly_depth == 0 => {
-                    return Consumed::Found(Span::new(start_span.file, start_span.start, token.span().end), token)
-                },
-                Ok(Token::OpenParen(TokenOpenParen { span })) => {
-                    last_end = span.end;
-                    paren_depth += 1
-                },
-                Ok(Token::CloseParen(TokenCloseParen { span })) => {
-                    last_end = span.end;
-                    paren_depth -= 1
-                },
-                Ok(Token::OpenCurly(TokenOpenCurly { span })) => {
-                    last_end = span.end;
-                    curly_depth += 1
-                },
-                Ok(Token::CloseCurly(TokenCloseCurly { span })) => {
-                    last_end = span.end;
-                    curly_depth -= 1
-                },
-                Err(_) | Ok(Token::Eof(_)) => return Consumed::Eof(Span::new(start_span.file, start_span.start, last_end)),
-                Ok(token) => last_end = token.span().end,
-            }
-            drop(self.next_token());
-        }
-    }
-}
-
-
-enum Consumed<'i> {
-    InstantError,
-    Found(Span, Token<'i>),
-    Eof(Span),
 }

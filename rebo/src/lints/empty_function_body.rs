@@ -9,7 +9,7 @@ pub struct EmptyFunctionBody;
 
 impl Visitor for EmptyFunctionBody {
     fn visit_function_definition(&self, diagnostics: &Diagnostics, meta_info: &MetaInfo, def: &ExprFunctionDefinition) {
-        let ExprFunctionDefinition { name, body: ExprBlock { body: BlockBody { exprs, .. }, .. }, .. } = def;
+        let ExprFunctionDefinition { sig, body: ExprBlock { body: BlockBody { exprs, .. }, .. }, .. } = def;
         // TODO: can this be better?
         let rebo_function = meta_info.rebo_functions.iter().find(|(_name, fun)| fun.span() == def.span());
         let full_name = match rebo_function {
@@ -21,7 +21,7 @@ impl Visitor for EmptyFunctionBody {
 
         if exprs.is_empty() && *ret_type != Type::Specific(SpecificType::Unit) {
             diagnostics.error(ErrorCode::EmptyFunctionBody)
-                .with_error_label(name.span, format!("this function returns {} but has an empty body", ret_type))
+                .with_error_label(sig.name.span, format!("this function returns {} but has an empty body", ret_type))
                 .emit();
         }
     }

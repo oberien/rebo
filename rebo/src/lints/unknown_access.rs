@@ -67,7 +67,7 @@ impl Visitor for UnknownAccess {
                         Some(Function::EnumInitializer(_, _)) => unreachable!("can't call an EnumInitializer as self-method"),
                         Some(Function::Rebo(_, _)) => {
                             let fun = &meta_info.rebo_functions[fn_name.as_str()];
-                            if fun.self_arg.is_none() {
+                            if fun.sig.self_arg.is_none() {
                                 diagnostics.error(ErrorCode::NotAMethod)
                                     .with_error_label(fn_call.name.span, format!("`{}` is a function and not a method", fn_name))
                                     .with_info_label(fn_call.name.span, "methods must have `self` as first argument")

@@ -22,11 +22,6 @@ bitflags::bitflags! {
 }
 
 pub fn add_to_meta_info<'a, 'i>(stdlib: Stdlib, diagnostics: &'i Diagnostics, arena: &'a Arena<Expr<'a, 'i>>, meta_info: &mut MetaInfo<'a, 'i>) {
-    meta_info.add_external_type::<Option<Value>>(arena, diagnostics);
-    meta_info.add_external_type::<Result<Value, Value>>(arena, diagnostics);
-    list::add_list(diagnostics, arena, meta_info);
-    map::add_map(diagnostics, arena, meta_info);
-
     if stdlib.contains(Stdlib::PRINT) {
         meta_info.add_external_function(diagnostics, print);
     }
@@ -43,6 +38,11 @@ pub fn add_to_meta_info<'a, 'i>(stdlib: Stdlib, diagnostics: &'i Diagnostics, ar
     if stdlib.contains(Stdlib::PANIC) {
         meta_info.add_external_function(diagnostics, panic);
     }
+
+    meta_info.add_external_type::<Option<Value>>(arena, diagnostics);
+    meta_info.add_external_type::<Result<Value, Value>>(arena, diagnostics);
+    list::add_list(diagnostics, arena, meta_info);
+    map::add_map(diagnostics, arena, meta_info);
 }
 
 #[rebo::function(raw("print"))]

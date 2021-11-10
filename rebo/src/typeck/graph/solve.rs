@@ -59,11 +59,17 @@ impl<'i> Graph<'i> {
                     Constraint::FieldAccess(field) => {
                         self.field_access(&mut todos, meta_info, source, node, field);
                     },
-                    Constraint::MethodCallArg(name, method_call_index, arg_index) => {
-                        self.method_call_arg(&mut todos, meta_info, source, node, &name, method_call_index, arg_index);
+                    Constraint::FunctionCallArg(call_index, arg_index) => {
+                        self.function_call_arg(&mut todos, source, node, call_index, arg_index);
                     }
-                    Constraint::MethodCallReturnType(name, method_call_index) => {
-                        self.method_call_ret(&mut todos, meta_info, source, node, &name, method_call_index);
+                    Constraint::FunctionCallReturnType(call_index) => {
+                        self.function_call_ret(&mut todos, source, node, call_index);
+                    }
+                    Constraint::MethodCallArg(name, call_index, arg_index) => {
+                        self.method_call_arg(&mut todos, meta_info, source, node, &name, call_index, arg_index);
+                    }
+                    Constraint::MethodCallReturnType(name, call_index) => {
+                        self.method_call_ret(&mut todos, meta_info, source, node, &name, call_index);
                     }
                     Constraint::Generic => (),
                 };
@@ -132,24 +138,44 @@ impl<'i> Graph<'i> {
         self.remove_single_edge(struct_node, field_node);
         function_generics.apply_type_reduce(struct_node, field_node, &typ, self);
     }
-    fn get_function_generics<'a>(&mut self, meta_info: &'a MetaInfo, source_node: Node, method_name: &str, method_call_index: u64) -> Option<(FunctionGenerics, &'a FunctionType)> {
+    fn get_function_function_generics<'a>(&mut self, source_node: Node, call_index: u64) -> Option<(FunctionGenerics, FunctionType)> {
+        let possible_types = &mut self.possible_types[&source_node];
+        if possible_types.0.len() != 1 {
+            return None;
+        }
+        let fn_typ = match &possible_types.0[0] {
+            ResolvableSpecificType::Function(Some(fn_typ)) => fn_typ.clone(),
+            ResolvableSpecificType::Function(None) => return None,
+            _ => {
+                possible_types.0.clear();
+                return None;
+            }
+        };
+        self.get_function_generics(fn_typ, None, call_index)
+    }
+    fn get_method_function_generics<'a>(&mut self, meta_info: &'a MetaInfo, source_node: Node, method_name: &str, call_index: u64) -> Option<(FunctionGenerics, FunctionType)> {
         let possible_types = &self.possible_types[&source_node];
         if possible_types.0.len() != 1 {
             return None;
         }
 
-        let typ = &possible_types.0[0];
+        let typ = possible_types.0[0].clone();
         let type_name = typ.type_name();
         let fn_name = format!("{}::{}", type_name, method_name);
         let fn_typ = match meta_info.function_types.get(fn_name.as_str()) {
-            Some(fn_typ) => fn_typ,
+            Some(fn_typ) => fn_typ.clone(),
             None => return None,
         };
 
+        self.get_function_generics(fn_typ, Some(typ), call_index)
+    }
+    fn get_function_generics<'a>(&mut self, fn_typ: FunctionType, typ: Option<ResolvableSpecificType>, call_index: u64) -> Option<(FunctionGenerics, FunctionType)> {
         // function generics
         let default_function_generics = FunctionGenerics::new();
-        for generic_node in typ.generics() {
-            default_function_generics.insert_generic(generic_node);
+        if let Some(typ) = typ {
+            for generic_node in typ.generics() {
+                default_function_generics.insert_generic(generic_node);
+            }
         }
         for &generic_span in &*fn_typ.generics {
             if default_function_generics.contains_generic_span(generic_span) {
@@ -159,35 +185,41 @@ impl<'i> Graph<'i> {
             self.add_node(node);
             default_function_generics.insert_generic(node);
         }
-        let function_generics = self.method_function_generics.entry(method_call_index)
+        let function_generics = self.method_function_generics.entry(call_index)
             .or_insert(default_function_generics)
             .clone();
         Some((function_generics, fn_typ))
     }
-    fn method_call_arg(&mut self, todos: &mut WorkQueue, meta_info: &MetaInfo, field_access: Node, arg: Node, method_name: &str, method_call_index: u64, arg_index: usize) {
-        let (function_generics, fn_typ) = match self.get_function_generics(meta_info, field_access, method_name, method_call_index) {
+    fn function_call_arg(&mut self, todos: &mut WorkQueue, source: Node, arg: Node, call_index: u64, arg_index: usize) {
+        let (function_generics, fn_typ) = match self.get_function_function_generics(source, call_index) {
+            Some(t) => t,
+            None => return,
+        };
+        self.call_arg(todos, function_generics, &fn_typ, source, arg, arg_index)
+    }
+    fn function_call_ret(&mut self, todos: &mut WorkQueue, source: Node, function_call: Node, call_index: u64) {
+        let (function_generics, fn_typ) = match self.get_function_function_generics(source, call_index) {
             Some(t) => t,
             None => return,
         };
 
-        let expected_arg_type = match fn_typ.args.get(arg_index) {
-            Some(typ) => typ,
-            None => match fn_typ.args.last() {
-                Some(t @ Type::TypedVarargs(_)) => t,
-                _ => &Type::UntypedVarargs,
-            },
-        };
-
-        self.remove_single_edge(field_access, arg);
-        function_generics.apply_type_reduce(field_access, arg, expected_arg_type, self);
-        todos.add(self, field_access);
-        todos.add(self, arg);
+        self.remove_single_edge(source, function_call);
+        function_generics.apply_type_reduce(source, function_call, &fn_typ.ret, self);
+        todos.add(self, source);
+        todos.add(self, function_call);
         for generic in function_generics.generics() {
             todos.add(self, generic);
         }
     }
-    fn method_call_ret(&mut self, todos: &mut WorkQueue, meta_info: &MetaInfo, field_access: Node, method_call: Node, method_name: &str, method_call_index: u64) {
-        let (function_generics, fn_typ) = match self.get_function_generics(meta_info, field_access, method_name, method_call_index) {
+    fn method_call_arg(&mut self, todos: &mut WorkQueue, meta_info: &MetaInfo, field_access: Node, arg: Node, method_name: &str, call_index: u64, arg_index: usize) {
+        let (function_generics, fn_typ) = match self.get_method_function_generics(meta_info, field_access, method_name, call_index) {
+            Some(t) => t,
+            None => return,
+        };
+        self.call_arg(todos, function_generics, &fn_typ, field_access, arg, arg_index)
+    }
+    fn method_call_ret(&mut self, todos: &mut WorkQueue, meta_info: &MetaInfo, field_access: Node, method_call: Node, method_name: &str, call_index: u64) {
+        let (function_generics, fn_typ) = match self.get_method_function_generics(meta_info, field_access, method_name, call_index) {
             Some(t) => t,
             None => return,
         };
@@ -196,6 +228,23 @@ impl<'i> Graph<'i> {
         function_generics.apply_type_reduce(field_access, method_call, &fn_typ.ret, self);
         todos.add(self, field_access);
         todos.add(self, method_call);
+        for generic in function_generics.generics() {
+            todos.add(self, generic);
+        }
+    }
+    fn call_arg(&mut self, todos: &mut WorkQueue, function_generics: FunctionGenerics, fn_typ: &FunctionType, source: Node, arg: Node, arg_index: usize) {
+        let expected_arg_type = match fn_typ.args.get(arg_index) {
+            Some(typ) => typ,
+            None => match fn_typ.args.last() {
+                Some(t @ Type::TypedVarargs(_)) => t,
+                _ => &Type::UntypedVarargs,
+            },
+        };
+
+        self.remove_single_edge(source, arg);
+        function_generics.apply_type_reduce(source, arg, expected_arg_type, self);
+        todos.add(self, source);
+        todos.add(self, arg);
         for generic in function_generics.generics() {
             todos.add(self, generic);
         }
@@ -273,6 +322,22 @@ impl<'i> Graph<'i> {
                 | ResolvableSpecificType::Integer
                 | ResolvableSpecificType::String => if reduce.contains(typ) {
                     reduced.push(typ.clone())
+                }
+                ResolvableSpecificType::Function(f) => {
+                    let reduce_function = reduce.iter()
+                        .filter_map(|typ| match typ {
+                            ResolvableSpecificType::Function(f) => Some(f),
+                            _ => None,
+                        }).next();
+
+                    match (f, reduce_function) {
+                        (f, Some(None)) => reduced.push(ResolvableSpecificType::Function(f.clone())),
+                        (None, Some(f)) => reduced.push(ResolvableSpecificType::Function(f.clone())),
+                        (Some(f1), Some(Some(f2))) => if f1 == f2 {
+                            reduced.push(ResolvableSpecificType::Function(Some(f1.clone())));
+                        }
+                        (_, None) => (),
+                    }
                 }
                 ResolvableSpecificType::Struct(name, generics) => {
                     let reduce_struct = reduce.iter()
