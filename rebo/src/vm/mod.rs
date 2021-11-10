@@ -8,6 +8,7 @@ use crate::lexer::{TokenBool, TokenDqString, TokenFloat, TokenIdent, TokenIntege
 use crate::parser::{Binding, BlockBody, Expr, ExprAdd, ExprAssign, ExprAssignLhs, ExprBind, ExprBlock, ExprBool, ExprBoolAnd, ExprBoolNot, ExprBoolOr, ExprDiv, ExprEnumDefinition, ExprEnumInitialization, ExprEquals, ExprFieldAccess, ExprFloat, ExprFormatString, ExprFormatStringPart, ExprFunctionCall, ExprFunctionDefinition, ExprGreaterEquals, ExprGreaterThan, ExprIfElse, ExprInteger, ExprLessEquals, ExprLessThan, ExprLiteral, ExprMatch, ExprMatchPattern, ExprMul, ExprNotEquals, ExprParenthesized, ExprPattern, ExprPatternTyped, ExprPatternUntyped, ExprString, ExprStructDefinition, ExprStructInitialization, ExprSub, ExprVariable, ExprWhile, ExprAccess, FieldOrMethod, Spanned, ExprFor, ExprMethodCall};
 pub use crate::vm::scope::{Scopes, Scope};
 use diagnostic::{Diagnostics, FileId, Span};
+use crate::EXTERNAL_SPAN;
 
 mod scope;
 
@@ -39,8 +40,7 @@ impl<'a, 'b, 'vm, 'i> VmContext<'a, 'b, 'vm, 'i> {
         if !self.vm.meta_info.required_rebo_functions.contains(&RequiredReboFunctionStruct::from_required_rebo_function::<T>()) {
             panic!("required rebo function `{}` wasn't registered via `ReboConfig`", T::NAME);
         }
-        let ext = &self.vm.meta_info.external_functions[T::NAME];
-        self.vm.call_function(T::NAME, Span::new(FileId::synthetic(ext.file_name), 0, ext.code.len()), args, Depth::start())
+        self.vm.call_function(T::NAME, EXTERNAL_SPAN, args, Depth::start())
     }
 }
 
@@ -62,6 +62,10 @@ impl<'a, 'b, 'i> Vm<'a, 'b, 'i> {
 
     pub fn run(mut self, ast: &[&Expr]) -> Result<Value, ExecError> {
         trace!("run");
+        // add functions
+        for (binding, name) in &self.meta_info.function_bindings {
+            self.bind(binding, Value::Function(name.clone()), Depth::start());
+        }
         // add statics
         for static_def in self.meta_info.statics.clone().values() {
             let binding = match &static_def.pattern {
@@ -70,10 +74,6 @@ impl<'a, 'b, 'i> Vm<'a, 'b, 'i> {
             };
             let value = self.eval_expr(static_def.expr, Depth::start())?;
             self.bind(&binding, value, Depth::start());
-        }
-        // add functions
-        for (binding, name) in &self.meta_info.function_bindings {
-            self.bind(binding, Value::Function(name.clone()), Depth::start());
         }
 
         let mut value = None;

@@ -197,6 +197,7 @@ fn use_static() {
     print(MY_STATIC);
     MY_STATIC = 21;
 }
+static CURRENT_UI = List::new();
 
 // includes
 print(include "test-include.re");

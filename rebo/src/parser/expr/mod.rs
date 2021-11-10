@@ -1511,9 +1511,9 @@ impl<'a, 'i> Display for ExprFunctionType<'a, 'i> {
         if let Some(generics) = &self.generics {
             write!(f, "{}", generics)?;
         }
-        write!(f, "({}) ", self.args)?;
+        write!(f, "({})", self.args)?;
         if let Some((_arrow, ret_type)) = &self.ret_type {
-            write!(f, "-> {} ", ret_type)?;
+            write!(f, " -> {}", ret_type)?;
         }
         Ok(())
     }

@@ -78,6 +78,8 @@ impl<'a, 'b, 'i> Parser<'a, 'b, 'i> {
         let old_scopes = ::std::mem::replace(&mut self.scopes, Rc::new(RefCell::new(vec![Scope { idents: IndexMap::new(), generics: IndexMap::new() }])));
         let mark = self.lexer.mark();
 
+        self.add_statics();
+
         while self.peek_token(0).is_ok() && !matches!(self.peek_token(0).unwrap(), Token::Eof(_)) {
             if let Ok(impl_block_sig) = ImplBlockSignature::parse(self, Depth::start()) {
                 trace!("entering impl-block {}", impl_block_sig.name.ident);
