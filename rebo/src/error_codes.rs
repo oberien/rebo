@@ -65,6 +65,7 @@ pub enum ErrorCode {
     RequiredReboFunctionDiffers,
     FunctionMatch,
     InvalidVarargs,
+    MissingFunctionName,
 
     Panic,
     AssertionFailed,
@@ -139,6 +140,7 @@ impl diagnostic::ErrorCode for ErrorCode {
             RequiredReboFunctionDiffers => "0064",
             FunctionMatch => "0065",
             InvalidVarargs => "0066",
+            MissingFunctionName => "0067",
 
             Panic => "9999",
             AssertionFailed => "9998",
@@ -212,6 +214,7 @@ impl diagnostic::ErrorCode for ErrorCode {
             RequiredReboFunctionDiffers => "required rebo function does not match found implementation",
             FunctionMatch => "can't match on a function",
             InvalidVarargs => "invalid varargs",
+            MissingFunctionName => "missing function name",
 
             Panic => "explicit panic",
             AssertionFailed => "assertion failed",

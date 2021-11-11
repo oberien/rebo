@@ -7,12 +7,12 @@ use indexmap::map::IndexMap;
 use indexmap::set::IndexSet;
 use typed_arena::Arena;
 
-pub use values::{Typed, FromValue, Function, ExternalFunction, RequiredReboFunction, RequiredReboFunctionStruct, ExternalType, ExternalTypeType, FuzzyFloat, IntoValue, Struct, StructArc, Enum, EnumArc, Value, ListArc, MapArc};
+pub use values::{Typed, FromValue, Function, ExternalFunction, RequiredReboFunction, RequiredReboFunctionStruct, ExternalType, ExternalTypeType, FuzzyFloat, IntoValue, Struct, StructArc, Enum, EnumArc, Value, FunctionValue, ListArc, MapArc};
 
 use crate::error_codes::ErrorCode;
 use crate::{FileId, SpecificType};
 use crate::lexer::Lexer;
-use crate::parser::{ExprEnumDefinition, ExprFunctionDefinition, ExprPatternTyped, ExprPatternUntyped, ExprStructDefinition, Spanned, ExprGenerics, ExprStatic, ExprPattern, Expr, Parser, Binding, ExprFunctionSignature, Parse};
+use crate::parser::{ExprEnumDefinition, ExprFunctionDefinition, ExprPatternTyped, ExprPatternUntyped, ExprStructDefinition, Spanned, ExprGenerics, ExprStatic, ExprPattern, Expr, Parser, Binding, ExprFunctionSignature, Parse, BindingId};
 use crate::typeck::types::{EnumType, FunctionType, StructType, Type};
 use crate::typeck::TypeVar;
 
@@ -74,6 +74,10 @@ pub struct MetaInfo<'a, 'i> {
     ///
     /// Available after the parser.
     pub rebo_functions: IndexMap<Cow<'i, str>, &'a ExprFunctionDefinition<'a, 'i>>,
+    /// anonymous functions found in the code
+    ///
+    /// Available after the parser.
+    pub anonymous_rebo_functions: IndexMap<Span, (Vec<BindingId>, &'a ExprFunctionDefinition<'a, 'i>)>,
     /// functions defined in rust
     ///
     /// Available before the parser.
@@ -116,6 +120,7 @@ impl<'a, 'i> MetaInfo<'a, 'i> {
             functions: IndexMap::new(),
             function_bindings: IndexMap::new(),
             rebo_functions: IndexMap::new(),
+            anonymous_rebo_functions: IndexMap::new(),
             external_functions: IndexMap::new(),
             external_function_signatures: IndexMap::new(),
             user_types: IndexMap::new(),
@@ -129,14 +134,21 @@ impl<'a, 'i> MetaInfo<'a, 'i> {
         }
     }
 
-    pub fn add_function(&mut self, diagnostics: &Diagnostics, name: Cow<'i, str>, fun: &'a ExprFunctionDefinition<'a, 'i>) {
+    pub fn add_function(&mut self, diagnostics: &Diagnostics, name: Option<Cow<'i, str>>, fun: &'a ExprFunctionDefinition<'a, 'i>) {
         let arg_binding_ids = fun.sig.args.iter().map(|ExprPatternTyped { pattern: ExprPatternUntyped { binding }, .. }| binding.id).collect();
-        let function = Function::Rebo(name.to_string(), arg_binding_ids);
-        if self.check_existing_function(diagnostics, &name, fun.sig.name.span) {
-            return;
+        match name {
+            Some(name) => {
+                let function = Function::Rebo(name.to_string(), arg_binding_ids);
+                if self.check_existing_function(diagnostics, &name, fun.sig.name.as_ref().unwrap().span) {
+                    return;
+                }
+                self.functions.insert(name.clone(), function);
+                self.rebo_functions.insert(name, fun);
+            }
+            None => {
+                self.anonymous_rebo_functions.insert(fun.span(), (arg_binding_ids, fun));
+            }
         }
-        self.functions.insert(name.clone(), function);
-        self.rebo_functions.insert(name, fun);
     }
     pub fn add_external_function(&mut self, arena: &'a Arena<Expr<'a, 'i>>, diagnostics: &'i Diagnostics, fun: ExternalFunction) {
         let (file, _) = diagnostics.add_synthetic_file(fun.file_name, fun.code.to_string());
@@ -170,7 +182,7 @@ impl<'a, 'i> MetaInfo<'a, 'i> {
         if let Some(existing) = self.functions.get(name) {
             match existing {
                 Function::Rebo(existing_name, _) => {
-                    duplicate(self.rebo_functions[existing_name.as_str()].sig.name.span, span);
+                    duplicate(self.rebo_functions[existing_name.as_str()].sig.name.as_ref().unwrap().span, span);
                 }
                 Function::Rust(_) => diagnostics.error(ErrorCode::DuplicateGlobal)
                     .with_error_label(span, "a function with the same name is already provided externally")

@@ -39,15 +39,20 @@ impl<'a, 'b, 'i> Parser<'a, 'b, 'i> {
             |parser: &mut Parser<'a, '_, 'i>, stack: &Vec<StackElement>, depth| {
                 let old_scopes = std::mem::take(&mut parser.scopes);
                 let scope_guard = parser.push_scope();
-                let result = ExprFunctionSignature::parse_reset(parser, depth);
+                let result = <(ExprFunctionSignature, TokenOpenCurly)>::parse_reset(parser, depth);
                 drop(scope_guard);
                 parser.scopes = old_scopes;
-                let function_sig = result?;
-                let name = match stack.last() {
-                    Some(StackElement::ImplBlock(name)) => format!("{}::{}", name, function_sig.name.ident),
-                    _ => function_sig.name.ident.to_string(),
+                let (function_sig, _open) = result?;
+                let name = match function_sig.name {
+                    Some(fn_name) => match stack.last() {
+                        Some(StackElement::ImplBlock(name)) => Some(format!("{}::{}", name, fn_name.ident)),
+                        _ => Some(fn_name.ident.to_string()),
+                    }
+                    None => None,
                 };
-                parser.rebo_function_names.insert((name, function_sig.name));
+                if let Some(name) = name {
+                    parser.rebo_function_names.insert((name, function_sig.name.unwrap()));
+                }
                 Ok(None)
             },
         ];

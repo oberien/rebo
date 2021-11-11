@@ -21,7 +21,7 @@ impl Visitor for EmptyFunctionBody {
 
         if exprs.is_empty() && *ret_type != Type::Specific(SpecificType::Unit) {
             diagnostics.error(ErrorCode::EmptyFunctionBody)
-                .with_error_label(sig.name.span, format!("this function returns {} but has an empty body", ret_type))
+                .with_error_label(sig.span(), format!("this function returns {} but has an empty body", ret_type))
                 .emit();
         }
     }

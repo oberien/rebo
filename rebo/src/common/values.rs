@@ -45,7 +45,20 @@ pub enum Value {
     List(ListArc),
     Map(MapArc),
     // function name
-    Function(String),
+    Function(FunctionValue),
+}
+#[derive(Debug, Clone, PartialOrd, Ord, PartialEq, Eq)]
+pub enum FunctionValue {
+    Named(String),
+    Anonymous(Span),
+}
+impl Display for FunctionValue {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            FunctionValue::Named(name) => write!(f, "function {}", name),
+            FunctionValue::Anonymous(span) => write!(f, "anonymous function at {}:{}:{}", span.file, span.start, span.end),
+        }
+    }
 }
 
 impl Value {
@@ -79,9 +92,9 @@ impl Value {
             _ => panic!("{}", msg),
         }
     }
-    pub fn expect_function(self, msg: &'static str) -> String {
+    pub fn expect_function(self, msg: &'static str) -> FunctionValue {
         match self {
-            Value::Function(name) => name,
+            Value::Function(fun) => fun,
             _ => panic!("{}", msg),
         }
     }
@@ -131,7 +144,7 @@ impl Display for Value {
                 }
                 Ok(())
             }
-            Value::Function(name) => write!(f, "function {}", name),
+            Value::Function(fun) => write!(f, "{}", fun),
             Value::List(l) => {
                 let l = l.list.lock();
                 let l = l.borrow();

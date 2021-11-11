@@ -208,3 +208,14 @@ print(included_fn());
 let new: fn<T>() -> List<T> = List::new;
 let out = print;
 out(new());
+// anonymous functions
+struct NewList {
+    new: fn<T>() -> List<T>,
+}
+let new_list = NewList {
+    new: fn<T>() -> List<T> {
+        List::new()
+    },
+};
+let new = new_list.new;
+print(new());

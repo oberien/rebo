@@ -386,7 +386,8 @@ impl<'a, 'i> Expr<'a, 'i> {
                 let fun = &*parser.arena.alloc(Expr::FunctionDefinition(expr));
                 match fun {
                     Expr::FunctionDefinition(fun) => {
-                        parser.meta_info.add_function(parser.diagnostics, Cow::Borrowed(fun.sig.name.ident), fun);
+                        let name = fun.sig.name.map(|name| Cow::Borrowed(name.ident));
+                        parser.meta_info.add_function(parser.diagnostics, name, fun);
                     },
                     _ => unreachable!("we just created you"),
                 }
@@ -397,8 +398,15 @@ impl<'a, 'i> Expr<'a, 'i> {
                 match impl_block {
                     Expr::ImplBlock(impl_block) => {
                         for fun in &impl_block.functions {
-                            let path = format!("{}::{}", impl_block.name.ident, fun.sig.name.ident);
-                            parser.meta_info.add_function(parser.diagnostics, Cow::Owned(path), fun);
+                            match fun.sig.name {
+                                Some(name) => {
+                                    let path = format!("{}::{}", impl_block.name.ident, name.ident);
+                                    parser.meta_info.add_function(parser.diagnostics, Some(Cow::Owned(path)), fun);
+                                }
+                                None => parser.diagnostics.error(ErrorCode::MissingFunctionName)
+                                    .with_error_label(fun.sig.span(), "functions in impl-blocks must have names")
+                                    .emit(),
+                            }
                         }
                     }
                     _ => unreachable!("we just created you"),
@@ -1278,7 +1286,7 @@ impl<'a, 'i> Parse<'a, 'i> for BlockBody<'a, 'i> {
                 last = Last::TerminatedWithSemicolon;
             } else {
                 last = match expr {
-                    Expr::FunctionDefinition(_)
+                    Expr::FunctionDefinition(ExprFunctionDefinition { sig: ExprFunctionSignature { name: Some(_), .. }, .. })
                     | Expr::StructDefinition(_)
                     | Expr::EnumDefinition(_)
                     | Expr::ImplBlock(_)
@@ -1565,7 +1573,7 @@ impl<'a, 'i> Display for ExprFunctionType<'a, 'i> {
 #[derive(Debug, Clone)]
 pub struct ExprFunctionSignature<'a, 'i> {
     pub fn_token: TokenFn,
-    pub name: TokenIdent<'i>,
+    pub name: Option<TokenIdent<'i>>,
     pub generics: Option<ExprGenerics<'a, 'i>>,
     pub open: TokenOpenParen,
     pub self_arg: Option<Binding<'i>>,
@@ -1614,7 +1622,10 @@ impl<'a, 'i> Spanned for ExprFunctionSignature<'a, 'i> {
 }
 impl<'a, 'i> Display for ExprFunctionSignature<'a, 'i> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "fn {}", self.name.ident)?;
+        write!(f, "fn")?;
+        if let Some(name) = self.name {
+            write!(f, " {}", name.ident)?;
+        }
         if let Some(generics) = &self.generics {
             write!(f, "{}", generics)?;
         }

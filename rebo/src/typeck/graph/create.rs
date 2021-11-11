@@ -297,46 +297,45 @@ impl<'i> Graph<'i> {
             );
         }
     }
-    fn add_function_types(diagnostics: &'i Diagnostics, meta_info: &mut MetaInfo) {
-        let function_type = |meta_info: &MetaInfo, sig: &ExprFunctionSignature, external: bool| -> FunctionType {
-            FunctionType {
-                is_method: if external {
-                    sig.args.iter().next().map(|arg| arg.pattern.binding.ident.ident == "this").unwrap_or(false)
-                } else {
-                    sig.self_arg.is_some()
-                },
-                generics: sig.generics.iter().flat_map(|g| &g.generics).flatten()
-                    .map(|g| g.def_ident.span)
-                    .collect(),
-                args: sig.args.iter().map(|pattern| {
-                    convert_expr_type(&pattern.typ, diagnostics, meta_info)
-                }).chain(sig.varargs.iter().map(|(typ, _)| {
-                    if let Some(vararg_typ) = typ {
-                        let typ = convert_expr_type(vararg_typ, diagnostics, meta_info);
-                        match typ {
-                            Type::Specific(specific) => Type::TypedVarargs(specific),
-                            _ => {
-                                diagnostics.error(ErrorCode::InvalidVarargs)
-                                    .with_error_label(vararg_typ.span(), "can't convert this type")
-                                    .emit();
-                                Type::UntypedVarargs
-                            }
+    fn get_function_type(meta_info: &MetaInfo, diagnostics: &Diagnostics, sig: &ExprFunctionSignature, external: bool) -> FunctionType {
+        FunctionType {
+            is_method: if external {
+                sig.args.iter().next().map(|arg| arg.pattern.binding.ident.ident == "this").unwrap_or(false)
+            } else {
+                sig.self_arg.is_some()
+            },
+            generics: sig.generics.iter().flat_map(|g| &g.generics).flatten()
+                .map(|g| g.def_ident.span)
+                .collect(),
+            args: sig.args.iter().map(|pattern| {
+                convert_expr_type(&pattern.typ, diagnostics, meta_info)
+            }).chain(sig.varargs.iter().map(|(typ, _)| {
+                if let Some(vararg_typ) = typ {
+                    let typ = convert_expr_type(vararg_typ, diagnostics, meta_info);
+                    match typ {
+                        Type::Specific(specific) => Type::TypedVarargs(specific),
+                        _ => {
+                            diagnostics.error(ErrorCode::InvalidVarargs)
+                                .with_error_label(vararg_typ.span(), "can't convert this type")
+                                .emit();
+                            Type::UntypedVarargs
                         }
-                    } else {
-                        Type::UntypedVarargs
                     }
-                })).collect(),
-                ret: sig.ret_type.as_ref()
-                    .map(|(_, typ)| convert_expr_type(typ, diagnostics, meta_info))
-                    .unwrap_or(Type::Specific(SpecificType::Unit)),
-            }
-        };
-
+                } else {
+                    Type::UntypedVarargs
+                }
+            })).collect(),
+            ret: sig.ret_type.as_ref()
+                .map(|(_, typ)| convert_expr_type(typ, diagnostics, meta_info))
+                .unwrap_or(Type::Specific(SpecificType::Unit)),
+        }
+    }
+    fn add_function_types(diagnostics: &'i Diagnostics, meta_info: &mut MetaInfo) {
         for (name, fun) in &meta_info.functions {
             match fun {
                 Function::Rebo(..) => {
                     let fun = &meta_info.rebo_functions[name];
-                    let typ = function_type(meta_info, &fun.sig, false);
+                    let typ = Self::get_function_type(meta_info, diagnostics, &fun.sig, false);
                     meta_info.function_types.insert(name.clone(), typ);
                 }
                 Function::EnumInitializer(enum_name, variant_name) => {
@@ -361,7 +360,7 @@ impl<'i> Graph<'i> {
                 }
                 Function::Rust(_) => {
                     let sig = &meta_info.external_function_signatures[name.as_ref()];
-                    let typ = function_type(meta_info, sig, true);
+                    let typ = Self::get_function_type(meta_info, diagnostics, sig, true);
                     meta_info.function_types.insert(name.clone(), typ);
                 }
             }
@@ -384,12 +383,12 @@ impl<'i> Graph<'i> {
             let fun = &meta_info.rebo_functions[*name];
             if typ.is_method != *is_method {
                 diagnostics.error(ErrorCode::RequiredReboFunctionDiffers)
-                    .with_error_label(fun.sig.name.span(), format!("expected this to be a {}", metfun))
+                    .with_error_label(fun.sig.span(), format!("expected this to be a {}", metfun))
                     .emit();
             }
             if typ.generics.len() != generics.len() {
                 diagnostics.error(ErrorCode::RequiredReboFunctionDiffers)
-                    .with_error_label(fun.sig.name.span(), format!("expected {} generics, got {}", generics.len(), typ.generics.len()))
+                    .with_error_label(fun.sig.span(), format!("expected {} generics, got {}", generics.len(), typ.generics.len()))
                     .emit();
             }
             for ((span, generic), expected) in typ.generics.iter().map(|&span| (span, diagnostics.resolve_span(span))).zip(*generics) {
@@ -788,16 +787,20 @@ impl<'i> Graph<'i> {
         for ExprPatternTyped { pattern: ExprPatternUntyped { binding }, typ, .. } in &sig.args {
             let arg_node = Node::type_var(binding.ident.span);
             self.add_node(arg_node);
-            let typ = convert_expr_type(typ, diagnostics, meta_info);
-            function_generics.apply_type_reduce(arg_node, arg_node, &typ, self);
+            let arg_type = convert_expr_type(typ, diagnostics, meta_info);
+            function_generics.apply_type_reduce(arg_node, arg_node, &arg_type, self);
         }
 
         let body_node = self.visit_block(diagnostics, meta_info, function_generics, body);
         if let Some((_arrow, ret_type)) = &sig.ret_type {
-            let typ = convert_expr_type(ret_type, diagnostics, meta_info);
-            function_generics.apply_type_reduce(node, body_node, &typ, self);
+            let ret_type = convert_expr_type(ret_type, diagnostics, meta_info);
+            function_generics.apply_type_reduce(node, body_node, &ret_type, self);
         }
-        self.add_reduce_constraint(node, node, vec![ResolvableSpecificType::Unit]);
+        if sig.name.is_some() {
+            self.add_reduce_constraint(node, node, vec![ResolvableSpecificType::Unit]);
+        } else {
+            self.add_reduce_constraint(node, node, vec![ResolvableSpecificType::Function(Some(Self::get_function_type(meta_info, diagnostics, sig, false)))])
+        }
         node
     }
 

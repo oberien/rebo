@@ -3,9 +3,9 @@ use std::sync::Arc;
 
 use parking_lot::ReentrantMutex;
 
-use crate::common::{Depth, Enum, EnumArc, Function, FuzzyFloat, MetaInfo, RequiredReboFunction, RequiredReboFunctionStruct, Struct, StructArc, Value};
+use crate::common::{Depth, Enum, EnumArc, Function, FunctionValue, FuzzyFloat, MetaInfo, RequiredReboFunction, RequiredReboFunctionStruct, Struct, StructArc, Value};
 use crate::lexer::{TokenBool, TokenDqString, TokenFloat, TokenIdent, TokenInteger};
-use crate::parser::{Binding, BlockBody, Expr, ExprAdd, ExprAssign, ExprAssignLhs, ExprBind, ExprBlock, ExprBool, ExprBoolAnd, ExprBoolNot, ExprBoolOr, ExprDiv, ExprEnumDefinition, ExprEnumInitialization, ExprEquals, ExprFieldAccess, ExprFloat, ExprFormatString, ExprFormatStringPart, ExprFunctionCall, ExprFunctionDefinition, ExprGreaterEquals, ExprGreaterThan, ExprIfElse, ExprInteger, ExprLessEquals, ExprLessThan, ExprLiteral, ExprMatch, ExprMatchPattern, ExprMul, ExprNotEquals, ExprParenthesized, ExprPattern, ExprPatternTyped, ExprPatternUntyped, ExprString, ExprStructDefinition, ExprStructInitialization, ExprSub, ExprVariable, ExprWhile, ExprAccess, FieldOrMethod, Spanned, ExprFor, ExprMethodCall, ExprNeg};
+use crate::parser::{Binding, BlockBody, Expr, ExprAdd, ExprAssign, ExprAssignLhs, ExprBind, ExprBlock, ExprBool, ExprBoolAnd, ExprBoolNot, ExprBoolOr, ExprDiv, ExprEnumDefinition, ExprEnumInitialization, ExprEquals, ExprFieldAccess, ExprFloat, ExprFormatString, ExprFormatStringPart, ExprFunctionCall, ExprGreaterEquals, ExprGreaterThan, ExprIfElse, ExprInteger, ExprLessEquals, ExprLessThan, ExprLiteral, ExprMatch, ExprMatchPattern, ExprMul, ExprNotEquals, ExprParenthesized, ExprPattern, ExprPatternTyped, ExprPatternUntyped, ExprString, ExprStructDefinition, ExprStructInitialization, ExprSub, ExprVariable, ExprWhile, ExprAccess, FieldOrMethod, Spanned, ExprFor, ExprMethodCall, ExprNeg};
 pub use crate::vm::scope::{Scopes, Scope};
 use diagnostic::{Diagnostics, Span};
 use crate::EXTERNAL_SPAN;
@@ -40,7 +40,7 @@ impl<'a, 'b, 'vm, 'i> VmContext<'a, 'b, 'vm, 'i> {
         if !self.vm.meta_info.required_rebo_functions.contains(&RequiredReboFunctionStruct::from_required_rebo_function::<T>()) {
             panic!("required rebo function `{}` wasn't registered via `ReboConfig`", T::NAME);
         }
-        self.vm.call_function(T::NAME, EXTERNAL_SPAN, args, Depth::start())
+        self.vm.call_function(&FunctionValue::Named(T::NAME.to_string()), EXTERNAL_SPAN, args, Depth::start())
     }
 }
 
@@ -64,7 +64,7 @@ impl<'a, 'b, 'i> Vm<'a, 'b, 'i> {
         trace!("run");
         // add functions
         for (binding, name) in &self.meta_info.function_bindings {
-            self.bind(binding, Value::Function(name.clone()), Depth::start());
+            self.bind(binding, Value::Function(FunctionValue::Named(name.clone())), Depth::start());
         }
         // add statics
         for static_def in self.meta_info.statics.clone().values() {
@@ -136,7 +136,7 @@ impl<'a, 'b, 'i> Vm<'a, 'b, 'i> {
                             let args = std::iter::once(Ok(val))
                                 .chain(args.iter().map(|expr| self.eval_expr(expr, depth.next())))
                                 .collect::<Result<_, _>>()?;
-                            self.call_function(&fn_name, acc.span(), args, depth.last())?
+                            self.call_function(&FunctionValue::Named(fn_name), acc.span(), args, depth.last())?
                         }
                     };
                 }
@@ -314,12 +314,15 @@ impl<'a, 'b, 'i> Vm<'a, 'b, 'i> {
                 Ok(Value::Unit)
             }
             Expr::FunctionCall(ExprFunctionCall { name, args, .. }) => {
-                let name = self.load_binding(&name.binding, depth.next()).expect_function("called a function on a binding that's not a function");
+                let fun = self.load_binding(&name.binding, depth.next()).expect_function("called a function on a binding that's not a function");
                 let args = args.iter().map(|expr| self.eval_expr(expr, depth.next())).collect::<Result<_, _>>()?;
-                self.call_function(&name, expr.span(), args, depth.last())
+                self.call_function(&fun, expr.span(), args, depth.last())
             },
             // ignore function definitions as we have those handled already
-            Expr::FunctionDefinition(ExprFunctionDefinition { .. }) => Ok(Value::Unit),
+            Expr::FunctionDefinition(fun) => match fun.sig.name {
+                Some(_) => Ok(Value::Unit),
+                None => Ok(Value::Function(FunctionValue::Anonymous(fun.span()))),
+            },
             Expr::StructDefinition(ExprStructDefinition { .. }) => Ok(Value::Unit),
             Expr::StructInitialization(ExprStructInitialization { name, fields, .. }) => {
                 let mut field_values = Vec::new();
@@ -358,33 +361,40 @@ impl<'a, 'b, 'i> Vm<'a, 'b, 'i> {
             Ok(val)
         }
     }
-    fn call_function(&mut self, name: &str, expr_span: Span, args: Vec<Value>, depth: Depth) -> Result<Value, ExecError> {
-        trace!("{}call_function: {}({:?})", depth, name, args);
-        match &self.meta_info.functions[name] {
-            Function::Rust(f) => (*f)(expr_span, &mut VmContext { vm: self }, args),
-            Function::Rebo(name, arg_binding_ids) => {
-                let mut scope = Scope::new();
-                for (&id, val) in arg_binding_ids.iter().zip(args) {
-                    scope.create(id, val);
+    fn call_function(&mut self, fun: &FunctionValue, expr_span: Span, args: Vec<Value>, depth: Depth) -> Result<Value, ExecError> {
+        trace!("{}call_function: {}({:?})", depth, fun, args);
+        let (arg_binding_ids, fun) = match fun {
+            FunctionValue::Anonymous(span) => {
+                let (arg_binding_ids, fun) = &self.meta_info.anonymous_rebo_functions[span];
+                (arg_binding_ids, *fun)
+            },
+            FunctionValue::Named(name) => match &self.meta_info.functions[name.as_str()] {
+                Function::Rust(f) => return (*f)(expr_span, &mut VmContext { vm: self }, args),
+                Function::EnumInitializer(enum_name, variant_name) => {
+                    return Ok(Value::Enum(EnumArc { e: Arc::new(ReentrantMutex::new(RefCell::new(Enum {
+                        name: enum_name.clone(),
+                        variant: variant_name.clone(),
+                        fields: args,
+                    })))}));
                 }
-                let _guard = self.scopes.push_scope(scope);
-
-                let mut last = None;
-                let fun = self.meta_info.rebo_functions[name.as_str()];
-                for expr in &fun.body.body.exprs {
-                    last = Some(self.eval_expr(expr, depth.next())?);
+                Function::Rebo(name, arg_binding_ids) => {
+                    (arg_binding_ids, self.meta_info.rebo_functions[name.as_str()])
                 }
+            }
+        };
 
-                Ok(last.unwrap_or(Value::Unit))
-            }
-            Function::EnumInitializer(enum_name, variant_name) => {
-                Ok(Value::Enum(EnumArc { e: Arc::new(ReentrantMutex::new(RefCell::new(Enum {
-                    name: enum_name.clone(),
-                    variant: variant_name.clone(),
-                    fields: args,
-                })))}))
-            }
+        let mut scope = Scope::new();
+        for (&id, val) in arg_binding_ids.iter().zip(args) {
+            scope.create(id, val);
         }
+        let _guard = self.scopes.push_scope(scope);
+
+        let mut last = None;
+        for expr in &fun.body.body.exprs {
+            last = Some(self.eval_expr(expr, depth.next())?);
+        }
+
+        Ok(last.unwrap_or(Value::Unit))
     }
 }
 
