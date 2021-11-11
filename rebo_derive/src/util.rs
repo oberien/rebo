@@ -89,6 +89,8 @@ pub fn convert_type_to_rebo(typ: &Type) -> TokenStream2 {
         else if ident == "i32" { Some(quote::quote!(int)) }
         else if ident == "u64" { Some(quote::quote!(int)) }
         else if ident == "i64" { Some(quote::quote!(int)) }
+        else if ident == "usize" { Some(quote::quote!(int)) }
+        else if ident == "isize" { Some(quote::quote!(int)) }
         else if ident == "String" { Some(quote::quote!(string)) }
         else { None }
     })

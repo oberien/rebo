@@ -147,7 +147,6 @@ impl<'a, 'i> MetaInfo<'a, 'i> {
         self.functions.insert(Cow::Borrowed(fun.name), Function::Rust(fun.imp));
         let lexer = Lexer::new(diagnostics, file);
         let mut parser = Parser::new(PathBuf::new(), arena, lexer, diagnostics, self);
-        println!("{}", fun.code);
         let sig = ExprFunctionSignature::parse(&mut parser, Depth::start()).unwrap();
         self.external_function_signatures.insert(fun.name, sig);
     }

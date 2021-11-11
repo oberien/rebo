@@ -497,7 +497,7 @@ macro_rules! impl_int_types {
     }
 }
 
-impl_int_types!(u8, i8, u16, i16, u32, i32, u64);
+impl_int_types!(u8, i8, u16, i16, u32, i32, u64, usize, isize);
 impl Typed for f32 {
     const TYPE: SpecificType = SpecificType::Float;
 }
