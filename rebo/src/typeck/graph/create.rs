@@ -592,7 +592,6 @@ impl<'i> Graph<'i> {
             Expr::Match(ExprMatch { expr, arms, .. }) => {
                 let expr_node = self.visit_expr(diagnostics, meta_info, function_generics, expr);
                 for (pat, _arrow, arm_expr) in arms {
-                    let _scope;
                     match pat {
                         ExprMatchPattern::Literal(lit) => {
                             let pat_node = Node::type_var(pat.span());
@@ -604,7 +603,7 @@ impl<'i> Graph<'i> {
                             let pat_node = Node::type_var(pat.span());
                             self.add_node(pat_node);
                             let generics = get_user_type_generics(meta_info, variant.enum_name.ident);
-                            _scope = function_generics.push_generic_nodes();
+                            let _scope = function_generics.push_generic_nodes();
                             for (gen, _) in &generics {
                                 let synthetic = Node::synthetic(*gen);
                                 self.add_node(synthetic);
