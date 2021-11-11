@@ -1,13 +1,3 @@
-struct Foo {
-    list: List<Foo>,
-}
-// let foo = Foo { list: List::new() };
-let foos: List<Foo> = List::new();
-match foos.get(0) {
-    Option::Some(foo) => print(foo.list),
-    _ => ()
-}
-/*
 print(foo(10, 20));
 fn foo(mut x: int, mut y: int) -> int {
     x = x + 10;

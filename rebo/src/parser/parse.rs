@@ -302,6 +302,7 @@ impl_for_tokens! {
     Arrow, TokenArrow;
     FatArrow, TokenFatArrow;
     Dot, TokenDot;
+    DotDotDot, TokenDotDotDot;
     Underscore, TokenUnderscore;
     LineComment<'i>, TokenLineComment;
     BlockComment<'i>, TokenBlockComment;

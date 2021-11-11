@@ -48,12 +48,12 @@ impl<K, V> Typed for Map<K, V> {
 pub fn add_map<'a, 'i>(diagnostics: &'i Diagnostics, arena: &'a Arena<Expr<'a, 'i>>, meta_info: &mut MetaInfo<'a, 'i>) {
     meta_info.add_external_type::<Map<Value, Value>>(arena, diagnostics);
 
-    meta_info.add_external_function(diagnostics, map_new);
-    meta_info.add_external_function(diagnostics, map_insert);
-    meta_info.add_external_function(diagnostics, map_get);
-    meta_info.add_external_function(diagnostics, map_remove);
-    meta_info.add_external_function(diagnostics, map_keys);
-    meta_info.add_external_function(diagnostics, map_values);
+    meta_info.add_external_function(arena, diagnostics, map_new);
+    meta_info.add_external_function(arena, diagnostics, map_insert);
+    meta_info.add_external_function(arena, diagnostics, map_get);
+    meta_info.add_external_function(arena, diagnostics, map_remove);
+    meta_info.add_external_function(arena, diagnostics, map_keys);
+    meta_info.add_external_function(arena, diagnostics, map_values);
 }
 
 #[rebo::function("Map::new")]

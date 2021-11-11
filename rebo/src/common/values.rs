@@ -12,7 +12,7 @@ use crate::parser::{ExprLiteral, ExprInteger, ExprFloat, ExprBool, ExprString};
 use diagnostic::Span;
 use crate::Type;
 use itertools::Itertools;
-use crate::typeck::types::{SpecificType, FunctionType};
+use crate::typeck::types::SpecificType;
 use std::collections::BTreeMap;
 use std::convert::TryInto;
 
@@ -226,7 +226,6 @@ pub struct ExternalFunction {
     /// in the `typ` field with synthetic spans with the file_name.
     pub code: &'static str,
     pub file_name: &'static str,
-    pub typ: FunctionType,
     pub imp: RustFunction,
 }
 impl Debug for ExternalFunction {
@@ -235,7 +234,6 @@ impl Debug for ExternalFunction {
             .field("name", &self.code)
             .field("code", &self.code)
             .field("file_name", &self.file_name)
-            .field("typ", &self.typ)
             .field("impl", &"...")
             .finish()
     }

@@ -99,9 +99,14 @@ pub fn try_lex_token<'i>(diagnostics: &Diagnostics, file: FileId, s: &'i str, in
         "bool" => BoolType, TokenBoolType;
     }
     let char = s[index..].chars().next().unwrap();
+    let char_len = char.len_utf8();
     let span = Span::new(file, index, index + char.len_utf8());
-    let char2 = s[index+char.len_utf8()..].chars().next();
-    let span2 = Span::new(file, index, index + char.len_utf8() + char2.map(|c| c.len_utf8()).unwrap_or_default());
+    let char2 = s[index+char_len..].chars().next();
+    let char2_len = char2.map(char::len_utf8).unwrap_or_default();
+    let span2 = Span::new(file, index, index + char_len + char2_len);
+    let char3 = s[index+char_len+char2_len..].chars().next();
+    let char3_len = char3.map(char::len_utf8).unwrap_or_default();
+    let span3 = Span::new(file, index, index + char_len + char2_len + char3_len);
     match char {
         '(' => Ok(MaybeToken::Token(Token::OpenParen(TokenOpenParen { span }))),
         ')' => Ok(MaybeToken::Token(Token::CloseParen(TokenCloseParen { span }))),
@@ -149,7 +154,10 @@ pub fn try_lex_token<'i>(diagnostics: &Diagnostics, file: FileId, s: &'i str, in
             Some('|') => Ok(MaybeToken::Token(Token::DoublePipe(TokenDoublePipe { span: span2 }))),
             _ => Ok(MaybeToken::Token(Token::Pipe(TokenPipe { span }))),
         }
-        '.' => Ok(MaybeToken::Token(Token::Dot(TokenDot { span }))),
+        '.' => match (char2, char3) {
+            (Some('.'), Some('.')) => Ok(MaybeToken::Token(Token::DotDotDot(TokenDotDotDot { span: span3 }))),
+            _ => Ok(MaybeToken::Token(Token::Dot(TokenDot { span }))),
+        }
         '_' => Ok(MaybeToken::Token(Token::Underscore(TokenUnderscore { span }))),
         '"' => Ok(MaybeToken::Token(lex_double_quoted_string(diagnostics, file, s, index)?)),
         'f' => match char2 {

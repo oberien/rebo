@@ -1,28 +1,10 @@
 use proc_macro_error::abort;
-use syn::{Ident, ItemEnum, ItemStruct, Fields, Type};
+use syn::{Ident, ItemEnum, ItemStruct, Fields};
 use proc_macro::TokenStream;
 use itertools::Itertools;
 use proc_macro2::Span;
-use syn::__private::TokenStream2;
 use unzip3::Unzip3;
 use crate::util;
-
-fn convert_type(typ: &Type) -> TokenStream2 {
-    match typ {
-        Type::Path(path) if path.path.is_ident("f32") => quote::quote!(float),
-        Type::Path(path) if path.path.is_ident("f64") => quote::quote!(float),
-        Type::Path(path) if path.path.is_ident("u8") => quote::quote!(int),
-        Type::Path(path) if path.path.is_ident("i8") => quote::quote!(int),
-        Type::Path(path) if path.path.is_ident("u16") => quote::quote!(int),
-        Type::Path(path) if path.path.is_ident("i16") => quote::quote!(int),
-        Type::Path(path) if path.path.is_ident("u32") => quote::quote!(int),
-        Type::Path(path) if path.path.is_ident("i32") => quote::quote!(int),
-        Type::Path(path) if path.path.is_ident("u64") => quote::quote!(int),
-        Type::Path(path) if path.path.is_ident("i64") => quote::quote!(int),
-        Type::Path(path) if path.path.is_ident("String") => quote::quote!(string),
-        _ => quote::quote!(#typ),
-    }
-}
 
 pub fn enum_type(e: ItemEnum) -> TokenStream {
     let ItemEnum { attrs: _, vis, enum_token: _, ident, generics, brace_token: _, variants } = e;
@@ -67,7 +49,7 @@ pub fn enum_type(e: ItemEnum) -> TokenStream {
         .map(|(name, types)| format!("    {}{},\n", name, if types.is_empty() {
             "".to_string()
         } else {
-            format!("({})", types.iter().map(|typ| convert_type(typ).to_string()).join(", "))
+            format!("({})", types.iter().map(|typ| util::convert_type_to_rebo(typ).to_string()).join(", "))
         })).join("");
     let code = format!("enum {}{} {{\n{}}}", ident, generics_string, variants_string);
 
@@ -167,7 +149,7 @@ pub fn struct_type(s: ItemStruct) -> TokenStream {
         format!("<{}>", generic_idents.iter().join(", "))
     };
     let fields_string = field_names.iter().zip(field_types.iter())
-        .map(|(name, typ)| format!("    {}: {},\n", name, convert_type(typ)))
+        .map(|(name, typ)| format!("    {}: {},\n", name, util::convert_type_to_rebo(typ)))
         .join("");
     let code = format!("struct {}{} {{\n{}}}", ident, generics_string, fields_string);
 

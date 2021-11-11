@@ -52,10 +52,10 @@ impl<T> Typed for List<T> {
 
 pub fn add_list<'a, 'i>(diagnostics: &'i Diagnostics, arena: &'a Arena<Expr<'a, 'i>>, meta_info: &mut MetaInfo<'a, 'i>) {
     meta_info.add_external_type::<List<Value>>(arena, diagnostics);
-    meta_info.add_external_function(diagnostics, list_new);
-    meta_info.add_external_function(diagnostics, list_of);
-    meta_info.add_external_function(diagnostics, list_push);
-    meta_info.add_external_function(diagnostics, list_get);
+    meta_info.add_external_function(arena, diagnostics, list_new);
+    meta_info.add_external_function(arena, diagnostics, list_of);
+    meta_info.add_external_function(arena, diagnostics, list_push);
+    meta_info.add_external_function(arena, diagnostics, list_get);
 }
 
 #[rebo::function("List::new")]

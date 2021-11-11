@@ -2,7 +2,6 @@ use crate::common::{Value, MetaInfo, FuzzyFloat};
 use crate as rebo;
 use itertools::Itertools;
 use diagnostic::Diagnostics;
-use crate::typeck::types::{Type, SpecificType};
 use crate::error_codes::ErrorCode;
 use crate::parser::Expr;
 use typed_arena::Arena;
@@ -23,20 +22,20 @@ bitflags::bitflags! {
 
 pub fn add_to_meta_info<'a, 'i>(stdlib: Stdlib, diagnostics: &'i Diagnostics, arena: &'a Arena<Expr<'a, 'i>>, meta_info: &mut MetaInfo<'a, 'i>) {
     if stdlib.contains(Stdlib::PRINT) {
-        meta_info.add_external_function(diagnostics, print);
+        meta_info.add_external_function(arena, diagnostics, print);
     }
 
-    meta_info.add_external_function(diagnostics, add_one);
+    meta_info.add_external_function(arena, diagnostics, add_one);
 
-    meta_info.add_external_function(diagnostics, int_to_float);
-    meta_info.add_external_function(diagnostics, float_to_int);
-    meta_info.add_external_function(diagnostics, bool_to_int);
+    meta_info.add_external_function(arena, diagnostics, int_to_float);
+    meta_info.add_external_function(arena, diagnostics, float_to_int);
+    meta_info.add_external_function(arena, diagnostics, bool_to_int);
 
     if stdlib.contains(Stdlib::ASSERT) {
-        meta_info.add_external_function(diagnostics, assert);
+        meta_info.add_external_function(arena, diagnostics, assert);
     }
     if stdlib.contains(Stdlib::PANIC) {
-        meta_info.add_external_function(diagnostics, panic);
+        meta_info.add_external_function(arena, diagnostics, panic);
     }
 
     meta_info.add_external_type::<Option<Value>>(arena, diagnostics);
@@ -70,19 +69,17 @@ fn float_to_int(this: FuzzyFloat) -> i64 {
     this.0 as i64
 }
 
-#[rebo::function(raw("assert", return Type::Specific(SpecificType::Unit)))]
-fn assert(condition: bool) -> Result<Value, ExecError> {
+#[rebo::function(raw("assert"))]
+fn assert(condition: bool) {
     if !condition {
         vm.diagnostics().error(ErrorCode::AssertionFailed)
             .with_error_label(expr_span, "this assertion failed")
             .emit();
-        Err(ExecError::Panic)
-    } else {
-        Ok(Value::Unit)
+        return Err(ExecError::Panic);
     }
 }
-#[rebo::function(raw("panic", return Type::Top))]
-fn panic(message: String) -> Result<Value, ExecError> {
+#[rebo::function(raw("panic"))]
+fn panic(message: String) -> ! {
     vm.diagnostics().error(ErrorCode::Panic)
         .with_error_label(expr_span, message)
         .emit();

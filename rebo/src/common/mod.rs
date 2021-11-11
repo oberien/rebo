@@ -12,7 +12,7 @@ pub use values::{Typed, FromValue, Function, ExternalFunction, RequiredReboFunct
 use crate::error_codes::ErrorCode;
 use crate::{FileId, SpecificType};
 use crate::lexer::Lexer;
-use crate::parser::{ExprEnumDefinition, ExprFunctionDefinition, ExprPatternTyped, ExprPatternUntyped, ExprStructDefinition, Spanned, ExprGenerics, ExprStatic, ExprPattern, Expr, Parser, Binding};
+use crate::parser::{ExprEnumDefinition, ExprFunctionDefinition, ExprPatternTyped, ExprPatternUntyped, ExprStructDefinition, Spanned, ExprGenerics, ExprStatic, ExprPattern, Expr, Parser, Binding, ExprFunctionSignature, Parse};
 use crate::typeck::types::{EnumType, FunctionType, StructType, Type};
 use crate::typeck::TypeVar;
 
@@ -78,6 +78,10 @@ pub struct MetaInfo<'a, 'i> {
     ///
     /// Available before the parser.
     pub external_functions: IndexMap<&'static str, ExternalFunction>,
+    /// functions defined in rust
+    ///
+    /// Available before the parser.
+    pub external_function_signatures: IndexMap<&'static str, ExprFunctionSignature<'a, 'i>>,
     /// enum and struct definitions found in the code
     ///
     /// Available after the first pass of the parser.
@@ -113,6 +117,7 @@ impl<'a, 'i> MetaInfo<'a, 'i> {
             function_bindings: IndexMap::new(),
             rebo_functions: IndexMap::new(),
             external_functions: IndexMap::new(),
+            external_function_signatures: IndexMap::new(),
             user_types: IndexMap::new(),
             statics: IndexMap::new(),
             function_types: IndexMap::new(),
@@ -133,14 +138,18 @@ impl<'a, 'i> MetaInfo<'a, 'i> {
         self.functions.insert(name.clone(), function);
         self.rebo_functions.insert(name, fun);
     }
-    pub fn add_external_function(&mut self, diagnostics: &Diagnostics, fun: ExternalFunction) {
-        diagnostics.add_synthetic_file(fun.file_name, fun.code.to_string());
+    pub fn add_external_function(&mut self, arena: &'a Arena<Expr<'a, 'i>>, diagnostics: &'i Diagnostics, fun: ExternalFunction) {
+        let (file, _) = diagnostics.add_synthetic_file(fun.file_name, fun.code.to_string());
         if self.check_existing_function(diagnostics, fun.name, Span::new(FileId::synthetic(fun.file_name), 0, fun.code.len())) {
             return;
         }
         self.external_functions.insert(fun.name, fun.clone());
         self.functions.insert(Cow::Borrowed(fun.name), Function::Rust(fun.imp));
-        self.function_types.insert(Cow::Borrowed(fun.name), fun.typ);
+        let lexer = Lexer::new(diagnostics, file);
+        let mut parser = Parser::new(PathBuf::new(), arena, lexer, diagnostics, self);
+        println!("{}", fun.code);
+        let sig = ExprFunctionSignature::parse(&mut parser, Depth::start()).unwrap();
+        self.external_function_signatures.insert(fun.name, sig);
     }
     fn add_enum_initializer_function(&mut self, diagnostics: &Diagnostics, enum_name: String, variant_name: String) {
         let name = format!("{}::{}", enum_name, variant_name);

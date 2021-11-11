@@ -6,7 +6,7 @@ use std::fmt::{self, Write, Display, Formatter, Debug};
 use derive_more::Display;
 use crate::parser::scope::BindingId;
 use crate::util::PadFmt;
-use crate::lexer::{TokenOpenParen, TokenCloseParen, TokenIdent, TokenInteger, TokenFloat, TokenBool, TokenDqString, TokenType, TokenStringType, TokenIntType, TokenFloatType, TokenBoolType, Token, TokenLet, TokenColon, TokenMut, TokenAssign, TokenOpenCurly, TokenCloseCurly, TokenComma, TokenArrow, TokenFn, TokenBang, TokenPlus, TokenMinus, TokenStar, TokenSlash, TokenDoubleAmp, TokenDoublePipe, TokenLessThan, TokenLessEquals, TokenEquals, TokenNotEquals, TokenGreaterEquals, TokenGreaterThan, TokenStruct, TokenDot, TokenIf, TokenElse, TokenWhile, TokenFormatString, TokenFormatStringPart, Lexer, TokenMatch, TokenFatArrow, TokenEnum, TokenDoubleColon, TokenImpl, TokenFor, TokenIn, TokenStatic, TokenInclude};
+use crate::lexer::{TokenOpenParen, TokenCloseParen, TokenIdent, TokenInteger, TokenFloat, TokenBool, TokenDqString, TokenType, TokenStringType, TokenIntType, TokenFloatType, TokenBoolType, Token, TokenLet, TokenColon, TokenMut, TokenAssign, TokenOpenCurly, TokenCloseCurly, TokenComma, TokenArrow, TokenFn, TokenBang, TokenPlus, TokenMinus, TokenStar, TokenSlash, TokenDoubleAmp, TokenDoublePipe, TokenLessThan, TokenLessEquals, TokenEquals, TokenNotEquals, TokenGreaterEquals, TokenGreaterThan, TokenStruct, TokenDot, TokenIf, TokenElse, TokenWhile, TokenFormatString, TokenFormatStringPart, Lexer, TokenMatch, TokenFatArrow, TokenEnum, TokenDoubleColon, TokenImpl, TokenFor, TokenIn, TokenStatic, TokenInclude, TokenDotDotDot};
 use crate::parser::{Parse, InternalError, Parser, Expected};
 use crate::error_codes::ErrorCode;
 use std::borrow::Cow;
@@ -558,6 +558,7 @@ pub enum ExprType<'a, 'i> {
     UserType(TokenIdent<'i>, Option<(TokenLessThan, Box<Separated<'a, 'i, ExprType<'a, 'i>, TokenComma>>, TokenGreaterThan)>),
     Generic(Generic<'i>),
     Function(Box<ExprFunctionType<'a, 'i>>),
+    Never(TokenBang),
 }
 impl<'a, 'i> Parse<'a, 'i> for ExprType<'a, 'i> {
     fn parse_marked(parser: &mut Parser<'a, '_, 'i>, depth: Depth) -> Result<Self, InternalError> {
@@ -590,6 +591,7 @@ impl<'a, 'i> Parse<'a, 'i> for ExprType<'a, 'i> {
                     return Ok(ExprType::UserType(i, generics))
                 }
             },
+            Token::Bang(b) => ExprType::Never(b),
             _ => return Err(InternalError::Backtrack(
                 parser.lexer.next_span(),
                 Cow::Borrowed(&[Expected::Type])
@@ -619,6 +621,7 @@ impl<'a, 'i> Spanned for ExprType<'a, 'i> {
             }
             ExprType::Generic(g) => g.span(),
             ExprType::Function(f) => f.span(),
+            ExprType::Never(b) => b.span(),
         }
     }
 }
@@ -639,6 +642,7 @@ impl<'a, 'i> Display for ExprType<'a, 'i> {
             },
             ExprType::Generic(g) => write!(f, "{}<{},{},{}; {},{},{}>", g.ident.ident, g.def_ident.span.file, g.def_ident.span.start, g.def_ident.span.end, g.ident.span.file, g.ident.span.start, g.ident.span.end),
             ExprType::Function(fun) => Display::fmt(fun, f),
+            ExprType::Never(_) => write!(f, "!"),
         }
     }
 }
@@ -1527,6 +1531,7 @@ pub struct ExprFunctionSignature<'a, 'i> {
     pub self_arg: Option<Binding<'i>>,
     pub self_arg_comma: Option<TokenComma>,
     pub args: Separated<'a, 'i, ExprPatternTyped<'a, 'i>, TokenComma>,
+    pub varargs: Option<(Option<ExprType<'a, 'i>>, TokenDotDotDot)>,
     pub close: TokenCloseParen,
     pub ret_type: Option<(TokenArrow, ExprType<'a, 'i>)>,
 }
@@ -1544,6 +1549,7 @@ impl<'a, 'i> Parse<'a, 'i> for ExprFunctionSignature<'a, 'i> {
             }
             None => (None, None, parser.parse(depth.next())?),
         };
+        let varargs = parser.parse(depth.next())?;
         let close = parser.parse(depth.next())?;
         let ret_type = parser.parse(depth.last())?;
         Ok(ExprFunctionSignature {
@@ -1554,6 +1560,7 @@ impl<'a, 'i> Parse<'a, 'i> for ExprFunctionSignature<'a, 'i> {
             self_arg,
             self_arg_comma,
             args,
+            varargs,
             close,
             ret_type,
         })

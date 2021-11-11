@@ -1,6 +1,7 @@
 use proc_macro2::TokenStream;
 use proc_macro_error::abort;
-use syn::{GenericParam, Generics, Ident};
+use syn::{GenericArgument, GenericParam, Generics, Ident, PathArguments, Type};
+use syn::__private::TokenStream2;
 
 pub fn generic_idents(generics: &Generics, context: &str) -> Vec<Ident> {
     let mut generic_idents = Vec::new();
@@ -32,3 +33,64 @@ pub fn generic_spans(generic_idents: &Vec<Ident>, code_filename: &str, code_stri
             .collect()
     }
 }
+
+pub fn transform_path_type(typ: &Type, callback: &impl Fn(&Ident) -> Option<TokenStream2>) -> TokenStream2 {
+    let path = match typ {
+        Type::Path(path) => path,
+        typ => return quote::quote!(#typ),
+    };
+    let mut res = quote::quote!();
+    if let Some(ident) = path.path.get_ident() {
+        if let Some(res) = callback(ident) {
+            return res;
+        }
+    }
+
+    for segment in &path.path.segments {
+        if !res.is_empty() {
+            res = quote::quote!(#res::);
+        }
+        let ident = &segment.ident;
+        res = quote::quote!(#res #ident);
+        let generics = match &segment.arguments {
+            PathArguments::None => continue,
+            PathArguments::Parenthesized(par) => abort!(par, "generics can only be <...>"),
+            PathArguments::AngleBracketed(generics) => generics,
+        };
+        if generics.args.is_empty() {
+            continue;
+        }
+
+        res = quote::quote!(#res<);
+        for arg in &generics.args {
+            match arg {
+                GenericArgument::Type(typ) => {
+                    let transformed = transform_path_type(&typ, callback);
+                    res = quote::quote!(#res #transformed,);
+                }
+                _ => abort!(arg, "generics can only be types"),
+            }
+        }
+        res = quote::quote!(#res>);
+    }
+    res
+}
+
+pub fn convert_type_to_rebo(typ: &Type) -> TokenStream2 {
+    transform_path_type(typ, &|ident| {
+        if ident == "f32" { Some(quote::quote!(float)) }
+        else if ident == "f64" { Some(quote::quote!(float)) }
+        else if ident == "FuzzyFloat" { Some(quote::quote!(float)) }
+        else if ident == "u8" { Some(quote::quote!(int)) }
+        else if ident == "i8" { Some(quote::quote!(int)) }
+        else if ident == "u16" { Some(quote::quote!(int)) }
+        else if ident == "i16" { Some(quote::quote!(int)) }
+        else if ident == "u32" { Some(quote::quote!(int)) }
+        else if ident == "i32" { Some(quote::quote!(int)) }
+        else if ident == "u64" { Some(quote::quote!(int)) }
+        else if ident == "i64" { Some(quote::quote!(int)) }
+        else if ident == "String" { Some(quote::quote!(string)) }
+        else { None }
+    })
+}
+

@@ -126,7 +126,7 @@ pub fn run_with_config(filename: String, code: String, config: ReboConfig) -> Re
 
     // add external functions defined by library user
     for function in functions {
-        meta_info.add_external_function(&diagnostics, function);
+        meta_info.add_external_function(&arena, &diagnostics, function);
     }
 
     // add required rebo functions

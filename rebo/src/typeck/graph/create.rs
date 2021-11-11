@@ -1,5 +1,5 @@
 use crate::typeck::graph::{Graph, Node, PossibleTypes, Constraint};
-use crate::parser::{Expr, Spanned, ExprFormatString, ExprFormatStringPart, ExprBind, ExprPattern, ExprPatternTyped, ExprPatternUntyped, ExprAssign, ExprAssignLhs, ExprVariable, ExprFieldAccess, ExprBoolNot, ExprAdd, ExprSub, ExprMul, ExprDiv, ExprBoolAnd, ExprBoolOr, ExprLessThan, ExprLessEquals, ExprEquals, ExprNotEquals, ExprGreaterEquals, ExprGreaterThan, ExprBlock, BlockBody, ExprParenthesized, ExprMatch, ExprMatchPattern, ExprWhile, ExprFunctionCall, ExprFunctionDefinition, ExprStructInitialization, ExprImplBlock, ExprType, ExprGenerics, ExprAccess, FieldOrMethod, ExprFor, ExprStatic, ExprFunctionType};
+use crate::parser::{Expr, Spanned, ExprFormatString, ExprFormatStringPart, ExprBind, ExprPattern, ExprPatternTyped, ExprPatternUntyped, ExprAssign, ExprAssignLhs, ExprVariable, ExprFieldAccess, ExprBoolNot, ExprAdd, ExprSub, ExprMul, ExprDiv, ExprBoolAnd, ExprBoolOr, ExprLessThan, ExprLessEquals, ExprEquals, ExprNotEquals, ExprGreaterEquals, ExprGreaterThan, ExprBlock, BlockBody, ExprParenthesized, ExprMatch, ExprMatchPattern, ExprWhile, ExprFunctionCall, ExprFunctionDefinition, ExprStructInitialization, ExprImplBlock, ExprType, ExprGenerics, ExprAccess, FieldOrMethod, ExprFor, ExprStatic, ExprFunctionType, ExprFunctionSignature};
 use crate::common::{MetaInfo, UserType, Function, RequiredReboFunctionStruct};
 use itertools::Either;
 use crate::typeck::types::{StructType, EnumType, EnumTypeVariant, SpecificType, FunctionType, Type, ResolvableSpecificType};
@@ -230,6 +230,7 @@ fn convert_expr_type(typ: &ExprType, diagnostics: &Diagnostics, meta_info: &Meta
         ExprType::Generic(g) => {
             Type::Specific(SpecificType::Generic(g.def_ident.span))
         },
+        ExprType::Never(_) => Type::Bottom,
     }
 }
 
@@ -296,23 +297,46 @@ impl<'i> Graph<'i> {
             );
         }
 
+        let function_type = |meta_info: &MetaInfo, sig: &ExprFunctionSignature, external: bool| -> FunctionType {
+            FunctionType {
+                is_method: if external {
+                    sig.args.iter().next().map(|arg| arg.pattern.binding.ident.ident == "this").unwrap_or(false)
+                } else {
+                    sig.self_arg.is_some()
+                },
+                generics: sig.generics.iter().flat_map(|g| &g.generics).flatten()
+                    .map(|g| g.def_ident.span)
+                    .collect(),
+                args: sig.args.iter().map(|pattern| {
+                    convert_expr_type(&pattern.typ, diagnostics, meta_info)
+                }).chain(sig.varargs.iter().map(|(typ, _)| {
+                    if let Some(vararg_typ) = typ {
+                        let typ = convert_expr_type(vararg_typ, diagnostics, meta_info);
+                        match typ {
+                            Type::Specific(specific) => Type::TypedVarargs(specific),
+                            _ => {
+                                diagnostics.error(ErrorCode::InvalidVarargs)
+                                    .with_error_label(vararg_typ.span(), "can't convert this type")
+                                    .emit();
+                                Type::UntypedVarargs
+                            }
+                        }
+                    } else {
+                        Type::UntypedVarargs
+                    }
+                })).collect(),
+                ret: sig.ret_type.as_ref()
+                    .map(|(_, typ)| convert_expr_type(typ, diagnostics, meta_info))
+                    .unwrap_or(Type::Specific(SpecificType::Unit)),
+            }
+        };
+
         // add function types
         for (name, fun) in &meta_info.functions {
             match fun {
                 Function::Rebo(..) => {
                     let fun = &meta_info.rebo_functions[name];
-                    let typ = FunctionType {
-                        is_method: fun.sig.self_arg.is_some(),
-                        generics: fun.sig.generics.iter().flat_map(|g| &g.generics).flatten()
-                            .map(|g| g.def_ident.span)
-                            .collect(),
-                        args: fun.sig.args.iter().map(|pattern| {
-                            convert_expr_type(&pattern.typ, diagnostics, meta_info)
-                        }).collect(),
-                        ret: fun.sig.ret_type.as_ref()
-                            .map(|(_, typ)| convert_expr_type(typ, diagnostics, meta_info))
-                            .unwrap_or(Type::Specific(SpecificType::Unit)),
-                    };
+                    let typ = function_type(meta_info, &fun.sig, false);
                     meta_info.function_types.insert(name.clone(), typ);
                 }
                 Function::EnumInitializer(enum_name, variant_name) => {
@@ -335,7 +359,11 @@ impl<'i> Graph<'i> {
                     };
                     meta_info.function_types.insert(name.clone(), typ);
                 }
-                Function::Rust(_) => (),
+                Function::Rust(_) => {
+                    let sig = &meta_info.external_function_signatures[name.as_ref()];
+                    let typ = function_type(meta_info, sig, true);
+                    meta_info.function_types.insert(name.clone(), typ);
+                }
             }
         }
 

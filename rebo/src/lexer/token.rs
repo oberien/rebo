@@ -147,6 +147,7 @@ gen_tokens! {
     Arrow, TokenArrow, "->", {}, (fmt = "-> "), (Copy, Eq, Hash);
     FatArrow, TokenFatArrow, "=>", {}, (fmt = "=> "), (Copy, Eq, Hash);
     Dot, TokenDot, ".", {}, (fmt = ". "), (Copy, Eq, Hash);
+    DotDotDot, TokenDotDotDot, "...", {}, (fmt = "... "), (Copy, Eq, Hash);
     Underscore, TokenUnderscore, "_", {}, (fmt = "_ "), (Copy, Eq, Hash);
     LineComment<'i>, TokenLineComment, "//", {comment: &'i str,}, (fmt = "{}", comment), (Copy, Eq, Hash), #[doc = "Line Comment including starting `//` and ending newline"];
     BlockComment<'i>, TokenBlockComment, "/* */", {comment: &'i str,}, (fmt = "{}", comment), (Copy, Eq, Hash), #[doc = "/// Block Comment including starting `/*` and ending `*/`"];
