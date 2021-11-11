@@ -30,6 +30,10 @@ pub fn add_to_meta_info<'a, 'i>(stdlib: Stdlib, diagnostics: &'i Diagnostics, ar
     meta_info.add_external_function(arena, diagnostics, int_to_float);
     meta_info.add_external_function(arena, diagnostics, float_to_int);
     meta_info.add_external_function(arena, diagnostics, bool_to_int);
+    meta_info.add_external_function(arena, diagnostics, string_slice);
+    meta_info.add_external_function(arena, diagnostics, string_from_char);
+    meta_info.add_external_function(arena, diagnostics, string_to_lowercase);
+    meta_info.add_external_function(arena, diagnostics, string_to_uppercase);
 
     if stdlib.contains(Stdlib::ASSERT) {
         meta_info.add_external_function(arena, diagnostics, assert);
@@ -84,4 +88,41 @@ fn panic(message: String) -> ! {
         .with_error_label(expr_span, message)
         .emit();
     Err(ExecError::Panic)
+}
+#[rebo::function(raw("string::slice"))]
+fn string_slice(mut this: String, start: i64, ..: i64) -> String {
+    let end = args.next().map(|val| val.expect_int("TypedVarargs is broken as fuck"));
+    if args.next().is_some() {
+        vm.diagnostics().error(ErrorCode::Panic)
+            .with_error_label(expr_span, "string::slice must be called with one or two indices")
+            .emit();
+        return Err(ExecError::Panic);
+    }
+
+    let len = this.len() as i64;
+    let start = if start < 0 { len + start } else { start };
+    let start = start.max(0) as usize;
+    let start = start.min(this.len());
+
+    let end = end.map(|end| {
+        let end = if end < 0 { len + end } else { end };
+        let end = end.max(0) as usize;
+        end.min(this.len())
+    }).unwrap_or(this.len());
+
+    this.truncate(end);
+    this.drain(..start);
+    this
+}
+#[rebo::function("string::from_char")]
+fn string_from_char(chr: u8) -> String {
+    String::from(chr as char)
+}
+#[rebo::function("string::to_lowercase")]
+fn string_to_lowercase(this: String) -> String {
+    this.to_lowercase()
+}
+#[rebo::function("string::to_uppercase")]
+fn string_to_uppercase(this: String) -> String {
+    this.to_uppercase()
 }
