@@ -1702,6 +1702,9 @@ pub struct ExprStructInitialization<'a, 'i> {
 impl<'a, 'i> Parse<'a, 'i> for ExprStructInitialization<'a, 'i> {
     fn parse_marked(parser: &mut Parser<'a, '_, 'i>, depth: Depth) -> Result<Self, InternalError> {
         let name: TokenIdent = parser.parse(depth.next())?;
+        if parser.meta_info.user_types.get(name.ident).is_none() {
+            return Err(InternalError::Backtrack(name.span, Cow::Borrowed(&[Expected::Token(TokenType::Ident)])));
+        }
         let open = parser.parse(depth.next())?;
         let fields: ExprStructInitFields = parser.parse(depth.next())?;
         let close: TokenCloseCurly = parser.parse(depth.next())?;
