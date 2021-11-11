@@ -107,7 +107,7 @@ impl FunctionGenerics {
             } else {
                 eprintln!("tried to convert unknown generic {}", typ);
                 graph.dot();
-                unreachable!();
+                unreachable!("tried to convert unknown generic {}", typ);
             }
         };
         let mut resolvable_generics = Vec::new();
@@ -530,6 +530,8 @@ impl<'i> Graph<'i> {
 
                             let idx = CALL_INDEX.fetch_add(1, Ordering::SeqCst);
                             self.add_method_call_ret(access_node, method_call_node, fn_call.name.ident.to_string(), idx);
+                            // self-argument
+                            self.add_method_call_arg(access_node, access_node, fn_call.name.ident.to_string(), idx, 0);
                             for (i, arg_expr) in fn_call.args.iter().enumerate() {
                                 let arg_node = self.visit_expr(diagnostics, meta_info, function_generics, arg_expr);
                                 // arg 0 is `self`
@@ -562,6 +564,7 @@ impl<'i> Graph<'i> {
             Expr::Match(ExprMatch { expr, arms, .. }) => {
                 let expr_node = self.visit_expr(diagnostics, meta_info, function_generics, expr);
                 for (pat, _arrow, arm_expr) in arms {
+                    let _scope;
                     match pat {
                         ExprMatchPattern::Literal(lit) => {
                             let pat_node = Node::type_var(pat.span());
@@ -572,7 +575,14 @@ impl<'i> Graph<'i> {
                         ExprMatchPattern::Variant(variant) => {
                             let pat_node = Node::type_var(pat.span());
                             self.add_node(pat_node);
-                            let typ = SpecificType::Enum(Cow::Owned(variant.enum_name.ident.to_string()), CowVec::Owned(get_user_type_generics(meta_info, variant.enum_name.ident)));
+                            let generics = get_user_type_generics(meta_info, variant.enum_name.ident);
+                            _scope = function_generics.push_generic_nodes();
+                            for (gen, _) in &generics {
+                                let synthetic = Node::synthetic(*gen);
+                                self.add_node(synthetic);
+                                function_generics.insert_generic(synthetic);
+                            }
+                            let typ = SpecificType::Enum(Cow::Owned(variant.enum_name.ident.to_string()), CowVec::Owned(generics));
                             function_generics.apply_specific_type_reduce(pat_node, pat_node, &typ, self);
                             self.add_eq_constraint(expr_node, pat_node);
 

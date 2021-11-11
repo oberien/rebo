@@ -22,7 +22,14 @@ impl Visitor for UnknownAccess {
             type_var = match access {
                 FieldOrMethod::Field(field) => {
                     let struct_name = match typ {
-                        SpecificType::Struct(name, _) => name,
+                        SpecificType::Struct(name, _) if name != "struct" => name,
+                        SpecificType::Struct(_, _) => {
+                            diagnostics.error(ErrorCode::NonStructFieldAccess)
+                                .with_error_label(type_var.span, "can't infer type of this struct")
+                                .with_info_label(type_var.span, "type annotation needed")
+                                .emit();
+                            return
+                        }
                         typ => {
                             diagnostics.error(ErrorCode::NonStructFieldAccess)
                                 .with_error_label(type_var.span, format!("`{}` is of type `{}`, which is not a struct", diagnostics.resolve_span(type_var.span), typ))

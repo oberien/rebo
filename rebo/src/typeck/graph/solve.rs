@@ -26,10 +26,17 @@ impl WorkQueue {
     }
     pub fn add_single(&mut self, node: Node) {
         if self.set.contains(&node) {
-            return;
+            if log::max_level() >= log::Level::Trace {
+                // depth-first search-ish during debugging
+                let pos = self.queue.iter().position(|&n| n == node).unwrap();
+                self.queue.remove(pos);
+            } else {
+                return;
+            }
         }
         self.set.insert(node);
-        self.queue.push_back(node);
+        self.queue.push_front(node);
+        trace!("add {} to worklist", node);
     }
     pub fn next(&mut self) -> Option<Node> {
         let node = self.queue.pop_front()?;
