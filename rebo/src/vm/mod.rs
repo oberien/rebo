@@ -150,7 +150,7 @@ impl<'a, 'b, 'i> Vm<'a, 'b, 'i> {
                         ExprFormatStringPart::Escaped(s) => res.push_str(s),
                         ExprFormatStringPart::FmtArg(expr) => {
                             let val = self.eval_expr(expr, depth.next())?;
-                            res.push_str(&val.to_string());
+                            res.push_str(&format!("{:#}", val));
                         }
                     }
                 }

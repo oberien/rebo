@@ -108,7 +108,11 @@ impl Display for Value {
             Value::Integer(i) => Display::fmt(i, f),
             Value::Float(float) => Display::fmt(float, f),
             Value::Bool(b) => Display::fmt(b, f),
-            Value::String(s) => Debug::fmt(s, f),
+            Value::String(s) => if f.alternate() {
+                Display::fmt(s, f)
+            } else {
+                Debug::fmt(s, f)
+            },
             Value::Struct(s) => {
                 let s = s.s.lock();
                 let s = s.borrow();
