@@ -1,4 +1,4 @@
-use crate::parser::{ExprLiteral, ExprFormatString, ExprBind, ExprAssign, ExprBoolNot, ExprAdd, ExprSub, ExprMul, ExprDiv, ExprBoolAnd, ExprBoolOr, ExprLessThan, ExprLessEquals, ExprEquals, ExprNotEquals, ExprGreaterEquals, ExprGreaterThan, ExprBlock, ExprVariable, ExprParenthesized, ExprIfElse, ExprMatch, ExprWhile, ExprFunctionCall, ExprFunctionDefinition, ExprStructDefinition, ExprStructInitialization, ExprImplBlock, Expr, ExprFormatStringPart, ExprEnumDefinition, ExprEnumInitialization, ExprAccess, FieldOrMethod, ExprFor, ExprStatic};
+use crate::parser::{ExprLiteral, ExprFormatString, ExprBind, ExprAssign, ExprBoolNot, ExprAdd, ExprSub, ExprMul, ExprDiv, ExprBoolAnd, ExprBoolOr, ExprLessThan, ExprLessEquals, ExprEquals, ExprNotEquals, ExprGreaterEquals, ExprGreaterThan, ExprBlock, ExprVariable, ExprParenthesized, ExprIfElse, ExprMatch, ExprWhile, ExprFunctionCall, ExprFunctionDefinition, ExprStructDefinition, ExprStructInitialization, ExprImplBlock, Expr, ExprFormatStringPart, ExprEnumDefinition, ExprEnumInitialization, ExprAccess, FieldOrMethod, ExprFor, ExprStatic, ExprNeg};
 use diagnostic::Diagnostics;
 use crate::common::MetaInfo;
 
@@ -15,6 +15,7 @@ pub trait Visitor {
     fn visit_static(&self, _: &Diagnostics, _: &MetaInfo, _: &ExprStatic) {}
     fn visit_assign(&self, _: &Diagnostics, _: &MetaInfo, _: &ExprAssign) {}
     fn visit_bool_not(&self, _: &Diagnostics, _: &MetaInfo, _: &ExprBoolNot) {}
+    fn visit_neg(&self, _: &Diagnostics, _: &MetaInfo, _: &ExprNeg) {}
     fn visit_add(&self, _: &Diagnostics, _: &MetaInfo, _: &ExprAdd) {}
     fn visit_sub(&self, _: &Diagnostics, _: &MetaInfo, _: &ExprSub) {}
     fn visit_mul(&self, _: &Diagnostics, _: &MetaInfo, _: &ExprMul) {}
@@ -101,6 +102,10 @@ impl<'a, 'b, 'i, 'v> VisitorDriver<'a, 'b, 'i, 'v> {
             Expr::BoolNot(bool_not) => {
                 visit!(self, visit_bool_not, bool_not);
                 self.visit_expr(bool_not.expr);
+            }
+            Expr::Neg(neg) => {
+                visit!(self, visit_neg, neg);
+                self.visit_expr(neg.expr);
             }
             Expr::Add(add) => {
                 visit!(self, visit_add, add);

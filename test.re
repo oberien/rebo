@@ -182,7 +182,7 @@ for i in list {
 // Map<K, V>
 let map = Map::new();
 map.insert("a", 1337);
-map.insert("b", 42);
+map.insert("b", -42);
 print(map, map.keys(), map.values());
 print(map.get("a"), map.remove("b"));
 

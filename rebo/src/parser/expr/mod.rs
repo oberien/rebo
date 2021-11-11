@@ -278,6 +278,8 @@ pub enum Expr<'a, 'i> {
     // unops
     /// !expr
     BoolNot(ExprBoolNot<'a, 'i>),
+    /// -expr
+    Neg(ExprNeg<'a, 'i>),
     // binops
     /// expr + expr
     Add(ExprAdd<'a, 'i>),
@@ -466,6 +468,7 @@ impl<'a, 'i> Expr<'a, 'i> {
             |parser: &mut Parser<'a, '_, 'i>, depth| Ok(parser.arena.alloc(Expr::Parenthesized(ExprParenthesized::parse(parser, depth)?))),
             |parser: &mut Parser<'a, '_, 'i>, depth| Ok(parser.arena.alloc(Expr::Block(ExprBlock::parse(parser, depth)?))),
             |parser: &mut Parser<'a, '_, 'i>, depth| Ok(parser.arena.alloc(Expr::BoolNot(ExprBoolNot::parse(parser, depth)?))),
+            |parser: &mut Parser<'a, '_, 'i>, depth| Ok(parser.arena.alloc(Expr::Neg(ExprNeg::parse(parser, depth)?))),
             |parser: &mut Parser<'a, '_, 'i>, depth| Ok(parser.arena.alloc(Expr::Bind(ExprBind::parse(parser, depth)?))),
             |parser: &mut Parser<'a, '_, 'i>, depth| Ok(parser.arena.alloc(Expr::FunctionCall(ExprFunctionCall::parse(parser, depth)?))),
             |parser: &mut Parser<'a, '_, 'i>, depth| Ok(parser.arena.alloc(Expr::EnumInitialization(ExprEnumInitialization::parse(parser, depth)?))),
@@ -1108,6 +1111,30 @@ impl<'a, 'i> Spanned for ExprBoolNot<'a, 'i> {
 impl<'a, 'i> Display for ExprBoolNot<'a, 'i> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "!{}", self.expr)
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct ExprNeg<'a, 'i> {
+    pub minus: TokenMinus,
+    pub expr: &'a Expr<'a, 'i>,
+}
+impl<'a, 'i> Parse<'a, 'i> for ExprNeg<'a, 'i> {
+    fn parse_marked(parser: &mut Parser<'a, '_, 'i>, depth: Depth) -> Result<Self, InternalError> {
+        Ok(ExprNeg {
+            minus: parser.parse(depth.next())?,
+            expr: parser.parse(depth.last())?,
+        })
+    }
+}
+impl<'a, 'i> Spanned for ExprNeg<'a, 'i> {
+    fn span(&self) -> Span {
+        Span::new(self.minus.span.file, self.minus.span.start, self.expr.span().end)
+    }
+}
+impl<'a, 'i> Display for ExprNeg<'a, 'i> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "-{}", self.expr)
     }
 }
 
