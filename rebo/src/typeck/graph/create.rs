@@ -235,8 +235,7 @@ fn convert_expr_type(typ: &ExprType, diagnostics: &Diagnostics, meta_info: &Meta
 }
 
 impl<'i> Graph<'i> {
-    pub fn create(diagnostics: &'i Diagnostics, meta_info: &mut MetaInfo, exprs: &[&Expr<'_, '_>]) -> Graph<'i> {
-        // resolve global types
+    fn add_user_types(diagnostics: &'i Diagnostics, meta_info: &mut MetaInfo) {
         for user_type in meta_info.user_types.values() {
             match user_type {
                 UserType::Struct(struct_def) => {
@@ -273,8 +272,9 @@ impl<'i> Graph<'i> {
                 }
             }
         }
-
-        // verify that all external types were defined correctly and match our internal types
+    }
+    /// Verify that all external types were defined correctly and match our internal types
+    fn verify_external_types(diagnostics: &'i Diagnostics, meta_info: &mut MetaInfo) {
         for (name, typ) in &meta_info.external_types {
             let (internal_generics, external_generics) = match typ {
                 SpecificType::Struct(_name, generics) => (
@@ -290,13 +290,14 @@ impl<'i> Graph<'i> {
             let matches = external_generics.iter().map(|(span, _)| span).zip(internal_generics.as_ref())
                 .find(|(ext, int)| ext != int);
             assert!(matches.is_none(), "Generic `{}::{}` of ExternalType-definition (`{:?}`) doesn't equal parsed generic (`{:?}`)",
-                name,
-                diagnostics.resolve_span(*matches.unwrap().1),
-                matches.unwrap().0,
-                matches.unwrap().1,
+                    name,
+                    diagnostics.resolve_span(*matches.unwrap().1),
+                    matches.unwrap().0,
+                    matches.unwrap().1,
             );
         }
-
+    }
+    fn add_function_types(diagnostics: &'i Diagnostics, meta_info: &mut MetaInfo) {
         let function_type = |meta_info: &MetaInfo, sig: &ExprFunctionSignature, external: bool| -> FunctionType {
             FunctionType {
                 is_method: if external {
@@ -331,7 +332,6 @@ impl<'i> Graph<'i> {
             }
         };
 
-        // add function types
         for (name, fun) in &meta_info.functions {
             match fun {
                 Function::Rebo(..) => {
@@ -366,8 +366,9 @@ impl<'i> Graph<'i> {
                 }
             }
         }
-
-        // check that required rebo functions are there and have the correct types
+    }
+    /// Check that required rebo functions are there and have the correct types
+    fn check_required_rebo_functions(diagnostics: &'i Diagnostics, meta_info: &mut MetaInfo) {
         for rrf in &meta_info.required_rebo_functions {
             let RequiredReboFunctionStruct { name, is_method, generics, args, ret } = rrf;
             let metfun = if *is_method { "method" } else { "function" };
@@ -417,6 +418,12 @@ impl<'i> Graph<'i> {
                     .emit();
             }
         }
+    }
+    pub fn create(diagnostics: &'i Diagnostics, meta_info: &mut MetaInfo, exprs: &[&Expr<'_, '_>]) -> Graph<'i> {
+        Self::add_user_types(diagnostics, meta_info);
+        Self::verify_external_types(diagnostics, meta_info);
+        Self::add_function_types(diagnostics, meta_info);
+        Self::check_required_rebo_functions(diagnostics, meta_info);
 
         let mut graph = Graph::new(diagnostics);
 
