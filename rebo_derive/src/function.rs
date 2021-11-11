@@ -106,7 +106,7 @@ pub fn function(args: TokenStream, input: TokenStream) -> TokenStream {
                                 abort!(pat, "this-argument must be the first argument");
                             }
                         }
-                        args.push((pat.ident, ty));
+                        args.push((pat, ty));
                     }
                     Pat::Rest(rest) => {
                         if !is_last_argument {
@@ -133,7 +133,7 @@ pub fn function(args: TokenStream, input: TokenStream) -> TokenStream {
         format!("<{}>", generic_idents.iter().join(", "))
     };
     let args_string = args.iter()
-        .map(|(pat, typ)| format!("{}: {}", pat, util::convert_type_to_rebo(typ)))
+        .map(|(pat, typ)| format!("{}: {}", pat.ident, util::convert_type_to_rebo(typ)))
         .chain(match &varargs {
             Some(Varargs::Typed(typ)) => Some(format!("{}...", util::convert_type_to_rebo(typ))),
             Some(Varargs::Untyped) => Some("...".to_string()),
