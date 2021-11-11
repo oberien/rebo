@@ -67,7 +67,20 @@ impl<'i> Binding<'i> {
     /// Return the existing binding and the usage-span
     fn parse_existing<'a>(parser: &mut Parser<'a, '_, 'i>, depth: Depth) -> Result<(Binding<'i>, Span), InternalError> {
         trace!("{} Binding::parse_existing        ({:?})", depth, parser.peek_token(0));
-        let ident: TokenIdent = parser.parse(depth.last())?;
+        let ident = match (parser.peek_token(0)?, parser.peek_token(1), parser.peek_token(2)) {
+            (
+                t @ Token::StringType(_) | t @ Token::IntType(_) | t @ Token::FloatType(_) | t @ Token::BoolType(_),
+                Ok(Token::DoubleColon(_)),
+                Ok(Token::Ident(_)),
+            ) => {
+                drop(parser.next_token().unwrap());
+                TokenIdent {
+                    ident: t.typ().as_str(),
+                    span: t.span(),
+                }
+            },
+            _ => parser.parse(depth.last())?,
+        };
         // hack to allow functions as values for now
         let rest: Option<(TokenDoubleColon, TokenIdent<'i>)> = parser.parse(depth.next())?;
         let ident = match rest {
