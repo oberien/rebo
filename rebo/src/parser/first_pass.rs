@@ -3,7 +3,7 @@ use std::rc::Rc;
 use indexmap::IndexMap;
 use crate::common::Depth;
 use crate::lexer::{Token, TokenIdent, TokenImpl, TokenOpenCurly};
-use crate::parser::{Expr, ExprEnumDefinition, ExprFunctionSignature, ExprGenerics, ExprStatic, ExprStructDefinition, InternalError, Parse, Parser, Spanned};
+use crate::parser::{Expr, ExprEnumDefinition, ExprFunctionSignature, ExprGenerics, ExprPattern, ExprStaticSignature, ExprStructDefinition, InternalError, Parse, Parser, Spanned};
 use crate::parser::scope::Scope;
 
 enum StackElement {
@@ -16,26 +16,31 @@ impl<'a, 'b, 'i> Parser<'a, 'b, 'i> {
     pub(super) fn first_pass(&mut self) {
         debug!("first_pass");
         let functions: &[for<'x> fn(&'x mut Parser<'a, 'b, 'i>, &Vec<StackElement>, _) -> Result<_, InternalError>] = &[
+            // struct definitions
             |parser: &mut Parser<'a, '_, 'i>, _, depth| {
                 let struct_def = &*parser.arena.alloc(Expr::StructDefinition(ExprStructDefinition::parse_reset(parser, depth)?));
                 match struct_def {
                     Expr::StructDefinition(struct_def) => {
+                        trace!("found struct {}", struct_def.name.ident);
                         parser.meta_info.add_struct(parser.diagnostics, struct_def);
                     },
                     _ => unreachable!("we just created you"),
                 }
                 Ok(Some(struct_def))
             },
+            // enum definitions
             |parser: &mut Parser<'a, '_, 'i>, _, depth| {
                 let enum_def = &*parser.arena.alloc(Expr::EnumDefinition(ExprEnumDefinition::parse_reset(parser, depth)?));
                 match enum_def {
                     Expr::EnumDefinition(enum_def) => {
+                        trace!("found enum {}", enum_def.name.ident);
                         parser.meta_info.add_enum(parser.diagnostics, enum_def);
                     },
                     _ => unreachable!("we just created you"),
                 }
                 Ok(Some(enum_def))
             },
+            // function signatures
             |parser: &mut Parser<'a, '_, 'i>, stack: &Vec<StackElement>, depth| {
                 let old_scopes = std::mem::take(&mut parser.scopes);
                 let scope_guard = parser.push_scope();
@@ -51,6 +56,7 @@ impl<'a, 'b, 'i> Parser<'a, 'b, 'i> {
                     None => None,
                 };
                 if let Some(name) = name {
+                    trace!("found function {}", name);
                     parser.rebo_function_names.insert((name, function_sig.name.unwrap()));
                 }
                 Ok(None)
@@ -62,15 +68,16 @@ impl<'a, 'b, 'i> Parser<'a, 'b, 'i> {
     pub(super) fn second_pass(&mut self) {
         debug!("second_pass");
         let functions: &[for<'x> fn(&'x mut Parser<'a, 'b, 'i>, &Vec<StackElement>, _) -> Result<_, InternalError>] = &[
+            // static signatures
             |parser: &mut Parser<'a, '_, 'i>, _, depth| {
-                let static_def = &*parser.arena.alloc(Expr::Static(ExprStatic::parse_reset(parser, depth)?));
-                match static_def {
-                    Expr::Static(static_def) => {
-                        parser.meta_info.add_static(parser.diagnostics, static_def);
-                    },
-                    _ => unreachable!("we just created you"),
-                }
-                Ok(Some(static_def))
+                let static_sig = ExprStaticSignature::parse_reset(parser, depth)?;
+                let binding = match static_sig.pattern {
+                    ExprPattern::Typed(typed) => typed.pattern.binding,
+                    ExprPattern::Untyped(untyped) => untyped.binding,
+                };
+                trace!("found static {}", binding.ident.ident);
+                parser.meta_info.static_bindings.insert(binding);
+                Ok(None)
             },
         ];
         self.do_pass(functions);

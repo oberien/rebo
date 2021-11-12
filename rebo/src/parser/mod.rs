@@ -164,11 +164,7 @@ impl<'a, 'b, 'i> Parser<'a, 'b, 'i> {
     }
 
     fn add_statics(&mut self) {
-        for static_def in self.meta_info.statics.clone().values() {
-            let binding = match &static_def.pattern {
-                ExprPattern::Typed(typed) => typed.pattern.binding,
-                ExprPattern::Untyped(untyped) => untyped.binding,
-            };
+        for binding in self.meta_info.static_bindings.clone() {
             // the memoized binding will be used
             self.add_binding(binding.ident, binding.mutable);
         }

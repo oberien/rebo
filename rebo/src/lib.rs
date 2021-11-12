@@ -41,6 +41,7 @@ const EXTERNAL_SPAN: Span = Span::new(FileId::synthetic("external.re"), 0, EXTER
 #[derive(Debug, PartialEq, Eq)]
 pub enum ReturnValue {
     Ok,
+    ParseError,
     Diagnostics(u32),
 }
 
@@ -145,7 +146,10 @@ pub fn run_with_config(filename: String, code: String, config: ReboConfig) -> Re
     let include_directory = include_directory.unwrap_or_else(|| std::env::current_dir().expect("can't get current working directory"));
     let time = Instant::now();
     let parser = Parser::new(include_directory, &arena, lexer, &diagnostics, &mut meta_info);
-    let ast = parser.parse_ast().unwrap();
+    let ast = match parser.parse_ast() {
+        Ok(ast) => ast,
+        Err(_) => return ReturnValue::ParseError,
+    };
     info!("Parsing took {}μs", time.elapsed().as_micros());
     info!("AST:\n{}\n", ast);
     let Ast { exprs, bindings: _ } = ast;

@@ -414,6 +414,15 @@ impl<'a, 'i> Expr<'a, 'i> {
                 Ok(impl_block)
             },
             |parser: &mut Parser<'a, '_, 'i>, depth| {
+                let static_expr = &*parser.arena.alloc(Expr::Static(ExprStatic::parse(parser, depth)?));
+                let stati = match static_expr {
+                    Expr::Static(stati) => stati,
+                    _ => unreachable!("we just created you"),
+                };
+                parser.meta_info.add_static(parser.diagnostics, stati);
+                Ok(static_expr)
+            },
+            |parser: &mut Parser<'a, '_, 'i>, depth| {
                 let include = ExprInclude::parse(parser, depth)?;
                 // We don't actually want to return an error, as that would mean that this function
                 // is called several more times when other expressions try to parse expressions.
@@ -912,30 +921,51 @@ impl<'a, 'i> Display for ExprBind<'a, 'i> {
 }
 
 #[derive(Debug, Clone)]
-pub struct ExprStatic<'a, 'i> {
+pub struct ExprStaticSignature<'a, 'i> {
     pub static_token: TokenStatic,
     pub pattern: ExprPattern<'a, 'i>,
     pub assign: TokenAssign,
+}
+impl<'a, 'i> Parse<'a, 'i> for ExprStaticSignature<'a, 'i> {
+    fn parse_marked(parser: &mut Parser<'a, '_, 'i>, depth: Depth) -> Result<Self, InternalError> {
+        Ok(ExprStaticSignature {
+            static_token: parser.parse(depth.next())?,
+            pattern: parser.parse(depth.next())?,
+            assign: parser.parse(depth.next())?,
+        })
+    }
+}
+impl<'a, 'i> Spanned for ExprStaticSignature<'a, 'i> {
+    fn span(&self) -> Span {
+        Span::new(self.static_token.span.file, self.static_token.span.start, self.assign.span.end)
+    }
+}
+impl<'a, 'i> Display for ExprStaticSignature<'a, 'i> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "static {} =", self.pattern)
+    }
+}
+#[derive(Debug, Clone)]
+pub struct ExprStatic<'a, 'i> {
+    pub sig: ExprStaticSignature<'a, 'i>,
     pub expr: &'a Expr<'a, 'i>,
 }
 impl<'a, 'i> Parse<'a, 'i> for ExprStatic<'a, 'i> {
     fn parse_marked(parser: &mut Parser<'a, '_, 'i>, depth: Depth) -> Result<Self, InternalError> {
         Ok(ExprStatic {
-            static_token: parser.parse(depth.next())?,
-            pattern: parser.parse(depth.next())?,
-            assign: parser.parse(depth.next())?,
+            sig: parser.parse(depth.next())?,
             expr: parser.parse(depth.last())?,
         })
     }
 }
 impl<'a, 'i> Spanned for ExprStatic<'a, 'i> {
     fn span(&self) -> Span {
-        Span::new(self.static_token.span.file, self.static_token.span.start, self.expr.span().end)
+        Span::new(self.sig.span().file, self.sig.span().start, self.expr.span().end)
     }
 }
 impl<'a, 'i> Display for ExprStatic<'a, 'i> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "static {} = {}", self.pattern, self.expr)
+        write!(f, "{} {}", self.sig, self.expr)
     }
 }
 

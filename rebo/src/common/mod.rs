@@ -88,12 +88,16 @@ pub struct MetaInfo<'a, 'i> {
     pub external_function_signatures: IndexMap<&'static str, ExprFunctionSignature<'a, 'i>>,
     /// enum and struct definitions found in the code
     ///
-    /// Available after the first pass of the parser.
+    /// Available after the first-pass of the parser.
     pub user_types: IndexMap<&'i str, UserType<'a, 'i>>,
     /// static variables defined in the code
     ///
-    /// Available after the first pass of the parser.
+    /// Available after the parser.
     pub statics: IndexMap<&'i str, &'a ExprStatic<'a, 'i>>,
+    /// static variable names defined in the code
+    ///
+    /// Available after the first-pass of the parser
+    pub static_bindings: IndexSet<Binding<'i>>,
     /// function types with resolved argument and return types
     ///
     /// Contains external function types before parser.
@@ -125,6 +129,7 @@ impl<'a, 'i> MetaInfo<'a, 'i> {
             external_function_signatures: IndexMap::new(),
             user_types: IndexMap::new(),
             statics: IndexMap::new(),
+            static_bindings: IndexSet::new(),
             function_types: IndexMap::new(),
             struct_types: IndexMap::new(),
             enum_types: IndexMap::new(),
@@ -237,7 +242,7 @@ impl<'a, 'i> MetaInfo<'a, 'i> {
     }
     pub fn add_static(&mut self, diagnostics: &Diagnostics, static_def: &'a ExprStatic<'a, 'i>) {
         let new_span = static_def.span();
-        let name = match &static_def.pattern {
+        let name = match &static_def.sig.pattern {
             ExprPattern::Untyped(untyped) => untyped.binding.ident.ident,
             ExprPattern::Typed(typed) => typed.pattern.binding.ident.ident,
         };

@@ -68,7 +68,7 @@ impl<'a, 'b, 'i> Vm<'a, 'b, 'i> {
         }
         // add statics
         for static_def in self.meta_info.statics.clone().values() {
-            let binding = match &static_def.pattern {
+            let binding = match &static_def.sig.pattern {
                 ExprPattern::Typed(typed) => typed.pattern.binding,
                 ExprPattern::Untyped(untyped) => untyped.binding,
             };
