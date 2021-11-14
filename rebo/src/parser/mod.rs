@@ -195,22 +195,22 @@ impl<'a, 'b, 'i> Parser<'a, 'b, 'i> {
                 // added separately
                 Function::Rebo(..) => continue,
             };
-            let binding = self.add_binding_raw(name.clone().into_owned(), ident);
+            let binding = self.add_binding_internal(name.clone().into_owned(), ident, None, false);
             self.meta_info.function_bindings.insert(binding, name.into_owned());
         }
         for (name, ident) in self.rebo_function_names.clone() {
-            let binding = self.add_binding_raw(name.clone(), ident);
+            let binding = self.add_binding_internal(name.clone(), ident, None, false);
             self.meta_info.function_bindings.insert(binding, name);
         }
     }
 
     fn add_binding(&mut self, ident: TokenIdent<'i>, mutable: Option<TokenMut>) -> Binding<'i> {
-        self.add_binding_internal(ident, mutable, false)
+        self.add_binding_internal(ident.ident.to_string(), ident, mutable, false)
     }
     fn add_rogue_binding(&mut self, ident: TokenIdent<'i>, mutable: Option<TokenMut>) -> Binding<'i> {
-        self.add_binding_internal(ident, mutable, true)
+        self.add_binding_internal(ident.ident.to_string(), ident, mutable, true)
     }
-    fn add_binding_internal(&mut self, ident: TokenIdent<'i>, mutable: Option<TokenMut>, rogue: bool) -> Binding<'i> {
+    fn add_binding_internal(&mut self, name: String, ident: TokenIdent<'i>, mutable: Option<TokenMut>, rogue: bool) -> Binding<'i> {
         let binding = match self.binding_memoization.entry(ident.span()) {
             Entry::Vacant(vacant) => {
                 let id = BindingId::unique();
@@ -220,13 +220,6 @@ impl<'a, 'b, 'i> Parser<'a, 'b, 'i> {
             }
             Entry::Occupied(occupied) => *occupied.get(),
         };
-        self.scopes.borrow_mut().last_mut().unwrap().idents.insert(binding.ident.ident.to_string(), binding);
-        binding
-    }
-    /// Add a raw binding that not come from the source-code itself. Used to add functions as bindings.
-    fn add_binding_raw(&mut self, name: String, ident: TokenIdent<'i>) -> Binding<'i> {
-        let id = BindingId::unique();
-        let binding = Binding { id, mutable: None, ident, rogue: false };
         self.scopes.borrow_mut().last_mut().unwrap().idents.insert(name, binding);
         binding
     }
