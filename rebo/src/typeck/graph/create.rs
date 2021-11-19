@@ -430,7 +430,10 @@ impl<'i> Graph<'i> {
         for (binding, name) in &meta_info.function_bindings {
             let node = Node::type_var(binding.ident.span);
             graph.add_node(node);
-            let typ = &meta_info.function_types[name.as_str()];
+            let typ = match meta_info.function_types.get(name.as_str()) {
+                Some(typ) => typ,
+                None => continue,
+            };
             graph.add_reduce_constraint(node, node, vec![ResolvableSpecificType::Function(Some(typ.clone()))]);
         }
 
