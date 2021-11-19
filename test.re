@@ -6,7 +6,8 @@ fn foo(mut x: int, mut y: int) -> int {
 }
 print(1 + 2 * 3 == 7);
 print(1 + 2 * 3 * 4);
-let mut a = 1;
+let a = 0;
+let mut a = a + 1;
 let mut c = add_one(a);
 c = c + {
     let c = 1337;

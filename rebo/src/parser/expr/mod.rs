@@ -901,11 +901,24 @@ pub struct ExprBind<'a, 'i> {
 }
 impl<'a, 'i> Parse<'a, 'i> for ExprBind<'a, 'i> {
     fn parse_marked(parser: &mut Parser<'a, '_, 'i>, depth: Depth) -> Result<Self, InternalError> {
+        let let_token = parser.parse(depth.next())?;
+        // hack to not have the pattern-binding in scope during the expression
+        let guard = parser.push_scope();
+        let pattern = parser.parse(depth.next())?;
+        drop(guard);
+        let assign = parser.parse(depth.next())?;
+        let expr = parser.parse(depth.last())?;
+        // add pattern-binding as available from here on
+        let binding = match &pattern {
+            ExprPattern::Typed(typed) => typed.pattern.binding,
+            ExprPattern::Untyped(untyped) => untyped.binding,
+        };
+        parser.add_binding(binding.ident, binding.mutable);
         Ok(ExprBind {
-            let_token: parser.parse(depth.next())?,
-            pattern: parser.parse(depth.next())?,
-            assign: parser.parse(depth.next())?,
-            expr: parser.parse(depth.last())?,
+            let_token,
+            pattern,
+            assign,
+            expr,
         })
     }
 }
