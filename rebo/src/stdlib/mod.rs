@@ -30,6 +30,8 @@ pub fn add_to_meta_info<'a, 'i>(stdlib: Stdlib, diagnostics: &'i Diagnostics, ar
     meta_info.add_external_function(arena, diagnostics, int_to_float);
     meta_info.add_external_function(arena, diagnostics, float_to_int);
     meta_info.add_external_function(arena, diagnostics, bool_to_int);
+    meta_info.add_external_function(arena, diagnostics, float_round);
+    meta_info.add_external_function(arena, diagnostics, float_sqrt);
     meta_info.add_external_function(arena, diagnostics, string_slice);
     meta_info.add_external_function(arena, diagnostics, string_from_char);
     meta_info.add_external_function(arena, diagnostics, string_to_lowercase);
@@ -71,6 +73,15 @@ fn bool_to_int(this: bool) -> i64 {
 #[rebo::function("float::to_int")]
 fn float_to_int(this: FuzzyFloat) -> i64 {
     this.0 as i64
+}
+#[rebo::function("float::round")]
+fn float_round(this: f64, decimals: u8) -> f64 {
+    let factor = 10f64.powi(decimals as i32);
+    (this * factor).round() / factor
+}
+#[rebo::function("float::sqrt")]
+fn float_sqrt(this: f64) -> f64 {
+    this.sqrt()
 }
 
 #[rebo::function(raw("assert"))]
