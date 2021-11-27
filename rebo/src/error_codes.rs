@@ -66,6 +66,7 @@ pub enum ErrorCode {
     FunctionMatch,
     InvalidVarargs,
     MissingFunctionName,
+    InvalidFormatStringSpecifier,
 
     Panic,
     AssertionFailed,
@@ -141,6 +142,7 @@ impl diagnostic::ErrorCode for ErrorCode {
             FunctionMatch => "0065",
             InvalidVarargs => "0066",
             MissingFunctionName => "0067",
+            InvalidFormatStringSpecifier => "0068",
 
             Panic => "9999",
             AssertionFailed => "9998",
@@ -215,6 +217,7 @@ impl diagnostic::ErrorCode for ErrorCode {
             FunctionMatch => "can't match on a function",
             InvalidVarargs => "invalid varargs",
             MissingFunctionName => "missing function name",
+            InvalidFormatStringSpecifier => "invalid format string specifier",
 
             Panic => "explicit panic",
             AssertionFailed => "assertion failed",

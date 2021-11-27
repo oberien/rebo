@@ -1,4 +1,4 @@
-use crate::common::{Value, MetaInfo, FuzzyFloat};
+use crate::common::{Value, MetaInfo, FuzzyFloat, DisplayValue};
 use crate as rebo;
 use itertools::Itertools;
 use diagnostic::Diagnostics;
@@ -52,7 +52,7 @@ pub fn add_to_meta_info<'a, 'i>(stdlib: Stdlib, diagnostics: &'i Diagnostics, ar
 
 #[rebo::function(raw("print"))]
 fn print(..: _) {
-    let joined = args.join(", ");
+    let joined = args.as_slice().into_iter().map(|arg| DisplayValue(arg)).join(", ");
     println!("{}", joined);
 }
 

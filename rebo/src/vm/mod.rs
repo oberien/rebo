@@ -8,6 +8,7 @@ use crate::lexer::{TokenBool, TokenDqString, TokenFloat, TokenIdent, TokenIntege
 use crate::parser::{Binding, BlockBody, Expr, ExprAdd, ExprAssign, ExprAssignLhs, ExprBind, ExprBlock, ExprBool, ExprBoolAnd, ExprBoolNot, ExprBoolOr, ExprDiv, ExprEnumDefinition, ExprEnumInitialization, ExprEquals, ExprFieldAccess, ExprFloat, ExprFormatString, ExprFormatStringPart, ExprFunctionCall, ExprGreaterEquals, ExprGreaterThan, ExprIfElse, ExprInteger, ExprLessEquals, ExprLessThan, ExprLiteral, ExprMatch, ExprMatchPattern, ExprMul, ExprNotEquals, ExprParenthesized, ExprPattern, ExprPatternTyped, ExprPatternUntyped, ExprString, ExprStructDefinition, ExprStructInitialization, ExprSub, ExprVariable, ExprWhile, ExprAccess, FieldOrMethod, Spanned, ExprFor, ExprMethodCall, ExprNeg};
 pub use crate::vm::scope::{Scopes, Scope};
 use diagnostic::{Diagnostics, Span};
+use rt_format::{Argument, Specifier};
 use crate::EXTERNAL_SPAN;
 
 mod scope;
@@ -148,9 +149,14 @@ impl<'a, 'b, 'i> Vm<'a, 'b, 'i> {
                     match part {
                         ExprFormatStringPart::Str(s) => res.push_str(s),
                         ExprFormatStringPart::Escaped(s) => res.push_str(s),
-                        ExprFormatStringPart::FmtArg(expr) => {
+                        ExprFormatStringPart::FmtArg(expr, spec) => {
                             let val = self.eval_expr(expr, depth.next())?;
-                            res.push_str(&format!("{:#}", val));
+                            let spec = match spec {
+                                Some((_colon, spec)) => *spec,
+                                None => Specifier::default(),
+                            };
+                            let arg = Argument::new(spec, &val).unwrap();
+                            res.push_str(&format!("{}", arg));
                         }
                     }
                 }
@@ -362,7 +368,7 @@ impl<'a, 'b, 'i> Vm<'a, 'b, 'i> {
         }
     }
     fn call_function(&mut self, fun: &FunctionValue, expr_span: Span, args: Vec<Value>, depth: Depth) -> Result<Value, ExecError> {
-        trace!("{}call_function: {}({:?})", depth, fun, args);
+        trace!("{}call_function: {:?}({:?})", depth, fun, args);
         let (arg_binding_ids, fun) = match fun {
             FunctionValue::Anonymous(span) => {
                 let (arg_binding_ids, fun) = &self.meta_info.anonymous_rebo_functions[span];

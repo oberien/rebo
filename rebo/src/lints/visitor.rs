@@ -83,7 +83,7 @@ impl<'a, 'b, 'i, 'v> VisitorDriver<'a, 'b, 'i, 'v> {
                 for part in &fs.parts {
                     match part {
                         ExprFormatStringPart::Str(_) | ExprFormatStringPart::Escaped(_) => (),
-                        ExprFormatStringPart::FmtArg(expr) => self.visit_expr(expr),
+                        ExprFormatStringPart::FmtArg(expr, _) => self.visit_expr(expr),
                     }
                 }
             }

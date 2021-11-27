@@ -16,6 +16,7 @@ use diagnostic::Span;
 use itertools::{Itertools, Either};
 use crate::common::{Depth, UserType};
 use indexmap::set::IndexSet;
+use rt_format::Specifier;
 
 // make trace! here log as if this still was the parser module
 macro_rules! module_path {
@@ -829,7 +830,8 @@ impl Spanned for ExprString {
 pub enum ExprFormatStringPart<'a, 'i> {
     Str(&'i str),
     Escaped(&'i str),
-    FmtArg(&'a Expr<'a, 'i>),
+    /// expr, format-string specifier
+    FmtArg(&'a Expr<'a, 'i>, Option<(TokenColon, Specifier)>),
 }
 #[derive(Debug, Clone)]
 pub struct ExprFormatString<'a, 'i> {
@@ -845,23 +847,26 @@ impl<'a, 'i> Parse<'a, 'i> for ExprFormatString<'a, 'i> {
             match part {
                 TokenFormatStringPart::Str(s) => parts.push(ExprFormatStringPart::Str(s)),
                 TokenFormatStringPart::Escaped(s) => parts.push(ExprFormatStringPart::Escaped(s)),
-                TokenFormatStringPart::FormatArg(s, part_start) => {
-                    // skip `{`
-                    // let part_start = part_start + 1;
-                    let part_end = part_start + s.len();
-                    let part_lexer = Lexer::new_in(parser.diagnostics, fmtstr.span.file, part_start, part_end);
+                TokenFormatStringPart::FormatArg(s, expr_start, spec) => {
+                    let part_end = expr_start + s.len();
+                    let part_lexer = Lexer::new_in(parser.diagnostics, fmtstr.span.file, expr_start, part_end);
                     let old_lexer = std::mem::replace(&mut parser.lexer, part_lexer);
 
                     let expr = parser.parse_scoped(depth.next())?;
-                    parts.push(ExprFormatStringPart::FmtArg(expr));
+                    parts.push(ExprFormatStringPart::FmtArg(expr, spec));
 
                     let part_lexer = std::mem::replace(&mut parser.lexer, old_lexer);
                     let next = part_lexer.next();
                     if !matches!(next, Ok(Token::Eof(_))) {
-                        parser.diagnostics.error(ErrorCode::InvalidFormatString)
+                        let arg_span = Span::new(fmtstr.span.file, expr_start, part_end);
+                        let mut diag = parser.diagnostics.error(ErrorCode::InvalidFormatString)
                             .with_error_label(fmtstr.span, "in this format string")
-                            .with_error_label(Span::new(fmtstr.span.file, part_start, part_end), "in this format argument")
-                            .emit();
+                            .with_error_label(arg_span, "in this format argument");
+                        match next {
+                            Ok(token) => diag = diag.with_info_label(arg_span, format!("expected end of format string, got `{}`", token)),
+                            Err(e) => diag = diag.with_info_label(arg_span, format!("error: `{:?}`", e)),
+                        }
+                        diag.emit();
                     }
                 }
             }
@@ -885,7 +890,13 @@ impl<'a, 'i> Display for ExprFormatString<'a, 'i> {
             match part {
                 ExprFormatStringPart::Str(s) => write!(f, "{}", s)?,
                 ExprFormatStringPart::Escaped(s) => write!(f, "\\{}", s)?,
-                ExprFormatStringPart::FmtArg(s) => write!(f, "{{{}}}", s)?,
+                ExprFormatStringPart::FmtArg(s, spec) => {
+                    write!(f, "{{{}", s)?;
+                    if let Some((_colon, spec)) = spec {
+                        write!(f, ":{}", spec)?;
+                    }
+                    write!(f, "}}")?;
+                },
             }
         }
         Ok(())

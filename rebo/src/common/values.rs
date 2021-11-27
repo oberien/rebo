@@ -1,9 +1,7 @@
-use std::fmt;
-
 use crate::vm::{ExecError, VmContext};
 use crate::parser::BindingId;
 use std::sync::Arc;
-use std::fmt::{Display, Formatter, Debug};
+use std::fmt;
 use std::ops::{Add, Sub, Mul, Div};
 use std::cmp::Ordering;
 use parking_lot::ReentrantMutex;
@@ -15,6 +13,7 @@ use itertools::Itertools;
 use crate::typeck::types::SpecificType;
 use std::collections::BTreeMap;
 use std::convert::TryInto;
+use rt_format::{FormattableValue, Specifier};
 
 pub trait ExternalTypeType {
     type Type: ExternalType;
@@ -51,14 +50,6 @@ pub enum Value {
 pub enum FunctionValue {
     Named(String),
     Anonymous(Span),
-}
-impl Display for FunctionValue {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        match self {
-            FunctionValue::Named(name) => write!(f, "function {}", name),
-            FunctionValue::Anonymous(span) => write!(f, "anonymous function at {}:{}:{}", span.file, span.start, span.end),
-        }
-    }
 }
 
 impl Value {
@@ -114,51 +105,6 @@ impl Value {
     }
 }
 
-impl Display for Value {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        match self {
-            Value::Unit => Debug::fmt(&(), f),
-            Value::Integer(i) => Display::fmt(i, f),
-            Value::Float(float) => Display::fmt(float, f),
-            Value::Bool(b) => Display::fmt(b, f),
-            Value::String(s) => if f.alternate() {
-                Display::fmt(s, f)
-            } else {
-                Debug::fmt(s, f)
-            },
-            Value::Struct(s) => {
-                let s = s.s.lock();
-                let s = s.borrow();
-                write!(f, "{} {{", s.name)?;
-                for (field, value) in &s.fields {
-                    write!(f, " {}: {},", field, value)?;
-                }
-                write!(f, " }}")
-            },
-            Value::Enum(e) => {
-                let e = e.e.lock();
-                let e = e.borrow();
-                write!(f, "{}::{}", e.name, e.variant)?;
-                if !e.fields.is_empty() {
-                    write!(f, "({})", e.fields.iter().join(", "))?;
-                }
-                Ok(())
-            }
-            Value::Function(fun) => write!(f, "{}", fun),
-            Value::List(l) => {
-                let l = l.list.lock();
-                let l = l.borrow();
-                write!(f, "[{}]", l.iter().join(", "))
-            }
-            Value::Map(m) => {
-                let m = m.map.lock();
-                let m = m.borrow();
-                write!(f, "{{{}}}", m.iter().map(|(k, v)| format!("{} => {}", k, v)).join(", "))
-            }
-        }
-    }
-}
-
 impl PartialEq<ExprLiteral> for Value {
     fn eq(&self, other: &ExprLiteral) -> bool {
         match (self, other) {
@@ -169,6 +115,133 @@ impl PartialEq<ExprLiteral> for Value {
             (Value::String(val), ExprLiteral::String(ExprString { string })) => val == &string.string,
             _ => false,
         }
+    }
+}
+
+macro_rules! fmt_value_wrappers {
+    ($($fmt:ident, $struct_name:ident, float: $float:tt, bool: $bool:tt, string: $string:tt, Debug: $debug:tt;)*) => {$(
+        pub struct $struct_name<'a>(pub &'a Value);
+        impl<'a> fmt::$fmt for $struct_name<'a> {
+            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                match self.0 {
+                    Value::Unit => fmt::Debug::fmt(&(), f),
+                    Value::Integer(i) => fmt::$fmt::fmt(i, f),
+                    Value::Float(FuzzyFloat(_float)) => fmt_value_wrappers!(float, $float, $fmt, _float, f),
+                    Value::Bool(_b) => fmt_value_wrappers!(bool, $bool, $fmt, _b, f),
+                    Value::String(_s) => fmt_value_wrappers!(string, $string, $fmt, _s, f),
+                    Value::Struct(s) => {
+                        let s = s.s.lock();
+                        let s = s.borrow();
+                        let mut dbg = f.debug_struct(&s.name);
+                        for (name, value) in &s.fields {
+                            dbg.field(name, &$struct_name(value));
+                        }
+                        dbg.finish()
+                    }
+                    Value::Enum(e) => {
+                        let e = e.e.lock();
+                        let e = e.borrow();
+                        let variant = format!("{}::{}", e.name, e.variant);
+                        if e.fields.is_empty() {
+                            f.write_str(&variant)
+                        } else {
+                            let mut dbg = f.debug_tuple(&variant);
+                            for field in &e.fields {
+                                dbg.field(&$struct_name(field));
+                            }
+                            dbg.finish()
+                        }
+                    }
+                    Value::List(l) => {
+                        let l = l.list.lock();
+                        let l = l.borrow();
+                        f.debug_list()
+                            .entries(l.iter().map(|value| $struct_name(value)))
+                            .finish()
+                    }
+                    Value::Map(m) => {
+                        let m = m.map.lock();
+                        let m = m.borrow();
+                        f.debug_map()
+                            .entries(m.iter().map(|(k, v)| ($struct_name(k), $struct_name(v))))
+                            .finish()
+                    }
+                    Value::Function(fun) =>  match fun {
+                        FunctionValue::Named(name) => write!(f, "function {}", name),
+                        FunctionValue::Anonymous(span) => write!(f, "anonymous function at {}:{}:{}", span.file, span.start, span.end),
+                    },
+                }
+            }
+        }
+        fmt_value_wrappers! { impl_debug, $debug, $fmt, $struct_name }
+    )*};
+    (float, true, $fmt:ident, $float:expr, $f:expr) => { fmt::$fmt::fmt($float, $f) };
+    (float, false, $fmt:ident, $float:expr, $f:expr) => { unreachable!("{} called on float", stringify!($fmt)) };
+    // (float, $else:tt, $fmt:ident, $float:expr, $f:expr) => { compile_error!("float only accepts `true` or `false`") };
+    (bool, true, $fmt:ident, $bool:expr, $f:expr) => { fmt::$fmt::fmt($bool, $f) };
+    (bool, false, $fmt:ident, $bool:expr, $f:expr) => { unreachable!("{} called on bool", stringify!($fmt)) };
+    // (bool, $else:tt, $fmt:ident, $bool:expr, $f:expr) => { compile_error!("bool only accepts `true` or `false`") };
+    (string, true, $fmt:ident, $string:expr, $f:expr) => { fmt::$fmt::fmt($string, $f) };
+    (string, false, $fmt:ident, $string:expr, $f:expr) => { unreachable!("{} called on string", stringify!($fmt)) };
+    // (string, $else:tt, $fmt:ident, $string:expr, $f:expr) => { compile_error!("string only accepts `true` or `false`") };
+    (impl_debug, true, $fmt:ident, $struct_name:ident) => {
+        impl<'a> fmt::Debug for $struct_name<'a> {
+            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                fmt::$fmt::fmt(self, f)
+            }
+        }
+    };
+    (impl_debug, false, $fmt:ident, $struct_name:ident) => {};
+    (impl_debug, $else:tt, $fmt:ident, $struct_name:ident) => { compile_error!("Debug only accepts `true` or `false`") };
+}
+
+fmt_value_wrappers! {
+    Display, DisplayValue, float: true, bool: true, string: true, Debug: true;
+    Debug, DebugValue, float: true, bool: true, string: true, Debug: false;
+    Octal, OctalValue, float: false, bool: false, string: false, Debug: true;
+    LowerHex, LowerHexValue, float: false, bool: false, string: false, Debug: true;
+    UpperHex, UpperHexValue, float: false, bool: false, string: false, Debug: true;
+    Binary, BinaryValue, float: false, bool: false, string: false, Debug: true;
+    LowerExp, LowerExpValue, float: true, bool: false, string: false, Debug: true;
+    UpperExp, UpperExpValue, float: true, bool: false, string: false, Debug: true;
+}
+
+impl FormattableValue for Value {
+    fn supports_format(&self, _: &Specifier) -> bool {
+        // ensured by typeck
+        true
+    }
+
+    fn fmt_display(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        fmt::Display::fmt(&DisplayValue(self), f)
+    }
+
+    fn fmt_debug(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        fmt::Debug::fmt(&DebugValue(self), f)
+    }
+
+    fn fmt_octal(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        fmt::Octal::fmt(&OctalValue(self), f)
+    }
+
+    fn fmt_lower_hex(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        fmt::LowerHex::fmt(&LowerHexValue(self), f)
+    }
+
+    fn fmt_upper_hex(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        fmt::UpperHex::fmt(&UpperHexValue(self), f)
+    }
+
+    fn fmt_binary(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        fmt::Binary::fmt(&BinaryValue(self), f)
+    }
+
+    fn fmt_lower_exp(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        fmt::LowerExp::fmt(&LowerExpValue(self), f)
+    }
+
+    fn fmt_upper_exp(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        fmt::UpperExp::fmt(&UpperExpValue(self), f)
     }
 }
 
@@ -228,11 +301,6 @@ impl Div<FuzzyFloat> for FuzzyFloat {
     type Output = FuzzyFloat;
     fn div(self, rhs: FuzzyFloat) -> Self::Output { FuzzyFloat(self.0 / rhs.0) }
 }
-impl Display for FuzzyFloat {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        Debug::fmt(&self.0, f)
-    }
-}
 
 #[derive(Clone)]
 pub struct ExternalFunction {
@@ -245,8 +313,8 @@ pub struct ExternalFunction {
     pub file_name: &'static str,
     pub imp: RustFunction,
 }
-impl Debug for ExternalFunction {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+impl fmt::Debug for ExternalFunction {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("ExternalFunction")
             .field("name", &self.code)
             .field("code", &self.code)

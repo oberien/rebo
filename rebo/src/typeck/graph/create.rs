@@ -9,6 +9,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use crate::error_codes::ErrorCode;
 use std::sync::atomic::{Ordering, AtomicU64};
+use rt_format::Format;
 use crate::{CowVec, EXTERNAL_SPAN};
 
 static CALL_INDEX: AtomicU64 = AtomicU64::new(0);
@@ -456,7 +457,71 @@ impl<'i> Graph<'i> {
                     match part {
                         ExprFormatStringPart::Str(_)
                         | ExprFormatStringPart::Escaped(_) => (),
-                        ExprFormatStringPart::FmtArg(expr) => { self.visit_expr(diagnostics, meta_info, function_generics, expr); }
+                        ExprFormatStringPart::FmtArg(expr, spec) => {
+                            let node = self.visit_expr(diagnostics, meta_info, function_generics, expr);
+                            if let Some((_colon, spec)) = spec {
+                                match spec.format {
+                                    Format::Display => (),
+                                    Format::Debug => (),
+                                    Format::Octal => {
+                                        self.add_reduce_constraint(node, node, vec![
+                                            ResolvableSpecificType::Unit,
+                                            ResolvableSpecificType::Integer,
+                                            ResolvableSpecificType::Struct("struct".to_string(), vec![]),
+                                            ResolvableSpecificType::Enum("enum".to_string(), vec![]),
+                                            ResolvableSpecificType::Function(None),
+                                        ]);
+                                    }
+                                    Format::LowerHex => {
+                                        self.add_reduce_constraint(node, node, vec![
+                                            ResolvableSpecificType::Unit,
+                                            ResolvableSpecificType::Integer,
+                                            ResolvableSpecificType::Struct("struct".to_string(), vec![]),
+                                            ResolvableSpecificType::Enum("enum".to_string(), vec![]),
+                                            ResolvableSpecificType::Function(None),
+                                        ]);
+                                    }
+                                    Format::UpperHex => {
+                                        self.add_reduce_constraint(node, node, vec![
+                                            ResolvableSpecificType::Unit,
+                                            ResolvableSpecificType::Integer,
+                                            ResolvableSpecificType::Struct("struct".to_string(), vec![]),
+                                            ResolvableSpecificType::Enum("enum".to_string(), vec![]),
+                                            ResolvableSpecificType::Function(None),
+                                        ]);
+                                    }
+                                    Format::Binary => {
+                                        self.add_reduce_constraint(node, node, vec![
+                                            ResolvableSpecificType::Unit,
+                                            ResolvableSpecificType::Integer,
+                                            ResolvableSpecificType::Struct("struct".to_string(), vec![]),
+                                            ResolvableSpecificType::Enum("enum".to_string(), vec![]),
+                                            ResolvableSpecificType::Function(None),
+                                        ]);
+                                    }
+                                    Format::LowerExp => {
+                                        self.add_reduce_constraint(node, node, vec![
+                                            ResolvableSpecificType::Unit,
+                                            ResolvableSpecificType::Integer,
+                                            ResolvableSpecificType::Float,
+                                            ResolvableSpecificType::Struct("struct".to_string(), vec![]),
+                                            ResolvableSpecificType::Enum("enum".to_string(), vec![]),
+                                            ResolvableSpecificType::Function(None),
+                                        ]);
+                                    }
+                                    Format::UpperExp => {
+                                        self.add_reduce_constraint(node, node, vec![
+                                            ResolvableSpecificType::Unit,
+                                            ResolvableSpecificType::Integer,
+                                            ResolvableSpecificType::Float,
+                                            ResolvableSpecificType::Struct("struct".to_string(), vec![]),
+                                            ResolvableSpecificType::Enum("enum".to_string(), vec![]),
+                                            ResolvableSpecificType::Function(None),
+                                        ]);
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }

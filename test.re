@@ -99,6 +99,8 @@ print(fib_iter(90));
 // format strings
 let foo = 4;
 print(f"{foo * 10 + 2} is the answer");
+print(f"{1337:#8x}");
+print(f"{"uiae":?}");
 
 // match
 print(match 1 {
