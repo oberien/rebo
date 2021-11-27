@@ -1,6 +1,5 @@
 use diagnostic::Span;
 use derive_more::Display;
-use rt_format::Specifier;
 
 macro_rules! gen_tokens {
     ($(
@@ -72,8 +71,8 @@ pub enum TokenFormatStringPart<'i> {
     Str(&'i str),
     /// Substring that starts with an escaped character
     Escaped(&'i str),
-    /// expr-str, start of expr-str in file, Option<format-specifier>
-    FormatArg(&'i str, usize, Option<(TokenColon, Specifier)>),
+    /// argument-str, start in file
+    FormatArg(&'i str, usize),
 }
 
 fn format_parts(parts: &[TokenFormatStringPart]) -> String {
@@ -82,13 +81,9 @@ fn format_parts(parts: &[TokenFormatStringPart]) -> String {
         match part {
             TokenFormatStringPart::Str(s) => res.push_str(s),
             TokenFormatStringPart::Escaped(s) => res.push_str(s),
-            TokenFormatStringPart::FormatArg(expr, _, spec) => {
+            TokenFormatStringPart::FormatArg(arg, _) => {
                 res.push('{');
-                res.push_str(expr);
-                if let Some((_colon, spec)) = spec {
-                    res.push(':');
-                    res.push_str(&format!("{}", spec));
-                }
+                res.push_str(arg);
                 res.push('}');
             }
         }

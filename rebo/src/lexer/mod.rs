@@ -14,6 +14,8 @@ pub enum Error {
     /// The current token is handled by the current function, but it was incorrect in an
     /// unrecoverable way and a diagnostic was emitted. Abort lexing.
     Abort,
+    /// An unexpected Eof was encountered. No diagnostic was emitted yet.
+    UnexpectedEof(Span),
 }
 
 /// Pull-Lexer, lexing the next token only once it's requested

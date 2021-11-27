@@ -30,6 +30,8 @@ use indexmap::set::IndexSet;
 pub enum Error {
     /// Parsing encountered an unrecoverable error and a diagnostic was emitted. Abort.
     Abort,
+    /// An unexpected EOF was encountered. No diagnostics has been emitted yet.
+    UnexpectedEof(Span),
 }
 #[derive(Debug, Clone)]
 pub enum InternalError {
@@ -45,8 +47,11 @@ impl From<Error> for InternalError {
     }
 }
 impl From<crate::lexer::Error> for InternalError {
-    fn from(_: crate::lexer::Error) -> Self {
-        InternalError::Error(Error::Abort)
+    fn from(e: crate::lexer::Error) -> Self {
+        match e {
+            crate::lexer::Error::Abort => InternalError::Error(Error::Abort),
+            crate::lexer::Error::UnexpectedEof(span) => InternalError::Error(Error::UnexpectedEof(span)),
+        }
     }
 }
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Ord, PartialOrd)]

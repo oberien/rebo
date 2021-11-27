@@ -101,6 +101,7 @@ let foo = 4;
 print(f"{foo * 10 + 2} is the answer");
 print(f"{1337:#8x}");
 print(f"{"uiae":?}");
+print(f"{Foo::new(1337, "uiae"):?}");
 
 // match
 print(match 1 {

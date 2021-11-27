@@ -459,12 +459,14 @@ impl<'i> Graph<'i> {
                         | ExprFormatStringPart::Escaped(_) => (),
                         ExprFormatStringPart::FmtArg(expr, spec) => {
                             let node = self.visit_expr(diagnostics, meta_info, function_generics, expr);
-                            if let Some((_colon, spec)) = spec {
+                            if let Some((_colon, spec, spec_span)) = spec {
+                                let fmt_node = Node::type_var(*spec_span);
+                                self.add_node(fmt_node);
                                 match spec.format {
                                     Format::Display => (),
                                     Format::Debug => (),
                                     Format::Octal => {
-                                        self.add_reduce_constraint(node, node, vec![
+                                        self.add_reduce_constraint(fmt_node, node, vec![
                                             ResolvableSpecificType::Unit,
                                             ResolvableSpecificType::Integer,
                                             ResolvableSpecificType::Struct("struct".to_string(), vec![]),
@@ -473,7 +475,7 @@ impl<'i> Graph<'i> {
                                         ]);
                                     }
                                     Format::LowerHex => {
-                                        self.add_reduce_constraint(node, node, vec![
+                                        self.add_reduce_constraint(fmt_node, node, vec![
                                             ResolvableSpecificType::Unit,
                                             ResolvableSpecificType::Integer,
                                             ResolvableSpecificType::Struct("struct".to_string(), vec![]),
@@ -482,7 +484,7 @@ impl<'i> Graph<'i> {
                                         ]);
                                     }
                                     Format::UpperHex => {
-                                        self.add_reduce_constraint(node, node, vec![
+                                        self.add_reduce_constraint(fmt_node, node, vec![
                                             ResolvableSpecificType::Unit,
                                             ResolvableSpecificType::Integer,
                                             ResolvableSpecificType::Struct("struct".to_string(), vec![]),
@@ -491,7 +493,7 @@ impl<'i> Graph<'i> {
                                         ]);
                                     }
                                     Format::Binary => {
-                                        self.add_reduce_constraint(node, node, vec![
+                                        self.add_reduce_constraint(fmt_node, node, vec![
                                             ResolvableSpecificType::Unit,
                                             ResolvableSpecificType::Integer,
                                             ResolvableSpecificType::Struct("struct".to_string(), vec![]),
@@ -500,7 +502,7 @@ impl<'i> Graph<'i> {
                                         ]);
                                     }
                                     Format::LowerExp => {
-                                        self.add_reduce_constraint(node, node, vec![
+                                        self.add_reduce_constraint(fmt_node, node, vec![
                                             ResolvableSpecificType::Unit,
                                             ResolvableSpecificType::Integer,
                                             ResolvableSpecificType::Float,
@@ -510,7 +512,7 @@ impl<'i> Graph<'i> {
                                         ]);
                                     }
                                     Format::UpperExp => {
-                                        self.add_reduce_constraint(node, node, vec![
+                                        self.add_reduce_constraint(fmt_node, node, vec![
                                             ResolvableSpecificType::Unit,
                                             ResolvableSpecificType::Integer,
                                             ResolvableSpecificType::Float,

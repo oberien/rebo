@@ -1,6 +1,5 @@
 use crate::lexer::{Error, Token, TokenEof};
 use diagnostic::{FileId, Diagnostics, Span};
-use rt_format::{Format, Specifier};
 use crate::error_codes::ErrorCode;
 use super::token::*;
 
@@ -46,10 +45,7 @@ pub fn lex_next<'i>(diagnostics: &Diagnostics, file: FileId, s: &'i str, index: 
         }
     }
 
-    diagnostics.error(ErrorCode::UnexpectedEof)
-        .with_error_label(Span::new(file, index, s.len()), "this expression is not complete")
-        .emit();
-    Err(Error::Abort)
+    Err(Error::UnexpectedEof(Span::new(file, index, s.len())))
 }
 
 pub fn skip_whitespace(s: &str, mut index: usize) -> Option<usize> {
@@ -355,8 +351,6 @@ pub fn lex_format_string<'i>(diagnostics: &Diagnostics, file: FileId, s: &'i str
         Str,
         Escaped,
         FmtArg,
-        /// expr-part_start, expr-part_end, colon
-        FmtSpec(usize, usize, TokenColon),
     }
 
     let mut parts = Vec::new();
@@ -367,28 +361,11 @@ pub fn lex_format_string<'i>(diagnostics: &Diagnostics, file: FileId, s: &'i str
     let mut depth = 0;
     let mut post_index = 0;
 
-    fn make_part<'i>(diagnostics: &Diagnostics, file: FileId, s: &'i str, typ: CurrentPart, part_start: usize, part_end: usize) -> TokenFormatStringPart<'i> {
+    fn make_part<'i>(s: &'i str, typ: CurrentPart, part_start: usize, part_end: usize) -> TokenFormatStringPart<'i> {
         match typ {
             CurrentPart::Str => TokenFormatStringPart::Str(&s[part_start..part_end]),
             CurrentPart::Escaped => TokenFormatStringPart::Escaped(&s[part_start..part_end]),
-            CurrentPart::FmtArg => TokenFormatStringPart::FormatArg(&s[part_start..part_end], part_start, None),
-            CurrentPart::FmtSpec(expr_start, expr_end, colon) => {
-                let expr_str = &s[expr_start..expr_end];
-                let spec_str = &s[part_start..part_end];
-                let spec = match Specifier::parse(spec_str) {
-                    Ok(spec) => spec,
-                    Err(()) => {
-                        diagnostics.error(ErrorCode::InvalidFormatStringSpecifier)
-                            .with_error_label(Span::new(file, part_start, part_end), "this is not a valid format specifier")
-                            .emit();
-                        Specifier {
-                            format: Format::Display,
-                            ..Specifier::default()
-                        }
-                    }
-                };
-                TokenFormatStringPart::FormatArg(expr_str, expr_start,  Some((colon, spec)))
-            }
+            CurrentPart::FmtArg => TokenFormatStringPart::FormatArg(&s[part_start..part_end], part_start),
         }
     }
 
@@ -412,12 +389,12 @@ pub fn lex_format_string<'i>(diagnostics: &Diagnostics, file: FileId, s: &'i str
             (Some('\\'), _) => {
                 match current {
                     CurrentPart::Str | CurrentPart::Escaped => {
-                        parts.push(make_part(diagnostics, file, s, current, part_start, index));
+                        parts.push(make_part(s, current, part_start, index));
                         index += 1;
                         part_start = index;
                         current = CurrentPart::Escaped;
                     }
-                    CurrentPart::FmtArg | CurrentPart::FmtSpec(..) => index += 1,
+                    CurrentPart::FmtArg => index += 1,
                 }
                 match s[index..].chars().next() {
                     None => {
@@ -430,7 +407,7 @@ pub fn lex_format_string<'i>(diagnostics: &Diagnostics, file: FileId, s: &'i str
             (Some('{'), CurrentPart::Str) => {
                 assert_eq!(depth, 0);
                 depth += 1;
-                parts.push(make_part(diagnostics, file, s, current, part_start, index));
+                parts.push(make_part(s, current, part_start, index));
                 current = CurrentPart::FmtArg;
                 index += 1;
                 part_start = index;
@@ -442,20 +419,13 @@ pub fn lex_format_string<'i>(diagnostics: &Diagnostics, file: FileId, s: &'i str
             (Some('}'), CurrentPart::FmtArg) => {
                 depth -= 1;
                 if depth == 0 {
-                    parts.push(make_part(diagnostics, file, s, current, part_start, index));
+                    parts.push(make_part(s, current, part_start, index));
                     current = CurrentPart::Str;
                     index += 1;
                     part_start = index;
                 } else {
                     index += 1;
                 }
-            }
-            (Some('}'), CurrentPart::FmtSpec(..)) => {
-                depth -= 1;
-                parts.push(make_part(diagnostics, file, s, current, part_start, index));
-                current = CurrentPart::Str;
-                index += 1;
-                part_start = index;
             }
             (Some('}'), CurrentPart::Str) => {
                 diagnostics.error(ErrorCode::UnescapedFormatStringCurlyParen)
@@ -464,12 +434,6 @@ pub fn lex_format_string<'i>(diagnostics: &Diagnostics, file: FileId, s: &'i str
                     .emit();
                 index += 1;
             }
-            (Some(':'), CurrentPart::FmtArg) if depth == 1 => {
-                current = CurrentPart::FmtSpec(part_start, index, TokenColon {
-                    span: Span::new(file, index, index+1),
-                });
-                part_start = index+1;
-            },
             (Some(c), _) => {
                 index += c.len_utf8();
             }
@@ -482,7 +446,7 @@ pub fn lex_format_string<'i>(diagnostics: &Diagnostics, file: FileId, s: &'i str
             .with_note("if you want to output a curly parenthesis, escape it like `\\{`")
             .emit();
     }
-    parts.push(make_part(diagnostics, file, s, current, part_start, index));
+    parts.push(make_part(s, current, part_start, index));
     return Ok(Token::FormatString(TokenFormatString {
         span: Span::new(file, start, index + post_index),
         parts,

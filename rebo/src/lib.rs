@@ -27,13 +27,14 @@ mod tests;
 
 pub use rebo_derive::{function, required_rebo_functions, ExternalType};
 pub use vm::{VmContext, ExecError};
-pub use common::{Value, FromValue, IntoValue, Typed, ExternalFunction, RequiredReboFunction, ExternalType, ExternalTypeType};
+pub use common::{Value, FromValue, IntoValue, Typed, ExternalFunction, RequiredReboFunction, ExternalType, ExternalTypeType, DisplayValue, DebugValue, OctalValue, LowerHexValue, UpperHexValue, BinaryValue, LowerExpValue, UpperExpValue};
 #[doc(hidden)] // only used for the derive macros
 pub use common::{StructArc, Struct, EnumArc, Enum};
 pub use typeck::types::{Type, FunctionType, SpecificType};
 pub use stdlib::Stdlib;
 pub use util::CowVec;
 use std::path::PathBuf;
+use crate::error_codes::ErrorCode;
 
 const EXTERNAL_SOURCE: &str = "defined externally";
 const EXTERNAL_SPAN: Span = Span::new(FileId::synthetic("external.re"), 0, EXTERNAL_SOURCE.len());
@@ -148,7 +149,15 @@ pub fn run_with_config(filename: String, code: String, config: ReboConfig) -> Re
     let parser = Parser::new(include_directory, &arena, lexer, &diagnostics, &mut meta_info);
     let ast = match parser.parse_ast() {
         Ok(ast) => ast,
-        Err(_) => return ReturnValue::ParseError,
+        Err(e) => {
+            match e {
+                parser::Error::UnexpectedEof(span) => diagnostics.error(ErrorCode::UnexpectedEof)
+                    .with_error_label(span, "this expression is not complete")
+                    .emit(),
+                parser::Error::Abort => (),
+            }
+            return ReturnValue::ParseError
+        },
     };
     info!("Parsing took {}μs", time.elapsed().as_micros());
     info!("AST:\n{}\n", ast);

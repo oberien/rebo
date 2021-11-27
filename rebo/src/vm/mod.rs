@@ -152,7 +152,7 @@ impl<'a, 'b, 'i> Vm<'a, 'b, 'i> {
                         ExprFormatStringPart::FmtArg(expr, spec) => {
                             let val = self.eval_expr(expr, depth.next())?;
                             let spec = match spec {
-                                Some((_colon, spec)) => *spec,
+                                Some((_colon, spec, _)) => *spec,
                                 None => Specifier::default(),
                             };
                             let arg = Argument::new(spec, &val).unwrap();
