@@ -21,6 +21,15 @@ impl Option<T> {
             Option::None => panic("tried to unwrap a None value"),
         }
     }
+    fn is_some(self) -> bool {
+        match self {
+            Option::Some(t) => true,
+            Option::None => false,
+        }
+    }
+    fn is_none(self) -> bool {
+        !self.is_some()
+    }
 }
 "#;
     const FILE_NAME: &'static str = FILE_NAME;

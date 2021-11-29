@@ -143,14 +143,7 @@ impl<'a, 'b, 'i> Parser<'a, 'b, 'i> {
 
     pub fn parse_ast(mut self) -> Result<Ast<'a, 'i>, Error> {
         trace!("parse_ast");
-        let body: BlockBody = match self.parse_file_content() {
-            Ok(body) => body,
-            Err(InternalError::Backtrack(span, expected)) => {
-                self.diagnostic_expected(ErrorCode::InvalidExpression, span, &expected);
-                return Err(Error::Abort)
-            },
-            Err(InternalError::Error(e)) => return Err(e),
-        };
+        let body: BlockBody = self.parse_file_content()?;
         // make sure everything parsed during first-pass was consumed and used by the second pass
         assert!(self.pre_parsed.is_empty(), "not everything from first-pass was consumed: {:?}", self.pre_parsed);
         assert!(matches!(self.peek_token(0), Ok(Token::Eof(_))), "not all tokens were consumed: {}", self.lexer.iter().map(|t| format!("    {:?}", t)).join("\n"));
@@ -159,13 +152,20 @@ impl<'a, 'b, 'i> Parser<'a, 'b, 'i> {
             bindings: self.bindings,
         })
     }
-    fn parse_file_content(&mut self) -> Result<BlockBody<'a, 'i>, InternalError> {
+    fn parse_file_content(&mut self) -> Result<BlockBody<'a, 'i>, Error> {
         self.first_pass();
         self.second_pass();
         // add statics to global scope
         self.add_statics();
         // file scope
-        Ok(self.parse(Depth::start())?)
+        match self.parse(Depth::start()) {
+            Ok(body) => Ok(body),
+            Err(InternalError::Backtrack(span, expected)) => {
+                self.diagnostic_expected(ErrorCode::InvalidExpression, span, &expected);
+                Err(Error::Abort)
+            },
+            Err(InternalError::Error(e)) => Err(e),
+        }
     }
 
     fn add_statics(&mut self) {

@@ -1,3 +1,4 @@
+use std::num::IntErrorKind;
 use crate::common::{Value, MetaInfo, FuzzyFloat, DisplayValue};
 use crate as rebo;
 use itertools::Itertools;
@@ -6,6 +7,11 @@ use crate::error_codes::ErrorCode;
 use crate::parser::Expr;
 use typed_arena::Arena;
 use crate::ExecError;
+use rand_chacha::ChaCha12Rng;
+use rand::{Rng, SeedableRng, seq::SliceRandom};
+use std::sync::Mutex;
+use regex::Regex;
+use crate::stdlib::list::List;
 
 mod list;
 mod option;
@@ -21,6 +27,8 @@ bitflags::bitflags! {
 }
 
 pub fn add_to_meta_info<'a, 'i>(stdlib: Stdlib, diagnostics: &'i Diagnostics, arena: &'a Arena<Expr<'a, 'i>>, meta_info: &mut MetaInfo<'a, 'i>) {
+    meta_info.add_external_type::<ParseIntError>(arena, diagnostics);
+
     if stdlib.contains(Stdlib::PRINT) {
         meta_info.add_external_function(arena, diagnostics, print);
     }
@@ -36,6 +44,12 @@ pub fn add_to_meta_info<'a, 'i>(stdlib: Stdlib, diagnostics: &'i Diagnostics, ar
     meta_info.add_external_function(arena, diagnostics, string_from_char);
     meta_info.add_external_function(arena, diagnostics, string_to_lowercase);
     meta_info.add_external_function(arena, diagnostics, string_to_uppercase);
+    meta_info.add_external_function(arena, diagnostics, string_parse_int);
+    meta_info.add_external_function(arena, diagnostics, string_split);
+    meta_info.add_external_function(arena, diagnostics, string_find_matches);
+    meta_info.add_external_function(arena, diagnostics, rng_set_random_seed);
+    meta_info.add_external_function(arena, diagnostics, rng_set_seed);
+    meta_info.add_external_function(arena, diagnostics, rng_gen_int_range);
 
     if stdlib.contains(Stdlib::ASSERT) {
         meta_info.add_external_function(arena, diagnostics, assert);
@@ -136,4 +150,69 @@ fn string_to_lowercase(this: String) -> String {
 #[rebo::function("string::to_uppercase")]
 fn string_to_uppercase(this: String) -> String {
     this.to_uppercase()
+}
+#[derive(rebo::ExternalType)]
+enum ParseIntError {
+    Empty,
+    TooLarge,
+    TooSmall,
+    InvalidDigit,
+}
+#[rebo::function("string::parse_int")]
+fn string_parse_int(this: String) -> Result<u64, ParseIntError> {
+    match this.parse::<u64>() {
+        Ok(res) => Ok(res),
+        Err(e) => match e.kind() {
+            IntErrorKind::Empty => Err(ParseIntError::Empty),
+            IntErrorKind::InvalidDigit => Err(ParseIntError::InvalidDigit),
+            IntErrorKind::PosOverflow => Err(ParseIntError::TooLarge),
+            IntErrorKind::NegOverflow => Err(ParseIntError::TooSmall),
+            _ => unreachable!("unknown error during u64::from_str: {:?}", e),
+        }
+    }
+}
+#[rebo::function("string::split")]
+fn string_split(this: String, pattern: String) -> List<String> {
+    List::new(this.split(&pattern).map(|s| s.to_owned()))
+}
+#[rebo::function(raw("string::find_matches"))]
+fn string_find_matches(this: String, regex: String) -> List<String> {
+    let regex = match Regex::new(&regex) {
+        Ok(regex) => regex,
+        Err(regex::Error::Syntax(msg)) => {
+            vm.diagnostics().error(ErrorCode::InvalidRegex)
+                .with_error_label(expr_span, format!("syntax error: {}", msg))
+                .emit();
+            return Err(ExecError::Panic);
+        }
+        Err(_) => {
+            vm.diagnostics().error(ErrorCode::InvalidRegex)
+                .with_error_label(expr_span, "invalid regex")
+                .emit();
+            return Err(ExecError::Panic);
+        }
+    };
+    List::new(regex.find_iter(&this).map(|m| m.as_str().to_string()))
+}
+
+lazy_static::lazy_static! {
+    static ref RNG: Mutex<ChaCha12Rng> = Mutex::new(ChaCha12Rng::seed_from_u64(0));
+}
+#[rebo::function("Rng::set_random_seed")]
+fn rng_set_random_seed() -> i64 {
+    let seed: i64 = rand::random();
+    *RNG.lock().unwrap() = ChaCha12Rng::seed_from_u64(seed as u64);
+    seed
+}
+#[rebo::function("Rng::set_seed")]
+fn rng_set_seed(seed: i64) {
+    *RNG.lock().unwrap() = ChaCha12Rng::seed_from_u64(seed as u64);
+}
+#[rebo::function("Rng::gen_int_range")]
+fn rng_gen_int_range(from: i64, to: i64) -> i64 {
+    RNG.lock().unwrap().gen_range(from as u64..to as u64) as i64
+}
+#[rebo::function("Rng::shuffle")]
+fn rng_shuffle<T>(list: List<T>) {
+    list.arc.list.lock().borrow_mut().shuffle(&mut *RNG.lock().unwrap())
 }

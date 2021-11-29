@@ -98,7 +98,7 @@ fn map_remove<K, V>(this: Map<K, V>, key: K) -> Option<V> {
 fn map_keys<K, V>(this: Map<K, V>) -> List<K> {
     let this = this.arc.map.lock();
     let this = this.borrow();
-    let keys = this.keys().cloned().collect();
+    let keys = this.keys().cloned();
     List::new(keys)
 }
 
@@ -106,6 +106,6 @@ fn map_keys<K, V>(this: Map<K, V>) -> List<K> {
 fn map_values<K, V>(this: Map<K, V>) -> List<V> {
     let this = this.arc.map.lock();
     let this = this.borrow();
-    let values = this.values().cloned().collect();
+    let values = this.values().cloned();
     List::new(values)
 }

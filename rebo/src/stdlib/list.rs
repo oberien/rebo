@@ -8,16 +8,17 @@ use parking_lot::ReentrantMutex;
 use std::sync::Arc;
 use std::cell::RefCell;
 use std::marker::PhantomData;
-use crate::{CowVec, ExternalType, FileId, FromValue, IntoValue, Typed};
+use itertools::Itertools;
+use crate::{CowVec, DisplayValue, ExternalType, FileId, FromValue, IntoValue, Typed};
 
 pub struct List<T> {
-    arc: ListArc,
+    pub arc: ListArc,
     _marker: PhantomData<T>,
 }
-impl<T> List<T> {
-    pub fn new(vec: Vec<Value>) -> List<T> {
+impl<T: IntoValue> List<T> {
+    pub fn new(values: impl IntoIterator<Item = T>) -> List<T> {
         List {
-            arc: ListArc { list: Arc::new(ReentrantMutex::new(RefCell::new(vec))) },
+            arc: ListArc { list: Arc::new(ReentrantMutex::new(RefCell::new(values.into_iter().map(IntoValue::into_value).collect()))) },
             _marker: PhantomData,
         }
     }
@@ -59,6 +60,10 @@ pub fn add_list<'a, 'i>(diagnostics: &'i Diagnostics, arena: &'a Arena<Expr<'a, 
     meta_info.add_external_function(arena, diagnostics, list_len);
     meta_info.add_external_function(arena, diagnostics, list_pop);
     meta_info.add_external_function(arena, diagnostics, list_last);
+    meta_info.add_external_function(arena, diagnostics, list_contains);
+    meta_info.add_external_function(arena, diagnostics, list_remove);
+    meta_info.add_external_function(arena, diagnostics, list_swap_remove);
+    meta_info.add_external_function(arena, diagnostics, list_join);
 }
 
 #[rebo::function("List::new")]
@@ -68,7 +73,7 @@ fn list_new<T>() -> List<T> {
 
 #[rebo::function(raw("List::of"))]
 fn list_of<T>(..: T) -> List<T> {
-    List::new(args.collect())
+    List::new(args)
 }
 
 #[rebo::function("List::push")]
@@ -81,10 +86,7 @@ fn list_push<T>(this: List<T>, value: T) {
 fn list_get<T>(this: List<T>, index: i64) -> Option<T> {
     let this = this.arc.list.lock();
     let this = this.borrow();
-    match this.get(index as usize).cloned() {
-        Some(v) => Some(v),
-        None => None,
-    }
+    this.get(index as usize).cloned()
 }
 #[rebo::function("List::pop")]
 fn list_pop<T>(this: List<T>) -> Option<T> {
@@ -97,4 +99,32 @@ fn list_last<T>(this: List<T>) -> Option<T> {
 #[rebo::function("List::len")]
 fn list_len<T>(this: List<T>) -> usize {
     this.arc.list.lock().borrow().len()
+}
+#[rebo::function("List::contains")]
+fn list_contains<T>(this: List<T>, item: T) -> bool {
+    this.arc.list.lock().borrow().contains(&item)
+}
+#[rebo::function("List::remove")]
+fn list_remove<T>(this: List<T>, index: i64) -> Option<T> {
+    let this = this.arc.list.lock();
+    let mut this = this.borrow_mut();
+    if this.get(index as usize).is_some() {
+        Some(this.remove(index as usize))
+    } else {
+        None
+    }
+}
+#[rebo::function("List::swap_remove")]
+fn list_swap_remove<T>(this: List<T>, index: i64) -> Option<T> {
+    let this = this.arc.list.lock();
+    let mut this = this.borrow_mut();
+    if this.get(index as usize).is_some() {
+        Some(this.swap_remove(index as usize))
+    } else {
+        None
+    }
+}
+#[rebo::function("List::join")]
+fn list_join<T>(this: List<T>, sep: String) -> String {
+    this.arc.list.lock().borrow().iter().map(DisplayValue).join(&sep)
 }

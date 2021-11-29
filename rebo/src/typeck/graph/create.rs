@@ -754,7 +754,9 @@ impl<'i> Graph<'i> {
                 let var_node = Node::type_var(name.binding.ident.span);
                 self.add_node(var_node);
                 if let Some(name) = meta_info.function_bindings.get(&name.binding) {
-                    self.add_reduce_constraint(var_node, var_node, vec![ResolvableSpecificType::Function(Some(meta_info.function_types[name.as_str()].clone()))]);
+                    if let Some(fun) = meta_info.function_types.get(name.as_str()) {
+                        self.add_reduce_constraint(var_node, var_node, vec![ResolvableSpecificType::Function(Some(fun.clone()))]);
+                    }
                 }
 
                 let idx = CALL_INDEX.fetch_add(1, Ordering::SeqCst);
