@@ -522,6 +522,7 @@ checksum = "f497285884f3fcff424ffc933e56d7cbca511def0c9831a7f9b5f6153e3cc89b"
 [[package]]
 name = "rt-format"
 version = "0.1.1"
+source = "git+https://github.com/oberien/rt-format#1ab4cb2675c2ab280a44fbbf096291408cd05623"
 dependencies = [
  "lazy_static",
  "regex",

@@ -9,3 +9,6 @@ default-members = [
     "rebo",
     "rebo_derive",
 ]
+
+[patch.crates-io]
+rt-format = { git = "https://github.com/oberien/rt-format" }
