@@ -144,7 +144,12 @@ pub fn run_with_config(filename: String, code: String, config: ReboConfig) -> Re
     info!("TOKENS:\n{}\n", lexer.iter().map(|token| token.to_string()).join(""));
 
     // parse
-    let include_directory = include_directory.unwrap_or_else(|| std::env::current_dir().expect("can't get current working directory"));
+    let include_directory = include_directory.unwrap_or_else(|| {
+        std::env::current_dir()
+            .expect("can't get current working directory")
+            .canonicalize()
+            .expect("can't canonicalize current working directory")
+    });
     let time = Instant::now();
     let parser = Parser::new(include_directory, &arena, lexer, &diagnostics, &mut meta_info);
     let ast = match parser.parse_ast() {
