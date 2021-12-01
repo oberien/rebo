@@ -334,10 +334,14 @@ pub fn lex_double_quoted_string<'i>(diagnostics: &Diagnostics, file: FileId, s: 
 pub fn lex_string_char(s: &str, index: usize, escaped: bool) -> Option<(char, usize)> {
     let next = s[index..].chars().next()?;
 
-    match next {
-        '\\' if !escaped => lex_string_char(s, index + 1, true),
-        c => Some((c, index + c.len_utf8()))
-    }
+    let c = match next {
+        '\\' if !escaped => return lex_string_char(s, index + 1, true),
+        'n' if escaped => '\n',
+        'r' if escaped => '\r',
+        't' if escaped => '\t',
+        c => c,
+    };
+    Some((c, index + c.len_utf8()))
 }
 
 pub fn lex_format_string<'i>(diagnostics: &Diagnostics, file: FileId, s: &'i str, mut index: usize) -> Result<Token<'i>, Error> {
