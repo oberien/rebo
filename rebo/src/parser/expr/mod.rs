@@ -5,7 +5,7 @@ pub use pattern::{ExprPattern, ExprPatternTyped, ExprPatternUntyped, ExprMatchPa
 use std::fmt::{self, Write, Display, Formatter, Debug};
 use derive_more::Display;
 use crate::parser::scope::BindingId;
-use crate::util::PadFmt;
+use crate::util::{PadFmt, ResolveFileError};
 use crate::lexer::{TokenOpenParen, TokenCloseParen, TokenIdent, TokenInteger, TokenFloat, TokenBool, TokenDqString, TokenType, TokenStringType, TokenIntType, TokenFloatType, TokenBoolType, Token, TokenLet, TokenColon, TokenMut, TokenAssign, TokenOpenCurly, TokenCloseCurly, TokenComma, TokenArrow, TokenFn, TokenBang, TokenPlus, TokenMinus, TokenStar, TokenSlash, TokenDoubleAmp, TokenDoublePipe, TokenLessThan, TokenLessEquals, TokenEquals, TokenNotEquals, TokenGreaterEquals, TokenGreaterThan, TokenStruct, TokenDot, TokenIf, TokenElse, TokenWhile, TokenFormatString, TokenFormatStringPart, Lexer, TokenMatch, TokenFatArrow, TokenEnum, TokenDoubleColon, TokenImpl, TokenFor, TokenIn, TokenStatic, TokenInclude, TokenDotDotDot};
 use crate::parser::{Parse, InternalError, Parser, Expected};
 use crate::error_codes::ErrorCode;
@@ -17,6 +17,7 @@ use itertools::{Itertools, Either};
 use crate::common::{Depth, UserType};
 use indexmap::set::IndexSet;
 use rt_format::{Format, Specifier};
+use crate::util;
 
 // make trace! here log as if this still was the parser module
 macro_rules! module_path {
@@ -432,25 +433,25 @@ impl<'a, 'i> Expr<'a, 'i> {
                     open: TokenOpenParen { span: Span::new(include.include_token.span.file, include.include_token.span.start, include.file.span.end) },
                     close: TokenCloseParen { span: Span::new(include.file.span.file, include.file.span.end, include.file.span.end) },
                 }))));
-                let path = parser.include_directory.join(&include.file.string);
-                let path = match path.canonicalize() {
+
+                let path = match util::try_resolve_file(&parser.include_directory, &include.file.string) {
                     Ok(path) => path,
-                    Err(e) => {
+                    Err(ResolveFileError::Canonicalize(path, e)) => {
                         parser.diagnostics.error(ErrorCode::ErrorReadingIncludedFile)
                             .with_error_label(include.span(), format!("error canonicalizing `{}`", path.display()))
                             .with_error_label(include.span(), e.to_string())
                             .emit();
                         return err;
                     }
+                    Err(ResolveFileError::StartsWith(path)) => {
+                        parser.diagnostics.error(ErrorCode::ErrorReadingIncludedFile)
+                            .with_error_label(include.span(), "the file in not in the include directory")
+                            .with_info_label(include.span(), format!("this file resolved to {}", path.display()))
+                            .with_error_label(include.span(), format!("included files must be in {}", parser.include_directory.display()))
+                            .emit();
+                        return err;
+                    }
                 };
-                if !path.starts_with(&parser.include_directory) {
-                    parser.diagnostics.error(ErrorCode::ErrorReadingIncludedFile)
-                        .with_error_label(include.span(), "the file in not in the include directory")
-                        .with_error_label(include.span(), format!("included files must be in {}", parser.include_directory.display()))
-                        .emit();
-                    return err;
-                }
-
                 let code = match ::std::fs::read_to_string(&path) {
                     Ok(code) => code,
                     Err(e) => {

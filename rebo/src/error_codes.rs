@@ -71,6 +71,7 @@ pub enum ErrorCode {
     Panic,
     AssertionFailed,
     InvalidRegex,
+    FileError,
 }
 use ErrorCode::*;
 
@@ -148,6 +149,7 @@ impl diagnostic::ErrorCode for ErrorCode {
             Panic => "9999",
             AssertionFailed => "9998",
             InvalidRegex => "9997",
+            FileError => "9996",
         }.to_string()
     }
 
@@ -224,6 +226,7 @@ impl diagnostic::ErrorCode for ErrorCode {
             Panic => "explicit panic",
             AssertionFailed => "assertion failed",
             InvalidRegex => "invalid regex",
+            FileError => "access denied to file for security reasons",
         }.to_string()
     }
 }

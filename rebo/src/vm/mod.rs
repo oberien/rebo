@@ -1,4 +1,5 @@
 use std::cell::RefCell;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use parking_lot::ReentrantMutex;
@@ -20,6 +21,7 @@ pub struct Vm<'a, 'b, 'i> {
     diagnostics: &'i Diagnostics,
     scopes: Scopes,
     meta_info: &'b MetaInfo<'a, 'i>,
+    include_directory: PathBuf,
 }
 
 #[derive(Debug)]
@@ -37,6 +39,10 @@ impl<'a, 'b, 'vm, 'i> VmContext<'a, 'b, 'vm, 'i> {
         self.vm.diagnostics
     }
 
+    pub fn include_directory(&self) -> &Path {
+        &self.vm.include_directory
+    }
+
     pub fn call_required_rebo_function<T: RequiredReboFunction>(&mut self, args: Vec<Value>) -> Result<Value, ExecError> {
         if !self.vm.meta_info.required_rebo_functions.contains(&RequiredReboFunctionStruct::from_required_rebo_function::<T>()) {
             panic!("required rebo function `{}` wasn't registered via `ReboConfig`", T::NAME);
@@ -46,7 +52,7 @@ impl<'a, 'b, 'vm, 'i> VmContext<'a, 'b, 'vm, 'i> {
 }
 
 impl<'a, 'b, 'i> Vm<'a, 'b, 'i> {
-    pub fn new(diagnostics: &'i Diagnostics, meta_info: &'b MetaInfo<'a, 'i>, interrupt_interval: u32, interrupt_function: fn(&mut VmContext) -> Result<(), ExecError>) -> Self {
+    pub fn new(include_directory: PathBuf, diagnostics: &'i Diagnostics, meta_info: &'b MetaInfo<'a, 'i>, interrupt_interval: u32, interrupt_function: fn(&mut VmContext) -> Result<(), ExecError>) -> Self {
         let scopes = Scopes::new();
         let root_scope = Scope::new();
         // we don't want to drop the root-scope, it should exist at all times
@@ -58,6 +64,7 @@ impl<'a, 'b, 'i> Vm<'a, 'b, 'i> {
             diagnostics,
             scopes,
             meta_info,
+            include_directory,
         }
     }
 

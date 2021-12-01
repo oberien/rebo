@@ -151,7 +151,7 @@ pub fn run_with_config(filename: String, code: String, config: ReboConfig) -> Re
             .expect("can't canonicalize current working directory")
     });
     let time = Instant::now();
-    let parser = Parser::new(include_directory, &arena, lexer, &diagnostics, &mut meta_info);
+    let parser = Parser::new(include_directory.clone(), &arena, lexer, &diagnostics, &mut meta_info);
     let ast = match parser.parse_ast() {
         Ok(ast) => ast,
         Err(e) => {
@@ -191,7 +191,7 @@ pub fn run_with_config(filename: String, code: String, config: ReboConfig) -> Re
 
     // run
     let time = Instant::now();
-    let vm = Vm::new(&diagnostics, &meta_info, interrupt_interval, interrupt_function);
+    let vm = Vm::new(include_directory, &diagnostics, &meta_info, interrupt_interval, interrupt_function);
     let result = vm.run(&exprs);
     info!("Execution took {}μs", time.elapsed().as_micros());
     println!("RESULT: {:?}", result);

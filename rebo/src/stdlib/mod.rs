@@ -1,3 +1,4 @@
+use std::io::ErrorKind;
 use std::num::IntErrorKind;
 use crate::common::{Value, MetaInfo, FuzzyFloat, DisplayValue};
 use crate as rebo;
@@ -6,12 +7,13 @@ use diagnostic::Diagnostics;
 use crate::error_codes::ErrorCode;
 use crate::parser::Expr;
 use typed_arena::Arena;
-use crate::ExecError;
+use crate::{ExecError, util};
 use rand_chacha::ChaCha12Rng;
 use rand::{Rng, SeedableRng, seq::SliceRandom};
 use std::sync::Mutex;
 use regex::Regex;
 use crate::stdlib::list::List;
+use crate::util::ResolveFileError;
 
 mod list;
 mod option;
@@ -28,6 +30,7 @@ bitflags::bitflags! {
 
 pub fn add_to_meta_info<'a, 'i>(stdlib: Stdlib, diagnostics: &'i Diagnostics, arena: &'a Arena<Expr<'a, 'i>>, meta_info: &mut MetaInfo<'a, 'i>) {
     meta_info.add_external_type::<ParseIntError>(arena, diagnostics);
+    meta_info.add_external_type::<FileError>(arena, diagnostics);
 
     if stdlib.contains(Stdlib::PRINT) {
         meta_info.add_external_function(arena, diagnostics, print);
@@ -50,6 +53,7 @@ pub fn add_to_meta_info<'a, 'i>(stdlib: Stdlib, diagnostics: &'i Diagnostics, ar
     meta_info.add_external_function(arena, diagnostics, rng_set_random_seed);
     meta_info.add_external_function(arena, diagnostics, rng_set_seed);
     meta_info.add_external_function(arena, diagnostics, rng_gen_int_range);
+    meta_info.add_external_function(arena, diagnostics, file_read_to_string);
 
     if stdlib.contains(Stdlib::ASSERT) {
         meta_info.add_external_function(arena, diagnostics, assert);
@@ -195,6 +199,7 @@ fn string_find_matches(this: String, regex: String) -> List<String> {
     List::new(regex.find_iter(&this).map(|m| m.as_str().to_string()))
 }
 
+// RNG
 lazy_static::lazy_static! {
     static ref RNG: Mutex<ChaCha12Rng> = Mutex::new(ChaCha12Rng::seed_from_u64(0));
 }
@@ -215,4 +220,39 @@ fn rng_gen_int_range(from: i64, to: i64) -> i64 {
 #[rebo::function("Rng::shuffle")]
 fn rng_shuffle<T>(list: List<T>) {
     list.arc.list.lock().borrow_mut().shuffle(&mut *RNG.lock().unwrap())
+}
+
+// File
+#[derive(rebo::ExternalType)]
+enum FileError {
+    NotFound,
+    AccessError,
+}
+#[rebo::function(raw("File::read_to_string"))]
+fn file_read_to_string(name: String) -> Result<String, FileError> {
+    (|| {
+        let path = match util::try_resolve_file(vm.include_directory(), name) {
+            Ok(path) => path,
+            Err(ResolveFileError::Canonicalize(path, e)) => {
+                vm.diagnostics().error(ErrorCode::FileError)
+                    .with_error_label(expr_span, format!("error canonicalizing `{}`", path.display()))
+                    .with_error_label(expr_span, e.to_string())
+                    .emit();
+                return Err(ExecError::Panic);
+            }
+            Err(ResolveFileError::StartsWith(path)) => {
+                vm.diagnostics().error(ErrorCode::FileError)
+                    .with_error_label(expr_span, "the file in not in the include directory")
+                    .with_info_label(expr_span, format!("this file resolved to {}", path.display()))
+                    .with_error_label(expr_span, format!("included files must be in {}", vm.include_directory().display()))
+                    .emit();
+                return Err(ExecError::Panic);
+            }
+        };
+        match std::fs::read_to_string(path) {
+            Ok(content) => Ok(Ok(content)),
+            Err(e) if e.kind() == ErrorKind::NotFound => Ok(Err(FileError::NotFound)),
+            Err(_) => Ok(Err(FileError::AccessError)),
+        }
+    })()?
 }

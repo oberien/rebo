@@ -207,6 +207,7 @@ static CURRENT_UI = List::new();
 print(include "test-include.re");
 print(MY_INCLUDED_STATIC);
 print(included_fn());
+print(f"{File::read_to_string("test-include.re"):?}");
 
 // functions as first-class citizens
 let new: fn<T>() -> List<T> = List::new;

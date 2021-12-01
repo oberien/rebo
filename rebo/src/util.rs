@@ -1,5 +1,6 @@
 use std::fmt;
 use std::ops::Deref;
+use std::path::{Path, PathBuf};
 
 /// Workaround for <https://github.com/rust-lang/rust/issues/89940>
 #[derive(Debug, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
@@ -76,4 +77,22 @@ pub fn similar_name<'i, T: AsRef<str> + 'i + ?Sized>(ident: &str, others: impl I
         // .filter(|&(dist, _)| dist <= 3)
         .min_by_key(|&(dist, _)| dist)
         .map(|(_, s)| s)
+}
+
+pub enum ResolveFileError {
+    Canonicalize(PathBuf, std::io::Error),
+    StartsWith(PathBuf),
+}
+pub fn try_resolve_file<P: AsRef<Path>, P2: AsRef<Path>>(include_directory: P, file: P2) -> Result<PathBuf, ResolveFileError> {
+    let path = include_directory.as_ref().join(file.as_ref());
+    let path = match path.canonicalize() {
+        Ok(path) => path,
+        Err(e) => {
+            return Err(ResolveFileError::Canonicalize(path, e));
+        }
+    };
+    if !path.starts_with(include_directory.as_ref()) {
+        return Err(ResolveFileError::StartsWith(path));
+    }
+    Ok(path)
 }
