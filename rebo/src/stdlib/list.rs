@@ -9,8 +9,10 @@ use std::sync::Arc;
 use std::cell::RefCell;
 use std::marker::PhantomData;
 use itertools::Itertools;
+use rebo::stdlib::Sliceable;
 use crate::{CowVec, DisplayValue, ExternalType, FileId, FromValue, IntoValue, Typed};
 
+#[derive(Debug)]
 pub struct List<T> {
     pub arc: ListArc,
     _marker: PhantomData<T>,
@@ -19,6 +21,14 @@ impl<T: IntoValue> List<T> {
     pub fn new(values: impl IntoIterator<Item = T>) -> List<T> {
         List {
             arc: ListArc { list: Arc::new(ReentrantMutex::new(RefCell::new(values.into_iter().map(IntoValue::into_value).collect()))) },
+            _marker: PhantomData,
+        }
+    }
+}
+impl<T: Clone> Clone for List<T> {
+    fn clone(&self) -> Self {
+        List {
+            arc: ListArc { list: Arc::new(ReentrantMutex::new(self.arc.list.lock().clone())) },
             _marker: PhantomData,
         }
     }
@@ -64,6 +74,7 @@ pub fn add_list<'a, 'i>(diagnostics: &'i Diagnostics, arena: &'a Arena<Expr<'a, 
     meta_info.add_external_function(arena, diagnostics, list_remove);
     meta_info.add_external_function(arena, diagnostics, list_swap_remove);
     meta_info.add_external_function(arena, diagnostics, list_join);
+    meta_info.add_external_function(arena, diagnostics, list_slice);
 }
 
 #[rebo::function("List::new")]
@@ -127,4 +138,14 @@ fn list_swap_remove<T>(this: List<T>, index: i64) -> Option<T> {
 #[rebo::function("List::join")]
 fn list_join<T>(this: List<T>, sep: String) -> String {
     this.arc.list.lock().borrow().iter().map(DisplayValue).join(&sep)
+}
+impl<T> Sliceable for List<T> {
+    fn len(&self) -> usize { self.arc.list.lock().borrow().len() }
+    fn truncate(&mut self, new_len: usize) { self.arc.list.lock().borrow_mut().truncate(new_len) }
+    fn remove_start(&mut self, until: usize) { self.arc.list.lock().borrow_mut().drain(..until); }
+    fn name() -> &'static str { "List" }
+}
+#[rebo::function(raw("List::slice"))]
+fn list_slice<T>(this: List<T>, start: i64, ..: i64) -> List<T> {
+    this.clone().slice(vm, expr_span, start, args)?
 }

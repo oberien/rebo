@@ -3,7 +3,7 @@ use std::num::IntErrorKind;
 use crate::common::{Value, MetaInfo, FuzzyFloat, DisplayValue};
 use crate as rebo;
 use itertools::Itertools;
-use diagnostic::Diagnostics;
+use diagnostic::{Diagnostics, Span};
 use crate::error_codes::ErrorCode;
 use crate::parser::Expr;
 use typed_arena::Arena;
@@ -12,6 +12,7 @@ use rand_chacha::ChaCha12Rng;
 use rand::{Rng, SeedableRng, seq::SliceRandom};
 use std::sync::Mutex;
 use regex::Regex;
+use rebo::VmContext;
 use crate::stdlib::list::List;
 use crate::util::ResolveFileError;
 
@@ -118,30 +119,45 @@ fn panic(message: String) -> ! {
         .emit();
     Err(ExecError::Panic)
 }
-#[rebo::function(raw("string::slice"))]
-fn string_slice(mut this: String, start: i64, ..: i64) -> String {
-    let end = args.next().map(|val| val.expect_int("TypedVarargs is broken as fuck"));
-    if args.next().is_some() {
-        vm.diagnostics().error(ErrorCode::Panic)
-            .with_error_label(expr_span, "string::slice must be called with one or two indices")
-            .emit();
-        return Err(ExecError::Panic);
+trait Sliceable: Sized {
+    fn len(&self) -> usize;
+    fn truncate(&mut self, new_len: usize);
+    fn remove_start(&mut self, until: usize);
+    fn name() -> &'static str;
+    fn slice(mut self, vm: &VmContext, expr_span: Span, start: i64, mut args: impl Iterator<Item = Value>) -> Result<Self, ExecError> {
+        let end = args.next().map(|val| val.expect_int("TypedVarargs is broken as fuck"));
+        if args.next().is_some() {
+            vm.diagnostics().error(ErrorCode::Panic)
+                .with_error_label(expr_span, format!("{}::slice must be called with one or two indices", Self::name()))
+                .emit();
+            return Err(ExecError::Panic);
+        }
+
+        let len = self.len() as i64;
+        let start = if start < 0 { len + start } else { start };
+        let start = start.max(0) as usize;
+        let start = start.min(self.len());
+
+        let end = end.map(|end| {
+            let end = if end < 0 { len + end } else { end };
+            let end = end.max(0) as usize;
+            end.min(self.len())
+        }).unwrap_or(self.len());
+
+        self.truncate(end);
+        self.remove_start(start);
+        Ok(self)
     }
-
-    let len = this.len() as i64;
-    let start = if start < 0 { len + start } else { start };
-    let start = start.max(0) as usize;
-    let start = start.min(this.len());
-
-    let end = end.map(|end| {
-        let end = if end < 0 { len + end } else { end };
-        let end = end.max(0) as usize;
-        end.min(this.len())
-    }).unwrap_or(this.len());
-
-    this.truncate(end);
-    this.drain(..start);
-    this
+}
+impl Sliceable for String {
+    fn len(&self) -> usize { self.len() }
+    fn truncate(&mut self, new_len: usize) { self.truncate(new_len) }
+    fn remove_start(&mut self, until: usize) { self.drain(..until); }
+    fn name() -> &'static str { "string" }
+}
+#[rebo::function(raw("string::slice"))]
+fn string_slice(this: String, start: i64, ..: i64) -> String {
+    this.slice(vm, expr_span, start, args)?
 }
 #[rebo::function("string::from_char")]
 fn string_from_char(chr: u8) -> String {
