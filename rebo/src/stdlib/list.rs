@@ -67,6 +67,7 @@ pub fn add_list<'a, 'i>(diagnostics: &'i Diagnostics, arena: &'a Arena<Expr<'a, 
     meta_info.add_external_function(arena, diagnostics, list_of);
     meta_info.add_external_function(arena, diagnostics, list_push);
     meta_info.add_external_function(arena, diagnostics, list_get);
+    meta_info.add_external_function(arena, diagnostics, list_set);
     meta_info.add_external_function(arena, diagnostics, list_len);
     meta_info.add_external_function(arena, diagnostics, list_pop);
     meta_info.add_external_function(arena, diagnostics, list_last);
@@ -98,6 +99,17 @@ fn list_get<T>(this: List<T>, index: i64) -> Option<T> {
     let this = this.arc.list.lock();
     let this = this.borrow();
     this.get(index as usize).cloned()
+}
+#[rebo::function("List::set")]
+fn list_set<T>(this: List<T>, index: i64, value: T) -> Option<T> {
+    let this = this.arc.list.lock();
+    let mut this = this.borrow_mut();
+    if this.get(index as usize).is_some() {
+        this[index as usize] = value.clone();
+        Some(value)
+    } else {
+        None
+    }
 }
 #[rebo::function("List::pop")]
 fn list_pop<T>(this: List<T>) -> Option<T> {
