@@ -96,6 +96,9 @@ fn fib_iter(mut i: int) -> int {
 print(fib(10));
 print(fib_iter(90));
 
+// string lengths
+let s = "uiae";
+print(s.len_utf8(), s.len_utf16(), s.len_utf32(), s.len_grapheme_clusters(), s.len_legacy_grapheme_clusters());
 // format strings
 let foo = 4;
 print(f"{foo * 10 + 2} is the answer");

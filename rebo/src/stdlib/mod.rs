@@ -12,6 +12,7 @@ use rand_chacha::ChaCha12Rng;
 use rand::{Rng, SeedableRng, seq::SliceRandom};
 use std::sync::Mutex;
 use regex::Regex;
+use unicode_segmentation::UnicodeSegmentation;
 use rebo::VmContext;
 use crate::stdlib::list::List;
 use crate::util::ResolveFileError;
@@ -45,6 +46,11 @@ pub fn add_to_meta_info<'a, 'i>(stdlib: Stdlib, diagnostics: &'i Diagnostics, ar
     meta_info.add_external_function(arena, diagnostics, float_round);
     meta_info.add_external_function(arena, diagnostics, float_sqrt);
     meta_info.add_external_function(arena, diagnostics, string_slice);
+    meta_info.add_external_function(arena, diagnostics, string_len_utf8);
+    meta_info.add_external_function(arena, diagnostics, string_len_utf16);
+    meta_info.add_external_function(arena, diagnostics, string_len_utf32);
+    meta_info.add_external_function(arena, diagnostics, string_len_grapheme_clusters);
+    meta_info.add_external_function(arena, diagnostics, string_len_legacy_grapheme_clusters);
     meta_info.add_external_function(arena, diagnostics, string_from_char);
     meta_info.add_external_function(arena, diagnostics, string_to_lowercase);
     meta_info.add_external_function(arena, diagnostics, string_to_uppercase);
@@ -158,6 +164,26 @@ impl Sliceable for String {
 #[rebo::function(raw("string::slice"))]
 fn string_slice(this: String, start: i64, ..: i64) -> String {
     this.slice(vm, expr_span, start, args)?
+}
+#[rebo::function(raw("string::len_utf8"))]
+fn string_len_utf8(this: String) -> usize {
+    this.len()
+}
+#[rebo::function(raw("string::len_utf16"))]
+fn string_len_utf16(this: String) -> usize {
+    this.encode_utf16().count()
+}
+#[rebo::function(raw("string::len_utf32"))]
+fn string_len_utf32(this: String) -> usize {
+    this.chars().count()
+}
+#[rebo::function(raw("string::len_grapheme_clusters"))]
+fn string_len_grapheme_clusters(this: String) -> usize {
+    this.graphemes(true).count()
+}
+#[rebo::function(raw("string::len_legacy_grapheme_clusters"))]
+fn string_len_legacy_grapheme_clusters(this: String) -> usize {
+    this.graphemes(false).count()
 }
 #[rebo::function("string::from_char")]
 fn string_from_char(chr: u8) -> String {
