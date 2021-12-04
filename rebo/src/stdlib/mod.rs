@@ -217,14 +217,10 @@ fn string_parse_int(this: String) -> Result<u64, ParseIntError> {
         }
     }
 }
-#[rebo::function("string::split")]
-fn string_split(this: String, pattern: String) -> List<String> {
-    List::new(this.split(&pattern).map(|s| s.to_owned()))
-}
-#[rebo::function(raw("string::find_matches"))]
-fn string_find_matches(this: String, regex: String) -> List<String> {
-    let regex = match Regex::new(&regex) {
-        Ok(regex) => regex,
+
+fn compile_regex(regex: String, vm: &VmContext, expr_span: Span) -> Result<Regex, ExecError> {
+    match Regex::new(&regex) {
+        Ok(regex) => Ok(regex),
         Err(regex::Error::Syntax(msg)) => {
             vm.diagnostics().error(ErrorCode::InvalidRegex)
                 .with_error_label(expr_span, format!("syntax error: {}", msg))
@@ -237,7 +233,16 @@ fn string_find_matches(this: String, regex: String) -> List<String> {
                 .emit();
             return Err(ExecError::Panic);
         }
-    };
+    }
+}
+#[rebo::function(raw("string::split"))]
+fn string_split(this: String, regex: String) -> List<String> {
+    let regex = compile_regex(regex, vm, expr_span)?;
+    List::new(regex.split(&this).map(|s| s.to_owned()))
+}
+#[rebo::function(raw("string::find_matches"))]
+fn string_find_matches(this: String, regex: String) -> List<String> {
+    let regex = compile_regex(regex, vm, expr_span)?;
     List::new(regex.find_iter(&this).map(|m| m.as_str().to_string()))
 }
 
