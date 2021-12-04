@@ -1,7 +1,7 @@
 print(foo(10, 20));
 fn foo(mut x: int, mut y: int) -> int {
-    x = x + 10;
-    y = y + 20;
+    x += 10;
+    y += 20;
     x + y
 }
 print(1 + 2 * 3 == 7);
@@ -9,7 +9,7 @@ print(1 + 2 * 3 * 4);
 let a = 0;
 let mut a = a + 1;
 let mut c = add_one(a);
-c = c + {
+c += {
     let c = 1337;
     c + 42
 };
@@ -63,7 +63,7 @@ print(if true { 1337 } else { panic("F") } + 5);
 // while
 let mut i = 0;
 while i < 3 {
-    i = i + 1;
+    i += 1;
 }
 print(i);
 
@@ -83,12 +83,12 @@ fn fib_iter(mut i: int) -> int {
     } else {
         let mut a = 0;
         let mut b = 1;
-        i = i - 2;
+        i -= 2;
         while i >= 0 {
             let temp = b;
-            b = b + a;
+            b += a;
             a = temp;
-            i = i - 1;
+            i -= 1;
         }
         b
     }

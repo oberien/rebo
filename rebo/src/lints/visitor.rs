@@ -1,4 +1,4 @@
-use crate::parser::{ExprLiteral, ExprFormatString, ExprBind, ExprAssign, ExprBoolNot, ExprAdd, ExprSub, ExprMul, ExprDiv, ExprBoolAnd, ExprBoolOr, ExprLessThan, ExprLessEquals, ExprEquals, ExprNotEquals, ExprGreaterEquals, ExprGreaterThan, ExprBlock, ExprVariable, ExprParenthesized, ExprIfElse, ExprMatch, ExprWhile, ExprFunctionCall, ExprFunctionDefinition, ExprStructDefinition, ExprStructInitialization, ExprImplBlock, Expr, ExprFormatStringPart, ExprEnumDefinition, ExprEnumInitialization, ExprAccess, FieldOrMethod, ExprFor, ExprStatic, ExprNeg};
+use crate::parser::{ExprLiteral, ExprFormatString, ExprBind, ExprAssign, ExprBoolNot, ExprAdd, ExprSub, ExprMul, ExprDiv, ExprBoolAnd, ExprBoolOr, ExprLessThan, ExprLessEquals, ExprEquals, ExprNotEquals, ExprGreaterEquals, ExprGreaterThan, ExprBlock, ExprVariable, ExprParenthesized, ExprIfElse, ExprMatch, ExprWhile, ExprFunctionCall, ExprFunctionDefinition, ExprStructDefinition, ExprStructInitialization, ExprImplBlock, Expr, ExprFormatStringPart, ExprEnumDefinition, ExprEnumInitialization, ExprAccess, FieldOrMethod, ExprFor, ExprStatic, ExprNeg, ExprAddAssign, ExprSubAssign, ExprMulAssign, ExprDivAssign, ExprBoolAndAssign, ExprBoolOrAssign};
 use diagnostic::Diagnostics;
 use crate::common::MetaInfo;
 
@@ -22,6 +22,12 @@ pub trait Visitor {
     fn visit_div(&self, _: &Diagnostics, _: &MetaInfo, _: &ExprDiv) {}
     fn visit_bool_and(&self, _: &Diagnostics, _: &MetaInfo, _: &ExprBoolAnd) {}
     fn visit_bool_or(&self, _: &Diagnostics, _: &MetaInfo, _: &ExprBoolOr) {}
+    fn visit_add_assign(&self, _: &Diagnostics, _: &MetaInfo, _: &ExprAddAssign) {}
+    fn visit_sub_assign(&self, _: &Diagnostics, _: &MetaInfo, _: &ExprSubAssign) {}
+    fn visit_mul_assign(&self, _: &Diagnostics, _: &MetaInfo, _: &ExprMulAssign) {}
+    fn visit_div_assign(&self, _: &Diagnostics, _: &MetaInfo, _: &ExprDivAssign) {}
+    fn visit_bool_and_assign(&self, _: &Diagnostics, _: &MetaInfo, _: &ExprBoolAndAssign) {}
+    fn visit_bool_or_assign(&self, _: &Diagnostics, _: &MetaInfo, _: &ExprBoolOrAssign) {}
     fn visit_less_than(&self, _: &Diagnostics, _: &MetaInfo, _: &ExprLessThan) {}
     fn visit_less_equals(&self, _: &Diagnostics, _: &MetaInfo, _: &ExprLessEquals) {}
     fn visit_equals(&self, _: &Diagnostics, _: &MetaInfo, _: &ExprEquals) {}
@@ -136,6 +142,30 @@ impl<'a, 'b, 'i, 'v> VisitorDriver<'a, 'b, 'i, 'v> {
                 visit!(self, visit_bool_or, bool_or);
                 self.visit_expr(bool_or.a);
                 self.visit_expr(bool_or.b);
+            }
+            Expr::AddAssign(add) => {
+                visit!(self, visit_add_assign, add);
+                self.visit_expr(add.expr);
+            }
+            Expr::SubAssign(sub) => {
+                visit!(self, visit_sub_assign, sub);
+                self.visit_expr(sub.expr);
+            }
+            Expr::MulAssign(mul) => {
+                visit!(self, visit_mul_assign, mul);
+                self.visit_expr(mul.expr);
+            }
+            Expr::DivAssign(div) => {
+                visit!(self, visit_div_assign, div);
+                self.visit_expr(div.expr);
+            }
+            Expr::BoolAndAssign(bool_and) => {
+                visit!(self, visit_bool_and_assign, bool_and);
+                self.visit_expr(bool_and.expr);
+            }
+            Expr::BoolOrAssign(bool_or) => {
+                visit!(self, visit_bool_or_assign, bool_or);
+                self.visit_expr(bool_or.expr);
             }
             Expr::LessThan(less_than) => {
                 visit!(self, visit_less_than, less_than);

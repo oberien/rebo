@@ -6,7 +6,7 @@ use parking_lot::ReentrantMutex;
 
 use crate::common::{Depth, Enum, EnumArc, Function, FunctionValue, FuzzyFloat, MetaInfo, RequiredReboFunction, RequiredReboFunctionStruct, Struct, StructArc, Value};
 use crate::lexer::{TokenBool, TokenDqString, TokenFloat, TokenIdent, TokenInteger};
-use crate::parser::{Binding, BlockBody, Expr, ExprAdd, ExprAssign, ExprAssignLhs, ExprBind, ExprBlock, ExprBool, ExprBoolAnd, ExprBoolNot, ExprBoolOr, ExprDiv, ExprEnumDefinition, ExprEnumInitialization, ExprEquals, ExprFieldAccess, ExprFloat, ExprFormatString, ExprFormatStringPart, ExprFunctionCall, ExprGreaterEquals, ExprGreaterThan, ExprIfElse, ExprInteger, ExprLessEquals, ExprLessThan, ExprLiteral, ExprMatch, ExprMatchPattern, ExprMul, ExprNotEquals, ExprParenthesized, ExprPattern, ExprPatternTyped, ExprPatternUntyped, ExprString, ExprStructDefinition, ExprStructInitialization, ExprSub, ExprVariable, ExprWhile, ExprAccess, FieldOrMethod, Spanned, ExprFor, ExprMethodCall, ExprNeg};
+use crate::parser::{Binding, BlockBody, Expr, ExprAdd, ExprAssign, ExprAssignLhs, ExprBind, ExprBlock, ExprBool, ExprBoolAnd, ExprBoolNot, ExprBoolOr, ExprDiv, ExprEnumDefinition, ExprEnumInitialization, ExprEquals, ExprFieldAccess, ExprFloat, ExprFormatString, ExprFormatStringPart, ExprFunctionCall, ExprGreaterEquals, ExprGreaterThan, ExprIfElse, ExprInteger, ExprLessEquals, ExprLessThan, ExprLiteral, ExprMatch, ExprMatchPattern, ExprMul, ExprNotEquals, ExprParenthesized, ExprPattern, ExprPatternTyped, ExprPatternUntyped, ExprString, ExprStructDefinition, ExprStructInitialization, ExprSub, ExprVariable, ExprWhile, ExprAccess, FieldOrMethod, Spanned, ExprFor, ExprMethodCall, ExprNeg, ExprAddAssign, ExprSubAssign, ExprMulAssign, ExprDivAssign, ExprBoolAndAssign, ExprBoolOrAssign};
 pub use crate::vm::scope::{Scopes, Scope};
 use diagnostic::{Diagnostics, Span};
 use rt_format::{Argument, Specifier};
@@ -68,7 +68,7 @@ impl<'a, 'b, 'i> Vm<'a, 'b, 'i> {
         }
     }
 
-    pub fn run(mut self, ast: &[&Expr]) -> Result<Value, ExecError> {
+    pub fn run(mut self, ast: &[&Expr<'a, 'i>]) -> Result<Value, ExecError> {
         trace!("run");
         // add functions
         for (binding, name) in &self.meta_info.function_bindings {
@@ -102,12 +102,12 @@ impl<'a, 'b, 'i> Vm<'a, 'b, 'i> {
         Value::Unit
     }
 
-    fn assign(&mut self, binding: &Binding, value: Value, depth: Depth) {
+    fn assign_binding(&mut self, binding: &Binding, value: Value, depth: Depth) {
         trace!("{}assign {} = {:?}", depth, binding.ident.ident, value);
         self.scopes.assign(binding.id, value);
     }
 
-    fn eval_expr(&mut self, expr: &Expr, depth: Depth) -> Result<Value, ExecError> {
+    fn eval_expr(&mut self, expr: &Expr<'a, 'i>, depth: Depth) -> Result<Value, ExecError> {
         trace!("{}eval_expr: {}", depth, expr);
         self.instructions_since_last_interrupt += 1;
         if self.instructions_since_last_interrupt > self.interrupt_interval {
@@ -123,33 +123,7 @@ impl<'a, 'b, 'i> Vm<'a, 'b, 'i> {
             Expr::Literal(ExprLiteral::Bool(ExprBool { b: TokenBool { value, .. } })) => Ok(Value::Bool(*value)),
             Expr::Literal(ExprLiteral::String(ExprString { string: TokenDqString { string, .. } })) => Ok(Value::String(string.clone())),
             Expr::Variable(ExprVariable { binding, .. }) => Ok(self.load_binding(binding, depth.last())),
-            Expr::Access(ExprAccess { variable: ExprVariable { binding, .. }, accesses, .. }) => {
-                let mut val = self.load_binding(binding, depth.next());
-                for acc in accesses {
-                    val = match acc {
-                        FieldOrMethod::Field(field) => {
-                            let struct_arc = match val {
-                                Value::Struct(s) => s,
-                                val => unreachable!("typechecker ensures this is a struct: {:?}", val),
-                            };
-                            let val = struct_arc.s.lock().borrow_mut().fields.iter()
-                                .filter(|(name, _value)| name == field.ident)
-                                .map(|(_name, value)| value.clone())
-                                .next()
-                                .expect("typechecker ensures all fields exist");
-                            val
-                        },
-                        FieldOrMethod::Method(ExprMethodCall { name, args, .. }) => {
-                            let fn_name = format!("{}::{}", val.type_name(), name.ident);
-                            let args = std::iter::once(Ok(val))
-                                .chain(args.iter().map(|expr| self.eval_expr(expr, depth.next())))
-                                .collect::<Result<_, _>>()?;
-                            self.call_function(&FunctionValue::Named(fn_name), acc.span(), args, depth.last())?
-                        }
-                    };
-                }
-                Ok(val)
-            }
+            Expr::Access(ExprAccess { variable, accesses, .. }) => self.load_access(variable, accesses, depth),
             Expr::FormatString(ExprFormatString { parts, .. }) => {
                 let mut res = String::new();
                 for part in parts {
@@ -171,35 +145,7 @@ impl<'a, 'b, 'i> Vm<'a, 'b, 'i> {
             },
             Expr::Assign(ExprAssign { lhs, expr, .. }) => {
                 let value = self.eval_expr(expr, depth.next())?;
-                match lhs {
-                    ExprAssignLhs::Variable(ExprVariable { binding, .. }) => self.assign(binding, value, depth.last()),
-                    ExprAssignLhs::FieldAccess(ExprFieldAccess { variable: ExprVariable { binding, .. }, fields, .. }) => {
-
-                        let mut struct_arc = match self.load_binding(&binding, depth.next()) {
-                            Value::Struct(s) => s,
-                            _ => unreachable!("typechecker should have ensured that this is a struct"),
-                        };
-                        for TokenIdent { ident, .. } in fields {
-                            let new_struct = {
-                                let s = struct_arc.s.lock();
-                                let mut s = s.borrow_mut();
-                                let field_value = s.fields.iter_mut()
-                                    .filter(|(name, _value)| name == ident)
-                                    .map(|(_name, value)| value)
-                                    .next()
-                                    .expect("typechecker ensured that all fields exist");
-                                match field_value {
-                                    Value::Struct(s) => s.clone(),
-                                    var => {
-                                        *var = value;
-                                        break;
-                                    },
-                                }
-                            };
-                            struct_arc = new_struct;
-                        }
-                    }
-                }
+                self.assign(lhs, value, depth.last());
                 Ok(Value::Unit)
             },
             Expr::Bind(ExprBind { pattern: ExprPattern::Typed(ExprPatternTyped { pattern: ExprPatternUntyped { binding }, .. }), expr, .. })
@@ -219,6 +165,26 @@ impl<'a, 'b, 'i> Vm<'a, 'b, 'i> {
             Expr::Sub(ExprSub { a, b, .. }) => Ok(math::<Sub>(self.eval_expr(a, depth.next())?, self.eval_expr(b, depth.next())?, depth.last())),
             Expr::Mul(ExprMul { a, b, .. }) => Ok(math::<Mul>(self.eval_expr(a, depth.next())?, self.eval_expr(b, depth.next())?, depth.last())),
             Expr::Div(ExprDiv { a, b, .. }) => Ok(math::<Div>(self.eval_expr(a, depth.next())?, self.eval_expr(b, depth.next())?, depth.last())),
+            Expr::AddAssign(ExprAddAssign { lhs, expr, .. }) => {
+                let value = math::<Add>(self.load_lhs_value(lhs, depth.next())?, self.eval_expr(expr, depth.next())?, depth.next());
+                self.assign(lhs, value, depth.last());
+                Ok(Value::Unit)
+            },
+            Expr::SubAssign(ExprSubAssign { lhs, expr, .. }) => {
+                let value = math::<Sub>(self.load_lhs_value(lhs, depth.next())?, self.eval_expr(expr, depth.next())?, depth.next());
+                self.assign(lhs, value, depth.last());
+                Ok(Value::Unit)
+            },
+            Expr::MulAssign(ExprMulAssign { lhs, expr, .. }) => {
+                let value = math::<Mul>(self.load_lhs_value(lhs, depth.next())?, self.eval_expr(expr, depth.next())?, depth.next());
+                self.assign(lhs, value, depth.last());
+                Ok(Value::Unit)
+            },
+            Expr::DivAssign(ExprDivAssign { lhs, expr, .. }) => {
+                let value = math::<Div>(self.load_lhs_value(lhs, depth.next())?, self.eval_expr(expr, depth.next())?, depth.next());
+                self.assign(lhs, value, depth.last());
+                Ok(Value::Unit)
+            },
             Expr::BoolNot(ExprBoolNot { expr, .. }) => {
                 let b = self.eval_expr(expr, depth.last())?.expect_bool("boolean NOT called with non-bool");
                 Ok(Value::Bool(!b))
@@ -239,6 +205,18 @@ impl<'a, 'b, 'i> Vm<'a, 'b, 'i> {
                 let res = self.eval_expr(a, depth.next())?.expect_bool("boolean OR called with non-bool")
                     || self.eval_expr(b, depth.last())?.expect_bool("boolean OR called with non-bool");
                 Ok(Value::Bool(res))
+            }
+            Expr::BoolAndAssign(ExprBoolAndAssign { lhs, expr, .. }) => {
+                let res = self.load_lhs_value(lhs, depth.next())?.expect_bool("boolean AND called with non-bool")
+                    && self.eval_expr(expr, depth.next())?.expect_bool("boolean AND called with non-bool");
+                self.assign(lhs, Value::Bool(res), depth.last());
+                Ok(Value::Unit)
+            }
+            Expr::BoolOrAssign(ExprBoolOrAssign { lhs, expr, .. }) => {
+                let res = self.load_lhs_value(lhs, depth.next())?.expect_bool("boolean OR called with non-bool")
+                    || self.eval_expr(expr, depth.next())?.expect_bool("boolean OR called with non-bool");
+                self.assign(lhs, Value::Bool(res), depth.last());
+                Ok(Value::Unit)
             }
             Expr::Parenthesized(ExprParenthesized { expr, .. }) => self.eval_expr(expr, depth.last()),
             Expr::Block(block) => {
@@ -321,7 +299,7 @@ impl<'a, 'b, 'i> Vm<'a, 'b, 'i> {
                 let _guard = self.scopes.push_scope(Scope::new());
                 self.bind(binding, Value::Unit, depth.next());
                 for value in list.iter().cloned() {
-                    self.assign(binding, value, depth.next());
+                    self.assign_binding(binding, value, depth.next());
                     self.eval_block(block, depth.next())?;
                 }
                 Ok(Value::Unit)
@@ -362,7 +340,7 @@ impl<'a, 'b, 'i> Vm<'a, 'b, 'i> {
         }
     }
 
-    fn eval_block(&mut self, ExprBlock { body: BlockBody { exprs, terminated_with_semicolon }, .. }: &ExprBlock, depth: Depth) -> Result<Value, ExecError> {
+    fn eval_block(&mut self, ExprBlock { body: BlockBody { exprs, terminated_with_semicolon }, .. }: &ExprBlock<'a, 'i>, depth: Depth) -> Result<Value, ExecError> {
         let _guard = self.scopes.push_scope(Scope::new());
         let mut val = Value::Unit;
         for expr in exprs {
@@ -408,6 +386,75 @@ impl<'a, 'b, 'i> Vm<'a, 'b, 'i> {
         }
 
         Ok(last.unwrap_or(Value::Unit))
+    }
+
+    fn assign(&mut self, lhs: &ExprAssignLhs, value: Value, depth: Depth) {
+        match lhs {
+            ExprAssignLhs::Variable(ExprVariable { binding, .. }) => self.assign_binding(binding, value, depth.last()),
+            ExprAssignLhs::FieldAccess(ExprFieldAccess { variable: ExprVariable { binding, .. }, fields, .. }) => {
+                let mut struct_arc = match self.load_binding(&binding, depth.next()) {
+                    Value::Struct(s) => s,
+                    _ => unreachable!("typechecker should have ensured that this is a struct"),
+                };
+                for TokenIdent { ident, .. } in fields {
+                    let new_struct = {
+                        let s = struct_arc.s.lock();
+                        let mut s = s.borrow_mut();
+                        let field_value = s.fields.iter_mut()
+                            .filter(|(name, _value)| name == ident)
+                            .map(|(_name, value)| value)
+                            .next()
+                            .expect("typechecker ensured that all fields exist");
+                        match field_value {
+                            Value::Struct(s) => s.clone(),
+                            var => {
+                                *var = value;
+                                break;
+                            },
+                        }
+                    };
+                    struct_arc = new_struct;
+                }
+            }
+        }
+    }
+
+    fn load_lhs_value(&mut self, lhs: &ExprAssignLhs<'a, 'i>, depth: Depth) -> Result<Value, ExecError> {
+        match lhs {
+            ExprAssignLhs::Variable(variable) => Ok(self.load_binding(&variable.binding, depth.next())),
+            ExprAssignLhs::FieldAccess(ExprFieldAccess { variable, fields, .. }) => {
+                self.load_access(variable, fields.iter().map(|ident| FieldOrMethod::Field(ident.clone())), depth)
+            }
+        }
+    }
+
+    fn load_access(&mut self, variable: &ExprVariable, accesses: impl IntoIterator<Item = impl ::std::borrow::Borrow<FieldOrMethod<'a, 'i>>>, depth: Depth) -> Result<Value, ExecError> {
+        let mut val = self.load_binding(&variable.binding, depth.next());
+        for acc in accesses {
+            let acc = acc.borrow();
+            val = match acc {
+                FieldOrMethod::Field(field) => {
+                    let struct_arc = match val {
+                        Value::Struct(s) => s,
+                        val => unreachable!("typechecker ensures this is a struct: {:?}", val),
+                    };
+                    let val = struct_arc.s.lock().borrow_mut().fields.iter()
+                        .filter(|(name, _value)| name == field.ident)
+                        .map(|(_name, value)| value.clone())
+                        .next()
+                        .expect("typechecker ensures all fields exist");
+                    val
+                },
+                FieldOrMethod::Method(ExprMethodCall { name, args, .. }) => {
+                    let fn_name = format!("{}::{}", val.type_name(), name.ident);
+                    let args = std::iter::once(Ok(val))
+                        .chain(args.iter().map(|expr| self.eval_expr(expr, depth.next())))
+                        .collect::<Result<_, _>>()?;
+                    self.call_function(&FunctionValue::Named(fn_name), acc.span(), args, depth.last())?
+                }
+            };
+        }
+        Ok(val)
     }
 }
 

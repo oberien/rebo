@@ -6,7 +6,7 @@ use std::fmt::{self, Write, Display, Formatter, Debug};
 use derive_more::Display;
 use crate::parser::scope::BindingId;
 use crate::util::{PadFmt, ResolveFileError};
-use crate::lexer::{TokenOpenParen, TokenCloseParen, TokenIdent, TokenInteger, TokenFloat, TokenBool, TokenDqString, TokenType, TokenStringType, TokenIntType, TokenFloatType, TokenBoolType, Token, TokenLet, TokenColon, TokenMut, TokenAssign, TokenOpenCurly, TokenCloseCurly, TokenComma, TokenArrow, TokenFn, TokenBang, TokenPlus, TokenMinus, TokenStar, TokenSlash, TokenDoubleAmp, TokenDoublePipe, TokenLessThan, TokenLessEquals, TokenEquals, TokenNotEquals, TokenGreaterEquals, TokenGreaterThan, TokenStruct, TokenDot, TokenIf, TokenElse, TokenWhile, TokenFormatString, TokenFormatStringPart, Lexer, TokenMatch, TokenFatArrow, TokenEnum, TokenDoubleColon, TokenImpl, TokenFor, TokenIn, TokenStatic, TokenInclude, TokenDotDotDot};
+use crate::lexer::{TokenOpenParen, TokenCloseParen, TokenIdent, TokenInteger, TokenFloat, TokenBool, TokenDqString, TokenType, TokenStringType, TokenIntType, TokenFloatType, TokenBoolType, Token, TokenLet, TokenColon, TokenMut, TokenAssign, TokenOpenCurly, TokenCloseCurly, TokenComma, TokenArrow, TokenFn, TokenBang, TokenPlus, TokenMinus, TokenStar, TokenSlash, TokenDoubleAmp, TokenDoublePipe, TokenLessThan, TokenLessEquals, TokenEquals, TokenNotEquals, TokenGreaterEquals, TokenGreaterThan, TokenStruct, TokenDot, TokenIf, TokenElse, TokenWhile, TokenFormatString, TokenFormatStringPart, Lexer, TokenMatch, TokenFatArrow, TokenEnum, TokenDoubleColon, TokenImpl, TokenFor, TokenIn, TokenStatic, TokenInclude, TokenDotDotDot, TokenPipe, TokenAmp};
 use crate::parser::{Parse, InternalError, Parser, Expected};
 use crate::error_codes::ErrorCode;
 use std::borrow::Cow;
@@ -295,6 +295,19 @@ pub enum Expr<'a, 'i> {
     BoolAnd(ExprBoolAnd<'a, 'i>),
     /// expr || bar
     BoolOr(ExprBoolOr<'a, 'i>),
+    // binop-assign
+    /// lhs += expr
+    AddAssign(ExprAddAssign<'a, 'i>),
+    /// lhs -= expr
+    SubAssign(ExprSubAssign<'a, 'i>),
+    /// lhs *= expr
+    MulAssign(ExprMulAssign<'a, 'i>),
+    /// lhs /= expr
+    DivAssign(ExprDivAssign<'a, 'i>),
+    /// lhs &= expr
+    BoolAndAssign(ExprBoolAndAssign<'a, 'i>),
+    /// lhs |= bar
+    BoolOrAssign(ExprBoolOrAssign<'a, 'i>),
     // comparison ops
     /// expr < expr
     LessThan(ExprLessThan<'a, 'i>),
@@ -494,6 +507,12 @@ impl<'a, 'i> Expr<'a, 'i> {
             |parser: &mut Parser<'a, '_, 'i>, depth| Ok(parser.arena.alloc(Expr::Literal(ExprLiteral::parse(parser, depth)?))),
             |parser: &mut Parser<'a, '_, 'i>, depth| Ok(parser.arena.alloc(Expr::FormatString(ExprFormatString::parse(parser, depth)?))),
             |parser: &mut Parser<'a, '_, 'i>, depth| Ok(parser.arena.alloc(Expr::Assign(ExprAssign::parse(parser, depth)?))),
+            |parser: &mut Parser<'a, '_, 'i>, depth| Ok(parser.arena.alloc(Expr::AddAssign(ExprAddAssign::parse(parser, depth)?))),
+            |parser: &mut Parser<'a, '_, 'i>, depth| Ok(parser.arena.alloc(Expr::SubAssign(ExprSubAssign::parse(parser, depth)?))),
+            |parser: &mut Parser<'a, '_, 'i>, depth| Ok(parser.arena.alloc(Expr::MulAssign(ExprMulAssign::parse(parser, depth)?))),
+            |parser: &mut Parser<'a, '_, 'i>, depth| Ok(parser.arena.alloc(Expr::DivAssign(ExprDivAssign::parse(parser, depth)?))),
+            |parser: &mut Parser<'a, '_, 'i>, depth| Ok(parser.arena.alloc(Expr::BoolAndAssign(ExprBoolAndAssign::parse(parser, depth)?))),
+            |parser: &mut Parser<'a, '_, 'i>, depth| Ok(parser.arena.alloc(Expr::BoolOrAssign(ExprBoolOrAssign::parse(parser, depth)?))),
             |parser: &mut Parser<'a, '_, 'i>, depth| Ok(parser.arena.alloc(Expr::Access(ExprAccess::parse(parser, depth)?))),
             |parser: &mut Parser<'a, '_, 'i>, depth| Ok(parser.arena.alloc(Expr::Variable(ExprVariable::parse(parser, depth)?))),
         ];
@@ -1143,6 +1162,11 @@ pub enum FieldOrMethod<'a, 'i> {
     Field(TokenIdent<'i>),
     Method(ExprMethodCall<'a, 'i>),
 }
+impl<'a, 'i> From<TokenIdent<'i>> for FieldOrMethod<'a, 'i> {
+    fn from(ident: TokenIdent<'i>) -> Self {
+        FieldOrMethod::Field(ident)
+    }
+}
 impl<'a, 'i> Parse<'a, 'i> for FieldOrMethod<'a, 'i> {
     fn parse_marked(parser: &mut Parser<'a, '_, 'i>, depth: Depth) -> Result<Self, InternalError> {
         let err1 = match ExprMethodCall::parse(parser, depth.next()) {
@@ -1223,7 +1247,7 @@ impl<'a, 'i> Display for ExprNeg<'a, 'i> {
 }
 
 macro_rules! binop {
-    ($($exprname:ident, $name:ident, $token:ident, $tokenvariant:ident;)+) => {
+    ($($exprname:ident, $name:ident, $token:ident, $tokenvariant:ident $(, $assign_exprname:ident, $assign_token:ident)?;)+) => {
         $(
             #[derive(Debug, Clone)]
             pub struct $exprname<'a, 'i> {
@@ -1259,16 +1283,45 @@ macro_rules! binop {
                     write!(f, "{} {}{}", self.a, self.op, self.b)
                 }
             }
+            $(
+                #[derive(Debug, Clone)]
+                pub struct $assign_exprname<'a, 'i> {
+                    pub lhs: ExprAssignLhs<'a, 'i>,
+                    pub op: $assign_token,
+                    pub assign: TokenAssign,
+                    pub expr: &'a Expr<'a, 'i>,
+                }
+                impl<'a, 'i> Parse<'a, 'i> for $assign_exprname<'a, 'i> {
+                    fn parse_marked(parser: &mut Parser<'a, '_, 'i>, depth: Depth) -> Result<Self, InternalError> {
+                        Ok($assign_exprname {
+                            lhs: parser.parse(depth.next())?,
+                            op: parser.parse(depth.next())?,
+                            assign: parser.parse(depth.next())?,
+                            expr: parser.parse(depth.next())?,
+                        })
+                    }
+                }
+                impl<'a, 'i> Spanned for $assign_exprname<'a, 'i> {
+                    fn span(&self) -> Span {
+                        Span::new(self.lhs.span().file, self.lhs.span().start, self.expr.span().end)
+                    }
+                }
+                impl<'a, 'i> Display for $assign_exprname<'a, 'i> {
+                    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+                        write!(f, "{} {}= {}", self.lhs, &self.op.to_string()[..1], self.expr)
+                    }
+                }
+            )?
         )+
     }
 }
 binop! {
-    ExprAdd, Add, TokenPlus, Plus;
-    ExprSub, Sub, TokenMinus, Minus;
-    ExprMul, Mul, TokenStar, Star;
-    ExprDiv, Div, TokenSlash, Slash;
-    ExprBoolAnd, BoolAnd, TokenDoubleAmp, DoubleAmp;
-    ExprBoolOr, BoolOr, TokenDoublePipe, DoublePipe;
+    ExprAdd, Add, TokenPlus, Plus, ExprAddAssign, TokenPlus;
+    ExprSub, Sub, TokenMinus, Minus, ExprSubAssign, TokenMinus;
+    ExprMul, Mul, TokenStar, Star, ExprMulAssign, TokenStar;
+    ExprDiv, Div, TokenSlash, Slash, ExprDivAssign, TokenSlash;
+    ExprBoolAnd, BoolAnd, TokenDoubleAmp, DoubleAmp, ExprBoolAndAssign, TokenAmp;
+    ExprBoolOr, BoolOr, TokenDoublePipe, DoublePipe, ExprBoolOrAssign, TokenPipe;
     ExprLessThan, LessThan, TokenLessThan, LessThan;
     ExprLessEquals, LessEquals, TokenLessEquals, LessEquals;
     ExprEquals, Equals, TokenEquals, Equals;

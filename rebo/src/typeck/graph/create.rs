@@ -1,5 +1,5 @@
 use crate::typeck::graph::{Graph, Node, PossibleTypes, Constraint};
-use crate::parser::{Expr, Spanned, ExprFormatString, ExprFormatStringPart, ExprBind, ExprPattern, ExprPatternTyped, ExprPatternUntyped, ExprAssign, ExprAssignLhs, ExprVariable, ExprFieldAccess, ExprBoolNot, ExprAdd, ExprSub, ExprMul, ExprDiv, ExprBoolAnd, ExprBoolOr, ExprLessThan, ExprLessEquals, ExprEquals, ExprNotEquals, ExprGreaterEquals, ExprGreaterThan, ExprBlock, BlockBody, ExprParenthesized, ExprMatch, ExprMatchPattern, ExprWhile, ExprFunctionCall, ExprFunctionDefinition, ExprStructInitialization, ExprImplBlock, ExprType, ExprGenerics, ExprAccess, FieldOrMethod, ExprFor, ExprStatic, ExprFunctionType, ExprFunctionSignature, ExprNeg, ExprStaticSignature};
+use crate::parser::{Expr, Spanned, ExprFormatString, ExprFormatStringPart, ExprBind, ExprPattern, ExprPatternTyped, ExprPatternUntyped, ExprAssign, ExprAssignLhs, ExprVariable, ExprFieldAccess, ExprBoolNot, ExprAdd, ExprSub, ExprMul, ExprDiv, ExprBoolAnd, ExprBoolOr, ExprLessThan, ExprLessEquals, ExprEquals, ExprNotEquals, ExprGreaterEquals, ExprGreaterThan, ExprBlock, BlockBody, ExprParenthesized, ExprMatch, ExprMatchPattern, ExprWhile, ExprFunctionCall, ExprFunctionDefinition, ExprStructInitialization, ExprImplBlock, ExprType, ExprGenerics, ExprAccess, FieldOrMethod, ExprFor, ExprStatic, ExprFunctionType, ExprFunctionSignature, ExprNeg, ExprStaticSignature, ExprAddAssign, ExprSubAssign, ExprMulAssign, ExprDivAssign, ExprBoolAndAssign, ExprBoolOrAssign};
 use crate::common::{MetaInfo, UserType, Function, RequiredReboFunctionStruct};
 use itertools::Either;
 use crate::typeck::types::{StructType, EnumType, EnumTypeVariant, SpecificType, FunctionType, Type, ResolvableSpecificType};
@@ -550,22 +550,8 @@ impl<'i> Graph<'i> {
             Expr::Assign(ExprAssign { lhs, expr, .. }) => {
                 self.add_reduce_constraint(node, node, vec![ResolvableSpecificType::Unit]);
                 let expr_node = self.visit_expr(diagnostics, meta_info, function_generics, expr);
-                match lhs {
-                    ExprAssignLhs::Variable(ExprVariable { binding, .. }) => {
-                        let var_node = Node::type_var(binding.ident.span);
-                        self.add_node(var_node);
-                        self.add_eq_constraint(var_node, expr_node);
-                    }
-                    ExprAssignLhs::FieldAccess(ExprFieldAccess { variable: ExprVariable { binding, .. }, fields, .. }) => {
-                        let var_node = Node::type_var(binding.ident.span);
-                        let field_node = Node::type_var(lhs.span());
-                        self.add_node(var_node);
-                        self.add_node(field_node);
-                        let fields = fields.iter().map(|ident| ident.ident.to_string()).collect();
-                        self.add_field_access(var_node, field_node, fields);
-                        self.add_eq_constraint(field_node, expr_node);
-                    }
-                }
+                let lhs_node = self.visit_expr_assign_lhs(lhs);
+                self.add_eq_constraint(lhs_node, expr_node);
             }
             Expr::BoolNot(ExprBoolNot { expr, .. }) => {
                 let expr_node = self.visit_expr(diagnostics, meta_info, function_generics, expr);
@@ -589,6 +575,17 @@ impl<'i> Graph<'i> {
                 self.add_eq_constraint(a_node, node);
                 self.add_eq_constraint(b_node, node);
             }
+            Expr::AddAssign(ExprAddAssign { lhs, expr, .. })
+            | Expr::SubAssign(ExprSubAssign { lhs, expr, .. })
+            | Expr::MulAssign(ExprMulAssign { lhs, expr, .. })
+            | Expr::DivAssign(ExprDivAssign { lhs, expr, .. }) => {
+                let lhs_node = self.visit_expr_assign_lhs(lhs);
+                let expr_node = self.visit_expr(diagnostics, meta_info, function_generics, expr);
+                self.add_reduce_constraint(node, lhs_node, vec![ResolvableSpecificType::Integer, ResolvableSpecificType::Float]);
+                self.add_reduce_constraint(node, expr_node, vec![ResolvableSpecificType::Integer, ResolvableSpecificType::Float]);
+                self.add_reduce_constraint(node, node, vec![ResolvableSpecificType::Unit]);
+                self.add_eq_constraint(lhs_node, expr_node);
+            }
             Expr::BoolAnd(ExprBoolAnd { a, b, .. })
             | Expr::BoolOr(ExprBoolOr { a, b, .. }) => {
                 let a_node = self.visit_expr(diagnostics, meta_info, function_generics, a);
@@ -596,6 +593,15 @@ impl<'i> Graph<'i> {
                 self.add_reduce_constraint(node, node, vec![ResolvableSpecificType::Bool]);
                 self.add_eq_constraint(node, a_node);
                 self.add_eq_constraint(node, b_node);
+            }
+            Expr::BoolAndAssign(ExprBoolAndAssign { lhs, expr, .. })
+            | Expr::BoolOrAssign(ExprBoolOrAssign { lhs, expr, .. }) => {
+                let lhs_node = self.visit_expr_assign_lhs(lhs);
+                let expr_node = self.visit_expr(diagnostics, meta_info, function_generics, expr);
+                self.add_reduce_constraint(node, lhs_node, vec![ResolvableSpecificType::Bool]);
+                self.add_reduce_constraint(node, expr_node, vec![ResolvableSpecificType::Bool]);
+                self.add_reduce_constraint(node, node, vec![ResolvableSpecificType::Unit]);
+                self.add_eq_constraint(lhs_node, expr_node);
             }
             Expr::LessThan(ExprLessThan { a, b, .. })
             | Expr::LessEquals(ExprLessEquals { a, b, .. })
@@ -874,6 +880,25 @@ impl<'i> Graph<'i> {
             self.add_reduce_constraint(node, node, vec![ResolvableSpecificType::Function(Some(Self::get_function_type(meta_info, diagnostics, sig, false)))])
         }
         node
+    }
+
+    fn visit_expr_assign_lhs(&mut self, lhs: &ExprAssignLhs) -> Node {
+        match lhs {
+            ExprAssignLhs::Variable(ExprVariable { binding, .. }) => {
+                let var_node = Node::type_var(binding.ident.span);
+                self.add_node(var_node);
+                var_node
+            }
+            ExprAssignLhs::FieldAccess(ExprFieldAccess { variable: ExprVariable { binding, .. }, fields, .. }) => {
+                let var_node = Node::type_var(binding.ident.span);
+                let field_node = Node::type_var(lhs.span());
+                self.add_node(var_node);
+                self.add_node(field_node);
+                let fields = fields.iter().map(|ident| ident.ident.to_string()).collect();
+                self.add_field_access(var_node, field_node, fields);
+                field_node
+            }
+        }
     }
 
     pub(super) fn add_node(&mut self, node: Node) {
