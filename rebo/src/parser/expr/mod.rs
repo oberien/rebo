@@ -1045,7 +1045,6 @@ impl<'a, 'i> Parse<'a, 'i> for ExprAssign<'a, 'i> {
         let lhs: ExprAssignLhs = parser.parse(depth.next())?;
         let assign = parser.parse(depth.next())?;
         let expr = parser.parse(depth.last())?;
-        // check mutability
         Ok(ExprAssign { lhs, assign, expr })
     }
 }
