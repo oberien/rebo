@@ -76,6 +76,7 @@ pub fn add_list<'a, 'i>(diagnostics: &'i Diagnostics, arena: &'a Arena<Expr<'a, 
     meta_info.add_external_function(arena, diagnostics, list_swap_remove);
     meta_info.add_external_function(arena, diagnostics, list_join);
     meta_info.add_external_function(arena, diagnostics, list_slice);
+    meta_info.add_external_function(arena, diagnostics, list_clear);
 }
 
 #[rebo::function("List::new")]
@@ -160,4 +161,8 @@ impl<T> Sliceable for List<T> {
 #[rebo::function(raw("List::slice"))]
 fn list_slice<T>(this: List<T>, start: i64, ..: i64) -> List<T> {
     this.clone().slice(vm, expr_span, start, args)?
+}
+#[rebo::function(raw("List::clear"))]
+fn list_clear<T>(this: List<T>) {
+    this.arc.list.lock().borrow_mut().clear()
 }
