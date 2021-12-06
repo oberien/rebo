@@ -45,6 +45,8 @@ pub fn add_to_meta_info<'a, 'i>(stdlib: Stdlib, diagnostics: &'i Diagnostics, ar
     meta_info.add_external_function(arena, diagnostics, bool_to_int);
     meta_info.add_external_function(arena, diagnostics, float_round);
     meta_info.add_external_function(arena, diagnostics, float_sqrt);
+    meta_info.add_external_function(arena, diagnostics, int_min);
+    meta_info.add_external_function(arena, diagnostics, int_max);
     meta_info.add_external_function(arena, diagnostics, string_slice);
     meta_info.add_external_function(arena, diagnostics, string_len_utf8);
     meta_info.add_external_function(arena, diagnostics, string_len_utf16);
@@ -110,6 +112,16 @@ fn float_round(this: f64, decimals: u8) -> f64 {
 #[rebo::function("float::sqrt")]
 fn float_sqrt(this: f64) -> f64 {
     this.sqrt()
+}
+
+// int helper functions
+#[rebo::function("int::min")]
+fn int_min(this: i64, other: i64) -> i64 {
+    this.min(other)
+}
+#[rebo::function("int::max")]
+fn int_max(this: i64, other: i64) -> i64 {
+    this.max(other)
 }
 
 #[rebo::function(raw("assert"))]
