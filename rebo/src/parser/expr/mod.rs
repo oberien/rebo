@@ -620,32 +620,53 @@ impl<'a, 'i> Parse<'a, 'i> for ExprType<'a, 'i> {
             return Ok(ExprType::Function(Box::new(fn_type)));
         }
         let res = match parser.peek_token(0)? {
-            Token::StringType(t) => ExprType::String(t),
-            Token::IntType(t) => ExprType::Int(t),
-            Token::FloatType(t) => ExprType::Float(t),
-            Token::BoolType(t) => ExprType::Bool(t),
-            Token::OpenParen(o) => match parser.peek_token(1)? {
-                Token::CloseParen(c) => {
-                    drop(parser.next_token());
-                    ExprType::Unit(o, c)
+            Token::StringType(t) => {
+                trace!("{} TokenStringType::parse        ({:?})", depth.next(), parser.peek_token(0));
+                ExprType::String(t)
+            },
+            Token::IntType(t) => {
+                trace!("{} TokenIntType::parse        ({:?})", depth.next(), parser.peek_token(0));
+                ExprType::Int(t)
+            },
+            Token::FloatType(t) => {
+                trace!("{} TokenFloatType::parse        ({:?})", depth.next(), parser.peek_token(0));
+                ExprType::Float(t)
+            },
+            Token::BoolType(t) => {
+                trace!("{} TokenBoolType::parse        ({:?})", depth.next(), parser.peek_token(0));
+                ExprType::Bool(t)
+            },
+            Token::OpenParen(o) => {
+                trace!("{} Unit::parse        ({:?})", depth.next(), parser.peek_token(0));
+                match parser.peek_token(1)? {
+                    Token::CloseParen(c) => {
+                        drop(parser.next_token());
+                        ExprType::Unit(o, c)
+                    }
+                    _ => return Err(InternalError::Backtrack(
+                        parser.lexer.next_span_from(1),
+                        Cow::Borrowed(&[Expected::Token(TokenType::CloseParen)])
+                    )),
                 }
-                _ => return Err(InternalError::Backtrack(
-                    parser.lexer.next_span_from(1),
-                    Cow::Borrowed(&[Expected::Token(TokenType::CloseParen)])
-                )),
             }
             // defer struct type resolution until the typechecker
             // otherwise using struct B as field struct A won't work if B is defined after A
             Token::Ident(i) => {
+                trace!("{} TokenIdent::parse ({:?})        ({:?})", depth.next(), parser.generic_names(), parser.peek_token(0));
                 if let Some(generic) = parser.get_generic(i.ident) {
+                    trace!("{} Generic::parse        ({:?})", depth.next().next(), parser.peek_token(0));
                     ExprType::Generic(generic)
                 } else {
+                    trace!("{} UserType::parse        ({:?})", depth.next().next(), parser.peek_token(0));
                     drop(parser.next_token());
                     let generics = parser.parse(depth.last())?;
                     return Ok(ExprType::UserType(i, generics))
                 }
             },
-            Token::Bang(b) => ExprType::Never(b),
+            Token::Bang(b) => {
+                trace!("{} TokenBang::parse        ({:?})", depth.next(), parser.peek_token(0));
+                ExprType::Never(b)
+            },
             _ => return Err(InternalError::Backtrack(
                 parser.lexer.next_span(),
                 Cow::Borrowed(&[Expected::Type])
@@ -1785,12 +1806,14 @@ impl<'a, 'i> ExprFunctionDefinition<'a, 'i> {
         for &generic in generics {
             parser.add_generic(generic);
         }
-        let result = Self::parse_internal(parser, depth);
+        trace!("{} ExprFunctionDefinition::parse_with_generics ({:?})        ({:?})", depth, parser.generic_names(), parser.peek_token(0));
+        let result = Self::parse_internal(parser, depth.next());
         drop(scope_guard);
         parser.scopes = old_scopes;
         result
     }
     fn parse_internal(parser: &mut Parser<'a, '_, 'i>, depth: Depth) -> Result<Self, InternalError> {
+        trace!("{} ExprFunctionDefinition::parse_internal        ({:?})", depth, parser.peek_token(0));
         let mark = parser.lexer.mark();
         let sig = parser.parse(depth.next())?;
         let body = parser.parse(depth.last())?;

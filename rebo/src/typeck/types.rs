@@ -209,7 +209,7 @@ impl fmt::Display for ResolvableSpecificType {
             for generic in generics {
                 match generic {
                     Node::TypeVar(var) => write!(f, "[{}:{}:{}]", var.span.file, var.span.start, var.span.end)?,
-                    Node::Synthetic(_, id) => write!(f, "[{}]", id)?,
+                    Node::Synthetic(span, id) => write!(f, "[{}<{}:{}:{}>]", id, span.file, span.start, span.end)?,
                 }
             }
             write!(f, ">")?;

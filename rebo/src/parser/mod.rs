@@ -257,6 +257,17 @@ impl<'a, 'b, 'i> Parser<'a, 'b, 'i> {
             .cloned()
             .next()
     }
+    fn generic_names(&self) -> Vec<&'i str> {
+        self.scopes.borrow().iter().rev()
+            .flat_map(|scope| scope.generics.keys().copied())
+            .collect()
+    }
+    fn generics(&self) -> Vec<Generic<'i>> {
+        self.scopes.borrow().iter().rev()
+            .flat_map(|scope| scope.generics.values())
+            .cloned()
+            .collect()
+    }
     fn push_scope(&self) -> ScopeGuard<'i> {
         self.scopes.borrow_mut().push(Scope { idents: IndexMap::new(), generics: IndexMap::new() });
         ScopeGuard {
