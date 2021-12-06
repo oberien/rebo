@@ -1682,22 +1682,43 @@ pub struct ExprFunctionType<'a, 'i> {
 }
 impl<'a, 'i> Parse<'a, 'i> for ExprFunctionType<'a, 'i> {
     fn parse_marked(parser: &mut Parser<'a, '_, 'i>, depth: Depth) -> Result<Self, InternalError> {
-        // function types must be parsed in their own scope for generics
-        let old_scopes = std::mem::take(&mut parser.scopes);
+        // function types can use the surrounding generics
+        // but they are desugared into becoming part of the function's generics
+        let existing_generics: Vec<_> = parser.generics();
         // scope for generics
-        let scope_guard = parser.push_scope();
+        let _scope_guard = parser.push_scope();
 
-        let result = (|| Ok(ExprFunctionType {
-            fn_token: parser.parse(depth.next())?,
-            generics: parser.parse(depth.next())?,
+        let fn_token: TokenFn = parser.parse(depth.next())?;
+        let mut generics: Option<ExprGenerics> = parser.parse(depth.next())?;
+        if !existing_generics.is_empty() {
+            let generics_separated = match &mut generics {
+                None => {
+                    generics = Some(ExprGenerics {
+                        open: TokenLessThan { span: Span::new(fn_token.span.file, fn_token.span.end, fn_token.span.end)},
+                        generics: Some(Separated::default()),
+                        close: TokenGreaterThan { span: Span::new(fn_token.span.file, fn_token.span.end, fn_token.span.end)},
+                    });
+                    generics.as_mut().unwrap().generics.as_mut().unwrap()
+                },
+                Some(g) => g.generics.get_or_insert_with(|| Separated::default()),
+            };
+
+            // prepend existing generics
+            for existing in existing_generics {
+                let comma = TokenComma {
+                    span: Span::new(existing.span().file, existing.span().end, existing.span().end),
+                };
+                generics_separated.prepend(existing, Some(comma));
+            }
+        }
+        Ok(ExprFunctionType {
+            fn_token,
+            generics,
             open: parser.parse(depth.next())?,
             args: parser.parse(depth.next())?,
             close: parser.parse(depth.next())?,
             ret_type: parser.parse(depth.next())?,
-        }))();
-        drop(scope_guard);
-        parser.scopes = old_scopes;
-        result
+        })
     }
 }
 impl<'a, 'i> Spanned for ExprFunctionType<'a, 'i> {
