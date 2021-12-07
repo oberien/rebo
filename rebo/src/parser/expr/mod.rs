@@ -1251,7 +1251,7 @@ impl<'a, 'i> Parse<'a, 'i> for ExprNeg<'a, 'i> {
     fn parse_marked(parser: &mut Parser<'a, '_, 'i>, depth: Depth) -> Result<Self, InternalError> {
         Ok(ExprNeg {
             minus: parser.parse(depth.next())?,
-            expr: parser.parse(depth.last())?,
+            expr: Expr::try_parse_until_excluding(parser, ParseUntil::Math, depth.last())?,
         })
     }
 }
