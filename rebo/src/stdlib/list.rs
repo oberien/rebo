@@ -77,6 +77,7 @@ pub fn add_list<'a, 'i>(diagnostics: &'i Diagnostics, arena: &'a Arena<Expr<'a, 
     meta_info.add_external_function(arena, diagnostics, list_join);
     meta_info.add_external_function(arena, diagnostics, list_slice);
     meta_info.add_external_function(arena, diagnostics, list_clear);
+    meta_info.add_external_function(arena, diagnostics, list_sort);
 }
 
 #[rebo::function("List::new")]
@@ -165,4 +166,8 @@ fn list_slice<T>(this: List<T>, start: i64, ..: i64) -> List<T> {
 #[rebo::function(raw("List::clear"))]
 fn list_clear<T>(this: List<T>) {
     this.arc.list.lock().borrow_mut().clear()
+}
+#[rebo::function(raw("List::sort"))]
+fn list_sort<T>(this: List<T>) {
+    this.arc.list.lock().borrow_mut().sort()
 }
