@@ -1227,7 +1227,7 @@ impl<'a, 'i> Parse<'a, 'i> for ExprBoolNot<'a, 'i> {
     fn parse_marked(parser: &mut Parser<'a, '_, 'i>, depth: Depth) -> Result<Self, InternalError> {
         Ok(ExprBoolNot {
             bang: parser.parse(depth.next())?,
-            expr: parser.parse(depth.last())?,
+            expr: Expr::try_parse_until_excluding(parser, ParseUntil::BooleanExpr, depth.last())?,
         })
     }
 }
