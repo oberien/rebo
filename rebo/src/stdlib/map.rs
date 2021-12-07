@@ -54,6 +54,7 @@ pub fn add_map<'a, 'i>(diagnostics: &'i Diagnostics, arena: &'a Arena<Expr<'a, '
     meta_info.add_external_function(arena, diagnostics, map_remove);
     meta_info.add_external_function(arena, diagnostics, map_keys);
     meta_info.add_external_function(arena, diagnostics, map_values);
+    meta_info.add_external_function(arena, diagnostics, map_len);
 }
 
 #[rebo::function("Map::new")]
@@ -108,4 +109,9 @@ fn map_values<K, V>(this: Map<K, V>) -> List<V> {
     let this = this.borrow();
     let values = this.values().cloned();
     List::new(values)
+}
+
+#[rebo::function("Map::len")]
+fn map_len<K, V>(this: Map<K, V>) -> usize {
+    this.arc.map.lock().borrow().len()
 }
