@@ -17,7 +17,13 @@ impl Visitor for UnknownAccess {
         for access in accesses {
             let typ = match &meta_info.types[&type_var] {
                 Type::Specific(specific) => specific,
-                _ => return,
+                typ => {
+                    diagnostics.error(ErrorCode::AccessOfUnknown)
+                        .with_error_label(access.span(), "can't infer a specific type for what is accessed here")
+                        .with_info_label(access.span(), format!("inferred {}", typ))
+                        .emit();
+                    return
+                },
             };
             type_var = match access {
                 FieldOrMethod::Field(field) => {

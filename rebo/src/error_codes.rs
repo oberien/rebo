@@ -67,6 +67,7 @@ pub enum ErrorCode {
     InvalidVarargs,
     MissingFunctionName,
     InvalidFormatStringSpecifier,
+    AccessOfUnknown,
 
     Panic,
     AssertionFailed,
@@ -145,6 +146,7 @@ impl diagnostic::ErrorCode for ErrorCode {
             InvalidVarargs => "0066",
             MissingFunctionName => "0067",
             InvalidFormatStringSpecifier => "0068",
+            AccessOfUnknown => "0069",
 
             Panic => "9999",
             AssertionFailed => "9998",
@@ -222,6 +224,7 @@ impl diagnostic::ErrorCode for ErrorCode {
             InvalidVarargs => "invalid varargs",
             MissingFunctionName => "missing function name",
             InvalidFormatStringSpecifier => "invalid format string specifier",
+            AccessOfUnknown => "can't access field or method of unknown type",
 
             Panic => "explicit panic",
             AssertionFailed => "assertion failed",
