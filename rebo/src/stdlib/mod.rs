@@ -47,6 +47,9 @@ pub fn add_to_meta_info<'a, 'i>(stdlib: Stdlib, diagnostics: &'i Diagnostics, ar
     meta_info.add_external_function(arena, diagnostics, float_sqrt);
     meta_info.add_external_function(arena, diagnostics, int_min);
     meta_info.add_external_function(arena, diagnostics, int_max);
+    meta_info.add_external_function(arena, diagnostics, int_min_value);
+    meta_info.add_external_function(arena, diagnostics, int_max_value);
+    meta_info.add_external_function(arena, diagnostics, int_abs);
     meta_info.add_external_function(arena, diagnostics, string_slice);
     meta_info.add_external_function(arena, diagnostics, string_len_utf8);
     meta_info.add_external_function(arena, diagnostics, string_len_utf16);
@@ -122,6 +125,18 @@ fn int_min(this: i64, other: i64) -> i64 {
 #[rebo::function("int::max")]
 fn int_max(this: i64, other: i64) -> i64 {
     this.max(other)
+}
+#[rebo::function("int::min_value")]
+fn int_min_value() -> i64 {
+    i64::MIN
+}
+#[rebo::function("int::max_value")]
+fn int_max_value() -> i64 {
+    i64::MAX
+}
+#[rebo::function("int::abs")]
+fn int_abs(this: i64) -> i64 {
+    this.abs()
 }
 
 #[rebo::function(raw("assert"))]
