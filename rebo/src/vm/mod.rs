@@ -359,7 +359,7 @@ impl<'a, 'b, 'i> Vm<'a, 'b, 'i> {
                 let (arg_binding_ids, fun) = &self.meta_info.anonymous_rebo_functions[span];
                 (arg_binding_ids, *fun)
             },
-            FunctionValue::Named(name) => match &self.meta_info.functions[name.as_str()] {
+            FunctionValue::Named(name) => match &self.meta_info.functions.get(name.as_str()).expect(&format!("can't find function {}", name.as_str())) {
                 Function::Rust(f) => return (*f)(expr_span, &mut VmContext { vm: self }, args),
                 Function::EnumInitializer(enum_name, variant_name) => {
                     return Ok(Value::Enum(EnumArc { e: Arc::new(ReentrantMutex::new(RefCell::new(Enum {
