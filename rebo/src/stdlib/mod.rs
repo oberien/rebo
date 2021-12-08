@@ -65,6 +65,8 @@ pub fn add_to_meta_info<'a, 'i>(stdlib: Stdlib, diagnostics: &'i Diagnostics, ar
     meta_info.add_external_function(arena, diagnostics, string_parse_int);
     meta_info.add_external_function(arena, diagnostics, string_split);
     meta_info.add_external_function(arena, diagnostics, string_find_matches);
+    meta_info.add_external_function(arena, diagnostics, string_sorted);
+    meta_info.add_external_function(arena, diagnostics, string_contains);
     meta_info.add_external_function(arena, diagnostics, rng_set_random_seed);
     meta_info.add_external_function(arena, diagnostics, rng_set_seed);
     meta_info.add_external_function(arena, diagnostics, rng_gen_int_range);
@@ -286,6 +288,15 @@ fn string_split(this: String, regex: String) -> List<String> {
 fn string_find_matches(this: String, regex: String) -> List<String> {
     let regex = compile_regex(regex, vm, expr_span)?;
     List::new(regex.find_iter(&this).map(|m| m.as_str().to_string()))
+}
+#[rebo::function(raw("string::sorted"))]
+fn string_sorted(this: String) -> String {
+    itertools::sorted(this.chars()).collect()
+}
+#[rebo::function(raw("string::contains"))]
+fn string_contains(this: String, regex: String) -> bool {
+    let regex = compile_regex(regex, vm, expr_span)?;
+    regex.is_match(&this)
 }
 
 // RNG
