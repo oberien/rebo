@@ -230,6 +230,7 @@ impl<'a, 'b, 'i, 'v> VisitorDriver<'a, 'b, 'i, 'v> {
             }
             Expr::Match(mat) => {
                 visit!(self, visit_match, mat);
+                self.visit_expr(mat.expr);
                 for (_pat, _arrow, expr) in &mat.arms {
                     self.visit_expr(expr);
                 }
