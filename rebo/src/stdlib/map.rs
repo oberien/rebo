@@ -51,6 +51,7 @@ pub fn add_map<'a, 'i>(diagnostics: &'i Diagnostics, arena: &'a Arena<Expr<'a, '
     meta_info.add_external_function(arena, diagnostics, map_new);
     meta_info.add_external_function(arena, diagnostics, map_insert);
     meta_info.add_external_function(arena, diagnostics, map_get);
+    meta_info.add_external_function(arena, diagnostics, map_get_or_insert);
     meta_info.add_external_function(arena, diagnostics, map_remove);
     meta_info.add_external_function(arena, diagnostics, map_keys);
     meta_info.add_external_function(arena, diagnostics, map_values);
@@ -83,6 +84,12 @@ fn map_get<K, V>(this: Map<K, V>, key: K) -> Option<V> {
         Some(v) => Some(v.clone()),
         None => None,
     }
+}
+#[rebo::function("Map::get_or_insert")]
+fn map_get_or_insert<K, V>(this: Map<K, V>, key: K, default: V) -> V {
+    let this = this.arc.map.lock();
+    let mut this = this.borrow_mut();
+    this.entry(key).or_insert(default).clone()
 }
 
 #[rebo::function("Map::remove")]
