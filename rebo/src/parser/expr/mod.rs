@@ -1618,9 +1618,14 @@ pub struct ExprFor<'a, 'i> {
 impl<'a, 'i> Parse<'a, 'i> for ExprFor<'a, 'i> {
     fn parse_marked(parser: &mut Parser<'a, '_, 'i>, depth: Depth) -> Result<Self, InternalError> {
         let for_token = parser.parse(depth.next())?;
+        // don't have the binding in the current scope in the expr
+        let guard = parser.push_scope();
         let binding = Binding::parse_new(parser, depth.next())?;
+        drop(guard);
         let in_token = parser.parse(depth.next())?;
         let expr = Expr::try_parse_until_including(parser, ParseUntil::All, depth.next())?;
+        let added_binding = parser.add_binding(binding.ident, binding.mutable);
+        assert_eq!(added_binding, binding);
         Ok(ExprFor {
             for_token,
             binding,
