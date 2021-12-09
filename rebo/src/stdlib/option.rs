@@ -21,6 +21,12 @@ impl Option<T> {
             Option::None => panic("tried to unwrap a None value"),
         }
     }
+    fn unwrap_or(self, default: T) -> T {
+        match self {
+            Option::Some(t) => t,
+            Option::None => default,
+        }
+    }
     fn is_some(self) -> bool {
         match self {
             Option::Some(t) => true,

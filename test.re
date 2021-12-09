@@ -158,8 +158,9 @@ print(id2(1337));
 
 // Option<T>
 let a = Option::Some(1337);
-let c = Option::Some(42);
-print(a.unwrap() + c.unwrap());
+let b = Option::Some(42);
+let c = Option::None;
+print(a.unwrap() + b.unwrap() + c.unwrap_or(21));
 
 let a = Option::Some(42);
 let b: Option<Option<string>> = Option::Some(Option::Some("uiae"));
