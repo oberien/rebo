@@ -11,4 +11,4 @@ default-members = [
 ]
 
 [patch.crates-io]
-rt-format = { git = "https://github.com/oberien/rt-format" }
+rt-format = { git = "https://github.com/vstojkovic/rt-format", rev = "59514cf" }

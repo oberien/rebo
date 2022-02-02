@@ -1,6 +1,8 @@
 use std::fmt;
 use std::ops::Deref;
 use std::path::{Path, PathBuf};
+use rt_format::argument::ArgumentSource;
+use crate::Value;
 
 /// Workaround for <https://github.com/rust-lang/rust/issues/89940>
 #[derive(Debug, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
@@ -95,4 +97,11 @@ pub fn try_resolve_file<P: AsRef<Path>, P2: AsRef<Path>>(include_directory: P, f
         return Err(ResolveFileError::StartsWith(path));
     }
     Ok(path)
+}
+
+pub struct NoValues;
+impl ArgumentSource<Value> for NoValues {
+    fn next_argument(&mut self) -> Option<&Value> { None }
+    fn lookup_argument_by_index(&self, _: usize) -> Option<&Value> { None }
+    fn lookup_argument_by_name(&self, _: &str) -> Option<&Value> { None }
 }

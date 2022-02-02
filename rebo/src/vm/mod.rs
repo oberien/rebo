@@ -9,7 +9,7 @@ use crate::lexer::{TokenBool, TokenDqString, TokenFloat, TokenIdent, TokenIntege
 use crate::parser::{Binding, BlockBody, Expr, ExprAdd, ExprAssign, ExprAssignLhs, ExprBind, ExprBlock, ExprBool, ExprBoolAnd, ExprBoolNot, ExprBoolOr, ExprDiv, ExprEnumDefinition, ExprEnumInitialization, ExprEquals, ExprFieldAccess, ExprFloat, ExprFormatString, ExprFormatStringPart, ExprFunctionCall, ExprGreaterEquals, ExprGreaterThan, ExprIfElse, ExprInteger, ExprLessEquals, ExprLessThan, ExprLiteral, ExprMatch, ExprMatchPattern, ExprMul, ExprNotEquals, ExprParenthesized, ExprPattern, ExprPatternTyped, ExprPatternUntyped, ExprString, ExprStructDefinition, ExprStructInitialization, ExprSub, ExprVariable, ExprWhile, ExprAccess, FieldOrMethod, Spanned, ExprFor, ExprMethodCall, ExprNeg, ExprAddAssign, ExprSubAssign, ExprMulAssign, ExprDivAssign, ExprBoolAndAssign, ExprBoolOrAssign};
 pub use crate::vm::scope::{Scopes, Scope};
 use diagnostic::{Diagnostics, Span};
-use rt_format::{Argument, Specifier};
+use rt_format::{Substitution, Specifier};
 use crate::EXTERNAL_SPAN;
 
 mod scope;
@@ -136,7 +136,7 @@ impl<'a, 'b, 'i> Vm<'a, 'b, 'i> {
                                 Some((_colon, spec, _)) => *spec,
                                 None => Specifier::default(),
                             };
-                            let arg = Argument::new(spec, &val).unwrap();
+                            let arg = Substitution::new(spec, &val).unwrap();
                             res.push_str(&format!("{}", arg));
                         }
                     }

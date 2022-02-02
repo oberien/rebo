@@ -902,7 +902,7 @@ impl<'a, 'i> Parse<'a, 'i> for ExprFormatString<'a, 'i> {
                         Ok(Token::Colon(colon)) => {
                             let spec_str = &s[colon.span.end - part_start..];
                             let spec_span = Span::new(colon.span.file, colon.span.end, colon.span.end + spec_str.len());
-                            let spec = match Specifier::parse(spec_str) {
+                            let spec = match rt_format::parser::parse_specifier(spec_str, &mut util::NoValues) {
                                 Ok(spec) => spec,
                                 Err(()) => {
                                     parser.diagnostics.error(ErrorCode::InvalidFormatStringSpecifier)

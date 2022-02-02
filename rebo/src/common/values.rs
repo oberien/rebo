@@ -13,7 +13,8 @@ use itertools::Itertools;
 use crate::typeck::types::SpecificType;
 use std::collections::BTreeMap;
 use std::convert::TryInto;
-use rt_format::{FormattableValue, Specifier};
+use rt_format::{FormatArgument, Specifier};
+use rt_format::parser::ConvertToSize;
 
 pub trait ExternalTypeType {
     type Type: ExternalType;
@@ -206,7 +207,7 @@ fmt_value_wrappers! {
     UpperExp, UpperExpValue, float: true, bool: false, string: false, Debug: true;
 }
 
-impl FormattableValue for Value {
+impl FormatArgument for Value {
     fn supports_format(&self, _: &Specifier) -> bool {
         // ensured by typeck
         true
@@ -242,6 +243,13 @@ impl FormattableValue for Value {
 
     fn fmt_upper_exp(&self, f: &mut fmt::Formatter) -> fmt::Result {
         fmt::UpperExp::fmt(&UpperExpValue(self), f)
+    }
+}
+
+// rebo doesn't support dynamic width formatters (yet?)
+impl ConvertToSize for Value {
+    fn convert(&self) -> Result<usize, ()> {
+        Err(())
     }
 }
 
