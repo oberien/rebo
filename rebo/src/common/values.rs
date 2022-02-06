@@ -14,7 +14,6 @@ use crate::typeck::types::SpecificType;
 use std::collections::BTreeMap;
 use std::convert::TryInto;
 use rt_format::{FormatArgument, Specifier};
-use rt_format::parser::ConvertToSize;
 
 pub trait ExternalTypeType {
     type Type: ExternalType;
@@ -243,13 +242,6 @@ impl FormatArgument for Value {
 
     fn fmt_upper_exp(&self, f: &mut fmt::Formatter) -> fmt::Result {
         fmt::UpperExp::fmt(&UpperExpValue(self), f)
-    }
-}
-
-// rebo doesn't support dynamic width formatters (yet?)
-impl ConvertToSize for Value {
-    fn convert(&self) -> Result<usize, ()> {
-        Err(())
     }
 }
 

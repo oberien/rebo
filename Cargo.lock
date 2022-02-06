@@ -522,8 +522,9 @@ checksum = "f497285884f3fcff424ffc933e56d7cbca511def0c9831a7f9b5f6153e3cc89b"
 
 [[package]]
 name = "rt-format"
-version = "0.2.0"
-source = "git+https://github.com/vstojkovic/rt-format?rev=59514cf#59514cfc79223e5689ea8edafb9c2ba44db0f22a"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "953eff237fc52cbb1a78d9ef62de48422a42c49c4db65b7e7e9d3aa500b1bdae"
 dependencies = [
  "lazy_static",
  "regex",
