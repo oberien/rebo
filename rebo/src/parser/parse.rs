@@ -5,6 +5,7 @@ use diagnostic::Span;
 use std::marker::PhantomData;
 use crate::common::Depth;
 use regex::Regex;
+use crate::parser::scope::ScopeType;
 
 // make trace! here log as if this still was the parser module
 macro_rules! module_path {
@@ -34,7 +35,7 @@ pub trait Parse<'a, 'i>: Sized {
         res
     }
     fn parse_scoped(parser: &mut Parser<'a, '_, 'i>, depth: Depth) -> Result<Self, InternalError> {
-        let scope_guard = parser.push_scope();
+        let scope_guard = parser.push_scope(ScopeType::Synthetic);
         let res = Self::parse(parser, depth);
         drop(scope_guard);
         res
@@ -266,6 +267,10 @@ impl_for_tokens! {
     Else, TokenElse;
     While, TokenWhile;
     For, TokenFor;
+    Loop, TokenLoop;
+    Break, TokenBreak;
+    Continue, TokenContinue;
+    Return, TokenReturn;
     In, TokenIn;
     Static, TokenStatic;
     Include, TokenInclude;
@@ -304,6 +309,7 @@ impl_for_tokens! {
     Dot, TokenDot;
     DotDotDot, TokenDotDotDot;
     Underscore, TokenUnderscore;
+    Apostrophe, TokenApostrophe;
     LineComment<'i>, TokenLineComment;
     BlockComment<'i>, TokenBlockComment;
     Eof, TokenEof;

@@ -1,11 +1,20 @@
 use indexmap::map::IndexMap;
-use crate::parser::{Binding, Generic};
+use crate::parser::{Binding, Generic, ExprLabel};
 use std::fmt::{self, Formatter, Display};
 use std::sync::atomic::{AtomicU32, Ordering};
 
 pub struct Scope<'i> {
     pub idents: IndexMap<String, Binding<'i>>,
     pub generics: IndexMap<&'i str, Generic<'i>>,
+    pub typ: ScopeType<'i>,
+}
+
+pub enum ScopeType<'i> {
+    Function,
+    While(Option<ExprLabel<'i>>),
+    For(Option<ExprLabel<'i>>),
+    Loop(Option<ExprLabel<'i>>),
+    Synthetic,
 }
 
 #[derive(Debug, Clone, Copy, Ord, PartialOrd, Eq, PartialEq, Hash)]

@@ -86,6 +86,10 @@ pub fn try_lex_token<'i>(diagnostics: &Diagnostics, file: FileId, s: &'i str, in
         "if" => If, TokenIf;
         "while" => While, TokenWhile;
         "for" => For, TokenFor;
+        "loop" => Loop, TokenLoop;
+        "break" => Break, TokenBreak;
+        "continue" => Continue, TokenContinue;
+        "return" => Return, TokenReturn;
         "in" => In, TokenIn;
         "static" => Static, TokenStatic;
         "include" => Include, TokenInclude;
@@ -110,6 +114,7 @@ pub fn try_lex_token<'i>(diagnostics: &Diagnostics, file: FileId, s: &'i str, in
         '{' => Ok(MaybeToken::Token(Token::OpenCurly(TokenOpenCurly { span }))),
         '}' => Ok(MaybeToken::Token(Token::CloseCurly(TokenCloseCurly { span }))),
         ';' => Ok(MaybeToken::Token(Token::Semicolon(TokenSemicolon { span }))),
+        '\'' => Ok(MaybeToken::Token(Token::Apostrophe(TokenApostrophe { span }))),
         ':' => match char2 {
             Some(':') => Ok(MaybeToken::Token(Token::DoubleColon(TokenDoubleColon { span: span2 }))),
             _ => Ok(MaybeToken::Token(Token::Colon(TokenColon { span }))),

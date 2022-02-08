@@ -20,7 +20,7 @@ pub use scope::BindingId;
 use crate::common::{MetaInfo, Depth, Function};
 use indexmap::map::IndexMap;
 use itertools::Itertools;
-use crate::parser::scope::Scope;
+use crate::parser::scope::{Scope, ScopeType};
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::path::PathBuf;
@@ -133,7 +133,7 @@ impl<'a, 'b, 'i> Parser<'a, 'b, 'i> {
             bindings: Vec::new(),
             meta_info,
             pre_parsed: HashMap::new(),
-            scopes: Rc::new(RefCell::new(vec![Scope { idents: IndexMap::new(), generics: IndexMap::new() }])),
+            scopes: Rc::new(RefCell::new(vec![Scope { idents: IndexMap::new(), generics: IndexMap::new(), typ: ScopeType::Synthetic }])),
             memoization: IndexMap::new(),
             binding_memoization: BTreeMap::new(),
             generic_memoization: HashSet::new(),
@@ -261,8 +261,8 @@ impl<'a, 'b, 'i> Parser<'a, 'b, 'i> {
             .cloned()
             .collect()
     }
-    fn push_scope(&self) -> ScopeGuard<'i> {
-        self.scopes.borrow_mut().push(Scope { idents: IndexMap::new(), generics: IndexMap::new() });
+    fn push_scope(&self, typ: ScopeType<'i>) -> ScopeGuard<'i> {
+        self.scopes.borrow_mut().push(Scope { idents: IndexMap::new(), generics: IndexMap::new(), typ });
         ScopeGuard {
             scopes: Rc::clone(&self.scopes)
         }

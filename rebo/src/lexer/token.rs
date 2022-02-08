@@ -111,6 +111,10 @@ gen_tokens! {
     Else, TokenElse, "else", {}, (fmt = "else "), (Copy, Eq, Hash);
     While, TokenWhile, "while", {}, (fmt = "while "), (Copy, Eq, Hash);
     For, TokenFor, "for", {}, (fmt = "for "), (Copy, Eq, Hash);
+    Loop, TokenLoop, "loop", {}, (fmt = "loop "), (Copy, Eq, Hash);
+    Break, TokenBreak, "break", {}, (fmt = "break "), (Copy, Eq, Hash);
+    Continue, TokenContinue, "continue", {}, (fmt = "continue "), (Copy, Eq, Hash);
+    Return, TokenReturn, "return", {}, (fmt = "return "), (Copy, Eq, Hash);
     In, TokenIn, "in", {}, (fmt = "in "), (Copy, Eq, Hash);
     Static, TokenStatic, "static", {}, (fmt = "static "), (Copy, Eq, Hash);
     Include, TokenInclude, "include", {}, (fmt = "include "), (Copy, Eq, Hash);
@@ -149,6 +153,7 @@ gen_tokens! {
     Dot, TokenDot, ".", {}, (fmt = ". "), (Copy, Eq, Hash);
     DotDotDot, TokenDotDotDot, "...", {}, (fmt = "... "), (Copy, Eq, Hash);
     Underscore, TokenUnderscore, "_", {}, (fmt = "_ "), (Copy, Eq, Hash);
+    Apostrophe, TokenApostrophe, "'", {}, (fmt = "'"), (Copy, Eq, Hash);
     LineComment<'i>, TokenLineComment, "//", {comment: &'i str,}, (fmt = "{}", comment), (Copy, Eq, Hash), #[doc = "Line Comment including starting `//` and ending newline"];
     BlockComment<'i>, TokenBlockComment, "/* */", {comment: &'i str,}, (fmt = "{}", comment), (Copy, Eq, Hash), #[doc = "/// Block Comment including starting `/*` and ending `*/`"];
     Eof, TokenEof, "EOF", {}, (fmt = "EOF");
