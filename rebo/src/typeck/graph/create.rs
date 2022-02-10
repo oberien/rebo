@@ -1,5 +1,5 @@
 use crate::typeck::graph::{Graph, Node, PossibleTypes, Constraint};
-use crate::parser::{Expr, Spanned, ExprFormatString, ExprFormatStringPart, ExprBind, ExprPattern, ExprPatternTyped, ExprPatternUntyped, ExprAssign, ExprAssignLhs, ExprVariable, ExprFieldAccess, ExprBoolNot, ExprAdd, ExprSub, ExprMul, ExprDiv, ExprBoolAnd, ExprBoolOr, ExprLessThan, ExprLessEquals, ExprEquals, ExprNotEquals, ExprGreaterEquals, ExprGreaterThan, ExprBlock, BlockBody, ExprParenthesized, ExprMatch, ExprMatchPattern, ExprWhile, ExprFunctionCall, ExprFunctionDefinition, ExprStructInitialization, ExprImplBlock, ExprType, ExprGenerics, ExprAccess, FieldOrMethod, ExprFor, ExprStatic, ExprFunctionType, ExprFunctionSignature, ExprNeg, ExprStaticSignature, ExprAddAssign, ExprSubAssign, ExprMulAssign, ExprDivAssign, ExprBoolAndAssign, ExprBoolOrAssign};
+use crate::parser::{Expr, Spanned, ExprFormatString, ExprFormatStringPart, ExprBind, ExprPattern, ExprPatternTyped, ExprPatternUntyped, ExprAssign, ExprAssignLhs, ExprVariable, ExprFieldAccess, ExprBoolNot, ExprAdd, ExprSub, ExprMul, ExprDiv, ExprBoolAnd, ExprBoolOr, ExprLessThan, ExprLessEquals, ExprEquals, ExprNotEquals, ExprGreaterEquals, ExprGreaterThan, ExprBlock, BlockBody, ExprParenthesized, ExprMatch, ExprMatchPattern, ExprWhile, ExprFunctionCall, ExprFunctionDefinition, ExprStructInitialization, ExprImplBlock, ExprType, ExprGenerics, ExprAccess, FieldOrMethod, ExprFor, ExprStatic, ExprFunctionType, ExprFunctionSignature, ExprNeg, ExprStaticSignature, ExprAddAssign, ExprSubAssign, ExprMulAssign, ExprDivAssign, ExprBoolAndAssign, ExprBoolOrAssign, ExprLabel, ExprLoop, ExprBreak, ExprContinue, ExprReturn};
 use crate::common::{MetaInfo, UserType, Function, RequiredReboFunctionStruct};
 use itertools::Either;
 use crate::typeck::types::{StructType, EnumType, EnumTypeVariant, SpecificType, FunctionType, Type, ResolvableSpecificType};
@@ -124,6 +124,7 @@ impl FunctionGenerics {
     }
 }
 
+#[must_use]
 struct UnunifyableGuard {
     stack: Rc<RefCell<Vec<Span>>>,
     prev_stack: Option<Vec<Span>>,
@@ -133,6 +134,7 @@ impl Drop for UnunifyableGuard {
         *self.stack.borrow_mut() = self.prev_stack.take().unwrap();
     }
 }
+#[must_use]
 struct GenericGuard {
     stack: Rc<RefCell<Vec<Vec<Node>>>>,
 }
@@ -140,6 +142,71 @@ impl Drop for GenericGuard {
     fn drop(&mut self) {
         self.stack.borrow_mut().pop().unwrap();
     }
+}
+
+struct BlockStack<'a, 'i> {
+    blocks: Rc<RefCell<Vec<(BlockType<'a, 'i>, Node)>>>,
+}
+enum BlockType<'a, 'i> {
+    Function,
+    Loop(Option<&'a ExprLabel<'i>>),
+    While(Option<&'a ExprLabel<'i>>),
+    For(Option<&'a ExprLabel<'i>>),
+}
+#[must_use]
+struct BlockGuard<'a, 'i> {
+    blocks: Rc<RefCell<Vec<(BlockType<'a, 'i>, Node)>>>
+}
+impl<'a, 'i> Drop for BlockGuard<'a, 'i> {
+    fn drop(&mut self) {
+        self.blocks.borrow_mut().pop();
+    }
+}
+impl<'a, 'i> BlockStack<'a, 'i> {
+    fn push_block(&self, node: Node, typ: BlockType<'a, 'i>) -> BlockGuard<'a, 'i> {
+        self.blocks.borrow_mut().push((typ, node));
+        BlockGuard { blocks: Rc::clone(&self.blocks) }
+    }
+    fn get_loop_like(&self, label: Option<&ExprLabel<'i>>) -> Option<Node> {
+        match label {
+            Some(label) => self.get_loop_like_named(label),
+            None => self.get_loop_like_unnamed(),
+        }
+    }
+    fn get_loop_like_unnamed(&self) -> Option<Node> {
+        self.blocks.borrow().iter()
+            .rev()
+            .find(|(typ, _)| match typ {
+                BlockType::Function => false,
+                BlockType::Loop(_) | BlockType::While(_) | BlockType::For(_) => true,
+            }).map(|(_, node)| node.clone())
+    }
+    fn get_loop_like_named(&self, label: &ExprLabel<'i>) -> Option<Node> {
+        self.blocks.borrow().iter()
+            .rev()
+            .find(|(typ, _)| match typ {
+                BlockType::Function => false,
+                BlockType::Loop(Some(l))
+                | BlockType::While(Some(l))
+                | BlockType::For(Some(l)) => l.ident == label.ident,
+                BlockType::Loop(None) | BlockType::While(None) | BlockType::For(None) => false,
+            }).map(|(_, node)| node.clone())
+    }
+    fn get_function(&self) -> Option<Node> {
+        self.blocks.borrow().iter()
+            .rev()
+            .find(|(typ, _)| match typ {
+                BlockType::Function => true,
+                BlockType::Loop(_) | BlockType::While(_) | BlockType::For(_) => false,
+            }).map(|(_, node)| node.clone())
+    }
+}
+
+struct Context<'ctx, 'a, 'i> {
+    diagnostics: &'ctx Diagnostics,
+    meta_info: &'ctx MetaInfo<'a, 'i>,
+    function_generics: &'ctx FunctionGenerics,
+    block_stack: &'ctx BlockStack<'a, 'i>,
 }
 
 fn convert_expr_type(typ: &ExprType, diagnostics: &Diagnostics, meta_info: &MetaInfo) -> Type {
@@ -419,7 +486,7 @@ impl<'i> Graph<'i> {
             }
         }
     }
-    pub fn create(diagnostics: &'i Diagnostics, meta_info: &mut MetaInfo, exprs: &[&Expr<'_, '_>]) -> Graph<'i> {
+    pub fn create(diagnostics: &'i Diagnostics, meta_info: &mut MetaInfo<'_, 'i>, exprs: &[&Expr<'_, 'i>]) -> Graph<'i> {
         Self::add_user_types(diagnostics, meta_info);
         Self::verify_external_types(diagnostics, meta_info);
         Self::add_function_types(diagnostics, meta_info);
@@ -439,14 +506,21 @@ impl<'i> Graph<'i> {
         }
 
         // resolve local types
-        let function_generics = FunctionGenerics::new();
+        let ctx = Context {
+            diagnostics,
+            meta_info,
+            function_generics: &FunctionGenerics::new(),
+            block_stack: &BlockStack {
+                blocks: Rc::new(RefCell::new(vec![])),
+            },
+        };
         for expr in exprs {
-            graph.visit_expr(diagnostics, meta_info, &function_generics, expr);
+            graph.visit_expr(&ctx, expr);
         }
         graph
     }
 
-    fn visit_expr(&mut self, diagnostics: &Diagnostics, meta_info: &MetaInfo, function_generics: &FunctionGenerics, expr: &Expr<'_, '_>) -> Node {
+    fn visit_expr<'a>(&mut self, ctx: &Context<'_, 'a, 'i>, expr: &'a Expr<'a, 'i>) -> Node {
         let node = Node::type_var(expr.span());
         self.add_node(node);
         match expr {
@@ -458,7 +532,7 @@ impl<'i> Graph<'i> {
                         ExprFormatStringPart::Str(_)
                         | ExprFormatStringPart::Escaped(_) => (),
                         ExprFormatStringPart::FmtArg(expr, spec) => {
-                            let node = self.visit_expr(diagnostics, meta_info, function_generics, expr);
+                            let node = self.visit_expr(ctx, expr);
                             if let Some((_colon, spec, spec_span)) = spec {
                                 let fmt_node = Node::type_var(*spec_span);
                                 self.add_node(fmt_node);
@@ -534,8 +608,8 @@ impl<'i> Graph<'i> {
                     ExprPattern::Typed(ExprPatternTyped { pattern: ExprPatternUntyped { binding }, typ, .. }) => {
                         let var_node = Node::type_var(binding.ident.span);
                         self.add_node(var_node);
-                        let typ = convert_expr_type(typ, diagnostics, meta_info);
-                        function_generics.apply_type_reduce(var_node, var_node, &typ, self);
+                        let typ = convert_expr_type(typ, ctx.diagnostics, ctx.meta_info);
+                        ctx.function_generics.apply_type_reduce(var_node, var_node, &typ, self);
                         var_node
                     }
                     ExprPattern::Untyped(ExprPatternUntyped { binding }) => {
@@ -544,22 +618,22 @@ impl<'i> Graph<'i> {
                         var_node
                     }
                 };
-                let expr_node = self.visit_expr(diagnostics, meta_info, function_generics, expr);
+                let expr_node = self.visit_expr(ctx, expr);
                 self.add_eq_constraint(var_node, expr_node);
             }
             Expr::Assign(ExprAssign { lhs, expr, .. }) => {
                 self.add_reduce_constraint(node, node, vec![ResolvableSpecificType::Unit]);
-                let expr_node = self.visit_expr(diagnostics, meta_info, function_generics, expr);
+                let expr_node = self.visit_expr(ctx, expr);
                 let lhs_node = self.visit_expr_assign_lhs(lhs);
                 self.add_eq_constraint(lhs_node, expr_node);
             }
             Expr::BoolNot(ExprBoolNot { expr, .. }) => {
-                let expr_node = self.visit_expr(diagnostics, meta_info, function_generics, expr);
+                let expr_node = self.visit_expr(ctx, expr);
                 self.add_reduce_constraint(node, node, vec![ResolvableSpecificType::Bool]);
                 self.add_eq_constraint(node, expr_node);
             }
             Expr::Neg(ExprNeg { expr, .. }) => {
-                let expr_node = self.visit_expr(diagnostics, meta_info, function_generics, expr);
+                let expr_node = self.visit_expr(ctx, expr);
                 self.add_reduce_constraint(node, node, vec![ResolvableSpecificType::Integer, ResolvableSpecificType::Float]);
                 self.add_eq_constraint(node, expr_node);
             }
@@ -567,8 +641,8 @@ impl<'i> Graph<'i> {
             | Expr::Sub(ExprSub { a, b, .. })
             | Expr::Mul(ExprMul { a, b, .. })
             | Expr::Div(ExprDiv { a, b, .. }) => {
-                let a_node = self.visit_expr(diagnostics, meta_info, function_generics, a);
-                let b_node = self.visit_expr(diagnostics, meta_info, function_generics, b);
+                let a_node = self.visit_expr(ctx, a);
+                let b_node = self.visit_expr(ctx, b);
                 self.add_reduce_constraint(node, a_node, vec![ResolvableSpecificType::Integer, ResolvableSpecificType::Float]);
                 self.add_reduce_constraint(node, b_node, vec![ResolvableSpecificType::Integer, ResolvableSpecificType::Float]);
                 self.add_reduce_constraint(node, node, vec![ResolvableSpecificType::Integer, ResolvableSpecificType::Float]);
@@ -580,7 +654,7 @@ impl<'i> Graph<'i> {
             | Expr::MulAssign(ExprMulAssign { lhs, expr, .. })
             | Expr::DivAssign(ExprDivAssign { lhs, expr, .. }) => {
                 let lhs_node = self.visit_expr_assign_lhs(lhs);
-                let expr_node = self.visit_expr(diagnostics, meta_info, function_generics, expr);
+                let expr_node = self.visit_expr(ctx, expr);
                 self.add_reduce_constraint(node, lhs_node, vec![ResolvableSpecificType::Integer, ResolvableSpecificType::Float]);
                 self.add_reduce_constraint(node, expr_node, vec![ResolvableSpecificType::Integer, ResolvableSpecificType::Float]);
                 self.add_reduce_constraint(node, node, vec![ResolvableSpecificType::Unit]);
@@ -588,8 +662,8 @@ impl<'i> Graph<'i> {
             }
             Expr::BoolAnd(ExprBoolAnd { a, b, .. })
             | Expr::BoolOr(ExprBoolOr { a, b, .. }) => {
-                let a_node = self.visit_expr(diagnostics, meta_info, function_generics, a);
-                let b_node = self.visit_expr(diagnostics, meta_info, function_generics, b);
+                let a_node = self.visit_expr(ctx, a);
+                let b_node = self.visit_expr(ctx, b);
                 self.add_reduce_constraint(node, node, vec![ResolvableSpecificType::Bool]);
                 self.add_eq_constraint(node, a_node);
                 self.add_eq_constraint(node, b_node);
@@ -597,7 +671,7 @@ impl<'i> Graph<'i> {
             Expr::BoolAndAssign(ExprBoolAndAssign { lhs, expr, .. })
             | Expr::BoolOrAssign(ExprBoolOrAssign { lhs, expr, .. }) => {
                 let lhs_node = self.visit_expr_assign_lhs(lhs);
-                let expr_node = self.visit_expr(diagnostics, meta_info, function_generics, expr);
+                let expr_node = self.visit_expr(ctx, expr);
                 self.add_reduce_constraint(node, lhs_node, vec![ResolvableSpecificType::Bool]);
                 self.add_reduce_constraint(node, expr_node, vec![ResolvableSpecificType::Bool]);
                 self.add_reduce_constraint(node, node, vec![ResolvableSpecificType::Unit]);
@@ -609,13 +683,13 @@ impl<'i> Graph<'i> {
             | Expr::NotEquals(ExprNotEquals { a, b, .. })
             | Expr::GreaterEquals(ExprGreaterEquals { a, b, .. })
             | Expr::GreaterThan(ExprGreaterThan { a, b, .. }) => {
-                let a_node = self.visit_expr(diagnostics, meta_info, function_generics, a);
-                let b_node = self.visit_expr(diagnostics, meta_info, function_generics, b);
+                let a_node = self.visit_expr(ctx, a);
+                let b_node = self.visit_expr(ctx, b);
                 self.add_reduce_constraint(node, node, vec![ResolvableSpecificType::Bool]);
                 self.add_eq_constraint(a_node, b_node);
             }
             Expr::Block(block) => {
-                assert_eq!(self.visit_block(diagnostics, meta_info, function_generics, block), node);
+                assert_eq!(self.visit_block(ctx, block), node);
             }
             Expr::Variable(ExprVariable { binding, .. }) => {
                 let var_node = Node::type_var(binding.ident.span);
@@ -648,7 +722,7 @@ impl<'i> Graph<'i> {
                             // self-argument
                             self.add_method_call_arg(access_node, access_node, fn_call.name.ident.to_string(), idx, 0);
                             for (i, arg_expr) in fn_call.args.iter().enumerate() {
-                                let arg_node = self.visit_expr(diagnostics, meta_info, function_generics, arg_expr);
+                                let arg_node = self.visit_expr(ctx, arg_expr);
                                 // arg 0 is `self`
                                 let arg_index = i + 1;
                                 self.add_method_call_arg(access_node, arg_node, fn_call.name.ident.to_string(), idx, arg_index);
@@ -660,24 +734,24 @@ impl<'i> Graph<'i> {
                 self.add_eq_constraint(node, access_node);
             }
             Expr::Parenthesized(ExprParenthesized { expr, .. }) => {
-                let expr_node = self.visit_expr(diagnostics, meta_info, function_generics, expr);
+                let expr_node = self.visit_expr(ctx, expr);
                 self.add_eq_constraint(expr_node, node);
             }
             Expr::IfElse(ifelse) => {
                 let mut block_nodes = Vec::new();
                 for (condition, body) in ifelse.iter_branches() {
                     if let Some(condition) = condition {
-                        let cond_node = self.visit_expr(diagnostics, meta_info, function_generics, condition);
+                        let cond_node = self.visit_expr(ctx, condition);
                         self.add_reduce_constraint(node, cond_node, vec![ResolvableSpecificType::Bool]);
                     }
-                    block_nodes.push(self.visit_block(diagnostics, meta_info, function_generics, body));
+                    block_nodes.push(self.visit_block(ctx, body));
                 }
                 for block_node in block_nodes {
                     self.add_eq_constraint(node, block_node);
                 }
             }
             Expr::Match(ExprMatch { expr, arms, .. }) => {
-                let expr_node = self.visit_expr(diagnostics, meta_info, function_generics, expr);
+                let expr_node = self.visit_expr(ctx, expr);
                 for (pat, _arrow, arm_expr) in arms {
                     match pat {
                         ExprMatchPattern::Literal(lit) => {
@@ -689,19 +763,19 @@ impl<'i> Graph<'i> {
                         ExprMatchPattern::Variant(variant) => {
                             let pat_node = Node::type_var(pat.span());
                             self.add_node(pat_node);
-                            let generics = get_user_type_generics(meta_info, variant.enum_name.ident);
-                            let _scope = function_generics.push_generic_nodes();
+                            let generics = get_user_type_generics(ctx.meta_info, variant.enum_name.ident);
+                            let _scope = ctx.function_generics.push_generic_nodes();
                             for (gen, _) in &generics {
                                 let synthetic = Node::synthetic(*gen);
                                 self.add_node(synthetic);
-                                function_generics.insert_generic(synthetic);
+                                ctx.function_generics.insert_generic(synthetic);
                             }
                             let typ = SpecificType::Enum(Cow::Owned(variant.enum_name.ident.to_string()), CowVec::Owned(generics));
-                            function_generics.apply_specific_type_reduce(pat_node, pat_node, &typ, self);
+                            ctx.function_generics.apply_specific_type_reduce(pat_node, pat_node, &typ, self);
                             self.add_eq_constraint(expr_node, pat_node);
 
                             let repeat_top = std::iter::repeat(&Type::Top);
-                            let variant_type = meta_info.enum_types.get(variant.enum_name.ident)
+                            let variant_type = ctx.meta_info.enum_types.get(variant.enum_name.ident)
                                 .iter()
                                 .flat_map(|enum_def| &enum_def.variants)
                                 .find(|(name, _variant)| name == variant.variant_name.ident)
@@ -721,7 +795,7 @@ impl<'i> Graph<'i> {
                                 let field_binding_node = Node::type_var(field_binding.ident.span);
                                 // always add all field type-vars even for unknown enums / variants
                                 self.add_node(field_binding_node);
-                                function_generics.apply_type_reduce(pat_node, field_binding_node, expected_type, self);
+                                ctx.function_generics.apply_type_reduce(pat_node, field_binding_node, expected_type, self);
                             }
                         }
                         ExprMatchPattern::Binding(binding) => {
@@ -731,36 +805,75 @@ impl<'i> Graph<'i> {
                         }
                         ExprMatchPattern::Wildcard(_) => (),
                     }
-                    let arm_expr_node = self.visit_expr(diagnostics, meta_info, function_generics, arm_expr);
+                    let arm_expr_node = self.visit_expr(ctx, arm_expr);
                     self.add_eq_constraint(node, arm_expr_node);
                 }
             }
-            Expr::While(ExprWhile { condition, block, .. }) => {
-                let cond_node = self.visit_expr(diagnostics, meta_info, function_generics, condition);
+            Expr::Loop(ExprLoop { label, block, .. }) => {
+                let block_node = Node::type_var(block.span());
+                let block_guard = ctx.block_stack.push_block(block_node, BlockType::Loop(label.as_ref()));
+                let block_node2 = self.visit_block(ctx, block);
+                assert_eq!(block_node, block_node2);
+                drop(block_guard);
+                self.add_reduce_constraint(node, block_node, vec![ResolvableSpecificType::Unit]);
+            }
+            Expr::While(ExprWhile { label, condition, block, .. }) => {
+                let cond_node = self.visit_expr(ctx, condition);
                 self.add_reduce_constraint(node, cond_node, vec![ResolvableSpecificType::Bool]);
-                let block_node = self.visit_block(diagnostics, meta_info, function_generics, block);
-                self.add_eq_constraint(node, block_node);
+                let block_node = Node::type_var(block.span());
+                let block_guard = ctx.block_stack.push_block(block_node, BlockType::While(label.as_ref()));
+                let block_node2 = self.visit_block(ctx, block);
+                assert_eq!(block_node, block_node2);
+                drop(block_guard);
+                self.add_reduce_constraint(node, block_node, vec![ResolvableSpecificType::Unit]);
                 self.add_reduce_constraint(node, node, vec![ResolvableSpecificType::Unit]);
             }
-            Expr::For(ExprFor { binding, expr, block, .. }) => {
+            Expr::For(ExprFor { label, binding, expr, block, .. }) => {
                 let binding_node = Node::type_var(binding.ident.span);
                 self.add_node(binding_node);
-                let expr_node = self.visit_expr(diagnostics, meta_info, function_generics, expr);
-                let block_node = self.visit_block(diagnostics, meta_info, function_generics, block);
-                let list_t = meta_info.user_types["List"].generics().unwrap().generics.as_ref().unwrap().iter().next().unwrap().def_ident.span;
+                let expr_node = self.visit_expr(ctx, expr);
+                let block_node = Node::type_var(block.span());
+                let block_guard = ctx.block_stack.push_block(block_node, BlockType::For(label.as_ref()));
+                let block_node2 = self.visit_block(ctx, block);
+                assert_eq!(block_node, block_node2);
+                drop(block_guard);
+                let list_t = ctx.meta_info.user_types["List"].generics().unwrap().generics.as_ref().unwrap().iter().next().unwrap().def_ident.span;
 
                 let synthetic = Node::synthetic(list_t);
                 self.add_node(synthetic);
                 self.add_reduce_constraint(node, expr_node, vec![ResolvableSpecificType::Struct("List".to_string(), vec![synthetic])]);
                 self.add_eq_constraint(binding_node, synthetic);
-                self.add_eq_constraint(node, block_node);
+                self.add_reduce_constraint(node, block_node, vec![ResolvableSpecificType::Unit]);
                 self.add_reduce_constraint(node, node, vec![ResolvableSpecificType::Unit]);
+            }
+            Expr::Break(ExprBreak { label, expr, .. }) => {
+                let loop_like = ctx.block_stack.get_loop_like(label.as_ref());
+                let expr_node = expr.map(|expr| self.visit_expr(ctx, expr));
+                match (loop_like, expr_node) {
+                    (Some(loop_node), Some(expr_node)) => self.add_eq_constraint(loop_node, expr_node),
+                    (Some(loop_node), None) => self.add_reduce_constraint(node, loop_node, vec![ResolvableSpecificType::Unit]),
+                    (_, _) => (),
+                }
+                // break returns bottom, which is top during type resolution, which is the default
+            }
+            Expr::Continue(ExprContinue { .. }) => {
+                // continue returns bottom, which is top during type resolution, which is the default
+            }
+            Expr::Return(ExprReturn { expr, .. }) => {
+                let function = ctx.block_stack.get_function();
+                let expr_node = expr.map(|expr| self.visit_expr(ctx, expr));
+                match (function, expr_node) {
+                    (Some(fn_node), Some(expr_node)) => self.add_eq_constraint(fn_node, expr_node),
+                    (Some(fn_node), None) => self.add_reduce_constraint(node, fn_node, vec![ResolvableSpecificType::Unit]),
+                    (_, _) => (),
+                }
+                // return returns bottom, which is top during type resolution, which is the default
             }
             Expr::FunctionCall(ExprFunctionCall { name, args, .. }) => {
                 let var_node = Node::type_var(name.binding.ident.span);
                 self.add_node(var_node);
-                if let Some(name) = meta_info.function_bindings.get(&name.binding) {
-                    if let Some(fun) = meta_info.function_types.get(name.as_str()) {
+                if let Some(name) = ctx.meta_info.function_bindings.get(&name.binding) {
+                    if let Some(fun) = ctx.meta_info.function_types.get(name.as_str()) {
                         self.add_reduce_constraint(var_node, var_node, vec![ResolvableSpecificType::Function(Some(fun.clone()))]);
                     }
                 }
@@ -768,22 +881,22 @@ impl<'i> Graph<'i> {
                 let idx = CALL_INDEX.fetch_add(1, Ordering::SeqCst);
                 self.add_function_call_ret(var_node, node, idx);
                 for (i, arg_expr) in args.iter().enumerate() {
-                    let arg_node = self.visit_expr(diagnostics, meta_info, function_generics, arg_expr);
+                    let arg_node = self.visit_expr(ctx, arg_expr);
                     self.add_function_call_arg(var_node, arg_node, idx, i);
                 }
             }
             Expr::FunctionDefinition(function) => {
-                self.visit_function(diagnostics, meta_info, function_generics, function);
+                self.visit_function(ctx, function);
             }
             Expr::StructDefinition(_) => self.add_reduce_constraint(node, node, vec![ResolvableSpecificType::Unit]),
             Expr::StructInitialization(ExprStructInitialization { name, fields, .. }) => {
-                let generics = get_user_type_generics(meta_info, name.ident);
+                let generics = get_user_type_generics(ctx.meta_info, name.ident);
                 let typ = SpecificType::Struct(Cow::Owned(name.ident.to_string()), CowVec::Owned(generics.clone()));
-                let struct_def_span = match meta_info.user_types.get(name.ident) {
+                let struct_def_span = match ctx.meta_info.user_types.get(name.ident) {
                     Some(user_type) => user_type.span(),
                     None => return node,
                 };
-                let struct_typ = meta_info.struct_types.get(name.ident).unwrap();
+                let struct_typ = ctx.meta_info.struct_types.get(name.ident).unwrap();
                 let struct_def_node = Node::type_var(struct_def_span);
                 self.add_node(struct_def_node);
                 self.add_reduce_constraint(struct_def_node, struct_def_node, vec![ResolvableSpecificType::Unit]);
@@ -798,37 +911,37 @@ impl<'i> Graph<'i> {
                         Some(typ) => typ,
                         None => continue,
                     };
-                    let expr_node = self.visit_expr(diagnostics, meta_info, function_generics, expr);
+                    let expr_node = self.visit_expr(ctx, expr);
                     field_nodes.push((expr_node, expected_type));
                 }
 
                 // apply types
-                let _guard = function_generics.push_generic_nodes();
+                let _guard = ctx.function_generics.push_generic_nodes();
                 for (span, _) in &generics {
                     let synthetic = Node::synthetic(*span);
                     self.add_node(synthetic);
-                    function_generics.insert_generic(synthetic);
+                    ctx.function_generics.insert_generic(synthetic);
                 }
-                function_generics.apply_specific_type_reduce(node, node, &typ, self);
+                ctx.function_generics.apply_specific_type_reduce(node, node, &typ, self);
                 for (expr_node, expected_type) in field_nodes {
-                    function_generics.apply_type_reduce(struct_def_node, expr_node, expected_type, self);
+                    ctx.function_generics.apply_type_reduce(struct_def_node, expr_node, expected_type, self);
                 }
             }
             Expr::EnumDefinition(_) => self.add_reduce_constraint(node, node, vec![ResolvableSpecificType::Unit]),
             Expr::EnumInitialization(enum_init) => {
-                let _guard = function_generics.push_generic_nodes();
-                let generics = get_user_type_generics(meta_info, enum_init.enum_name.ident);
+                let _guard = ctx.function_generics.push_generic_nodes();
+                let generics = get_user_type_generics(ctx.meta_info, enum_init.enum_name.ident);
                 for (span, _) in &generics {
                     let synthetic = Node::synthetic(*span);
                     self.add_node(synthetic);
-                    function_generics.insert_generic(synthetic);
+                    ctx.function_generics.insert_generic(synthetic);
                 }
                 let typ = SpecificType::Enum(Cow::Owned(enum_init.enum_name.ident.to_string()), CowVec::Owned(generics));
-                function_generics.apply_specific_type_reduce(node, node, &typ, self);
+                ctx.function_generics.apply_specific_type_reduce(node, node, &typ, self);
             },
             Expr::ImplBlock(ExprImplBlock { functions, .. }) => {
                 for function in functions {
-                    self.visit_function(diagnostics, meta_info, function_generics, function);
+                    self.visit_function(ctx, function);
                 }
                 self.add_reduce_constraint(node, node, vec![ResolvableSpecificType::Unit]);
             }
@@ -836,14 +949,14 @@ impl<'i> Graph<'i> {
         node
     }
 
-    fn visit_block(&mut self, diagnostics: &Diagnostics, meta_info: &MetaInfo, function_generics: &FunctionGenerics, block: &ExprBlock) -> Node {
+    fn visit_block<'a>(&mut self, ctx: &Context<'_, 'a, 'i>, block: &'a ExprBlock<'a, 'i>) -> Node {
         let node = Node::type_var(block.span());
         self.add_node(node);
         let ExprBlock { body: BlockBody { exprs, terminated_with_semicolon }, .. } = block;
 
         let mut last = None;
         for expr in exprs {
-            last = Some(self.visit_expr(diagnostics, meta_info, function_generics, expr));
+            last = Some(self.visit_expr(ctx, expr));
         }
         match (terminated_with_semicolon, last) {
             (true, _) | (false, None) => self.add_reduce_constraint(node, node, vec![ResolvableSpecificType::Unit]),
@@ -852,10 +965,10 @@ impl<'i> Graph<'i> {
         node
     }
 
-    fn visit_function(&mut self, diagnostics: &Diagnostics, meta_info: &MetaInfo, function_generics: &FunctionGenerics, function: &ExprFunctionDefinition) -> Node {
-        let _scope_guard = function_generics.push_ununifyable();
+    fn visit_function<'a>(&mut self, ctx: &Context<'_, 'a, 'i>, function: &'a ExprFunctionDefinition<'a, 'i>) -> Node {
+        let _scope_guard = ctx.function_generics.push_ununifyable();
         for generic in function.sig.generics.iter().flat_map(|g| &g.generics).flatten() {
-            function_generics.insert_ununifyable(generic.def_ident.span);
+            ctx.function_generics.insert_ununifyable(generic.def_ident.span);
         }
 
         let node = Node::type_var(function.span());
@@ -865,19 +978,23 @@ impl<'i> Graph<'i> {
         for ExprPatternTyped { pattern: ExprPatternUntyped { binding }, typ, .. } in &sig.args {
             let arg_node = Node::type_var(binding.ident.span);
             self.add_node(arg_node);
-            let arg_type = convert_expr_type(typ, diagnostics, meta_info);
-            function_generics.apply_type_reduce(arg_node, arg_node, &arg_type, self);
+            let arg_type = convert_expr_type(typ, ctx.diagnostics, ctx.meta_info);
+            ctx.function_generics.apply_type_reduce(arg_node, arg_node, &arg_type, self);
         }
 
-        let body_node = self.visit_block(diagnostics, meta_info, function_generics, body);
+        let body_node = Node::type_var(body.span());
+        let block_guard = ctx.block_stack.push_block(body_node, BlockType::Function);
+        let body_node2 = self.visit_block(ctx, body);
+        drop(block_guard);
+        assert_eq!(body_node, body_node2);
         if let Some((_arrow, ret_type)) = &sig.ret_type {
-            let ret_type = convert_expr_type(ret_type, diagnostics, meta_info);
-            function_generics.apply_type_reduce(node, body_node, &ret_type, self);
+            let ret_type = convert_expr_type(ret_type, ctx.diagnostics, ctx.meta_info);
+            ctx.function_generics.apply_type_reduce(node, body_node, &ret_type, self);
         }
         if sig.name.is_some() {
             self.add_reduce_constraint(node, node, vec![ResolvableSpecificType::Unit]);
         } else {
-            self.add_reduce_constraint(node, node, vec![ResolvableSpecificType::Function(Some(Self::get_function_type(meta_info, diagnostics, sig, false)))])
+            self.add_reduce_constraint(node, node, vec![ResolvableSpecificType::Function(Some(Self::get_function_type(ctx.meta_info, ctx.diagnostics, sig, false)))])
         }
         node
     }
