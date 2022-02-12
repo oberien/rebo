@@ -1,13 +1,13 @@
 use crate::lints::visitor::Visitor;
 use diagnostic::Diagnostics;
-use crate::common::MetaInfo;
+use crate::common::{MetaInfo, BlockStack};
 use crate::parser::{ExprStructDefinition, ExprType, Spanned};
 use crate::error_codes::ErrorCode;
 
 pub struct UnknownStructFieldType;
 
 impl Visitor for UnknownStructFieldType {
-    fn visit_struct_definition(&self, diagnostics: &Diagnostics, meta_info: &MetaInfo, def: &ExprStructDefinition) {
+    fn visit_struct_definition(&self, diagnostics: &Diagnostics, meta_info: &MetaInfo, _: &BlockStack<'_, '_, ()>, def: &ExprStructDefinition) {
         let ExprStructDefinition { fields, .. } = def;
 
         for (field, _colon, typ) in fields {

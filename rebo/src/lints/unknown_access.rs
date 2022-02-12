@@ -1,6 +1,6 @@
 use crate::lints::visitor::Visitor;
 use crate::parser::{Spanned, ExprAccess, FieldOrMethod};
-use crate::common::{MetaInfo, Function};
+use crate::common::{MetaInfo, Function, BlockStack};
 use diagnostic::Diagnostics;
 use crate::error_codes::ErrorCode;
 use crate::typeck::types::{Type, SpecificType};
@@ -9,7 +9,7 @@ use crate::typeck::TypeVar;
 pub struct UnknownAccess;
 
 impl Visitor for UnknownAccess {
-    fn visit_access(&self, diagnostics: &Diagnostics, meta_info: &MetaInfo, access: &ExprAccess) {
+    fn visit_access(&self, diagnostics: &Diagnostics, meta_info: &MetaInfo, _: &BlockStack<'_, '_, ()>, access: &ExprAccess) {
         let ExprAccess { variable, accesses, .. } = access;
 
         let mut type_var = TypeVar::new(variable.binding.ident.span);

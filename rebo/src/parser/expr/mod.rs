@@ -1712,9 +1712,9 @@ impl<'a, 'i> Display for ExprFor<'a, 'i> {
 
 #[derive(Debug, Clone)]
 pub struct ExprLoop<'a, 'i> {
-    label: Option<ExprLabel<'i>>,
-    loop_token: TokenLoop,
-    block: ExprBlock<'a, 'i>,
+    pub label: Option<ExprLabel<'i>>,
+    pub loop_token: TokenLoop,
+    pub block: ExprBlock<'a, 'i>,
 }
 impl<'a, 'i> Parse<'a, 'i> for ExprLoop<'a, 'i> {
     fn parse_marked(parser: &mut Parser<'a, '_, 'i>, depth: Depth) -> Result<Self, InternalError> {
@@ -1750,9 +1750,9 @@ impl<'a, 'i> Display for ExprLoop<'a, 'i> {
 
 #[derive(Debug, Clone)]
 pub struct ExprBreak<'a, 'i> {
-    break_token: TokenBreak,
-    label: Option<ExprLabel<'i>>,
-    expr: Option<&'a Expr<'a, 'i>>,
+    pub break_token: TokenBreak,
+    pub label: Option<ExprLabel<'i>>,
+    pub expr: Option<&'a Expr<'a, 'i>>,
 }
 impl<'a, 'i> Parse<'a, 'i> for ExprBreak<'a, 'i> {
     fn parse_marked(parser: &mut Parser<'a, '_, 'i>, depth: Depth) -> Result<Self, InternalError> {
@@ -1793,8 +1793,8 @@ impl<'a, 'i> Display for ExprBreak<'a, 'i> {
 
 #[derive(Debug, Clone)]
 pub struct ExprContinue<'i> {
-    continue_token: TokenContinue,
-    label: Option<ExprLabel<'i>>,
+    pub continue_token: TokenContinue,
+    pub label: Option<ExprLabel<'i>>,
 }
 impl<'a, 'i> Parse<'a, 'i> for ExprContinue<'i> {
     fn parse_marked(parser: &mut Parser<'a, '_, 'i>, depth: Depth) -> Result<Self, InternalError> {
@@ -1828,8 +1828,8 @@ impl<'i> Display for ExprContinue<'i> {
 
 #[derive(Debug, Clone)]
 pub struct ExprReturn<'a, 'i> {
-    return_token: TokenReturn,
-    expr: Option<&'a Expr<'a, 'i>>,
+    pub return_token: TokenReturn,
+    pub expr: Option<&'a Expr<'a, 'i>>,
 }
 impl<'a, 'i> Parse<'a, 'i> for ExprReturn<'a, 'i> {
     fn parse_marked(parser: &mut Parser<'a, '_, 'i>, depth: Depth) -> Result<Self, InternalError> {

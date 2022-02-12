@@ -1,6 +1,6 @@
 use crate::lints::visitor::Visitor;
 use crate::parser::{ExprFunctionCall, Spanned};
-use crate::common::MetaInfo;
+use crate::common::{MetaInfo, BlockStack};
 use diagnostic::Diagnostics;
 use crate::error_codes::ErrorCode;
 use crate::{SpecificType, Type};
@@ -9,7 +9,7 @@ use crate::typeck::TypeVar;
 pub struct UnknownFunction;
 
 impl Visitor for UnknownFunction {
-    fn visit_function_call(&self, diagnostics: &Diagnostics, meta_info: &MetaInfo, call: &ExprFunctionCall) {
+    fn visit_function_call(&self, diagnostics: &Diagnostics, meta_info: &MetaInfo, _: &BlockStack<'_, '_, ()>, call: &ExprFunctionCall) {
         let ExprFunctionCall { name, .. } = call;
 
         match &meta_info.types[&TypeVar::new(name.binding.ident.span)] {

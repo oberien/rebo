@@ -1,6 +1,6 @@
 use crate::lints::visitor::Visitor;
 use diagnostic::Diagnostics;
-use crate::common::MetaInfo;
+use crate::common::{MetaInfo, BlockStack};
 use crate::parser::{ExprFieldAccess, ExprAssign, ExprAssignLhs, Spanned};
 use crate::error_codes::ErrorCode;
 use crate::typeck::TypeVar;
@@ -9,7 +9,7 @@ use crate::typeck::types::{Type, SpecificType};
 pub struct StructFieldAssign;
 
 impl Visitor for StructFieldAssign {
-    fn visit_assign(&self, diagnostics: &Diagnostics, meta_info: &MetaInfo, expr: &ExprAssign) {
+    fn visit_assign(&self, diagnostics: &Diagnostics, meta_info: &MetaInfo, _: &BlockStack<'_, '_, ()>, expr: &ExprAssign) {
         let ExprAssign { lhs, .. } = expr;
         if let ExprAssignLhs::FieldAccess(expr) = lhs {
             check_non_struct_field_access(diagnostics, meta_info, expr);

@@ -1,6 +1,6 @@
 use crate::lints::visitor::Visitor;
 use diagnostic::{Diagnostics, Span};
-use crate::common::{MetaInfo, UserType};
+use crate::common::{MetaInfo, UserType, BlockStack};
 use crate::parser::{ExprMatch, Spanned, ExprMatchPattern, ExprLiteral, ExprInteger, ExprBool, ExprString};
 use crate::error_codes::ErrorCode;
 use std::fmt::{Debug, Formatter};
@@ -14,7 +14,7 @@ use crate::typeck::types::{Type, SpecificType};
 pub struct MatchLints;
 
 impl Visitor for MatchLints {
-    fn visit_match(&self, diagnostics: &Diagnostics, meta_info: &MetaInfo, expr: &ExprMatch) {
+    fn visit_match(&self, diagnostics: &Diagnostics, meta_info: &MetaInfo, _: &BlockStack<'_, '_, ()>, expr: &ExprMatch) {
         let match_span = expr.span();
         let ExprMatch { expr, arms, .. } = expr;
 

@@ -1,6 +1,6 @@
 use crate::lints::visitor::Visitor;
 use diagnostic::Diagnostics;
-use crate::common::{MetaInfo, UserType};
+use crate::common::{MetaInfo, UserType, BlockStack};
 use crate::error_codes::ErrorCode;
 use indexmap::IndexMap;
 use crate::parser::{ExprEnumDefinition, ExprEnumInitialization};
@@ -8,7 +8,7 @@ use crate::parser::{ExprEnumDefinition, ExprEnumInitialization};
 pub struct EnumDefInitLints;
 
 impl Visitor for EnumDefInitLints {
-    fn visit_enum_definition(&self, diagnostics: &Diagnostics, _: &MetaInfo, expr: &ExprEnumDefinition) {
+    fn visit_enum_definition(&self, diagnostics: &Diagnostics, _: &MetaInfo, _: &BlockStack<'_, '_, ()>, expr: &ExprEnumDefinition) {
         let mut map = IndexMap::new();
         for variant in &expr.variants {
             if let Some(old_span) = map.insert(variant.name.ident, variant.name.span) {
@@ -21,7 +21,7 @@ impl Visitor for EnumDefInitLints {
         // TODO: proper enum recursion recursing into all usertypes (structs, enums, ...)
     }
 
-    fn visit_enum_initialization(&self, diagnostics: &Diagnostics, meta_info: &MetaInfo, ei: &ExprEnumInitialization) {
+    fn visit_enum_initialization(&self, diagnostics: &Diagnostics, meta_info: &MetaInfo, _: &BlockStack<'_, '_, ()>, ei: &ExprEnumInitialization) {
         let ExprEnumInitialization { enum_name, variant_name, .. } = ei;
         let enum_def = meta_info.user_types.get(enum_name.ident);
         let enum_def = match enum_def {

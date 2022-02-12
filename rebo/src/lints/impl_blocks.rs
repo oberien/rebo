@@ -1,13 +1,13 @@
 use crate::lints::visitor::Visitor;
 use crate::parser::{ExprImplBlock, Spanned};
 use diagnostic::Diagnostics;
-use crate::common::MetaInfo;
+use crate::common::{MetaInfo, BlockStack};
 use crate::error_codes::ErrorCode;
 
 pub struct ImplBlockLints;
 
 impl Visitor for ImplBlockLints {
-    fn visit_impl_block(&self, diagnostics: &Diagnostics, meta_info: &MetaInfo, expr: &ExprImplBlock) {
+    fn visit_impl_block(&self, diagnostics: &Diagnostics, meta_info: &MetaInfo, _: &BlockStack<'_, '_, ()>, expr: &ExprImplBlock) {
         let ExprImplBlock { name, functions, .. } = expr;
 
         if functions.is_empty() {

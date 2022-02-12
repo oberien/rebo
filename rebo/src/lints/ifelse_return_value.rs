@@ -1,6 +1,6 @@
 use crate::lints::visitor::Visitor;
 use diagnostic::Diagnostics;
-use crate::common::MetaInfo;
+use crate::common::{MetaInfo, BlockStack};
 use crate::parser::{ExprIfElse, Spanned};
 use crate::typeck::TypeVar;
 use crate::error_codes::ErrorCode;
@@ -9,7 +9,7 @@ use crate::typeck::types::{Type, SpecificType};
 pub struct IfElseReturnValue;
 
 impl Visitor for IfElseReturnValue {
-    fn visit_if_else(&self, diagnostics: &Diagnostics, meta_info: &MetaInfo, ifelse: &ExprIfElse) {
+    fn visit_if_else(&self, diagnostics: &Diagnostics, meta_info: &MetaInfo, _: &BlockStack<'_, '_, ()>, ifelse: &ExprIfElse) {
         let block_type_vars: Vec<_> = ifelse.iter_branches()
             .map(|(_cond, block)| TypeVar::new(block.span()))
             .collect();
