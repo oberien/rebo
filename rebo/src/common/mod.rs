@@ -12,9 +12,11 @@ pub use values::{Typed, FromValue, Function, ExternalFunction, RequiredReboFunct
 use crate::error_codes::ErrorCode;
 use crate::{FileId, SpecificType};
 use crate::lexer::Lexer;
-use crate::parser::{ExprEnumDefinition, ExprFunctionDefinition, ExprPatternTyped, ExprPatternUntyped, ExprStructDefinition, Spanned, ExprGenerics, ExprStatic, ExprPattern, Expr, Parser, Binding, ExprFunctionSignature, Parse, BindingId};
+use crate::parser::{ExprEnumDefinition, ExprFunctionDefinition, ExprPatternTyped, ExprPatternUntyped, ExprStructDefinition, Spanned, ExprGenerics, ExprStatic, ExprPattern, Expr, Parser, Binding, ExprFunctionSignature, Parse, BindingId, ExprLabel};
 use crate::typeck::types::{EnumType, FunctionType, StructType, Type};
 use crate::typeck::TypeVar;
+use std::rc::Rc;
+use std::cell::RefCell;
 
 mod values;
 
@@ -292,5 +294,67 @@ impl Display for Depth {
             true => "└──",
         };
         write!(f, "{}", last)
+    }
+}
+
+pub struct BlockStack<'a, 'i, T> {
+    blocks: Rc<RefCell<Vec<(BlockType<'a, 'i>, T)>>>,
+}
+#[derive(Clone, Debug)]
+pub enum BlockType<'a, 'i> {
+    Function,
+    Loop(Option<&'a ExprLabel<'i>>),
+    While(Option<&'a ExprLabel<'i>>),
+    For(Option<&'a ExprLabel<'i>>),
+}
+#[must_use]
+pub struct BlockGuard<'a, 'i, T> {
+    blocks: Rc<RefCell<Vec<(BlockType<'a, 'i>, T)>>>
+}
+impl<'a, 'i, T> Drop for BlockGuard<'a, 'i, T> {
+    fn drop(&mut self) {
+        self.blocks.borrow_mut().pop();
+    }
+}
+impl<'a, 'i, T: Clone> BlockStack<'a, 'i, T> {
+    pub fn new() -> Self {
+        BlockStack { blocks: Rc::new(RefCell::new(Vec::new())) }
+    }
+    pub fn push_block(&self, typ: BlockType<'a, 'i>, data: T) -> BlockGuard<'a, 'i, T> {
+        self.blocks.borrow_mut().push((typ, data));
+        BlockGuard { blocks: Rc::clone(&self.blocks) }
+    }
+    pub fn get_loop_like(&self, label: Option<&ExprLabel<'i>>) -> Option<(BlockType<'a, 'i>, T)> {
+        match label {
+            Some(label) => self.get_loop_like_named(label),
+            None => self.get_loop_like_unnamed(),
+        }
+    }
+    fn get_loop_like_unnamed(&self) -> Option<(BlockType<'a, 'i>, T)> {
+        self.blocks.borrow().iter()
+            .rev()
+            .find(|(typ, _)| match typ {
+                BlockType::Function => false,
+                BlockType::Loop(_) | BlockType::While(_) | BlockType::For(_) => true,
+            }).cloned()
+    }
+    fn get_loop_like_named(&self, label: &ExprLabel<'i>) -> Option<(BlockType<'a, 'i>, T)> {
+        self.blocks.borrow().iter()
+            .rev()
+            .find(|(typ, _)| match typ {
+                BlockType::Function => false,
+                BlockType::Loop(Some(l))
+                | BlockType::While(Some(l))
+                | BlockType::For(Some(l)) => l.ident == label.ident,
+                BlockType::Loop(None) | BlockType::While(None) | BlockType::For(None) => false,
+            }).cloned()
+    }
+    pub fn get_function(&self) -> Option<(BlockType<'a, 'i>, T)> {
+        self.blocks.borrow().iter()
+            .rev()
+            .find(|(typ, _)| match typ {
+                BlockType::Function => true,
+                BlockType::Loop(_) | BlockType::While(_) | BlockType::For(_) => false,
+            }).cloned()
     }
 }

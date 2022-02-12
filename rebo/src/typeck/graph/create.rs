@@ -1,6 +1,6 @@
 use crate::typeck::graph::{Graph, Node, PossibleTypes, Constraint};
-use crate::parser::{Expr, Spanned, ExprFormatString, ExprFormatStringPart, ExprBind, ExprPattern, ExprPatternTyped, ExprPatternUntyped, ExprAssign, ExprAssignLhs, ExprVariable, ExprFieldAccess, ExprBoolNot, ExprAdd, ExprSub, ExprMul, ExprDiv, ExprBoolAnd, ExprBoolOr, ExprLessThan, ExprLessEquals, ExprEquals, ExprNotEquals, ExprGreaterEquals, ExprGreaterThan, ExprBlock, BlockBody, ExprParenthesized, ExprMatch, ExprMatchPattern, ExprWhile, ExprFunctionCall, ExprFunctionDefinition, ExprStructInitialization, ExprImplBlock, ExprType, ExprGenerics, ExprAccess, FieldOrMethod, ExprFor, ExprStatic, ExprFunctionType, ExprFunctionSignature, ExprNeg, ExprStaticSignature, ExprAddAssign, ExprSubAssign, ExprMulAssign, ExprDivAssign, ExprBoolAndAssign, ExprBoolOrAssign, ExprLabel, ExprLoop, ExprBreak, ExprContinue, ExprReturn};
-use crate::common::{MetaInfo, UserType, Function, RequiredReboFunctionStruct};
+use crate::parser::{Expr, Spanned, ExprFormatString, ExprFormatStringPart, ExprBind, ExprPattern, ExprPatternTyped, ExprPatternUntyped, ExprAssign, ExprAssignLhs, ExprVariable, ExprFieldAccess, ExprBoolNot, ExprAdd, ExprSub, ExprMul, ExprDiv, ExprBoolAnd, ExprBoolOr, ExprLessThan, ExprLessEquals, ExprEquals, ExprNotEquals, ExprGreaterEquals, ExprGreaterThan, ExprBlock, BlockBody, ExprParenthesized, ExprMatch, ExprMatchPattern, ExprWhile, ExprFunctionCall, ExprFunctionDefinition, ExprStructInitialization, ExprImplBlock, ExprType, ExprGenerics, ExprAccess, FieldOrMethod, ExprFor, ExprStatic, ExprFunctionType, ExprFunctionSignature, ExprNeg, ExprStaticSignature, ExprAddAssign, ExprSubAssign, ExprMulAssign, ExprDivAssign, ExprBoolAndAssign, ExprBoolOrAssign, ExprLoop, ExprBreak, ExprContinue, ExprReturn};
+use crate::common::{MetaInfo, UserType, Function, RequiredReboFunctionStruct, BlockStack, BlockType};
 use itertools::Either;
 use crate::typeck::types::{StructType, EnumType, EnumTypeVariant, SpecificType, FunctionType, Type, ResolvableSpecificType};
 use diagnostic::{Diagnostics, Span};
@@ -144,69 +144,11 @@ impl Drop for GenericGuard {
     }
 }
 
-struct BlockStack<'a, 'i> {
-    blocks: Rc<RefCell<Vec<(BlockType<'a, 'i>, Node)>>>,
-}
-enum BlockType<'a, 'i> {
-    Function,
-    Loop(Option<&'a ExprLabel<'i>>),
-    While(Option<&'a ExprLabel<'i>>),
-    For(Option<&'a ExprLabel<'i>>),
-}
-#[must_use]
-struct BlockGuard<'a, 'i> {
-    blocks: Rc<RefCell<Vec<(BlockType<'a, 'i>, Node)>>>
-}
-impl<'a, 'i> Drop for BlockGuard<'a, 'i> {
-    fn drop(&mut self) {
-        self.blocks.borrow_mut().pop();
-    }
-}
-impl<'a, 'i> BlockStack<'a, 'i> {
-    fn push_block(&self, node: Node, typ: BlockType<'a, 'i>) -> BlockGuard<'a, 'i> {
-        self.blocks.borrow_mut().push((typ, node));
-        BlockGuard { blocks: Rc::clone(&self.blocks) }
-    }
-    fn get_loop_like(&self, label: Option<&ExprLabel<'i>>) -> Option<Node> {
-        match label {
-            Some(label) => self.get_loop_like_named(label),
-            None => self.get_loop_like_unnamed(),
-        }
-    }
-    fn get_loop_like_unnamed(&self) -> Option<Node> {
-        self.blocks.borrow().iter()
-            .rev()
-            .find(|(typ, _)| match typ {
-                BlockType::Function => false,
-                BlockType::Loop(_) | BlockType::While(_) | BlockType::For(_) => true,
-            }).map(|(_, node)| node.clone())
-    }
-    fn get_loop_like_named(&self, label: &ExprLabel<'i>) -> Option<Node> {
-        self.blocks.borrow().iter()
-            .rev()
-            .find(|(typ, _)| match typ {
-                BlockType::Function => false,
-                BlockType::Loop(Some(l))
-                | BlockType::While(Some(l))
-                | BlockType::For(Some(l)) => l.ident == label.ident,
-                BlockType::Loop(None) | BlockType::While(None) | BlockType::For(None) => false,
-            }).map(|(_, node)| node.clone())
-    }
-    fn get_function(&self) -> Option<Node> {
-        self.blocks.borrow().iter()
-            .rev()
-            .find(|(typ, _)| match typ {
-                BlockType::Function => true,
-                BlockType::Loop(_) | BlockType::While(_) | BlockType::For(_) => false,
-            }).map(|(_, node)| node.clone())
-    }
-}
-
 struct Context<'ctx, 'a, 'i> {
     diagnostics: &'ctx Diagnostics,
     meta_info: &'ctx MetaInfo<'a, 'i>,
     function_generics: &'ctx FunctionGenerics,
-    block_stack: &'ctx BlockStack<'a, 'i>,
+    block_stack: &'ctx BlockStack<'a, 'i, Node>,
 }
 
 fn convert_expr_type(typ: &ExprType, diagnostics: &Diagnostics, meta_info: &MetaInfo) -> Type {
@@ -510,9 +452,7 @@ impl<'i> Graph<'i> {
             diagnostics,
             meta_info,
             function_generics: &FunctionGenerics::new(),
-            block_stack: &BlockStack {
-                blocks: Rc::new(RefCell::new(vec![])),
-            },
+            block_stack: &BlockStack::new(),
         };
         for expr in exprs {
             graph.visit_expr(&ctx, expr);
@@ -811,7 +751,7 @@ impl<'i> Graph<'i> {
             }
             Expr::Loop(ExprLoop { label, block, .. }) => {
                 let block_node = Node::type_var(block.span());
-                let block_guard = ctx.block_stack.push_block(block_node, BlockType::Loop(label.as_ref()));
+                let block_guard = ctx.block_stack.push_block(BlockType::Loop(label.as_ref()), block_node);
                 let block_node2 = self.visit_block(ctx, block);
                 assert_eq!(block_node, block_node2);
                 drop(block_guard);
@@ -821,7 +761,7 @@ impl<'i> Graph<'i> {
                 let cond_node = self.visit_expr(ctx, condition);
                 self.add_reduce_constraint(node, cond_node, vec![ResolvableSpecificType::Bool]);
                 let block_node = Node::type_var(block.span());
-                let block_guard = ctx.block_stack.push_block(block_node, BlockType::While(label.as_ref()));
+                let block_guard = ctx.block_stack.push_block(BlockType::While(label.as_ref()), block_node);
                 let block_node2 = self.visit_block(ctx, block);
                 assert_eq!(block_node, block_node2);
                 drop(block_guard);
@@ -833,7 +773,7 @@ impl<'i> Graph<'i> {
                 self.add_node(binding_node);
                 let expr_node = self.visit_expr(ctx, expr);
                 let block_node = Node::type_var(block.span());
-                let block_guard = ctx.block_stack.push_block(block_node, BlockType::For(label.as_ref()));
+                let block_guard = ctx.block_stack.push_block(BlockType::For(label.as_ref()), block_node);
                 let block_node2 = self.visit_block(ctx, block);
                 assert_eq!(block_node, block_node2);
                 drop(block_guard);
@@ -850,8 +790,8 @@ impl<'i> Graph<'i> {
                 let loop_like = ctx.block_stack.get_loop_like(label.as_ref());
                 let expr_node = expr.map(|expr| self.visit_expr(ctx, expr));
                 match (loop_like, expr_node) {
-                    (Some(loop_node), Some(expr_node)) => self.add_eq_constraint(loop_node, expr_node),
-                    (Some(loop_node), None) => self.add_reduce_constraint(node, loop_node, vec![ResolvableSpecificType::Unit]),
+                    (Some((_, loop_node)), Some(expr_node)) => self.add_eq_constraint(expr_node, loop_node),
+                    (Some((_, loop_node)), None) => self.add_reduce_constraint(node, loop_node, vec![ResolvableSpecificType::Unit]),
                     (_, _) => (),
                 }
                 // break returns bottom, which is top during type resolution, which is the default
@@ -863,8 +803,8 @@ impl<'i> Graph<'i> {
                 let function = ctx.block_stack.get_function();
                 let expr_node = expr.map(|expr| self.visit_expr(ctx, expr));
                 match (function, expr_node) {
-                    (Some(fn_node), Some(expr_node)) => self.add_eq_constraint(fn_node, expr_node),
-                    (Some(fn_node), None) => self.add_reduce_constraint(node, fn_node, vec![ResolvableSpecificType::Unit]),
+                    (Some((_, fn_node)), Some(expr_node)) => self.add_eq_constraint(expr_node, fn_node),
+                    (Some((_, fn_node)), None) => self.add_reduce_constraint(node, fn_node, vec![ResolvableSpecificType::Unit]),
                     (_, _) => (),
                 }
                 // return returns bottom, which is top during type resolution, which is the default
@@ -983,7 +923,7 @@ impl<'i> Graph<'i> {
         }
 
         let body_node = Node::type_var(body.span());
-        let block_guard = ctx.block_stack.push_block(body_node, BlockType::Function);
+        let block_guard = ctx.block_stack.push_block(BlockType::Function, body_node);
         let body_node2 = self.visit_block(ctx, body);
         drop(block_guard);
         assert_eq!(body_node, body_node2);
