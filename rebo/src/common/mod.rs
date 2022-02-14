@@ -324,7 +324,7 @@ impl<'a, 'i, T: Clone> BlockStack<'a, 'i, T> {
         self.blocks.borrow_mut().push((typ, data));
         BlockGuard { blocks: Rc::clone(&self.blocks) }
     }
-    pub fn get_loop_like(&self, label: Option<&ExprLabel<'i>>) -> Option<(BlockType<'a, 'i>, T)> {
+    pub fn get_loop_like(&self, label: Option<&ExprLabel<'_>>) -> Option<(BlockType<'a, 'i>, T)> {
         match label {
             Some(label) => self.get_loop_like_named(label),
             None => self.get_loop_like_unnamed(),
@@ -338,7 +338,7 @@ impl<'a, 'i, T: Clone> BlockStack<'a, 'i, T> {
                 BlockType::Loop(_) | BlockType::While(_) | BlockType::For(_) => true,
             }).cloned()
     }
-    fn get_loop_like_named(&self, label: &ExprLabel<'i>) -> Option<(BlockType<'a, 'i>, T)> {
+    fn get_loop_like_named(&self, label: &ExprLabel<'_>) -> Option<(BlockType<'a, 'i>, T)> {
         self.blocks.borrow().iter()
             .rev()
             .find(|(typ, _)| match typ {

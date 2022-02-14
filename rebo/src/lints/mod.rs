@@ -14,6 +14,7 @@ mod match_lints;
 mod impl_blocks;
 mod enum_def_init_lints;
 mod unknown_access;
+mod break_continue_return;
 
 use crate::parser::Expr;
 use crate::common::MetaInfo;
@@ -34,6 +35,7 @@ use crate::lints::match_lints::MatchLints;
 use crate::lints::impl_blocks::ImplBlockLints;
 use crate::lints::enum_def_init_lints::EnumDefInitLints;
 use crate::lints::unknown_access::UnknownAccess;
+use crate::lints::break_continue_return::BreakContinueReturn;
 
 pub fn lint<'a, 'b, 'i>(diagnostics: &'b Diagnostics, meta_info: &'b MetaInfo<'a, 'i>, exprs: &[&'a Expr<'a, 'i>]) {
     let mut visitor_driver = VisitorDriver::new(diagnostics, meta_info);
@@ -53,6 +55,7 @@ pub fn lint<'a, 'b, 'i>(diagnostics: &'b Diagnostics, meta_info: &'b MetaInfo<'a
         &ImplBlockLints,
         &EnumDefInitLints,
         &UnknownAccess,
+        &BreakContinueReturn,
     ]);
 
     visitor_driver.visit_exprs(exprs);
