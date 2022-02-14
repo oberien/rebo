@@ -751,7 +751,7 @@ impl<'i> Graph<'i> {
             }
             Expr::Loop(ExprLoop { label, block, .. }) => {
                 let block_node = Node::type_var(block.span());
-                let block_guard = ctx.block_stack.push_block(BlockType::Loop(label.as_ref()), block_node);
+                let block_guard = ctx.block_stack.push_block(BlockType::Loop(label.as_ref().map(|l| &l.label)), node);
                 let block_node2 = self.visit_block(ctx, block);
                 assert_eq!(block_node, block_node2);
                 drop(block_guard);
@@ -761,7 +761,7 @@ impl<'i> Graph<'i> {
                 let cond_node = self.visit_expr(ctx, condition);
                 self.add_reduce_constraint(node, cond_node, vec![ResolvableSpecificType::Bool]);
                 let block_node = Node::type_var(block.span());
-                let block_guard = ctx.block_stack.push_block(BlockType::While(label.as_ref()), block_node);
+                let block_guard = ctx.block_stack.push_block(BlockType::While(label.as_ref().map(|l| &l.label)), node);
                 let block_node2 = self.visit_block(ctx, block);
                 assert_eq!(block_node, block_node2);
                 drop(block_guard);
@@ -773,7 +773,7 @@ impl<'i> Graph<'i> {
                 self.add_node(binding_node);
                 let expr_node = self.visit_expr(ctx, expr);
                 let block_node = Node::type_var(block.span());
-                let block_guard = ctx.block_stack.push_block(BlockType::For(label.as_ref()), block_node);
+                let block_guard = ctx.block_stack.push_block(BlockType::For(label.as_ref().map(|l| &l.label)), node);
                 let block_node2 = self.visit_block(ctx, block);
                 assert_eq!(block_node, block_node2);
                 drop(block_guard);

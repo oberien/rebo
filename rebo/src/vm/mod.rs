@@ -6,7 +6,7 @@ use parking_lot::ReentrantMutex;
 
 use crate::common::{Depth, Enum, EnumArc, Function, FunctionValue, FuzzyFloat, MetaInfo, RequiredReboFunction, RequiredReboFunctionStruct, Struct, StructArc, Value};
 use crate::lexer::{TokenBool, TokenDqString, TokenFloat, TokenIdent, TokenInteger};
-use crate::parser::{Binding, BlockBody, Expr, ExprAdd, ExprAssign, ExprAssignLhs, ExprBind, ExprBlock, ExprBool, ExprBoolAnd, ExprBoolNot, ExprBoolOr, ExprDiv, ExprEnumDefinition, ExprEnumInitialization, ExprEquals, ExprFieldAccess, ExprFloat, ExprFormatString, ExprFormatStringPart, ExprFunctionCall, ExprGreaterEquals, ExprGreaterThan, ExprIfElse, ExprInteger, ExprLessEquals, ExprLessThan, ExprLiteral, ExprMatch, ExprMatchPattern, ExprMul, ExprNotEquals, ExprParenthesized, ExprPattern, ExprPatternTyped, ExprPatternUntyped, ExprString, ExprStructDefinition, ExprStructInitialization, ExprSub, ExprVariable, ExprWhile, ExprAccess, FieldOrMethod, Spanned, ExprFor, ExprMethodCall, ExprNeg, ExprAddAssign, ExprSubAssign, ExprMulAssign, ExprDivAssign, ExprBoolAndAssign, ExprBoolOrAssign, ExprLabel, ExprLoop, ExprBreak, ExprContinue, ExprReturn};
+use crate::parser::{Binding, BlockBody, Expr, ExprAdd, ExprAssign, ExprAssignLhs, ExprBind, ExprBlock, ExprBool, ExprBoolAnd, ExprBoolNot, ExprBoolOr, ExprDiv, ExprEnumDefinition, ExprEnumInitialization, ExprEquals, ExprFieldAccess, ExprFloat, ExprFormatString, ExprFormatStringPart, ExprFunctionCall, ExprGreaterEquals, ExprGreaterThan, ExprIfElse, ExprInteger, ExprLessEquals, ExprLessThan, ExprLiteral, ExprMatch, ExprMatchPattern, ExprMul, ExprNotEquals, ExprParenthesized, ExprPattern, ExprPatternTyped, ExprPatternUntyped, ExprString, ExprStructDefinition, ExprStructInitialization, ExprSub, ExprVariable, ExprWhile, ExprAccess, FieldOrMethod, Spanned, ExprFor, ExprMethodCall, ExprNeg, ExprAddAssign, ExprSubAssign, ExprMulAssign, ExprDivAssign, ExprBoolAndAssign, ExprBoolOrAssign, ExprLoop, ExprBreak, ExprContinue, ExprReturn, ExprLabel};
 pub use crate::vm::scope::{Scopes, Scope};
 use diagnostic::{Diagnostics, Span};
 use rt_format::{Substitution, Specifier};
@@ -294,9 +294,9 @@ impl<'a, 'b, 'i> Vm<'a, 'b, 'i> {
                     match self.eval_block(block, depth.next()) {
                         Ok(_) => (),
                         Err(ExecError::Break(None, val)) => break Ok(val),
-                        Err(ExecError::Break(l, val)) if l == label.as_ref() => break Ok(val),
+                        Err(ExecError::Break(l, val)) if l == label.as_ref().map(|l| &l.label) => break Ok(val),
                         Err(ExecError::Continue(None)) => (),
-                        Err(ExecError::Continue(l)) if l == label.as_ref() => (),
+                        Err(ExecError::Continue(l)) if l == label.as_ref().map(|l| &l.label) => (),
                         Err(e) => break Err(e),
                     }
                 }
@@ -306,9 +306,9 @@ impl<'a, 'b, 'i> Vm<'a, 'b, 'i> {
                     match self.eval_block(block, depth.next()) {
                         Ok(_) => (),
                         Err(ExecError::Break(None, _)) => break,
-                        Err(ExecError::Break(l, _)) if l == label.as_ref() => break,
+                        Err(ExecError::Break(l, _)) if l == label.as_ref().map(|l| &l.label) => break,
                         Err(ExecError::Continue(None)) => (),
-                        Err(ExecError::Continue(l)) if l == label.as_ref() => (),
+                        Err(ExecError::Continue(l)) if l == label.as_ref().map(|l| &l.label) => (),
                         Err(e) => return Err(e),
                     }
                 }
@@ -325,9 +325,9 @@ impl<'a, 'b, 'i> Vm<'a, 'b, 'i> {
                     match self.eval_block(block, depth.next()) {
                         Ok(_) => (),
                         Err(ExecError::Break(None, _)) => break,
-                        Err(ExecError::Break(l, _)) if l == label.as_ref() => break,
+                        Err(ExecError::Break(l, _)) if l == label.as_ref().map(|l| &l.label) => break,
                         Err(ExecError::Continue(None)) => (),
-                        Err(ExecError::Continue(l)) if l == label.as_ref() => (),
+                        Err(ExecError::Continue(l)) if l == label.as_ref().map(|l| &l.label) => (),
                         Err(e) => return Err(e),
                     }
                 }

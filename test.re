@@ -4,6 +4,14 @@ fn foo(mut x: int, mut y: int) -> int {
     y += 20;
     x + y
 }
+fn choose(cond: bool, a: int, b: int) -> int {
+    if cond {
+        return a;
+    }
+    b
+}
+assert(choose(true, 1, 2) == 1);
+assert(choose(false, 1, 2) == 2);
 print(1 + 2 * 3 == 7);
 print(1 + 2 * 3 * 4);
 let a = 0;
@@ -60,12 +68,22 @@ print(foo.returns_self().returns_self());
 // if - else if - else
 print(if true { 1337 } else { panic("F") } + 5);
 
+// loop
+print(loop { break "loop" });
+print('outer: loop { loop { break 'outer "outer loop" } });
+
 // while
 let mut i = 0;
 while i < 3 {
     i += 1;
 }
 print(i);
+'outer: while true {
+    while true {
+        print("outer while");
+        break 'outer;
+    }
+}
 
 // fibonacci sequence
 fn fib(i: int) -> int {
@@ -186,6 +204,12 @@ list.set(1, 21).unwrap();
 // for loop
 for i in list {
     print(i);
+}
+'outer: for i in list {
+    for i in list {
+        print("outer for");
+        break 'outer;
+    }
 }
 
 // Map<K, V>

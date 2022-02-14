@@ -242,18 +242,18 @@ impl<'a, 'b, 'i, 'v> VisitorDriver<'a, 'b, 'i, 'v> {
                 }
             }
             Expr::Loop(lo) => {
-                let _guard = self.block_stack.push_block(BlockType::Loop(lo.label.as_ref()), ());
+                let _guard = self.block_stack.push_block(BlockType::Loop(lo.label.as_ref().map(|l| &l.label)), ());
                 visit!(self, visit_loop, lo);
                 self.visit_exprs(&lo.block.body.exprs);
             }
             Expr::While(wh) => {
-                let _guard = self.block_stack.push_block(BlockType::While(wh.label.as_ref()), ());
+                let _guard = self.block_stack.push_block(BlockType::While(wh.label.as_ref().map(|l| &l.label)), ());
                 visit!(self, visit_while, wh);
                 self.visit_expr(wh.condition);
                 self.visit_exprs(&wh.block.body.exprs);
             }
             Expr::For(fo) => {
-                let _guard = self.block_stack.push_block(BlockType::For(fo.label.as_ref()), ());
+                let _guard = self.block_stack.push_block(BlockType::For(fo.label.as_ref().map(|l| &l.label)), ());
                 visit!(self, visit_for, fo);
                 self.visit_expr(fo.expr);
                 self.visit_exprs(&fo.block.body.exprs);

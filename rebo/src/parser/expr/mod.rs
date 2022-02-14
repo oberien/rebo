@@ -763,29 +763,55 @@ impl<'a, 'i> Spanned for ExprGenerics<'a, 'i> {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Eq)]
 pub struct ExprLabel<'i> {
     pub apostrophe: TokenApostrophe,
     pub ident: TokenIdent<'i>,
-    pub colon: TokenColon,
 }
 impl<'a, 'i> Parse<'a, 'i> for ExprLabel<'i> {
     fn parse_marked(parser: &mut Parser<'a, '_, 'i>, depth: Depth) -> Result<Self, InternalError> {
         Ok(ExprLabel {
             apostrophe: parser.parse(depth.next())?,
             ident: parser.parse(depth.next())?,
-            colon: parser.parse(depth.last())?,
         })
     }
 }
 impl<'i> Spanned for ExprLabel<'i> {
     fn span(&self) -> Span {
-        Span::new(self.ident.span.file, self.apostrophe.span.start, self.colon.span.end)
+        Span::new(self.ident.span.file, self.apostrophe.span.start, self.ident.span.end)
     }
 }
 impl<'i> Display for ExprLabel<'i> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "'{}:", self.ident.ident)
+        write!(f, "'{}", self.ident.ident)
+    }
+}
+impl<'i> PartialEq<ExprLabel<'i>> for ExprLabel<'i> {
+    fn eq(&self, other: &ExprLabel<'i>) -> bool {
+        self.ident.ident.eq(other.ident.ident)
+    }
+}
+#[derive(Debug, Clone)]
+pub struct ExprLabelDef<'i> {
+    pub label: ExprLabel<'i>,
+    pub colon: TokenColon,
+}
+impl<'a, 'i> Parse<'a, 'i> for ExprLabelDef<'i> {
+    fn parse_marked(parser: &mut Parser<'a, '_, 'i>, depth: Depth) -> Result<Self, InternalError> {
+        Ok(ExprLabelDef {
+            label: parser.parse(depth.next())?,
+            colon: parser.parse(depth.last())?,
+        })
+    }
+}
+impl<'i> Spanned for ExprLabelDef<'i> {
+    fn span(&self) -> Span {
+        Span::new(self.label.span().file, self.label.span().start, self.colon.span.end)
+    }
+}
+impl<'i> Display for ExprLabelDef<'i> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "{}:", self.label)
     }
 }
 
@@ -1619,14 +1645,14 @@ impl<'a, 'i> Display for ExprMatch<'a, 'i> {
 
 #[derive(Debug, Clone)]
 pub struct ExprWhile<'a, 'i> {
-    pub label: Option<ExprLabel<'i>>,
+    pub label: Option<ExprLabelDef<'i>>,
     pub while_token: TokenWhile,
     pub condition: &'a Expr<'a, 'i>,
     pub block: ExprBlock<'a, 'i>,
 }
 impl<'a, 'i> Parse<'a, 'i> for ExprWhile<'a, 'i> {
     fn parse_marked(parser: &mut Parser<'a, '_, 'i>, depth: Depth) -> Result<Self, InternalError> {
-        let label: Option<ExprLabel<'i>> = parser.parse(depth.next())?;
+        let label: Option<ExprLabelDef<'i>> = parser.parse(depth.next())?;
         let while_token = parser.parse(depth.next())?;
         let condition = Expr::try_parse_until_including(parser, ParseUntil::All, depth.next())?;
         let _guard = parser.push_scope(ScopeType::While(label.clone()));
@@ -1660,7 +1686,7 @@ impl<'a, 'i> Display for ExprWhile<'a, 'i> {
 
 #[derive(Debug, Clone)]
 pub struct ExprFor<'a, 'i> {
-    pub label: Option<ExprLabel<'i>>,
+    pub label: Option<ExprLabelDef<'i>>,
     pub for_token: TokenFor,
     pub binding: Binding<'i>,
     pub in_token: TokenIn,
@@ -1669,7 +1695,7 @@ pub struct ExprFor<'a, 'i> {
 }
 impl<'a, 'i> Parse<'a, 'i> for ExprFor<'a, 'i> {
     fn parse_marked(parser: &mut Parser<'a, '_, 'i>, depth: Depth) -> Result<Self, InternalError> {
-        let label: Option<ExprLabel<'i>> = parser.parse(depth.next())?;
+        let label: Option<ExprLabelDef<'i>> = parser.parse(depth.next())?;
         let for_token = parser.parse(depth.next())?;
         // don't have the binding in the current scope in the expr
         let guard = parser.push_scope(ScopeType::Synthetic);
@@ -1712,13 +1738,13 @@ impl<'a, 'i> Display for ExprFor<'a, 'i> {
 
 #[derive(Debug, Clone)]
 pub struct ExprLoop<'a, 'i> {
-    pub label: Option<ExprLabel<'i>>,
+    pub label: Option<ExprLabelDef<'i>>,
     pub loop_token: TokenLoop,
     pub block: ExprBlock<'a, 'i>,
 }
 impl<'a, 'i> Parse<'a, 'i> for ExprLoop<'a, 'i> {
     fn parse_marked(parser: &mut Parser<'a, '_, 'i>, depth: Depth) -> Result<Self, InternalError> {
-        let label: Option<ExprLabel<'i>> = parser.parse(depth.next())?;
+        let label: Option<ExprLabelDef<'i>> = parser.parse(depth.next())?;
         let loop_token = parser.parse(depth.next())?;
         let _guard = parser.push_scope(ScopeType::Loop(label.clone()));
         let block = parser.parse(depth.next())?;

@@ -1,5 +1,5 @@
 use indexmap::map::IndexMap;
-use crate::parser::{Binding, Generic, ExprLabel};
+use crate::parser::{Binding, Generic, ExprLabelDef};
 use std::fmt::{self, Formatter, Display};
 use std::sync::atomic::{AtomicU32, Ordering};
 
@@ -11,9 +11,9 @@ pub struct Scope<'i> {
 
 pub enum ScopeType<'i> {
     Function,
-    While(Option<ExprLabel<'i>>),
-    For(Option<ExprLabel<'i>>),
-    Loop(Option<ExprLabel<'i>>),
+    While(Option<ExprLabelDef<'i>>),
+    For(Option<ExprLabelDef<'i>>),
+    Loop(Option<ExprLabelDef<'i>>),
     Synthetic,
 }
 

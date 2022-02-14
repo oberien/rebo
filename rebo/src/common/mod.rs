@@ -297,6 +297,7 @@ impl Display for Depth {
     }
 }
 
+#[derive(Debug)]
 pub struct BlockStack<'a, 'i, T> {
     blocks: Rc<RefCell<Vec<(BlockType<'a, 'i>, T)>>>,
 }
@@ -345,7 +346,7 @@ impl<'a, 'i, T: Clone> BlockStack<'a, 'i, T> {
                 BlockType::Function => false,
                 BlockType::Loop(Some(l))
                 | BlockType::While(Some(l))
-                | BlockType::For(Some(l)) => l.ident == label.ident,
+                | BlockType::For(Some(l)) => *l == label,
                 BlockType::Loop(None) | BlockType::While(None) | BlockType::For(None) => false,
             }).cloned()
     }
