@@ -344,7 +344,7 @@ fn file_read_to_string(name: String) -> Result<String, FileError> {
                 vm.diagnostics().error(ErrorCode::FileError)
                     .with_error_label(expr_span, "the file in not in the include directory")
                     .with_info_label(expr_span, format!("this file resolved to {}", path.display()))
-                    .with_error_label(expr_span, format!("included files must be in {}", vm.include_directory().display()))
+                    .with_error_label(expr_span, format!("included files must be in {}", vm.include_directory().unwrap_path().display()))
                     .emit();
                 return Err(ExecError::Panic);
             }

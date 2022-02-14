@@ -33,7 +33,7 @@ pub use common::{StructArc, Struct, EnumArc, Enum};
 pub use typeck::types::{Type, FunctionType, SpecificType};
 pub use stdlib::Stdlib;
 pub use util::CowVec;
-use std::path::PathBuf;
+use std::path::{PathBuf, Path};
 use crate::error_codes::ErrorCode;
 
 const EXTERNAL_SOURCE: &str = "defined externally";
@@ -46,13 +46,33 @@ pub enum ReturnValue {
     Diagnostics(u32),
 }
 
+#[derive(Debug, Clone)]
+pub enum IncludeDirectory {
+    Path(PathBuf),
+    Everywhere,
+}
+impl IncludeDirectory {
+    pub fn unwrap_path(&self) -> &Path {
+        match self {
+            IncludeDirectory::Path(path) => &path,
+            IncludeDirectory::Everywhere => panic!("IncludeDirectory::unwrap_path called with everywhere"),
+        }
+    }
+}
+#[derive(Debug, Clone)]
+pub enum IncludeDirectoryConfig {
+    Workdir,
+    Path(PathBuf),
+    Everywhere,
+}
+
 pub struct ReboConfig {
     stdlib: Stdlib,
     functions: Vec<ExternalFunction>,
     interrupt_interval: u32,
     interrupt_function: for<'a, 'i> fn(&mut VmContext<'a, '_, '_, 'i>) -> Result<(), ExecError<'a, 'i>>,
     diagnostic_output: Output,
-    include_directory: Option<PathBuf>,
+    include_directory: IncludeDirectoryConfig,
     external_type_adder_functions: Vec<for<'a, 'b, 'i> fn(&'a Arena<Expr<'a, 'i>>, &'i Diagnostics, &'b mut MetaInfo<'a, 'i>)>,
     required_rebo_functions: Vec<RequiredReboFunctionStruct>,
 }
@@ -64,7 +84,7 @@ impl ReboConfig {
             interrupt_interval: 10000,
             interrupt_function: |_| Ok(()),
             diagnostic_output: Output::stderr(),
-            include_directory: None,
+            include_directory: IncludeDirectoryConfig::Workdir,
             external_type_adder_functions: Vec::new(),
             required_rebo_functions: Vec::new(),
         }
@@ -89,8 +109,8 @@ impl ReboConfig {
         self.diagnostic_output = output;
         self
     }
-    pub fn include_directory(mut self, dir: PathBuf) -> Self {
-        self.include_directory = Some(dir);
+    pub fn include_directory(mut self, dir: IncludeDirectoryConfig) -> Self {
+        self.include_directory = dir;
         self
     }
     pub fn add_external_type<T: ExternalTypeType>(mut self, _: T) -> Self {
@@ -144,12 +164,14 @@ pub fn run_with_config(filename: String, code: String, config: ReboConfig) -> Re
     info!("TOKENS:\n{}\n", lexer.iter().map(|token| token.to_string()).join(""));
 
     // parse
-    let include_directory = include_directory.unwrap_or_else(|| {
-        std::env::current_dir()
+    let include_directory = match include_directory {
+        IncludeDirectoryConfig::Everywhere => IncludeDirectory::Everywhere,
+        IncludeDirectoryConfig::Workdir => IncludeDirectory::Path(std::env::current_dir()
             .expect("can't get current working directory")
             .canonicalize()
-            .expect("can't canonicalize current working directory")
-    });
+            .expect("can't canonicalize current working directory")),
+        IncludeDirectoryConfig::Path(path) => IncludeDirectory::Path(path),
+    };
     let time = Instant::now();
     let parser = Parser::new(include_directory.clone(), &arena, lexer, &diagnostics, &mut meta_info);
     let ast = match parser.parse_ast() {

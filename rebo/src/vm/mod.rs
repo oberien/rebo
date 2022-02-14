@@ -1,5 +1,4 @@
 use std::cell::RefCell;
-use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use parking_lot::ReentrantMutex;
@@ -10,7 +9,7 @@ use crate::parser::{Binding, BlockBody, Expr, ExprAdd, ExprAssign, ExprAssignLhs
 pub use crate::vm::scope::{Scopes, Scope};
 use diagnostic::{Diagnostics, Span};
 use rt_format::{Substitution, Specifier};
-use crate::EXTERNAL_SPAN;
+use crate::{EXTERNAL_SPAN, IncludeDirectory};
 
 mod scope;
 
@@ -21,7 +20,7 @@ pub struct Vm<'a, 'b, 'i> {
     diagnostics: &'i Diagnostics,
     scopes: Scopes,
     meta_info: &'b MetaInfo<'a, 'i>,
-    include_directory: PathBuf,
+    include_directory: IncludeDirectory,
 }
 
 #[derive(Debug)]
@@ -42,7 +41,7 @@ impl<'a, 'b, 'vm, 'i> VmContext<'a, 'b, 'vm, 'i> {
         self.vm.diagnostics
     }
 
-    pub fn include_directory(&self) -> &Path {
+    pub fn include_directory(&self) -> &IncludeDirectory {
         &self.vm.include_directory
     }
 
@@ -55,7 +54,7 @@ impl<'a, 'b, 'vm, 'i> VmContext<'a, 'b, 'vm, 'i> {
 }
 
 impl<'a, 'b, 'i> Vm<'a, 'b, 'i> {
-    pub fn new(include_directory: PathBuf, diagnostics: &'i Diagnostics, meta_info: &'b MetaInfo<'a, 'i>, interrupt_interval: u32, interrupt_function: fn(&mut VmContext<'a, '_, '_, 'i>) -> Result<(), ExecError<'a, 'i>>) -> Self {
+    pub fn new(include_directory: IncludeDirectory, diagnostics: &'i Diagnostics, meta_info: &'b MetaInfo<'a, 'i>, interrupt_interval: u32, interrupt_function: fn(&mut VmContext<'a, '_, '_, 'i>) -> Result<(), ExecError<'a, 'i>>) -> Self {
         let scopes = Scopes::new();
         let root_scope = Scope::new();
         // we don't want to drop the root-scope, it should exist at all times

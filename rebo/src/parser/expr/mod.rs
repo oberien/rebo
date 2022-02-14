@@ -468,7 +468,7 @@ impl<'a, 'i> Expr<'a, 'i> {
                         parser.diagnostics.error(ErrorCode::ErrorReadingIncludedFile)
                             .with_error_label(include.span(), "the file in not in the include directory")
                             .with_info_label(include.span(), format!("this file resolved to {}", path.display()))
-                            .with_error_label(include.span(), format!("included files must be in {}", parser.include_directory.display()))
+                            .with_error_label(include.span(), format!("included files must be in {}", parser.include_directory.unwrap_path().display()))
                             .emit();
                         return err;
                     }

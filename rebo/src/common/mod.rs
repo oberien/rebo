@@ -10,7 +10,7 @@ use typed_arena::Arena;
 pub use values::{Typed, FromValue, Function, ExternalFunction, RequiredReboFunction, RequiredReboFunctionStruct, ExternalType, ExternalTypeType, FuzzyFloat, IntoValue, Struct, StructArc, Enum, EnumArc, Value, FunctionValue, ListArc, MapArc, DisplayValue, DebugValue, OctalValue, LowerHexValue, UpperHexValue, BinaryValue, LowerExpValue, UpperExpValue};
 
 use crate::error_codes::ErrorCode;
-use crate::{FileId, SpecificType};
+use crate::{FileId, SpecificType, IncludeDirectory};
 use crate::lexer::Lexer;
 use crate::parser::{ExprEnumDefinition, ExprFunctionDefinition, ExprPatternTyped, ExprPatternUntyped, ExprStructDefinition, Spanned, ExprGenerics, ExprStatic, ExprPattern, Expr, Parser, Binding, ExprFunctionSignature, Parse, BindingId, ExprLabel};
 use crate::typeck::types::{EnumType, FunctionType, StructType, Type};
@@ -165,7 +165,7 @@ impl<'a, 'i> MetaInfo<'a, 'i> {
         self.external_functions.insert(fun.name, fun.clone());
         self.functions.insert(Cow::Borrowed(fun.name), Function::Rust(fun.imp));
         let lexer = Lexer::new(diagnostics, file);
-        let mut parser = Parser::new(PathBuf::new(), arena, lexer, diagnostics, self);
+        let mut parser = Parser::new(IncludeDirectory::Path(PathBuf::new()), arena, lexer, diagnostics, self);
         let sig = ExprFunctionSignature::parse(&mut parser, Depth::start()).unwrap();
         self.external_function_signatures.insert(fun.name, sig);
     }
@@ -215,7 +215,7 @@ impl<'a, 'i> MetaInfo<'a, 'i> {
         self.external_types.insert(T::TYPE.type_name(), T::TYPE);
 
         let lexer = Lexer::new(diagnostics, file);
-        let parser = Parser::new(PathBuf::new(), arena, lexer, diagnostics, self);
+        let parser = Parser::new(IncludeDirectory::Path(PathBuf::new()), arena, lexer, diagnostics, self);
         parser.parse_ast().unwrap();
     }
     pub fn add_enum(&mut self, diagnostics: &Diagnostics, enum_def: &'a ExprEnumDefinition<'a, 'i>) {

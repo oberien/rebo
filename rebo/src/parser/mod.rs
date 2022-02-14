@@ -23,8 +23,8 @@ use itertools::Itertools;
 use crate::parser::scope::{Scope, ScopeType};
 use std::cell::RefCell;
 use std::rc::Rc;
-use std::path::PathBuf;
 use indexmap::set::IndexSet;
+use crate::IncludeDirectory;
 
 #[derive(Debug, Clone)]
 pub enum Error {
@@ -93,7 +93,7 @@ impl<'a, 'i> fmt::Display for Ast<'a, 'i> {
 
 pub struct Parser<'a, 'b, 'i> {
     /// directory to search in when including files
-    include_directory: PathBuf,
+    include_directory: IncludeDirectory,
     /// arena to allocate expressions into
     arena: &'a Arena<Expr<'a, 'i>>,
     /// tokens to be consumed
@@ -124,7 +124,7 @@ impl<'i> Drop for ScopeGuard<'i> {
 
 /// All expression parsing function consume whitespace and comments before tokens, but not after.
 impl<'a, 'b, 'i> Parser<'a, 'b, 'i> {
-    pub fn new(include_directory: PathBuf, arena: &'a Arena<Expr<'a, 'i>>, lexer: Lexer<'i>, diagnostics: &'i Diagnostics, meta_info: &'b mut MetaInfo<'a, 'i>) -> Self {
+    pub fn new(include_directory: IncludeDirectory, arena: &'a Arena<Expr<'a, 'i>>, lexer: Lexer<'i>, diagnostics: &'i Diagnostics, meta_info: &'b mut MetaInfo<'a, 'i>) -> Self {
         Parser {
             include_directory,
             arena,

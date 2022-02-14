@@ -2,7 +2,7 @@ use std::fmt;
 use std::ops::Deref;
 use std::path::{Path, PathBuf};
 use rt_format::argument::ArgumentSource;
-use crate::Value;
+use crate::{Value, IncludeDirectory};
 
 /// Workaround for <https://github.com/rust-lang/rust/issues/89940>
 #[derive(Debug, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
@@ -85,15 +85,19 @@ pub enum ResolveFileError {
     Canonicalize(PathBuf, std::io::Error),
     StartsWith(PathBuf),
 }
-pub fn try_resolve_file<P: AsRef<Path>, P2: AsRef<Path>>(include_directory: P, file: P2) -> Result<PathBuf, ResolveFileError> {
-    let path = include_directory.as_ref().join(file.as_ref());
+pub fn try_resolve_file<P: AsRef<Path>>(include_directory: &IncludeDirectory, file: P) -> Result<PathBuf, ResolveFileError> {
+    let include_directory = match include_directory {
+        IncludeDirectory::Everywhere => return Ok(file.as_ref().to_owned()),
+        IncludeDirectory::Path(path) => path,
+    };
+    let path = include_directory.join(file.as_ref());
     let path = match path.canonicalize() {
         Ok(path) => path,
         Err(e) => {
             return Err(ResolveFileError::Canonicalize(path, e));
         }
     };
-    if !path.starts_with(include_directory.as_ref()) {
+    if !path.starts_with(include_directory) {
         return Err(ResolveFileError::StartsWith(path));
     }
     Ok(path)
