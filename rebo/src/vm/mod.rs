@@ -6,7 +6,7 @@ use parking_lot::ReentrantMutex;
 
 use crate::common::{Depth, Enum, EnumArc, Function, FunctionValue, FuzzyFloat, MetaInfo, RequiredReboFunction, RequiredReboFunctionStruct, Struct, StructArc, Value};
 use crate::lexer::{TokenBool, TokenDqString, TokenFloat, TokenIdent, TokenInteger};
-use crate::parser::{Binding, BlockBody, Expr, ExprAdd, ExprAssign, ExprAssignLhs, ExprBind, ExprBlock, ExprBool, ExprBoolAnd, ExprBoolNot, ExprBoolOr, ExprDiv, ExprEnumDefinition, ExprEnumInitialization, ExprEquals, ExprFieldAccess, ExprFloat, ExprFormatString, ExprFormatStringPart, ExprFunctionCall, ExprGreaterEquals, ExprGreaterThan, ExprIfElse, ExprInteger, ExprLessEquals, ExprLessThan, ExprLiteral, ExprMatch, ExprMatchPattern, ExprMul, ExprNotEquals, ExprParenthesized, ExprPattern, ExprPatternTyped, ExprPatternUntyped, ExprString, ExprStructDefinition, ExprStructInitialization, ExprSub, ExprVariable, ExprWhile, ExprAccess, FieldOrMethod, Spanned, ExprFor, ExprMethodCall, ExprNeg, ExprAddAssign, ExprSubAssign, ExprMulAssign, ExprDivAssign, ExprBoolAndAssign, ExprBoolOrAssign};
+use crate::parser::{Binding, BlockBody, Expr, ExprAdd, ExprAssign, ExprAssignLhs, ExprBind, ExprBlock, ExprBool, ExprBoolAnd, ExprBoolNot, ExprBoolOr, ExprDiv, ExprEnumDefinition, ExprEnumInitialization, ExprEquals, ExprFieldAccess, ExprFloat, ExprFormatString, ExprFormatStringPart, ExprFunctionCall, ExprGreaterEquals, ExprGreaterThan, ExprIfElse, ExprInteger, ExprLessEquals, ExprLessThan, ExprLiteral, ExprMatch, ExprMatchPattern, ExprMul, ExprNotEquals, ExprParenthesized, ExprPattern, ExprPatternTyped, ExprPatternUntyped, ExprString, ExprStructDefinition, ExprStructInitialization, ExprSub, ExprVariable, ExprWhile, ExprAccess, FieldOrMethod, Spanned, ExprFor, ExprMethodCall, ExprNeg, ExprAddAssign, ExprSubAssign, ExprMulAssign, ExprDivAssign, ExprBoolAndAssign, ExprBoolOrAssign, ExprLabel, ExprLoop, ExprBreak, ExprContinue, ExprReturn};
 pub use crate::vm::scope::{Scopes, Scope};
 use diagnostic::{Diagnostics, Span};
 use rt_format::{Substitution, Specifier};
@@ -17,7 +17,7 @@ mod scope;
 pub struct Vm<'a, 'b, 'i> {
     interrupt_interval: u32,
     instructions_since_last_interrupt: u32,
-    interrupt_function: fn(&mut VmContext) -> Result<(), ExecError>,
+    interrupt_function: fn(&mut VmContext<'a, '_, '_, 'i>) -> Result<(), ExecError<'a, 'i>>,
     diagnostics: &'i Diagnostics,
     scopes: Scopes,
     meta_info: &'b MetaInfo<'a, 'i>,
@@ -25,7 +25,10 @@ pub struct Vm<'a, 'b, 'i> {
 }
 
 #[derive(Debug)]
-pub enum ExecError {
+pub enum ExecError<'a, 'i> {
+    Break(Option<&'a ExprLabel<'i>>, Value),
+    Continue(Option<&'a ExprLabel<'i>>),
+    Return(Value),
     Panic,
 }
 
@@ -43,7 +46,7 @@ impl<'a, 'b, 'vm, 'i> VmContext<'a, 'b, 'vm, 'i> {
         &self.vm.include_directory
     }
 
-    pub fn call_required_rebo_function<T: RequiredReboFunction>(&mut self, args: Vec<Value>) -> Result<Value, ExecError> {
+    pub fn call_required_rebo_function<T: RequiredReboFunction>(&mut self, args: Vec<Value>) -> Result<Value, ExecError<'a, 'i>> {
         if !self.vm.meta_info.required_rebo_functions.contains(&RequiredReboFunctionStruct::from_required_rebo_function::<T>()) {
             panic!("required rebo function `{}` wasn't registered via `ReboConfig`", T::NAME);
         }
@@ -52,7 +55,7 @@ impl<'a, 'b, 'vm, 'i> VmContext<'a, 'b, 'vm, 'i> {
 }
 
 impl<'a, 'b, 'i> Vm<'a, 'b, 'i> {
-    pub fn new(include_directory: PathBuf, diagnostics: &'i Diagnostics, meta_info: &'b MetaInfo<'a, 'i>, interrupt_interval: u32, interrupt_function: fn(&mut VmContext) -> Result<(), ExecError>) -> Self {
+    pub fn new(include_directory: PathBuf, diagnostics: &'i Diagnostics, meta_info: &'b MetaInfo<'a, 'i>, interrupt_interval: u32, interrupt_function: fn(&mut VmContext<'a, '_, '_, 'i>) -> Result<(), ExecError<'a, 'i>>) -> Self {
         let scopes = Scopes::new();
         let root_scope = Scope::new();
         // we don't want to drop the root-scope, it should exist at all times
@@ -68,7 +71,7 @@ impl<'a, 'b, 'i> Vm<'a, 'b, 'i> {
         }
     }
 
-    pub fn run(mut self, ast: &[&Expr<'a, 'i>]) -> Result<Value, ExecError> {
+    pub fn run(mut self, ast: &[&'a Expr<'a, 'i>]) -> Result<Value, ExecError<'a, 'i>> {
         trace!("run");
         // add functions
         for (binding, name) in &self.meta_info.function_bindings {
@@ -107,7 +110,7 @@ impl<'a, 'b, 'i> Vm<'a, 'b, 'i> {
         self.scopes.assign(binding.id, value);
     }
 
-    fn eval_expr(&mut self, expr: &Expr<'a, 'i>, depth: Depth) -> Result<Value, ExecError> {
+    fn eval_expr(&mut self, expr: &'a Expr<'a, 'i>, depth: Depth) -> Result<Value, ExecError<'a, 'i>> {
         trace!("{}eval_expr: {}", depth, expr);
         self.instructions_since_last_interrupt += 1;
         if self.instructions_since_last_interrupt > self.interrupt_interval {
@@ -286,13 +289,32 @@ impl<'a, 'b, 'i> Vm<'a, 'b, 'i> {
                 }
                 Ok(val.unwrap())
             }
-            Expr::While(ExprWhile { condition, block, .. }) => {
+            Expr::Loop(ExprLoop { label, block, .. }) => {
+                loop {
+                    match self.eval_block(block, depth.next()) {
+                        Ok(_) => (),
+                        Err(ExecError::Break(None, val)) => break Ok(val),
+                        Err(ExecError::Break(l, val)) if l == label.as_ref() => break Ok(val),
+                        Err(ExecError::Continue(None)) => (),
+                        Err(ExecError::Continue(l)) if l == label.as_ref() => (),
+                        Err(e) => break Err(e),
+                    }
+                }
+            }
+            Expr::While(ExprWhile { label, condition, block, .. }) => {
                 while self.eval_expr(condition, depth.next())?.expect_bool("while condition not a bool") {
-                    self.eval_block(block, depth.next())?;
+                    match self.eval_block(block, depth.next()) {
+                        Ok(_) => (),
+                        Err(ExecError::Break(None, _)) => break,
+                        Err(ExecError::Break(l, _)) if l == label.as_ref() => break,
+                        Err(ExecError::Continue(None)) => (),
+                        Err(ExecError::Continue(l)) if l == label.as_ref() => (),
+                        Err(e) => return Err(e),
+                    }
                 }
                 Ok(Value::Unit)
             }
-            Expr::For(ExprFor { binding, expr, block, .. }) => {
+            Expr::For(ExprFor { label, binding, expr, block, .. }) => {
                 let list = self.eval_expr(expr, depth.next())?.expect_list("for expr is not a list");
                 let list = list.list.lock();
                 let list = list.borrow();
@@ -300,9 +322,33 @@ impl<'a, 'b, 'i> Vm<'a, 'b, 'i> {
                 self.bind(binding, Value::Unit, depth.next());
                 for value in list.iter().cloned() {
                     self.assign_binding(binding, value, depth.next());
-                    self.eval_block(block, depth.next())?;
+                    match self.eval_block(block, depth.next()) {
+                        Ok(_) => (),
+                        Err(ExecError::Break(None, _)) => break,
+                        Err(ExecError::Break(l, _)) if l == label.as_ref() => break,
+                        Err(ExecError::Continue(None)) => (),
+                        Err(ExecError::Continue(l)) if l == label.as_ref() => (),
+                        Err(e) => return Err(e),
+                    }
                 }
                 Ok(Value::Unit)
+            }
+            Expr::Break(ExprBreak { label, expr, .. }) => {
+                let val = match expr {
+                    Some(expr) => self.eval_expr(expr, depth.next())?,
+                    None => Value::Unit,
+                };
+                Err(ExecError::Break(label.as_ref(), val))
+            }
+            Expr::Continue(ExprContinue { label, .. }) => {
+                Err(ExecError::Continue(label.as_ref()))
+            }
+            Expr::Return(ExprReturn { expr, .. }) => {
+                let val = match expr {
+                    Some(expr) => self.eval_expr(expr, depth.next())?,
+                    None => Value::Unit,
+                };
+                Err(ExecError::Return(val))
             }
             Expr::FunctionCall(ExprFunctionCall { name, args, .. }) => {
                 let fun = self.load_binding(&name.binding, depth.next()).expect_function("called a function on a binding that's not a function");
@@ -340,7 +386,7 @@ impl<'a, 'b, 'i> Vm<'a, 'b, 'i> {
         }
     }
 
-    fn eval_block(&mut self, ExprBlock { body: BlockBody { exprs, terminated_with_semicolon }, .. }: &ExprBlock<'a, 'i>, depth: Depth) -> Result<Value, ExecError> {
+    fn eval_block(&mut self, ExprBlock { body: BlockBody { exprs, terminated_with_semicolon }, .. }: &ExprBlock<'a, 'i>, depth: Depth) -> Result<Value, ExecError<'a, 'i>> {
         let _guard = self.scopes.push_scope(Scope::new());
         let mut val = Value::Unit;
         for expr in exprs {
@@ -352,7 +398,7 @@ impl<'a, 'b, 'i> Vm<'a, 'b, 'i> {
             Ok(val)
         }
     }
-    fn call_function(&mut self, fun: &FunctionValue, expr_span: Span, args: Vec<Value>, depth: Depth) -> Result<Value, ExecError> {
+    fn call_function(&mut self, fun: &FunctionValue, expr_span: Span, args: Vec<Value>, depth: Depth) -> Result<Value, ExecError<'a, 'i>> {
         trace!("{}call_function: {:?}({:?})", depth, fun, args);
         let (arg_binding_ids, fun) = match fun {
             FunctionValue::Anonymous(span) => {
@@ -380,12 +426,11 @@ impl<'a, 'b, 'i> Vm<'a, 'b, 'i> {
         }
         let _guard = self.scopes.push_scope(scope);
 
-        let mut last = None;
-        for expr in &fun.body.body.exprs {
-            last = Some(self.eval_expr(expr, depth.next())?);
+        match self.eval_block(&fun.body, depth.next()) {
+            Ok(val) => Ok(val),
+            Err(ExecError::Return(val)) => Ok(val),
+            Err(e) => Err(e),
         }
-
-        Ok(last.unwrap_or(Value::Unit))
     }
 
     fn assign(&mut self, lhs: &ExprAssignLhs, value: Value, depth: Depth) {
@@ -419,7 +464,7 @@ impl<'a, 'b, 'i> Vm<'a, 'b, 'i> {
         }
     }
 
-    fn load_lhs_value(&mut self, lhs: &ExprAssignLhs<'a, 'i>, depth: Depth) -> Result<Value, ExecError> {
+    fn load_lhs_value(&mut self, lhs: &ExprAssignLhs<'a, 'i>, depth: Depth) -> Result<Value, ExecError<'a, 'i>> {
         match lhs {
             ExprAssignLhs::Variable(variable) => Ok(self.load_binding(&variable.binding, depth.next())),
             ExprAssignLhs::FieldAccess(ExprFieldAccess { variable, fields, .. }) => {
@@ -428,7 +473,7 @@ impl<'a, 'b, 'i> Vm<'a, 'b, 'i> {
         }
     }
 
-    fn load_access(&mut self, variable: &ExprVariable, accesses: impl IntoIterator<Item = impl ::std::borrow::Borrow<FieldOrMethod<'a, 'i>>>, depth: Depth) -> Result<Value, ExecError> {
+    fn load_access(&mut self, variable: &ExprVariable, accesses: impl IntoIterator<Item = impl ::std::borrow::Borrow<FieldOrMethod<'a, 'i>>>, depth: Depth) -> Result<Value, ExecError<'a, 'i>> {
         let mut val = self.load_binding(&variable.binding, depth.next());
         for acc in accesses {
             let acc = acc.borrow();

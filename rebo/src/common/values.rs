@@ -350,7 +350,7 @@ impl RequiredReboFunctionStruct {
     }
 }
 
-pub type RustFunction = fn(expr_span: Span, &mut VmContext, Vec<Value>) -> Result<Value, ExecError>;
+pub type RustFunction = for<'a, 'i> fn(expr_span: Span, &mut VmContext<'a, '_, '_, 'i>, Vec<Value>) -> Result<Value, ExecError<'a, 'i>>;
 #[derive(Clone)]
 pub enum Function {
     /// fn-pointer

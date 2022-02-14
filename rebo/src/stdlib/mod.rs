@@ -162,7 +162,7 @@ trait Sliceable: Sized {
     fn truncate(&mut self, new_len: usize);
     fn remove_start(&mut self, until: usize);
     fn name() -> &'static str;
-    fn slice(mut self, vm: &VmContext, expr_span: Span, start: i64, mut args: impl Iterator<Item = Value>) -> Result<Self, ExecError> {
+    fn slice<'a, 'i>(mut self, vm: &VmContext<'a, '_, '_, 'i>, expr_span: Span, start: i64, mut args: impl Iterator<Item = Value>) -> Result<Self, ExecError<'a, 'i>> {
         let end = args.next().map(|val| val.expect_int("TypedVarargs is broken as fuck"));
         if args.next().is_some() {
             vm.diagnostics().error(ErrorCode::Panic)
@@ -262,7 +262,7 @@ fn string_parse_int(this: String) -> Result<u64, ParseIntError> {
     }
 }
 
-fn compile_regex(regex: String, vm: &VmContext, expr_span: Span) -> Result<Regex, ExecError> {
+fn compile_regex<'a, 'i>(regex: String, vm: &VmContext<'a, '_, '_, 'i>, expr_span: Span) -> Result<Regex, ExecError<'a, 'i>> {
     match Regex::new(&regex) {
         Ok(regex) => Ok(regex),
         Err(regex::Error::Syntax(msg)) => {

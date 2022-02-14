@@ -50,7 +50,7 @@ pub struct ReboConfig {
     stdlib: Stdlib,
     functions: Vec<ExternalFunction>,
     interrupt_interval: u32,
-    interrupt_function: fn(&mut VmContext) -> Result<(), ExecError>,
+    interrupt_function: for<'a, 'i> fn(&mut VmContext<'a, '_, '_, 'i>) -> Result<(), ExecError<'a, 'i>>,
     diagnostic_output: Output,
     include_directory: Option<PathBuf>,
     external_type_adder_functions: Vec<for<'a, 'b, 'i> fn(&'a Arena<Expr<'a, 'i>>, &'i Diagnostics, &'b mut MetaInfo<'a, 'i>)>,
@@ -81,7 +81,7 @@ impl ReboConfig {
         self.interrupt_interval = interval;
         self
     }
-    pub fn interrupt_function(mut self, function: fn(&mut VmContext) -> Result<(), ExecError>) -> Self {
+    pub fn interrupt_function(mut self, function: for <'a, 'i> fn(&mut VmContext<'a, '_, '_, 'i>) -> Result<(), ExecError<'a, 'i>>) -> Self {
         self.interrupt_function = function;
         self
     }

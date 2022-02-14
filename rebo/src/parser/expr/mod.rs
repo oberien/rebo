@@ -763,7 +763,7 @@ impl<'a, 'i> Spanned for ExprGenerics<'a, 'i> {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ExprLabel<'i> {
     pub apostrophe: TokenApostrophe,
     pub ident: TokenIdent<'i>,
