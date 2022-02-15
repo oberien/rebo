@@ -12,24 +12,27 @@
         }
         .code {
             flex-grow: 1;
+            flex-basis: 10px;
         }
         .output {
             display: flex;
             flex-grow: 1;
             flex-direction: column;
-            flex-wrap: wrap;
+            flex-basis: 10px;
         }
         .output pre {
             margin: 0;
             padding: .5em;
             flex-grow: 1;
             border: 1px solid;
-            overflow-wrap: break-word;
+            word-wrap: anywhere;
+            white-space: pre-wrap;
         }
         .output h3 {
             padding: 0;
             margin: 0;
         }
     </style>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/react-ace/9.5.0/react-ace.min.min.js/main.js" integrity="sha512-D8Vz7mxH6PYI45bS1Mrlp3fYK8u3dUCHMiw9/hk7w9ON9bKFvQOzhwt/ws4OqO0B7+dnUtP4Z6RlrXh92nzZ8Q==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 </head>
 </html>
