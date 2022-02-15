@@ -109,8 +109,7 @@ impl<'a, 'b, 'i> Vm<'a, 'b, 'i> {
         self.scopes.assign(binding.id, value);
     }
 
-    fn eval_expr(&mut self, expr: &'a Expr<'a, 'i>, depth: Depth) -> Result<Value, ExecError<'a, 'i>> {
-        trace!("{}eval_expr: {}", depth, expr);
+    fn interrupt_counter(&mut self) -> Result<(), ExecError<'a, 'i>> {
         self.instructions_since_last_interrupt += 1;
         if self.instructions_since_last_interrupt > self.interrupt_interval {
             self.instructions_since_last_interrupt = 0;
@@ -118,6 +117,12 @@ impl<'a, 'b, 'i> Vm<'a, 'b, 'i> {
             let mut ctx = VmContext { vm: self };
             interrupt_function(&mut ctx)?;
         }
+        Ok(())
+    }
+
+    fn eval_expr(&mut self, expr: &'a Expr<'a, 'i>, depth: Depth) -> Result<Value, ExecError<'a, 'i>> {
+        trace!("{}eval_expr: {}", depth, expr);
+        self.interrupt_counter()?;
         match expr {
             Expr::Literal(ExprLiteral::Unit(_)) => Ok(Value::Unit),
             Expr::Literal(ExprLiteral::Integer(ExprInteger { int: TokenInteger { value, .. } })) => Ok(Value::Integer(*value)),
@@ -386,6 +391,7 @@ impl<'a, 'b, 'i> Vm<'a, 'b, 'i> {
     }
 
     fn eval_block(&mut self, ExprBlock { body: BlockBody { exprs, terminated_with_semicolon }, .. }: &ExprBlock<'a, 'i>, depth: Depth) -> Result<Value, ExecError<'a, 'i>> {
+        self.interrupt_counter()?;
         let _guard = self.scopes.push_scope(Scope::new());
         let mut val = Value::Unit;
         for expr in exprs {

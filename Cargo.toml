@@ -9,3 +9,7 @@ default-members = [
     "rebo",
     "rebo_derive",
 ]
+
+exclude = [
+    "playground",
+]

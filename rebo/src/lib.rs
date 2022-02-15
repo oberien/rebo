@@ -2,7 +2,7 @@
 extern crate log;
 extern crate self as rebo;
 
-use std::time::Instant;
+use instant::Instant;
 
 pub use diagnostic::{Diagnostics, Span, Output, FileId};
 use itertools::Itertools;
