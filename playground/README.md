@@ -9,4 +9,4 @@
 ## Deploy
 
 * `trunk build --release`
-* `scp dist/* server:folder`
+* `scp -r dist/* server:folder`
