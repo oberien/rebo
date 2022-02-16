@@ -544,6 +544,7 @@ dependencies = [
  "log",
  "once_cell",
  "rebo",
+ "serde",
  "wasm-bindgen",
  "wasm-logger",
  "web-sys",
