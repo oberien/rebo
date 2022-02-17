@@ -9,7 +9,7 @@ command_arguments = ["-c", "test -f static/ace.js || wget https://ajaxorg.github
 [[hooks]]
 stage = "pre_build"
 command = "sh"
-command_arguments = ["-c", "test -f static/theme-monokai.js || wget https://ajaxorg.github.io/ace-builds/src-min-noconflict/theme-monokai.js -P static/"]
+command_arguments = ["-c", "test -f static/theme-idle_fingers.js || wget https://ajaxorg.github.io/ace-builds/src-min-noconflict/theme-idle_fingers.js -P static/"]
 
 [[hooks]]
 stage = "pre_build"

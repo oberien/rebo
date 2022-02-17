@@ -25,7 +25,7 @@ pub fn ace_editor(props: &AceEditorProps) -> Html {
                 &editor_ref.cast::<Element>().unwrap(),
                 JsValue::from_serde(&AceEditorConfig {
                     mode: "ace/mode/rust".to_string(),
-                    theme: "ace/theme/monokai".to_string(),
+                    theme: "ace/theme/idle_fingers".to_string(),
                     selectionStyle: "text".to_string(),
                     value: default_value,
                 }).unwrap(),
