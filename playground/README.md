@@ -12,3 +12,8 @@
 
 * `trunk build --release`
 * `scp -r dist/* server:folder`
+* the server must send the headers:
+  ```
+  Cross-Origin-Opener-Policy: same-origin
+  Cross-Origin-Embedder-Policy: require-corp
+  ```

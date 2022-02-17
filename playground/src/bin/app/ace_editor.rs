@@ -22,13 +22,13 @@ pub fn ace_editor(props: &AceEditorProps) -> Html {
         let on_change = props.on_change.clone();
         use_effect_with_deps(move |_| {
             let editor = ace_edit(
-                &editor_ref.cast::<Element>().unwrap(),
+                &editor_ref.cast::<Element>().expect("cast editor to Element failed"),
                 JsValue::from_serde(&AceEditorConfig {
                     mode: "ace/mode/rust".to_string(),
                     theme: "ace/theme/idle_fingers".to_string(),
                     selectionStyle: "text".to_string(),
                     value: default_value,
-                }).unwrap(),
+                }).expect("JsValue::from_serde(AceEditorConfig) failed"),
             );
 
             let on_change = {
