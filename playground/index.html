@@ -6,8 +6,8 @@
     <style>
         @font-face {
             font-family: 'Clip';
-            src: url('Clip.woff2') format('woff2'),
-                url('Clip.woff') format('woff');
+            src: url('/static/Clip.woff2') format('woff2'),
+                url('/static/Clip.woff') format('woff');
             font-weight: normal;
             font-style: normal;
             font-display: swap;
@@ -66,9 +66,8 @@
         process.env = {};
         process.env['NODE_ENV'] = "production";
     </script>
-    <script src="//ajaxorg.github.io/ace-builds/src-min-noconflict/ace.js" type="text/javascript" charset="utf-8"></script>
-    <link data-trunk rel="copy-file" href="Clip.woff" />
-    <link data-trunk rel="copy-file" href="Clip.woff2" />
+    <script src="/static/ace.js" type="text/javascript" charset="utf-8"></script>
+    <link data-trunk rel="copy-dir" href="static" />
 </head>
 <body>
     <link data-trunk rel="rust" href="Cargo.toml" data-wasm-opt="z" data-bin="app" data-type="main" />

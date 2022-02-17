@@ -1,0 +1,17 @@
+[serve]
+headers = { "Cross-Origin-Opener-Policy" = "same-origin", "Cross-Origin-Embedder-Policy" = "require-corp" }
+
+[[hooks]]
+stage = "pre_build"
+command = "sh"
+command_arguments = ["-c", "test -f static/ace.js || wget https://ajaxorg.github.io/ace-builds/src-min-noconflict/ace.js -P static/"]
+
+[[hooks]]
+stage = "pre_build"
+command = "sh"
+command_arguments = ["-c", "test -f static/theme-monokai.js || wget https://ajaxorg.github.io/ace-builds/src-min-noconflict/theme-monokai.js -P static/"]
+
+[[hooks]]
+stage = "pre_build"
+command = "sh"
+command_arguments = ["-c", "test -f static/mode-rust.js || wget https://ajaxorg.github.io/ace-builds/src-min-noconflict/mode-rust.js -P static/"]
