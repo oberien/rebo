@@ -37,8 +37,7 @@ pub struct MainComponent {
     output: String,
     shared_buffer: Uint32Array,
     worker: Worker,
-    #[allow(unused)]
-    worker_onmessage_event_listener: EventListener,
+    _worker_onmessage_event_listener: EventListener,
 }
 
 impl Component for MainComponent {
@@ -82,7 +81,7 @@ impl Component for MainComponent {
             output: String::new(),
             shared_buffer,
             worker,
-            worker_onmessage_event_listener,
+            _worker_onmessage_event_listener: worker_onmessage_event_listener,
         }
     }
 

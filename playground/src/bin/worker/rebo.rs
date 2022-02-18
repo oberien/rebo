@@ -40,7 +40,7 @@ pub fn run_rebo(buf: Uint32Array, code: CodePayload) {
             .include_directory(IncludeDirectoryConfig::Everywhere)
             .diagnostic_output({
                 Output::buffered(move |s| STATE.with(|state| {
-                    post_output(state.borrow().current_serial, s);
+                    state.borrow_mut().output_buffer.push_str(&s);
                 }))
             })
             .stdlib(Stdlib::all() - Stdlib::PRINT)
