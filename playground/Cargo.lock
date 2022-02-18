@@ -557,6 +557,7 @@ dependencies = [
  "ansi-to-html",
  "console_error_panic_hook",
  "getrandom",
+ "gloo-events",
  "gloo-storage",
  "gloo-utils",
  "instant",
