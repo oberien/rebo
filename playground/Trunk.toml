@@ -15,3 +15,20 @@ command_arguments = ["-c", "test -f static/theme-idle_fingers.js || wget https:/
 stage = "pre_build"
 command = "sh"
 command_arguments = ["-c", "test -f static/mode-rust.js || wget https://ajaxorg.github.io/ace-builds/src-min-noconflict/mode-rust.js -P static/"]
+
+[[hooks]]
+stage = "pre_build"
+command = "sh"
+command_arguments = ["-c", "test -f static/keybinding-vim.js || wget https://ajaxorg.github.io/ace-builds/src-min-noconflict/keybinding-vim.js -P static/"]
+[[hooks]]
+stage = "pre_build"
+command = "sh"
+command_arguments = ["-c", "test -f static/keybinding-emacs.js || wget https://ajaxorg.github.io/ace-builds/src-min-noconflict/keybinding-emacs.js -P static/"]
+[[hooks]]
+stage = "pre_build"
+command = "sh"
+command_arguments = ["-c", "test -f static/keybinding-sublime.js || wget https://ajaxorg.github.io/ace-builds/src-min-noconflict/keybinding-sublime.js -P static/"]
+[[hooks]]
+stage = "pre_build"
+command = "sh"
+command_arguments = ["-c", "test -f static/keybinding-vscode.js || wget https://ajaxorg.github.io/ace-builds/src-min-noconflict/keybinding-vscode.js -P static/"]

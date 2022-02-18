@@ -1,3 +1,7 @@
 static/ace.js
 static/mode-rust.js
 static/theme-idle_fingers.js
+static/keybinding-emacs.js
+static/keybinding-sublime.js
+static/keybinding-vim.js
+static/keybinding-vscode.js

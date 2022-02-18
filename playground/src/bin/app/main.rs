@@ -5,10 +5,11 @@ use wasm_bindgen::JsCast;
 use playground::{OutputPayload, CodePayload};
 use gloo_storage::{LocalStorage, Storage};
 use gloo_events::EventListener;
-use ace_editor::AceEditor;
+use editor::Editor;
+use crate::config::{EditorType, Config, ConfigComponent, KeyboardHandler};
 
-mod ace_editor;
-
+mod editor;
+mod config;
 
 #[global_allocator]
 static ALLOC: wee_alloc::WeeAlloc = wee_alloc::WeeAlloc::INIT;
@@ -23,16 +24,14 @@ const DEFAULT_CODE: &str = r#"print("Hello, world!");"#;
 pub enum Msg {
     WorkerStarted(Uint32Array),
     WorkerOutput(OutputPayload),
-    WorkerStopped,
+    WorkerFinished,
     CodeChanged(String),
-}
-
-#[derive(Properties, Default, PartialEq)]
-pub struct Props {
-
+    EditorChanged(EditorType),
+    KeyboardHandlerChanged(KeyboardHandler),
 }
 
 pub struct MainComponent {
+    config: Config,
     code: String,
     output: String,
     shared_buffer: Uint32Array,
@@ -42,9 +41,13 @@ pub struct MainComponent {
 
 impl Component for MainComponent {
     type Message = Msg;
-    type Properties = Props;
+    type Properties = ();
 
     fn create(ctx: &Context<Self>) -> Self {
+        let config: Result<Config, _> = LocalStorage::get("config");
+        let config = config.ok()
+            .unwrap_or_else(Config::default);
+
         let code: Result<String, _> = LocalStorage::get("code");
         let code = code.ok()
             .and_then(|s| if s.is_empty() { None } else { Some(s) })
@@ -65,7 +68,7 @@ impl Component for MainComponent {
                     }
                     true => {
                         log::warn!("worker finished");
-                        Msg::WorkerStopped
+                        Msg::WorkerFinished
                     }
                 }
             } else {
@@ -77,6 +80,7 @@ impl Component for MainComponent {
         });
 
         MainComponent {
+            config,
             code,
             output: String::new(),
             shared_buffer,
@@ -102,26 +106,41 @@ impl Component for MainComponent {
                     false
                 }
             }
-            Msg::WorkerStopped => false,
+            Msg::WorkerFinished => false,
             Msg::CodeChanged(code) => {
                 self.code = code;
                 if self.shared_buffer.length() > 0 {
                     send_code(&self.shared_buffer, &self.worker, &self.code);
                 }
                 self.output.clear();
-                LocalStorage::set("code", &self.code).expect("can't set localStorage");
+                LocalStorage::set("code", &self.code).expect("can't store code in localStorage");
                 false
+            }
+            Msg::EditorChanged(editor) => {
+                self.config.editor = editor;
+                LocalStorage::set("config", &self.config).expect("can't store config in localStorage");
+                true
+            }
+            Msg::KeyboardHandlerChanged(keyboard_hanlder) => {
+                self.config.keyboard_handler = keyboard_hanlder;
+                LocalStorage::set("config", &self.config).expect("can't store config in localStorage");
+                true
             }
         }
     }
 
     fn view(&self, ctx: &Context<Self>) -> Html {
         let on_change = ctx.link().callback(|code: String| Msg::CodeChanged(code));
+        let on_editor_change = ctx.link().callback(|editor: EditorType| Msg::EditorChanged(editor));
+        let on_keyboard_handler_change = ctx.link().callback(|keyboard_handler: KeyboardHandler| Msg::KeyboardHandlerChanged(keyboard_handler));
         html! {
             <>
             <h1>{ "Rebo Playground" }</h1>
             <div class="outer">
-                <AceEditor default_value={self.code.clone()} {on_change} />
+                <div class="code-wrapper">
+                    <ConfigComponent config={self.config.clone()} {on_editor_change} {on_keyboard_handler_change} />
+                    <Editor config={self.config.clone()} default_value={self.code.clone()} {on_change} />
+                </div>
                 <div class="output">
                     <h3>{ "Output: "}</h3>
                     <AnsiOutput text={self.output.clone()} />
@@ -129,6 +148,10 @@ impl Component for MainComponent {
             </div>
             </>
         }
+    }
+
+    fn destroy(&mut self, _ctx: &Context<Self>) {
+        self.worker.terminate();
     }
 }
 

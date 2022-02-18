@@ -566,6 +566,7 @@ dependencies = [
  "log",
  "once_cell",
  "rebo",
+ "regex",
  "serde",
  "serde-wasm-bindgen",
  "wasm-bindgen",
