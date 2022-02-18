@@ -1505,6 +1505,7 @@ impl<'a, 'i> Parse<'a, 'i> for BlockBody<'a, 'i> {
                     | Expr::ImplBlock(_)
                     | Expr::IfElse(_)
                     | Expr::Match(_)
+                    | Expr::Loop(_)
                     | Expr::While(_)
                     | Expr::For(_)
                     | Expr::Block(_) => Last::Terminated,
