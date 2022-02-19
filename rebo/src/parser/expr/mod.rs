@@ -2267,7 +2267,7 @@ impl<'a, 'i> Parse<'a, 'i> for ExprEnumInitialization<'i> {
         let double_colon = parser.parse(depth.next())?;
         let variant_name: TokenIdent = parser.parse(depth.last())?;
         match parser.meta_info.user_types.get(enum_name.ident) {
-            Some(UserType::Enum(e)) if e.variants.iter().any(|v| v.name.ident == variant_name.ident) => {
+            Some(UserType::Enum(e)) if e.variants.iter().any(|v| v.name.ident == variant_name.ident && v.fields.is_none()) => {
                 Ok(ExprEnumInitialization {
                     enum_name,
                     double_colon,

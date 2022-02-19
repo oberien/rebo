@@ -69,6 +69,7 @@ pub fn add_list<'a, 'i>(diagnostics: &'i Diagnostics, arena: &'a Arena<Expr<'a, 
     meta_info.add_external_function(arena, diagnostics, list_get);
     meta_info.add_external_function(arena, diagnostics, list_set);
     meta_info.add_external_function(arena, diagnostics, list_len);
+    meta_info.add_external_function(arena, diagnostics, list_is_empty);
     meta_info.add_external_function(arena, diagnostics, list_pop);
     meta_info.add_external_function(arena, diagnostics, list_last);
     meta_info.add_external_function(arena, diagnostics, list_contains);
@@ -124,6 +125,10 @@ fn list_last<T>(this: List<T>) -> Option<T> {
 #[rebo::function("List::len")]
 fn list_len<T>(this: List<T>) -> usize {
     this.arc.list.lock().borrow().len()
+}
+#[rebo::function("List::is_empty")]
+fn list_is_empty<T>(this: List<T>) -> bool {
+    this.arc.list.lock().borrow().is_empty()
 }
 #[rebo::function("List::contains")]
 fn list_contains<T>(this: List<T>, item: T) -> bool {

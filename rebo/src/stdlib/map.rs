@@ -56,6 +56,7 @@ pub fn add_map<'a, 'i>(diagnostics: &'i Diagnostics, arena: &'a Arena<Expr<'a, '
     meta_info.add_external_function(arena, diagnostics, map_keys);
     meta_info.add_external_function(arena, diagnostics, map_values);
     meta_info.add_external_function(arena, diagnostics, map_len);
+    meta_info.add_external_function(arena, diagnostics, map_is_empty);
 }
 
 #[rebo::function("Map::new")]
@@ -121,4 +122,8 @@ fn map_values<K, V>(this: Map<K, V>) -> List<V> {
 #[rebo::function("Map::len")]
 fn map_len<K, V>(this: Map<K, V>) -> usize {
     this.arc.map.lock().borrow().len()
+}
+#[rebo::function("Map::is_empty")]
+fn map_is_empty<K, V>(this: Map<K, V>) -> bool {
+    this.arc.map.lock().borrow().is_empty()
 }

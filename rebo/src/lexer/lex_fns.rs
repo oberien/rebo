@@ -341,12 +341,25 @@ pub fn lex_string_char(s: &str, index: usize, escaped: bool) -> Option<(char, us
 
     let c = match next {
         '\\' if !escaped => return lex_string_char(s, index + 1, true),
-        'n' if escaped => '\n',
-        'r' if escaped => '\r',
-        't' if escaped => '\t',
+        c if escaped => match lex_escaped_char(c) {
+            EscapedResult::ControlChar(c, _) | EscapedResult::Escaped(c) => c,
+        },
         c => c,
     };
     Some((c, index + c.len_utf8()))
+}
+
+enum EscapedResult {
+    ControlChar(char, &'static str),
+    Escaped(char),
+}
+fn lex_escaped_char(c: char) -> EscapedResult {
+    match c {
+        'n' => EscapedResult::ControlChar('\n', "\n"),
+        'r' => EscapedResult::ControlChar('\r', "\r"),
+        't' => EscapedResult::ControlChar('\t', "\t"),
+        c => EscapedResult::Escaped(c),
+    }
 }
 
 pub fn lex_format_string<'i>(diagnostics: &Diagnostics, file: FileId, s: &'i str, mut index: usize) -> Result<Token<'i>, Error> {
@@ -396,21 +409,38 @@ pub fn lex_format_string<'i>(diagnostics: &Diagnostics, file: FileId, s: &'i str
                 break;
             },
             (Some('\\'), _) => {
-                match current {
-                    CurrentPart::Str | CurrentPart::Escaped => {
-                        parts.push(make_part(s, current, part_start, index));
-                        index += 1;
-                        part_start = index;
-                        current = CurrentPart::Escaped;
-                    }
-                    CurrentPart::FmtArg => index += 1,
-                }
-                match s[index..].chars().next() {
+                let next = match s[index..].chars().nth(1) {
                     None => {
                         if depth == 0 { err_diag(index) };
                         break;
                     },
-                    Some(c) => index += c.len_utf8(),
+                    Some(c) => c,
+                };
+                match lex_escaped_char(next) {
+                    EscapedResult::ControlChar(_, char_str) => {
+                        match current {
+                            CurrentPart::Str | CurrentPart::Escaped => {
+                                parts.push(make_part(s, current, part_start, index));
+                                parts.push(TokenFormatStringPart::Str(char_str));
+                                index += 2;
+                                part_start = index;
+                                current = CurrentPart::Str;
+                            }
+                            CurrentPart::FmtArg => index += 2,
+                        }
+                    },
+                    EscapedResult::Escaped(c) => {
+                        match current {
+                            CurrentPart::Str | CurrentPart::Escaped => {
+                                parts.push(make_part(s, current, part_start, index));
+                                index += 1;
+                                part_start = index;
+                                current = CurrentPart::Escaped;
+                            }
+                            CurrentPart::FmtArg => index += 1,
+                        }
+                        index += c.len_utf8();
+                    }
                 }
             }
             (Some('{'), CurrentPart::Str) => {
