@@ -108,7 +108,7 @@ pub fn extern_rebo(_args: TokenStream, input: TokenStream) -> TokenStream {
         res = quote::quote! {
             #res
 
-            fn #fn_ident(vm: &mut ::rebo::VmContext, #(#arg_idents: #arg_types),*) -> Result<#ret_type, ::rebo::ExecError> {
+            fn #fn_ident<'a, 'i>(vm: &mut ::rebo::VmContext<'a, '_, '_, 'i>, #(#arg_idents: #arg_types),*) -> Result<#ret_type, ::rebo::ExecError<'a, 'i>> {
                 let values = vec![#(
                     <#arg_types as ::rebo::IntoValue>::into_value(#arg_idents),
                 )*];
@@ -118,7 +118,7 @@ pub fn extern_rebo(_args: TokenStream, input: TokenStream) -> TokenStream {
             #[allow(non_camel_case_types)]
             #vis struct #ident;
             impl ::std::ops::Deref for #ident {
-                type Target = fn(&mut ::rebo::VmContext, #(#arg_types),*) -> Result<#ret_type, ::rebo::ExecError>;
+                type Target = for<'a, 'i> fn(&mut ::rebo::VmContext<'a, '_, '_, 'i>, #(#arg_types),*) -> Result<#ret_type, ::rebo::ExecError<'a, 'i>>;
                 fn deref(&self) -> &Self::Target {
                     &(#fn_ident as Self::Target)
                 }
