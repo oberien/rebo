@@ -119,7 +119,7 @@ impl PartialEq<ExprLiteral> for Value {
 }
 
 macro_rules! fmt_value_wrappers {
-    ($($fmt:ident, $struct_name:ident, float: $float:tt, bool: $bool:tt, string: $string:tt, Debug: $debug:tt;)*) => {$(
+    ($($fmt:ident, $struct_name:ident, float: $float:tt, bool: $bool:tt, string: $string:tt, debug_enum: $debug_enum:tt, Debug: $debug:tt;)*) => {$(
         pub struct $struct_name<'a>(pub &'a Value);
         impl<'a> fmt::$fmt for $struct_name<'a> {
             fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -141,7 +141,7 @@ macro_rules! fmt_value_wrappers {
                     Value::Enum(e) => {
                         let e = e.e.lock();
                         let e = e.borrow();
-                        let variant = format!("{}::{}", e.name, e.variant);
+                        let variant = fmt_value_wrappers!(format_enum, $debug_enum, e);
                         if e.fields.is_empty() {
                             f.write_str(&variant)
                         } else {
@@ -175,6 +175,12 @@ macro_rules! fmt_value_wrappers {
         }
         fmt_value_wrappers! { impl_debug, $debug, $fmt, $struct_name }
     )*};
+    (format_enum, true, $e:expr) => {
+        format!("{}::{}", $e.name, $e.variant)
+    };
+    (format_enum, false, $e:expr) => {
+        format!("{}", $e.variant)
+    };
     (float, true, $fmt:ident, $float:expr, $f:expr) => { fmt::$fmt::fmt($float, $f) };
     (float, false, $fmt:ident, $float:expr, $f:expr) => { unreachable!("{} called on float", stringify!($fmt)) };
     // (float, $else:tt, $fmt:ident, $float:expr, $f:expr) => { compile_error!("float only accepts `true` or `false`") };
@@ -196,14 +202,14 @@ macro_rules! fmt_value_wrappers {
 }
 
 fmt_value_wrappers! {
-    Display, DisplayValue, float: true, bool: true, string: true, Debug: true;
-    Debug, DebugValue, float: true, bool: true, string: true, Debug: false;
-    Octal, OctalValue, float: false, bool: false, string: false, Debug: true;
-    LowerHex, LowerHexValue, float: false, bool: false, string: false, Debug: true;
-    UpperHex, UpperHexValue, float: false, bool: false, string: false, Debug: true;
-    Binary, BinaryValue, float: false, bool: false, string: false, Debug: true;
-    LowerExp, LowerExpValue, float: true, bool: false, string: false, Debug: true;
-    UpperExp, UpperExpValue, float: true, bool: false, string: false, Debug: true;
+    Display, DisplayValue, float: true, bool: true, string: true, debug_enum: false, Debug: true;
+    Debug, DebugValue, float: true, bool: true, string: true, debug_enum: true, Debug: false;
+    Octal, OctalValue, float: false, bool: false, string: false, debug_enum: false, Debug: true;
+    LowerHex, LowerHexValue, float: false, bool: false, string: false, debug_enum: false, Debug: true;
+    UpperHex, UpperHexValue, float: false, bool: false, string: false, debug_enum: false, Debug: true;
+    Binary, BinaryValue, float: false, bool: false, string: false, debug_enum: false, Debug: true;
+    LowerExp, LowerExpValue, float: true, bool: false, string: false, debug_enum: false, Debug: true;
+    UpperExp, UpperExpValue, float: true, bool: false, string: false, debug_enum: false, Debug: true;
 }
 
 impl FormatArgument for Value {
