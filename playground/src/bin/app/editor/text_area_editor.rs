@@ -15,6 +15,7 @@ pub fn text_area_editor(props: &EditorProps) -> Html {
             let event_target = event.target().unwrap_throw();
             let target: HtmlTextAreaElement = event_target.dyn_into().unwrap_throw();
             let val = target.value();
+            // actually a noop as the textarea's content contains that value
             value.set(val.clone());
             on_change.emit(val);
         })

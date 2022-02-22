@@ -24,8 +24,17 @@ pub struct Lexer<'i> {
     inner: Rc<RefCell<LexerInner<'i>>>,
 }
 
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub enum LexerMode {
+    // if lexing fails due to an unexpected character, print a diagnostic  and continue
+    UnexpectedCharacterDiagnostic,
+    // if lexing fails due to an unexpected character return EOF
+    UnexpectedCharacterEof,
+}
+
 #[derive(Debug)]
 pub struct LexerInner<'i> {
+    mode: LexerMode,
     diagnostics: &'i Diagnostics,
     source: &'i str,
     file: FileId,
@@ -49,11 +58,12 @@ struct Lookahead {
 impl<'i> Lexer<'i> {
     pub fn new(diagnostics: &'i Diagnostics, file: FileId) -> Lexer<'i> {
         let source = diagnostics.get_file(file);
-        Self::new_in(diagnostics, file, 0, source.len())
+        Self::new_in(diagnostics, file, 0, source.len(), LexerMode::UnexpectedCharacterDiagnostic)
     }
-    pub fn new_in(diagnostics: &'i Diagnostics, file: FileId, from: usize, to: usize) -> Lexer<'i> {
+    pub fn new_in(diagnostics: &'i Diagnostics, file: FileId, from: usize, to: usize, mode: LexerMode) -> Lexer<'i> {
         Lexer {
             inner: Rc::new(RefCell::new(LexerInner {
+                mode,
                 diagnostics,
                 file,
                 source: &diagnostics.get_file(file)[..to],
@@ -115,7 +125,7 @@ impl<'i> Lexer<'i> {
 impl<'i> LexerInner<'i> {
     fn get(&mut self, i: usize) -> Result<Token<'i>, Error> {
         while self.tokens.len() <= i {
-            match lex_fns::lex_next(self.diagnostics, self.file, self.source, self.lex_index)? {
+            match lex_fns::lex_next(self.diagnostics, self.file, self.source, self.lex_index, self.mode)? {
                 token @ Token::Eof(_) => {
                     self.tokens.push_back(token);
                 }

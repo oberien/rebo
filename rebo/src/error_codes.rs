@@ -74,6 +74,7 @@ pub enum ErrorCode {
     ContinueLabelNotFound,
     ContinueOutsideOfLoopLike,
     ReturnOutsideOfFunction,
+    UnexpectedCharacter,
 
     Panic,
     AssertionFailed,
@@ -159,6 +160,7 @@ impl diagnostic::ErrorCode for ErrorCode {
             ContinueLabelNotFound => "0073",
             ContinueOutsideOfLoopLike => "0074",
             ReturnOutsideOfFunction => "0075",
+            UnexpectedCharacter => "0076",
 
             Panic => "9999",
             AssertionFailed => "9998",
@@ -243,6 +245,7 @@ impl diagnostic::ErrorCode for ErrorCode {
             ContinueLabelNotFound => "continue label not found",
             ContinueOutsideOfLoopLike => "continue used outside of loop-like",
             ReturnOutsideOfFunction => "return used outside of function",
+            UnexpectedCharacter => "unexpected character",
 
             Panic => "explicit panic",
             AssertionFailed => "assertion failed",
