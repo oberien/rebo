@@ -20,7 +20,7 @@ pub enum KeyboardHandler {
 impl KeyboardHandler {
     pub fn to_ace_str(self) -> &'static str {
         match self {
-            KeyboardHandler::Ace => "ace/keyboard/ace",
+            KeyboardHandler::Ace => "ace",
             KeyboardHandler::Vim => "ace/keyboard/vim",
             KeyboardHandler::Emacs => "ace/keyboard/emacs",
             KeyboardHandler::Sublime => "ace/keyboard/sublime",
