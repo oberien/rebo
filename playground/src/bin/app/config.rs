@@ -18,13 +18,13 @@ pub enum KeyboardHandler {
     VsCode,
 }
 impl KeyboardHandler {
-    pub fn to_ace_str(self) -> &'static str {
+    pub fn to_ace_str(self) -> Option<&'static str> {
         match self {
-            KeyboardHandler::Ace => "ace",
-            KeyboardHandler::Vim => "ace/keyboard/vim",
-            KeyboardHandler::Emacs => "ace/keyboard/emacs",
-            KeyboardHandler::Sublime => "ace/keyboard/sublime",
-            KeyboardHandler::VsCode => "ace/keyboard/vscode",
+            KeyboardHandler::Ace => None,
+            KeyboardHandler::Vim => Some("ace/keyboard/vim"),
+            KeyboardHandler::Emacs => Some("ace/keyboard/emacs"),
+            KeyboardHandler::Sublime => Some("ace/keyboard/sublime"),
+            KeyboardHandler::VsCode => Some("ace/keyboard/vscode"),
         }
     }
 }

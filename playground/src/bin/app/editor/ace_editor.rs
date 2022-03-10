@@ -63,7 +63,7 @@ struct AceEditorConfig {
     theme: &'static str,
     selectionStyle: &'static str,
     value: String,
-    keyboardHandler: &'static str,
+    keyboardHandler: Option<&'static str>,
 }
 
 #[wasm_bindgen]
@@ -78,6 +78,6 @@ extern "C" {
     #[wasm_bindgen(method, js_name = "getValue")]
     fn ace_get_value(this: &Editor) -> String;
     #[wasm_bindgen(method, js_name = "setKeyboardHandler")]
-    fn ace_set_keyboard_handler(this: &Editor, keyboard_handler: &str);
+    fn ace_set_keyboard_handler(this: &Editor, keyboard_handler: Option<&str>);
 }
 
