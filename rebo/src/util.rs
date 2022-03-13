@@ -5,7 +5,7 @@ use rt_format::argument::ArgumentSource;
 use crate::{Value, IncludeDirectory};
 
 /// Workaround for <https://github.com/rust-lang/rust/issues/89940>
-#[derive(Debug, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
+#[derive(Debug, Clone, Ord, PartialOrd, Eq, Hash)]
 pub enum CowVec<'a, T> {
     Borrowed(&'a [T]),
     Owned(Vec<T>),
@@ -31,6 +31,19 @@ impl<'a, 'b, T> IntoIterator for &'b CowVec<'a, T> {
 
     fn into_iter(self) -> Self::IntoIter {
         self.deref().iter()
+    }
+}
+impl<'a, T: PartialEq> PartialEq for CowVec<'a, T> {
+    fn eq(&self, other: &Self) -> bool {
+        let left = match self {
+            CowVec::Owned(vec) => vec.as_slice(),
+            CowVec::Borrowed(slice) => slice,
+        };
+        let right = match other {
+            CowVec::Owned(vec) => vec.as_slice(),
+            CowVec::Borrowed(slice) => slice,
+        };
+        left == right
     }
 }
 
