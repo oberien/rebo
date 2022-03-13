@@ -51,6 +51,16 @@ pub fn ace_editor(props: &EditorProps) -> Html {
         }, keyboard_handler)
     }
 
+    {
+        let editor = editor.clone();
+        let default_value = props.default_value.clone();
+        use_effect_with_deps(move |_| {
+            log::error!("deps changed");
+            editor.borrow().ace_set_value(&default_value, 1);
+            || ()
+        }, props.default_value_serial);
+    }
+
     return html! {
         <div class="code" ref={editor_ref}></div>
     }
@@ -77,6 +87,8 @@ extern "C" {
     fn ace_session_on(this: &Editor, target: String, on_change: JsValue);
     #[wasm_bindgen(method, js_name = "getValue")]
     fn ace_get_value(this: &Editor) -> String;
+    #[wasm_bindgen(method, js_name = "setValue")]
+    fn ace_set_value(this: &Editor, value: &str, pos: i32);
     #[wasm_bindgen(method, js_name = "setKeyboardHandler")]
     fn ace_set_keyboard_handler(this: &Editor, keyboard_handler: Option<&str>);
 }
