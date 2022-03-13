@@ -66,7 +66,7 @@ pub fn enum_type(e: ItemEnum) -> TokenStream {
         }).collect::<Vec<_>>();
 
     (quote::quote! {
-        struct #value_ident;
+        #vis struct #value_ident;
         #[allow(non_upper_case_globals)]
         #vis const #ident: #value_ident = #value_ident;
         impl ::rebo::ExternalTypeType for #value_ident {
@@ -156,7 +156,7 @@ pub fn struct_type(s: ItemStruct) -> TokenStream {
     let generic_spans = util::generic_spans(&generic_idents, &code_filename, &code);
 
     (quote::quote! {
-        struct #value_ident;
+        #vis struct #value_ident;
         #[allow(non_upper_case_globals)]
         #vis const #ident: #value_ident = #value_ident;
         impl ::rebo::ExternalTypeType for #value_ident {
