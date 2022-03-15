@@ -446,7 +446,7 @@ impl<'a, 'b, 'i> Vm<'a, 'b, 'i> {
                     Value::Struct(s) => s,
                     _ => unreachable!("typechecker should have ensured that this is a struct"),
                 };
-                for TokenIdent { ident, .. } in fields {
+                for (i, TokenIdent { ident, .. }) in fields.iter().enumerate() {
                     let new_struct = {
                         let s = struct_arc.s.lock();
                         let mut s = s.borrow_mut();
@@ -456,11 +456,12 @@ impl<'a, 'b, 'i> Vm<'a, 'b, 'i> {
                             .next()
                             .expect("typechecker ensured that all fields exist");
                         match field_value {
-                            Value::Struct(s) => s.clone(),
-                            var => {
-                                *var = value;
+                            val if i == fields.len() - 1 => {
+                                *val = value;
                                 break;
-                            },
+                            }
+                            Value::Struct(s) => s.clone(),
+                            val => unreachable!("typechecker ensured that all non-last fields are structs, but we got {:?}", val),
                         }
                     };
                     struct_arc = new_struct;

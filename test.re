@@ -38,6 +38,20 @@ print(foo.a, foo.b);
 foo.b = "dtrn";
 print(foo, foo2, foo == foo2);
 
+struct Inner { x: int }
+struct Outer { inner: Inner }
+let mut outer = Outer { inner: Inner { x: 1337 } };
+assert(outer.inner.x == 1337);
+outer.inner.x = 420;
+assert(outer.inner.x == 420);
+outer.inner = Inner { x: 69 };
+assert(outer.inner.x == 69);
+let mut other_inner = Inner { x: 42 };
+outer.inner = other_inner;
+assert(outer.inner.x == 42);
+other_inner.x = 21;
+assert(outer.inner.x == 21);
+
 // methods
 impl Foo {
     fn new(a: int, b: string) -> Foo {
