@@ -64,6 +64,8 @@ pub fn add_to_meta_info<'a, 'i>(stdlib: Stdlib, diagnostics: &'i Diagnostics, ar
     meta_info.add_external_function(arena, diagnostics, string_trim_end);
     meta_info.add_external_function(arena, diagnostics, string_to_lowercase);
     meta_info.add_external_function(arena, diagnostics, string_to_uppercase);
+    meta_info.add_external_function(arena, diagnostics, string_starts_with);
+    meta_info.add_external_function(arena, diagnostics, string_ends_with);
     meta_info.add_external_function(arena, diagnostics, string_parse_int);
     meta_info.add_external_function(arena, diagnostics, string_split);
     meta_info.add_external_function(arena, diagnostics, string_find_matches);
@@ -215,11 +217,11 @@ fn string_len_utf8(this: String) -> usize {
 }
 #[rebo::function(raw("string::len_utf16"))]
 fn string_len_utf16(this: String) -> usize {
-    this.encode_utf16().count()
+    this.encode_utf16().count() * 2
 }
 #[rebo::function(raw("string::len_utf32"))]
 fn string_len_utf32(this: String) -> usize {
-    this.chars().count()
+    this.chars().count() * 4
 }
 #[rebo::function(raw("string::len_grapheme_clusters"))]
 fn string_len_grapheme_clusters(this: String) -> usize {
@@ -252,6 +254,14 @@ fn string_to_lowercase(this: String) -> String {
 #[rebo::function("string::to_uppercase")]
 fn string_to_uppercase(this: String) -> String {
     this.to_uppercase()
+}
+#[rebo::function("string::starts_with")]
+fn string_starts_with(this: String, other: String) -> bool {
+    this.starts_with(&other)
+}
+#[rebo::function("string::ends_with")]
+fn string_ends_with(this: String, other: String) -> bool {
+    this.ends_with(&other)
 }
 #[derive(rebo::ExternalType)]
 enum ParseIntError {

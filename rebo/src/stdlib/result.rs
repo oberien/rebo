@@ -21,6 +21,18 @@ impl Result<T, E> {
             Result::Err(e) => panic(f"tried to unwrap an error: {e}"),
         }
     }
+    fn is_ok(self) -> bool {
+        match self {
+            Result::Ok(t) => true,
+            Result::Err(e) => false,
+        }
+    }
+    fn is_err(self) -> bool {
+        match self {
+            Result::Ok(t) => false,
+            Result::Err(e) => true,
+        }
+    }
 }
 "#;
     const FILE_NAME: &'static str = FILE_NAME;

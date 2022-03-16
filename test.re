@@ -1,4 +1,5 @@
-print(foo(10, 20));
+print("Hello", "World!");
+assert(foo(10, 20) == 60);
 fn foo(mut x: int, mut y: int) -> int {
     x += 10;
     y += 20;
@@ -12,8 +13,8 @@ fn choose(cond: bool, a: int, b: int) -> int {
 }
 assert(choose(true, 1, 2) == 1);
 assert(choose(false, 1, 2) == 2);
-print(1 + 2 * 3 == 7);
-print(1 + 2 * 3 * 4);
+assert(1 + 2 * 3 == 7);
+assert(1 + 2 * 3 * 4 == 25);
 let a = 0;
 let mut a = a + 1;
 let mut c = add_one(a);
@@ -21,22 +22,20 @@ c += {
     let c = 1337;
     c + 42
 };
-print(c, 5, 7, 13);
-print();
+assert(c == 1381);
 let unit = ();
-print(unit);
+assert(unit == ());
 
 struct Foo {
     a: int,
     b: string,
 }
 let mut foo = Foo { a: 1337, b: "uiae" };
-print(foo);
+assert(f"{foo}" == "Foo { a: 1337, b: uiae }");
 let foo2 = Foo { a: 1337, b: "dtrn" };
-print(foo, foo2, foo == foo2);
-print(foo.a, foo.b);
+assert(foo != foo2);
 foo.b = "dtrn";
-print(foo, foo2, foo == foo2);
+assert(foo == foo2);
 
 struct Inner { x: int }
 struct Outer { inner: Inner }
@@ -65,9 +64,8 @@ impl Foo {
     }
 }
 let foo = Foo::new(42, "uiae");
-print(foo);
-print(foo.a(), foo.b());
-print(Foo::a(foo), Foo::b(foo));
+assert(foo.a() == 42 && foo.b() == "uiae");
+assert(Foo::a(foo) == 42 && Foo::b(foo) == "uiae");
 
 struct Something {}
 impl Something {
@@ -76,28 +74,30 @@ impl Something {
     }
 }
 let foo = Something {};
-print(foo.returns_self().returns_self());
+assert(foo.returns_self().returns_self() == foo);
 
 
 // if - else if - else
-print(if true { 1337 } else { panic("F") } + 5);
+assert(if true { 1337 } else { panic("F") } + 5 == 1342);
 
 // loop
-print(loop { break "loop" });
-print('outer: loop { loop { break 'outer "outer loop" } });
+assert(loop { break "loop" } == "loop");
+assert('outer: loop { loop { break 'outer "outer loop" } } == "outer loop");
 
 // while
 let mut i = 0;
 while i < 3 {
     i += 1;
 }
-print(i);
+assert(i == 3);
+let mut i = 0;
 'outer: while true {
     while true {
-        print("outer while");
+        i += 1;
         break 'outer;
     }
-}
+};
+assert(i == 1);
 
 // fibonacci sequence
 fn fib(i: int) -> int {
@@ -111,44 +111,48 @@ fn fib(i: int) -> int {
 }
 fn fib_iter(mut i: int) -> int {
     if i <= 1 {
-        i
-    } else {
-        let mut a = 0;
-        let mut b = 1;
-        i -= 2;
-        while i >= 0 {
-            let temp = b;
-            b += a;
-            a = temp;
-            i -= 1;
-        }
-        b
+        return i;
     }
+    let mut a = 0;
+    let mut b = 1;
+    i -= 2;
+    while i >= 0 {
+        let temp = b;
+        b += a;
+        a = temp;
+        i -= 1;
+    }
+    b
 }
-print(fib(10));
-print(fib_iter(90));
+assert(fib(10) == 55);
+assert(fib_iter(90) == 2880067194370816120);
 
 // string lengths
 let s = "uiae";
-print(s.len_utf8(), s.len_utf16(), s.len_utf32(), s.len_grapheme_clusters(), s.len_legacy_grapheme_clusters());
+assert(s.len_utf8() == 4);
+assert(s.len_utf16() == 8);
+assert(s.len_utf32() == 16);
+assert(s.len_grapheme_clusters() == 4);
+assert(s.len_legacy_grapheme_clusters() == 4);
 // format strings
 let foo = 4;
-print(f"{foo * 10 + 2} is the answer");
-print(f"{1337:#8x}");
-print(f"{"uiae":?}");
-print(f"{Foo::new(1337, "uiae"):?}");
+assert(f"{foo * 10 + 2} is the answer" == "42 is the answer");
+assert(f"{1337:#8x}" == "   0x539");
+assert(f"{"uiae":?}" == "\"uiae\"");
+assert(f"{Foo::new(1337, "uiae"):?}" == "Foo { a: 1337, b: \"uiae\" }");
 
 // match
-print(match 1 {
+assert(match 1 {
     0 => 21,
     1 => 1337,
     _ => 42,
 } == 1337);
 
-match 1 {
-  0 => print("it was a 0"),
-  foo => print(f"it was something else: {foo}"),
-}
+let res = match 1 {
+  0 => "it was a 0",
+  foo => f"it was something else: {foo}",
+};
+assert(res == "it was something else: 1");
 
 // enums with match
 enum Value {
@@ -156,21 +160,21 @@ enum Value {
     Integer(int),
     Float(float),
 }
-fn print_value(value: Value) {
+fn value_to_string(value: Value) -> string {
     match value {
-        Value::Unit => print("unit"),
-        Value::Integer(i) => print(f"integer: {i}"),
-        _ => print("something else"),
+        Value::Unit => "unit",
+        Value::Integer(i) => f"integer: {i}",
+        _ => "something else",
     }
 }
 
 let unit = Value::Unit;
 let i = Value::Integer(1337);
 let f = Value::Float(42.);
-print(unit, i, f);
-print_value(unit);
-print_value(i);
-print_value(f);
+assert(f"{unit}, {i}, {f}" == "Unit, Integer(1337), Float(42)");
+assert(value_to_string(unit) == "unit");
+assert(value_to_string(i) == "integer: 1337");
+assert(value_to_string(f) == "something else");
 
 // generics
 struct GenericFoo<T> {
@@ -180,23 +184,23 @@ struct GenericBar<U> {
     t: U,
 }
 let foo = GenericFoo { bar: GenericBar { t: 1337 } };
-print(foo.bar.t + 1);
+assert(foo.bar.t + 1 == 1338);
 
 fn id<T>(t: T) -> T { t }
-print(id(id(1337)));
+assert(id(id(1337)) == 1337);
 fn id1<U, V>(u: U, v: V) -> V { v }
 fn id2<T>(t: T) -> T { id1(42, t) }
-print(id2(1337));
+assert(id2(1337) == 1337);
 
 // Option<T>
 let a = Option::Some(1337);
 let b = Option::Some(42);
 let c = Option::None;
-print(a.unwrap() + b.unwrap() + c.unwrap_or(21));
+assert(a.unwrap() + b.unwrap() + c.unwrap_or(21) == 1400);
 
 let a = Option::Some(42);
 let b: Option<Option<string>> = Option::Some(Option::Some("uiae"));
-print(a, b, b.unwrap().unwrap());
+assert(f"{a}, {b}, {b.unwrap().unwrap()}" == "Some(42), Some(Some(uiae)), uiae");
 
 // Result<T, E>
 let a = Result::Err("error");
@@ -204,58 +208,71 @@ let b = Result::Err("error");
 assert(a == b);
 let a = Result::Ok(1337);
 let b = Result::Ok(42);
-print(a, b, a.unwrap() + b.unwrap());
+assert(f"{a}, {b}, {a.unwrap() + b.unwrap()}" == "Ok(1337), Ok(42), 1379");
 
 // List<T>
 let list = List::new();
-print(list);
+assert(f"{list}" == "[]");
 list.push(1337);
 list.push(42);
-print(list, list.get(0), list.get(1).unwrap(), list.get(2));
-print(List::of(1, 2, 3));
+assert(f"{list}" == "[1337, 42]");
+assert(list.get(0) == Option::Some(1337));
+assert(list.get(1).unwrap() == 42);
+assert(list.get(2) == Option::None);
+assert(f"{List::of(1, 2, 3)}" == "[1, 2, 3]");
 list.set(1, 21).unwrap();
+assert(list.get(1).unwrap() == 21);
 
 // for loop
+let mut sum = 0;
 for i in list {
-    print(i);
+    sum += i;
 }
+assert(sum == 1358);
+
+let mut sum = 0;
 'outer: for i in list {
     for i in list {
-        print("outer for");
+        sum += i;
         break 'outer;
     }
 }
+assert(sum == 1337);
 
 // Map<K, V>
 let map = Map::new();
 map.insert("a", 1337);
 map.insert("b", -42);
-print(map, map.keys(), map.values());
-print(map.get("a"), map.remove("b"));
+assert(f"{map}" == "{a: 1337, b: -42}");
+assert(f"{map.keys()}" == "[a, b]");
+assert(f"{map.values()}" == "[1337, -42]");
+assert(map.get("a") == Option::Some(1337));
+assert(map.remove("b") == Option::Some(-42));
 
 // statics
-print(MY_STATIC);
+assert(MY_STATIC == 42);
 static mut MY_STATIC = 42;
 MY_STATIC = 1337;
 use_static();
-print(MY_STATIC);
+assert(MY_STATIC == 21);
 
 fn use_static() {
-    print(MY_STATIC);
+    assert(MY_STATIC == 1337);
     MY_STATIC = 21;
 }
 static CURRENT_UI = List::new();
 
 // includes
-print(include "test-include.re");
-print(MY_INCLUDED_STATIC);
-print(included_fn());
-print(f"{File::read_to_string("test-include.re"):?}");
+assert(include "test-include.re" == "this is the inclusion result");
+assert(MY_INCLUDED_STATIC == "uiae");
+assert(included_fn() == 21);
+let content = File::read_to_string("test-include.re");
+assert(content.is_ok() && content.unwrap().starts_with("static MY_INCLUDED_STATIC ="));
 
 // functions as first-class citizens
 let new: fn<T>() -> List<T> = List::new;
-let out = print;
-out(new());
+let test = assert;
+test(f"{new()}" == "[]");
 // anonymous functions
 struct NewList {
     new: fn<T>() -> List<T>,
@@ -266,4 +283,4 @@ let new_list = NewList {
     },
 };
 let new = new_list.new;
-print(new());
+assert(f"{new()}" == "[]");
