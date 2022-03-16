@@ -11,7 +11,6 @@ pub fn text_area_editor(props: &EditorProps) -> Html {
         let value = value.clone();
         let default_value = props.default_value.clone();
         use_effect_with_deps(move |_| {
-            log::error!("deps changed");
             value.set(default_value);
             || ()
         }, props.default_value_serial);

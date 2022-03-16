@@ -55,7 +55,6 @@ pub fn ace_editor(props: &EditorProps) -> Html {
         let editor = editor.clone();
         let default_value = props.default_value.clone();
         use_effect_with_deps(move |_| {
-            log::error!("deps changed");
             editor.borrow().ace_set_value(&default_value, 1);
             || ()
         }, props.default_value_serial);
