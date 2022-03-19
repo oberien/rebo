@@ -240,7 +240,7 @@ let mut sum = 0;
 assert(sum == 1337);
 
 // Map<K, V>
-let map = Map::new();
+let mut map = Map::new();
 map.insert("a", 1337);
 map.insert("b", -42);
 assert(f"{map}" == "{a: 1337, b: -42}");
@@ -248,6 +248,17 @@ assert(f"{map.keys()}" == "[a, b]");
 assert(f"{map.values()}" == "[1337, -42]");
 assert(map.get("a") == Option::Some(1337));
 assert(map.remove("b") == Option::Some(-42));
+
+// Set<K, V>
+let mut set = Set::new();
+set.insert(1337);
+set.insert(42);
+assert(set.len() == 2);
+assert(set.insert(1337) == false);
+assert(set.len() == 2);
+assert(set.contains(42));
+assert(set.remove(42));
+assert(!set.contains(42));
 
 // statics
 assert(MY_STATIC == 42);

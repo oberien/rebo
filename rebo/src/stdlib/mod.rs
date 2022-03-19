@@ -21,6 +21,7 @@ mod list;
 mod option;
 mod result;
 mod map;
+mod set;
 
 bitflags::bitflags! {
     pub struct Stdlib: u64 {
@@ -88,6 +89,7 @@ pub fn add_to_meta_info<'a, 'i>(stdlib: Stdlib, diagnostics: &'i Diagnostics, ar
     meta_info.add_external_type::<Result<Value, Value>>(arena, diagnostics);
     list::add_list(diagnostics, arena, meta_info);
     map::add_map(diagnostics, arena, meta_info);
+    set::add_set(diagnostics, arena, meta_info);
 }
 
 #[rebo::function(raw("print"))]

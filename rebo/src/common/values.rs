@@ -11,7 +11,7 @@ use diagnostic::Span;
 use crate::Type;
 use itertools::Itertools;
 use crate::typeck::types::SpecificType;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::convert::TryInto;
 use rt_format::{FormatArgument, Specifier};
 
@@ -43,6 +43,7 @@ pub enum Value {
     Enum(EnumArc),
     List(ListArc),
     Map(MapArc),
+    Set(SetArc),
     // function name
     Function(FunctionValue),
 }
@@ -101,6 +102,7 @@ impl Value {
             Value::Function(_) => "function".to_string(),
             Value::List(_) => "List".to_string(),
             Value::Map(_) => "Map".to_string(),
+            Value::Set(_) => "Set".to_string(),
         }
     }
 }
@@ -164,6 +166,13 @@ macro_rules! fmt_value_wrappers {
                         let m = m.borrow();
                         f.debug_map()
                             .entries(m.iter().map(|(k, v)| ($struct_name(k), $struct_name(v))))
+                            .finish()
+                    }
+                    Value::Set(s) => {
+                        let s = s.set.lock();
+                        let s = s.borrow();
+                        f.debug_set()
+                            .entries(s.iter().map(|v| $struct_name(v)))
                             .finish()
                     }
                     Value::Function(fun) =>  match fun {
@@ -508,6 +517,27 @@ impl PartialEq for MapArc {
     }
 }
 impl Eq for MapArc {}
+
+#[derive(Debug, Clone)]
+pub struct SetArc {
+    pub set: Arc<ReentrantMutex<RefCell<BTreeSet<Value>>>>,
+}
+impl PartialOrd for SetArc {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        self.set.lock().borrow().partial_cmp(&other.set.lock().borrow())
+    }
+}
+impl Ord for SetArc {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.set.lock().borrow().cmp(&other.set.lock().borrow())
+    }
+}
+impl PartialEq for SetArc {
+    fn eq(&self, other: &Self) -> bool {
+        self.set.lock().borrow().eq(&*other.set.lock().borrow())
+    }
+}
+impl Eq for SetArc {}
 
 macro_rules! impl_from_into {
     ($ty:ty, $name:ident) => {
