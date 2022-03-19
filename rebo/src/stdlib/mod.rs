@@ -71,6 +71,7 @@ pub fn add_to_meta_info<'a, 'i>(stdlib: Stdlib, diagnostics: &'i Diagnostics, ar
     meta_info.add_external_function(arena, diagnostics, string_find_matches);
     meta_info.add_external_function(arena, diagnostics, string_sorted);
     meta_info.add_external_function(arena, diagnostics, string_contains);
+    meta_info.add_external_function(arena, diagnostics, current_time_millis);
     meta_info.add_external_function(arena, diagnostics, rng_set_random_seed);
     meta_info.add_external_function(arena, diagnostics, rng_set_seed);
     meta_info.add_external_function(arena, diagnostics, rng_gen_int_range);
@@ -319,6 +320,11 @@ fn string_sorted(this: String) -> String {
 fn string_contains(this: String, regex: String) -> bool {
     let regex = compile_regex(regex, vm, expr_span)?;
     regex.is_match(&this)
+}
+
+#[rebo::function("current_time_millis")]
+fn current_time_millis() -> u64 {
+    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis() as u64
 }
 
 // RNG
