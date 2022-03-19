@@ -130,8 +130,8 @@ assert(fib_iter(90) == 2880067194370816120);
 // string lengths
 let s = "uiae";
 assert(s.len_utf8() == 4);
-assert(s.len_utf16() == 8);
-assert(s.len_utf32() == 16);
+assert(s.len_utf16() == 4);
+assert(s.len_utf32() == 4);
 assert(s.len_grapheme_clusters() == 4);
 assert(s.len_legacy_grapheme_clusters() == 4);
 // format strings

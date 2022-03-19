@@ -218,11 +218,11 @@ fn string_len_utf8(this: String) -> usize {
 }
 #[rebo::function(raw("string::len_utf16"))]
 fn string_len_utf16(this: String) -> usize {
-    this.encode_utf16().count() * 2
+    this.encode_utf16().count()
 }
 #[rebo::function(raw("string::len_utf32"))]
 fn string_len_utf32(this: String) -> usize {
-    this.chars().count() * 4
+    this.chars().count()
 }
 #[rebo::function(raw("string::len_grapheme_clusters"))]
 fn string_len_grapheme_clusters(this: String) -> usize {
