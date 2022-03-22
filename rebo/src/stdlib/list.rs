@@ -24,6 +24,9 @@ impl<T: IntoValue> List<T> {
             _marker: PhantomData,
         }
     }
+    pub fn clone_vec(&self) -> Vec<T> where T: FromValue {
+        self.arc.list.lock().borrow().iter().cloned().map(FromValue::from_value).collect()
+    }
 }
 impl<T: Clone> Clone for List<T> {
     fn clone(&self) -> Self {

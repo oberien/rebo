@@ -14,7 +14,6 @@ use std::sync::Mutex;
 use regex::Regex;
 use unicode_segmentation::UnicodeSegmentation;
 use rebo::VmContext;
-use crate::stdlib::list::List;
 use crate::util::ResolveFileError;
 
 mod list;
@@ -22,6 +21,9 @@ mod option;
 mod result;
 mod map;
 mod set;
+
+pub use list::List;
+pub use map::Map;
 
 bitflags::bitflags! {
     pub struct Stdlib: u64 {

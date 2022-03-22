@@ -31,7 +31,7 @@ pub use common::{Value, FromValue, IntoValue, Typed, ExternalFunction, RequiredR
 #[doc(hidden)] // only used for the derive macros
 pub use common::{StructArc, Struct, EnumArc, Enum};
 pub use typeck::types::{Type, FunctionType, SpecificType};
-pub use stdlib::Stdlib;
+pub use stdlib::{Stdlib, List, Map};
 pub use util::CowVec;
 use std::path::{PathBuf, Path};
 use crate::error_codes::ErrorCode;

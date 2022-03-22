@@ -17,6 +17,22 @@ pub struct Map<K, V> {
     _marker: PhantomData<(K, V)>,
 }
 
+impl<K: IntoValue, V: IntoValue> Map<K, V> {
+    pub fn new(values: impl IntoIterator<Item=(K, V)>) -> Map<K, V> {
+        Map {
+            arc: MapArc { map: Arc::new(ReentrantMutex::new(RefCell::new(
+                values.into_iter().map(|(k, v)| (k.into_value(), v.into_value())).collect())
+            )) },
+            _marker: PhantomData,
+        }
+    }
+    pub fn clone_btreemap(&self) -> BTreeMap<K, V> where K: FromValue + Ord, V: FromValue {
+        self.arc.map.lock().borrow().iter()
+            .map(|(k, v)| (FromValue::from_value(k.clone()), FromValue::from_value(v.clone())))
+            .collect()
+    }
+}
+
 const FILE_NAME: &'static str = "external-Map.re";
 const MAP_K: Span = Span::new(FileId::synthetic(FILE_NAME), 11, 12);
 const MAP_V: Span = Span::new(FileId::synthetic(FILE_NAME), 14, 15);
@@ -61,10 +77,7 @@ pub fn add_map<'a, 'i>(diagnostics: &'i Diagnostics, arena: &'a Arena<Expr<'a, '
 
 #[rebo::function("Map::new")]
 fn map_new<K, V>() -> Map<K, V> {
-    Map {
-        arc: MapArc { map: Arc::new(ReentrantMutex::new(RefCell::new(BTreeMap::new()))) },
-        _marker: PhantomData,
-    }
+    Map::new(Vec::new())
 }
 
 #[rebo::function("Map::insert")]
