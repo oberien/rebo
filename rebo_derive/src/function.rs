@@ -175,6 +175,11 @@ pub fn function(args: TokenStream, input: TokenStream) -> TokenStream {
             let (expr_span, vm, args) = ((), (), ());
         }
     };
+    let block = if macro_args.is_raw {
+        quote::quote! { #block }
+    } else {
+        quote::quote! { (|| #block)() }
+    };
 
     (quote::quote! {
         fn #fn_ident <'a, 'i> (expr_span: ::rebo::Span, vm: &mut ::rebo::VmContext<'a, '_, '_, 'i>, args: ::std::vec::Vec<::rebo::Value>) -> ::std::result::Result<::rebo::Value, ::rebo::ExecError<'a, 'i>> {
