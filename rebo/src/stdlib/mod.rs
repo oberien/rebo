@@ -347,7 +347,7 @@ fn rng_set_seed(seed: i64) {
 }
 #[rebo::function("Rng::gen_int_range")]
 fn rng_gen_int_range(from: i64, to: i64) -> i64 {
-    RNG.lock().unwrap().gen_range(from as u64..to as u64) as i64
+    RNG.lock().unwrap().gen_range(from..to)
 }
 #[rebo::function("Rng::shuffle")]
 fn rng_shuffle<T>(list: List<T>) {
