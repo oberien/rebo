@@ -163,8 +163,15 @@ fn list_join<T>(this: List<T>, sep: String) -> String {
 }
 impl<T> Sliceable for List<T> {
     fn len(&self) -> usize { self.arc.list.lock().borrow().len() }
-    fn truncate(&mut self, new_len: usize) { self.arc.list.lock().borrow_mut().truncate(new_len) }
-    fn remove_start(&mut self, until: usize) { self.arc.list.lock().borrow_mut().drain(..until); }
+    fn remove_start(&mut self, num: usize) {
+        self.arc.list.lock().borrow_mut().drain(..num);
+    }
+    fn remove_end(&mut self, num: usize) {
+        let lock = self.arc.list.lock();
+        let mut lock = lock.borrow_mut();
+        let len = lock.len();
+        lock.truncate(len - num);
+    }
     fn name() -> &'static str { "List" }
 }
 #[rebo::function(raw("List::slice"))]

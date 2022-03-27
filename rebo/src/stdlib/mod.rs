@@ -177,8 +177,8 @@ fn panic(message: String) -> ! {
 }
 trait Sliceable: Sized {
     fn len(&self) -> usize;
-    fn truncate(&mut self, new_len: usize);
-    fn remove_start(&mut self, until: usize);
+    fn remove_start(&mut self, num: usize);
+    fn remove_end(&mut self, num: usize);
     fn name() -> &'static str;
     fn slice<'a, 'i>(mut self, vm: &VmContext<'a, '_, '_, 'i>, expr_span: Span, start: i64, mut args: impl Iterator<Item = Value>) -> Result<Self, ExecError<'a, 'i>> {
         let end = args.next().map(|val| val.expect_int("TypedVarargs is broken as fuck"));
@@ -189,26 +189,38 @@ trait Sliceable: Sized {
             return Err(ExecError::Panic);
         }
 
-        let len = self.len() as i64;
-        let start = if start < 0 { len + start } else { start };
+        let len = self.len();
+        let start = if start < 0 { len as i64 + start } else { start };
         let start = start.max(0) as usize;
-        let start = start.min(self.len());
+        let start = start.min(len);
 
         let end = end.map(|end| {
-            let end = if end < 0 { len + end } else { end };
+            let end = if end < 0 { len as i64 + end } else { end };
             let end = end.max(0) as usize;
-            end.min(self.len())
-        }).unwrap_or(self.len());
+            end.min(len)
+        }).unwrap_or(len);
 
-        self.truncate(end);
         self.remove_start(start);
+        self.remove_end(len - end);
         Ok(self)
     }
 }
 impl Sliceable for String {
-    fn len(&self) -> usize { self.len() }
-    fn truncate(&mut self, new_len: usize) { self.truncate(new_len) }
-    fn remove_start(&mut self, until: usize) { self.drain(..until); }
+    fn len(&self) -> usize { self.chars().count() }
+    fn remove_start(&mut self, num: usize) {
+        if num == 0 {
+            return;
+        }
+        let index = self.char_indices().nth(num).map(|(i, _)| i).unwrap();
+        self.drain(..index);
+    }
+    fn remove_end(&mut self, num: usize) {
+        if num == 0 {
+            return;
+        }
+        let index = self.char_indices().nth_back(num-1).map(|(i, _)| i).unwrap();
+        self.truncate(index)
+    }
     fn name() -> &'static str { "string" }
 }
 #[rebo::function(raw("string::slice"))]

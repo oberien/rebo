@@ -306,3 +306,12 @@ assert(c.parse_int() == Result::Err(()));
 assert(a.parse_float() == Result::Ok(1337.));
 assert(b.parse_float() == Result::Ok(42.));
 assert(c.parse_float() == Result::Err(()));
+
+// slicing
+let s = "abcdef";
+assert(s.slice(1) == "bcdef");
+assert(s.slice(-1) == "f");
+assert(s.slice(1, 3) == "bc");
+assert(s.slice(0, -1) == "abcde");
+assert(s.slice(1, -1) == "bcde");
+assert(s.slice(-2, -1) == "e");
