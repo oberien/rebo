@@ -152,8 +152,8 @@ pub fn try_parse_number(s: &str) -> TryParseNumberResult {
         .take_while(|&c| c.is_alphanumeric() || c == '.')
         .map(char::len_utf8)
         .sum::<usize>();
-    let int = lexical::parse_radix::<i64, _>(&s[..number_end], radix.to_u8());
-    let float = lexical::parse_radix::<f64, _>(&s[..number_end], radix.to_u8());
+    let int = lexical::parse_radix::<i64, _>(&s[index..number_end], radix.to_u8());
+    let float = lexical::parse_radix::<f64, _>(&s[index..number_end], radix.to_u8());
 
     match (int, float) {
         (Ok(i), _) => TryParseNumberResult::Int(i, radix, number_end),

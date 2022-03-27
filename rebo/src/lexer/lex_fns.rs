@@ -216,7 +216,7 @@ pub fn try_lex_number<'i>(diagnostics: &Diagnostics, file: FileId, s: &'i str, i
             diagnostics.error(ErrorCode::InvalidNumber)
                 .with_error_label(Span::new(file, index, index + end), format!("{:?}", e.code))
                 .emit();
-            Ok(MaybeToken::Diagnostic(end))
+            Ok(MaybeToken::Diagnostic(index + end))
         }
     }
 }
