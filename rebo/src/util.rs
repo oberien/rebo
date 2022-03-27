@@ -3,6 +3,7 @@ use std::ops::Deref;
 use std::path::{Path, PathBuf};
 use rt_format::argument::ArgumentSource;
 use crate::{Value, IncludeDirectory};
+use crate::lexer::Radix;
 
 /// Workaround for <https://github.com/rust-lang/rust/issues/89940>
 #[derive(Debug, Clone, Ord, PartialOrd, Eq, Hash)]
@@ -126,4 +127,37 @@ impl ArgumentSource<Value> for NoValues {
     fn next_argument(&mut self) -> Option<&Value> { None }
     fn lookup_argument_by_index(&self, _: usize) -> Option<&Value> { None }
     fn lookup_argument_by_name(&self, _: &str) -> Option<&Value> { None }
+}
+
+pub enum TryParseNumberResult {
+    /// number, radix, end-index
+    Int(i64, Radix, usize),
+    /// number, radix, end-index
+    Float(f64, Radix, usize),
+    /// error, radix, end-index
+    Error(lexical::Error, Radix, usize),
+}
+
+pub fn try_parse_number(s: &str) -> TryParseNumberResult {
+    let mut index = 0;
+    let mut radix = Radix::Dec;
+    if s.starts_with("0b") {
+        index += 2;
+        radix = Radix::Bin;
+    } else if s.starts_with("0x") {
+        index += 2;
+        radix = Radix::Hex;
+    }
+    let number_end = index + s[index..].chars()
+        .take_while(|&c| c.is_alphanumeric() || c == '.')
+        .map(char::len_utf8)
+        .sum::<usize>();
+    let int = lexical::parse_radix::<i64, _>(&s[..number_end], radix.to_u8());
+    let float = lexical::parse_radix::<f64, _>(&s[..number_end], radix.to_u8());
+
+    match (int, float) {
+        (Ok(i), _) => TryParseNumberResult::Int(i, radix, number_end),
+        (_, Ok(f)) => TryParseNumberResult::Float(f, radix, number_end),
+        (_, Err(e)) => TryParseNumberResult::Error(e, radix, number_end),
+    }
 }

@@ -1,5 +1,4 @@
 use std::io::ErrorKind;
-use std::num::IntErrorKind;
 use crate::common::{Value, MetaInfo, FuzzyFloat, DisplayValue};
 use crate as rebo;
 use itertools::Itertools;
@@ -7,14 +6,14 @@ use diagnostic::{Diagnostics, Span};
 use crate::error_codes::ErrorCode;
 use crate::parser::Expr;
 use typed_arena::Arena;
-use crate::{ExecError, util};
+use crate::ExecError;
 use rand_chacha::ChaCha12Rng;
 use rand::{Rng, SeedableRng, seq::SliceRandom};
 use std::sync::Mutex;
 use regex::Regex;
 use unicode_segmentation::UnicodeSegmentation;
 use rebo::VmContext;
-use crate::util::ResolveFileError;
+use crate::util::{self, ResolveFileError, TryParseNumberResult};
 
 mod list;
 mod option;
@@ -34,7 +33,6 @@ bitflags::bitflags! {
 }
 
 pub fn add_to_meta_info<'a, 'i>(stdlib: Stdlib, diagnostics: &'i Diagnostics, arena: &'a Arena<Expr<'a, 'i>>, meta_info: &mut MetaInfo<'a, 'i>) {
-    meta_info.add_external_type::<ParseIntError>(arena, diagnostics);
     meta_info.add_external_type::<FileError>(arena, diagnostics);
 
     if stdlib.contains(Stdlib::PRINT) {
@@ -70,6 +68,7 @@ pub fn add_to_meta_info<'a, 'i>(stdlib: Stdlib, diagnostics: &'i Diagnostics, ar
     meta_info.add_external_function(arena, diagnostics, string_starts_with);
     meta_info.add_external_function(arena, diagnostics, string_ends_with);
     meta_info.add_external_function(arena, diagnostics, string_parse_int);
+    meta_info.add_external_function(arena, diagnostics, string_parse_float);
     meta_info.add_external_function(arena, diagnostics, string_split);
     meta_info.add_external_function(arena, diagnostics, string_find_matches);
     meta_info.add_external_function(arena, diagnostics, string_sorted);
@@ -268,24 +267,20 @@ fn string_starts_with(this: String, other: String) -> bool {
 fn string_ends_with(this: String, other: String) -> bool {
     this.ends_with(&other)
 }
-#[derive(rebo::ExternalType)]
-enum ParseIntError {
-    Empty,
-    TooLarge,
-    TooSmall,
-    InvalidDigit,
-}
 #[rebo::function("string::parse_int")]
-fn string_parse_int(this: String) -> Result<u64, ParseIntError> {
-    match this.parse::<u64>() {
-        Ok(res) => Ok(res),
-        Err(e) => match e.kind() {
-            IntErrorKind::Empty => Err(ParseIntError::Empty),
-            IntErrorKind::InvalidDigit => Err(ParseIntError::InvalidDigit),
-            IntErrorKind::PosOverflow => Err(ParseIntError::TooLarge),
-            IntErrorKind::NegOverflow => Err(ParseIntError::TooSmall),
-            _ => unreachable!("unknown error during u64::from_str: {:?}", e),
-        }
+fn string_parse_int(this: String) -> Result<i64, ()> {
+    match util::try_parse_number(&this) {
+        TryParseNumberResult::Int(i, _, _) => Ok(i),
+        TryParseNumberResult::Float(_, _, _) => Err(()),
+        TryParseNumberResult::Error(_, _, _) => Err(()),
+    }
+}
+#[rebo::function("string::parse_float")]
+fn string_parse_float(this: String) -> Result<f64, ()> {
+    match util::try_parse_number(&this) {
+        TryParseNumberResult::Int(i, _, _) => Ok(i as f64),
+        TryParseNumberResult::Float(f, _, _) => Ok(f),
+        TryParseNumberResult::Error(_, _, _) => Err(()),
     }
 }
 

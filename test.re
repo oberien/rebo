@@ -295,3 +295,14 @@ let new_list = NewList {
 };
 let new = new_list.new;
 assert(f"{new()}" == "[]");
+
+// parse numbers
+let a = "1337";
+let b = "42.";
+let c = "abc";
+assert(a.parse_int() == Result::Ok(1337));
+assert(b.parse_int() == Result::Err(()));
+assert(c.parse_int() == Result::Err(()));
+assert(a.parse_float() == Result::Ok(1337.));
+assert(b.parse_float() == Result::Ok(42.));
+assert(c.parse_float() == Result::Err(()));

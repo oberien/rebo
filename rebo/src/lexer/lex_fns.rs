@@ -2,6 +2,7 @@ use crate::lexer::{Error, Token, TokenEof, LexerMode};
 use diagnostic::{FileId, Diagnostics, Span};
 use crate::error_codes::ErrorCode;
 use super::token::*;
+use crate::util::{self, TryParseNumberResult};
 
 #[derive(Debug)]
 pub enum MaybeToken<'i> {
@@ -197,41 +198,25 @@ pub fn try_lex_token<'i>(diagnostics: &Diagnostics, file: FileId, s: &'i str, in
     }
 }
 
-pub fn try_lex_number<'i>(diagnostics: &Diagnostics, file: FileId, s: &'i str, mut index: usize) -> Result<MaybeToken<'i>, Error> {
+pub fn try_lex_number<'i>(diagnostics: &Diagnostics, file: FileId, s: &'i str, index: usize) -> Result<MaybeToken<'i>, Error> {
     trace!("try_lex_number: {}", index);
-    let start = index;
-    let mut radix = Radix::Dec;
-    if s[index..].starts_with("0b") {
-        index += 2;
-        radix = Radix::Bin;
-    } else if s[index..].starts_with("0x") {
-        index += 2;
-        radix = Radix::Hex;
-    }
-    let number_end = index + s[index..].chars()
-        .take_while(|&c| c.is_alphanumeric() || c == '.')
-        .map(char::len_utf8)
-        .sum::<usize>();
-    let int = lexical::parse_radix::<i64, _>(&s[index..number_end], radix.to_u8());
-    let float = lexical::parse_radix::<f64, _>(&s[index..number_end], radix.to_u8());
-
-    match (int, float) {
-        (Ok(i), _) => Ok(MaybeToken::Token(Token::Integer(TokenInteger {
-            span: Span::new(file, start, number_end),
-            value: i,
+    match util::try_parse_number(&s[index..]) {
+        TryParseNumberResult::Int(value, radix, end) => Ok(MaybeToken::Token(Token::Integer(TokenInteger {
+            span: Span::new(file, index, index + end),
+            value,
             radix,
         }))),
-        (_, Ok(f)) => Ok(MaybeToken::Token(Token::Float(TokenFloat {
-            span: Span::new(file, start, number_end),
-            value: f,
+        TryParseNumberResult::Float(value, radix, end) => Ok(MaybeToken::Token(Token::Float(TokenFloat {
+            span: Span::new(file, index, index + end),
+            value,
             radix,
         }))),
-        (Err(e), _) if e.index == 0 && radix == Radix::Dec => Ok(MaybeToken::Backtrack),
-        (Err(e), _) => {
+        TryParseNumberResult::Error(e, radix, _) if e.index == 0 && radix == Radix::Dec => Ok(MaybeToken::Backtrack),
+        TryParseNumberResult::Error(e, _, end) => {
             diagnostics.error(ErrorCode::InvalidNumber)
-                .with_error_label(Span::new(file, start, number_end), format!("{:?}", e.code))
+                .with_error_label(Span::new(file, index, index + end), format!("{:?}", e.code))
                 .emit();
-            Ok(MaybeToken::Diagnostic(number_end))
+            Ok(MaybeToken::Diagnostic(end))
         }
     }
 }
