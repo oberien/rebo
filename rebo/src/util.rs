@@ -141,6 +141,13 @@ pub enum TryParseNumberResult {
 pub fn try_parse_number(s: &str) -> TryParseNumberResult {
     let mut index = 0;
     let mut radix = Radix::Dec;
+    let mut factor_int = 1;
+    let mut factor_float = 1.;
+    if s.starts_with("-") {
+        index += 1;
+        factor_int = -1;
+        factor_float = -1.;
+    }
     if s.starts_with("0b") {
         index += 2;
         radix = Radix::Bin;
@@ -156,8 +163,8 @@ pub fn try_parse_number(s: &str) -> TryParseNumberResult {
     let float = lexical::parse_radix::<f64, _>(&s[index..number_end], radix.to_u8());
 
     match (int, float) {
-        (Ok(i), _) => TryParseNumberResult::Int(i, radix, number_end),
-        (_, Ok(f)) => TryParseNumberResult::Float(f, radix, number_end),
+        (Ok(i), _) => TryParseNumberResult::Int(i * factor_int, radix, number_end),
+        (_, Ok(f)) => TryParseNumberResult::Float(f * factor_float, radix, number_end),
         (_, Err(e)) => TryParseNumberResult::Error(e, radix, number_end),
     }
 }
