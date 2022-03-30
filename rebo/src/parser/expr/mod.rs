@@ -1704,9 +1704,9 @@ impl<'a, 'i> Parse<'a, 'i> for ExprFor<'a, 'i> {
         drop(guard);
         let in_token = parser.parse(depth.next())?;
         let expr = Expr::try_parse_until_including(parser, ParseUntil::All, depth.next())?;
+        let _guard = parser.push_scope(ScopeType::For(label.clone()));
         let added_binding = parser.add_binding(binding.ident, binding.mutable);
         assert_eq!(added_binding, binding);
-        let _guard = parser.push_scope(ScopeType::For(label.clone()));
         let block = parser.parse(depth.next())?;
         Ok(ExprFor {
             label,
