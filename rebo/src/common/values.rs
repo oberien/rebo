@@ -54,15 +54,27 @@ pub enum FunctionValue {
 }
 
 impl Value {
-    pub fn expect_bool(self, msg: &'static str) -> bool {
+    pub fn expect_unit(self, msg: &'static str) -> () {
         match self {
-            Value::Bool(b) => b,
+            Value::Unit => (),
             _ => panic!("{}", msg),
         }
     }
     pub fn expect_int(self, msg: &'static str) -> i64 {
         match self {
             Value::Integer(i) => i,
+            _ => panic!("{}", msg),
+        }
+    }
+    pub fn expect_float(self, msg: &'static str) -> FuzzyFloat {
+        match self {
+            Value::Float(f) => f,
+            _ => panic!("{}", msg),
+        }
+    }
+    pub fn expect_bool(self, msg: &'static str) -> bool {
+        match self {
+            Value::Bool(b) => b,
             _ => panic!("{}", msg),
         }
     }
@@ -81,6 +93,12 @@ impl Value {
     pub fn expect_map(self, msg: &'static str) -> MapArc {
         match self {
             Value::Map(m) => m,
+            _ => panic!("{}", msg),
+        }
+    }
+    pub fn expect_set(self, msg: &'static str) -> SetArc {
+        match self {
+            Value::Set(s) => s,
             _ => panic!("{}", msg),
         }
     }

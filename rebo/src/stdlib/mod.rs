@@ -119,13 +119,15 @@ fn float_to_int(this: FuzzyFloat) -> i64 {
 }
 
 // float helper functions
-#[rebo::function("float::min")]
-fn float_min(this: f64, other: f64) -> f64 {
-    this.min(other)
+#[rebo::function(raw("float::min"))]
+fn float_min(this: FuzzyFloat, ..: FuzzyFloat) -> FuzzyFloat {
+    let floats = std::iter::once(this).chain(args.map(|val| val.expect_float("TypedVarargs is broken")));
+    floats.min().unwrap()
 }
-#[rebo::function("float::max")]
-fn float_max(this: f64, other: f64) -> f64 {
-    this.max(other)
+#[rebo::function(raw("float::max"))]
+fn float_max(this: FuzzyFloat, ..: FuzzyFloat) -> FuzzyFloat {
+    let floats = std::iter::once(this).chain(args.map(|val| val.expect_float("TypedVarargs is broken")));
+    floats.max().unwrap()
 }
 #[rebo::function("float::round")]
 fn float_round(this: f64, decimals: u8) -> f64 {
@@ -138,13 +140,15 @@ fn float_sqrt(this: f64) -> f64 {
 }
 
 // int helper functions
-#[rebo::function("int::min")]
-fn int_min(this: i64, other: i64) -> i64 {
-    this.min(other)
+#[rebo::function(raw("int::min"))]
+fn int_min(this: i64, ..: i64) -> i64 {
+    let ints = std::iter::once(this).chain(args.map(|val| val.expect_int("TypedVarargs is broken")));
+    ints.min().unwrap()
 }
-#[rebo::function("int::max")]
-fn int_max(this: i64, other: i64) -> i64 {
-    this.max(other)
+#[rebo::function(raw("int::max"))]
+fn int_max(this: i64, ..: i64) -> i64 {
+    let ints = std::iter::once(this).chain(args.map(|val| val.expect_int("TypedVarargs is broken")));
+    ints.max().unwrap()
 }
 #[rebo::function("int::min_value")]
 fn int_min_value() -> i64 {
