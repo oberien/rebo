@@ -136,7 +136,7 @@ impl<'a, 'i> Expr<'a, 'i> {
                 Ok(op) => op,
                 Err(_) => return Ok(parser.arena.alloc(op.expr_type_constructor()(lhs, op_token, rhs))),
             };
-            if op2.precedence() < op.precedence() {
+            if op2.precedence() <= op.precedence() {
                 return Ok(parser.arena.alloc(op.expr_type_constructor()(lhs, op_token, rhs)));
             }
             rhs = match Self::try_parse_precedence_inner::<P>(parser, rhs, depth.next()) {

@@ -14,6 +14,7 @@ fn choose(cond: bool, a: int, b: int) -> int {
 assert(choose(true, 1, 2) == 1);
 assert(choose(false, 1, 2) == 2);
 assert(1 + 2 * 3 == 7);
+assert(5 - -5 - 10 == 0);
 assert(0b1 + 0x2 * 3 * 4 == 25);
 let a = 0;
 let mut a = a + 1;
