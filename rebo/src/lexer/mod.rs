@@ -8,6 +8,7 @@ mod lex_fns;
 pub use token::*;
 use std::rc::Rc;
 use std::cell::RefCell;
+use crate::ErrorCode;
 
 #[derive(Debug)]
 pub enum Error {
@@ -35,7 +36,7 @@ pub enum LexerMode {
 #[derive(Debug)]
 pub struct LexerInner<'i> {
     mode: LexerMode,
-    diagnostics: &'i Diagnostics,
+    diagnostics: &'i Diagnostics<ErrorCode>,
     source: &'i str,
     file: FileId,
     /// index to continue lexing from
@@ -56,11 +57,11 @@ struct Lookahead {
 }
 
 impl<'i> Lexer<'i> {
-    pub fn new(diagnostics: &'i Diagnostics, file: FileId) -> Lexer<'i> {
+    pub fn new(diagnostics: &'i Diagnostics<ErrorCode>, file: FileId) -> Lexer<'i> {
         let source = diagnostics.get_file(file);
         Self::new_in(diagnostics, file, 0, source.len(), LexerMode::UnexpectedCharacterDiagnostic)
     }
-    pub fn new_in(diagnostics: &'i Diagnostics, file: FileId, from: usize, to: usize, mode: LexerMode) -> Lexer<'i> {
+    pub fn new_in(diagnostics: &'i Diagnostics<ErrorCode>, file: FileId, from: usize, to: usize, mode: LexerMode) -> Lexer<'i> {
         Lexer {
             inner: Rc::new(RefCell::new(LexerInner {
                 mode,

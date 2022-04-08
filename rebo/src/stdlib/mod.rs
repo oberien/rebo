@@ -32,7 +32,7 @@ bitflags::bitflags! {
     }
 }
 
-pub fn add_to_meta_info<'a, 'i>(stdlib: Stdlib, diagnostics: &'i Diagnostics, arena: &'a Arena<Expr<'a, 'i>>, meta_info: &mut MetaInfo<'a, 'i>) {
+pub fn add_to_meta_info<'a, 'i>(stdlib: Stdlib, diagnostics: &'i Diagnostics<ErrorCode>, arena: &'a Arena<Expr<'a, 'i>>, meta_info: &mut MetaInfo<'a, 'i>) {
     meta_info.add_external_type::<FileError>(arena, diagnostics);
 
     if stdlib.contains(Stdlib::PRINT) {

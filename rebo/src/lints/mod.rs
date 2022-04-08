@@ -36,8 +36,9 @@ use crate::lints::impl_blocks::ImplBlockLints;
 use crate::lints::enum_def_init_lints::EnumDefInitLints;
 use crate::lints::unknown_access::UnknownAccess;
 use crate::lints::break_continue_return::BreakContinueReturn;
+use crate::ErrorCode;
 
-pub fn lint<'a, 'b, 'i>(diagnostics: &'b Diagnostics, meta_info: &'b MetaInfo<'a, 'i>, exprs: &[&'a Expr<'a, 'i>]) {
+pub fn lint<'a, 'b, 'i>(diagnostics: &'b Diagnostics<ErrorCode>, meta_info: &'b MetaInfo<'a, 'i>, exprs: &[&'a Expr<'a, 'i>]) {
     let mut visitor_driver = VisitorDriver::new(diagnostics, meta_info);
     visitor_driver.add_visitors(vec![
         &UnknownFunction as &dyn Visitor,

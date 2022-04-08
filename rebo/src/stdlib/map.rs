@@ -9,7 +9,7 @@ use std::sync::Arc;
 use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::marker::PhantomData;
-use crate::{CowVec, ExternalType, FileId, FromValue, IntoValue, Typed};
+use crate::{CowVec, ExternalType, FileId, FromValue, IntoValue, Typed, ErrorCode};
 use crate::stdlib::list::List;
 
 pub struct Map<K, V> {
@@ -61,7 +61,7 @@ impl<K, V> Typed for Map<K, V> {
     );
 }
 
-pub fn add_map<'a, 'i>(diagnostics: &'i Diagnostics, arena: &'a Arena<Expr<'a, 'i>>, meta_info: &mut MetaInfo<'a, 'i>) {
+pub fn add_map<'a, 'i>(diagnostics: &'i Diagnostics<ErrorCode>, arena: &'a Arena<Expr<'a, 'i>>, meta_info: &mut MetaInfo<'a, 'i>) {
     meta_info.add_external_type::<Map<Value, Value>>(arena, diagnostics);
 
     meta_info.add_external_function(arena, diagnostics, map_new);

@@ -141,7 +141,7 @@ impl<'a, 'i> MetaInfo<'a, 'i> {
         }
     }
 
-    pub fn add_function(&mut self, diagnostics: &Diagnostics, name: Option<Cow<'i, str>>, fun: &'a ExprFunctionDefinition<'a, 'i>) {
+    pub fn add_function(&mut self, diagnostics: &Diagnostics<ErrorCode>, name: Option<Cow<'i, str>>, fun: &'a ExprFunctionDefinition<'a, 'i>) {
         let arg_binding_ids = fun.sig.args.iter().map(|ExprPatternTyped { pattern: ExprPatternUntyped { binding }, .. }| binding.id).collect();
         match name {
             Some(name) => {
@@ -157,7 +157,7 @@ impl<'a, 'i> MetaInfo<'a, 'i> {
             }
         }
     }
-    pub fn add_external_function(&mut self, arena: &'a Arena<Expr<'a, 'i>>, diagnostics: &'i Diagnostics, fun: ExternalFunction) {
+    pub fn add_external_function(&mut self, arena: &'a Arena<Expr<'a, 'i>>, diagnostics: &'i Diagnostics<ErrorCode>, fun: ExternalFunction) {
         let (file, _) = diagnostics.add_synthetic_file(fun.file_name, fun.code.to_string());
         if self.check_existing_function(diagnostics, fun.name, Span::new(FileId::synthetic(fun.file_name), 0, fun.code.len())) {
             return;
@@ -169,7 +169,7 @@ impl<'a, 'i> MetaInfo<'a, 'i> {
         let sig = ExprFunctionSignature::parse(&mut parser, Depth::start()).unwrap();
         self.external_function_signatures.insert(fun.name, sig);
     }
-    fn add_enum_initializer_function(&mut self, diagnostics: &Diagnostics, enum_name: String, variant_name: String) {
+    fn add_enum_initializer_function(&mut self, diagnostics: &Diagnostics<ErrorCode>, enum_name: String, variant_name: String) {
         let name = format!("{}::{}", enum_name, variant_name);
         let span = self.user_types[enum_name.as_str()].variant_initializer_span(&variant_name).unwrap();
         if self.check_existing_function(diagnostics, &name, span) {
@@ -177,7 +177,7 @@ impl<'a, 'i> MetaInfo<'a, 'i> {
         }
         self.functions.insert(Cow::Owned(name), Function::EnumInitializer(enum_name, variant_name));
     }
-    fn check_existing_function(&self, diagnostics: &Diagnostics, name: &str, span: Span) -> bool {
+    fn check_existing_function(&self, diagnostics: &Diagnostics<ErrorCode>, name: &str, span: Span) -> bool {
         let duplicate = |a: Span, b: Span| {
             let mut spans = [a, b];
             spans.sort();
@@ -210,7 +210,7 @@ impl<'a, 'i> MetaInfo<'a, 'i> {
         }
         self.required_rebo_functions.insert(required_rebo_function);
     }
-    pub fn add_external_type<T: ExternalType>(&mut self, arena: &'a Arena<Expr<'a, 'i>>, diagnostics: &'i Diagnostics) {
+    pub fn add_external_type<T: ExternalType>(&mut self, arena: &'a Arena<Expr<'a, 'i>>, diagnostics: &'i Diagnostics<ErrorCode>) {
         let (file, _) = diagnostics.add_synthetic_file(T::FILE_NAME, T::CODE.to_string());
         self.external_types.insert(T::TYPE.type_name(), T::TYPE);
 
@@ -218,7 +218,7 @@ impl<'a, 'i> MetaInfo<'a, 'i> {
         let parser = Parser::new(IncludeDirectory::Path(PathBuf::new()), arena, lexer, diagnostics, self);
         parser.parse_ast().unwrap();
     }
-    pub fn add_enum(&mut self, diagnostics: &Diagnostics, enum_def: &'a ExprEnumDefinition<'a, 'i>) {
+    pub fn add_enum(&mut self, diagnostics: &Diagnostics<ErrorCode>, enum_def: &'a ExprEnumDefinition<'a, 'i>) {
         self.add_user_type(diagnostics, enum_def.name.ident, UserType::Enum(enum_def));
         for variant in enum_def.variants.iter() {
             if variant.fields.is_some() {
@@ -228,10 +228,10 @@ impl<'a, 'i> MetaInfo<'a, 'i> {
             }
         }
     }
-    pub fn add_struct(&mut self, diagnostics: &Diagnostics, struct_def: &'a ExprStructDefinition<'a, 'i>) {
+    pub fn add_struct(&mut self, diagnostics: &Diagnostics<ErrorCode>, struct_def: &'a ExprStructDefinition<'a, 'i>) {
         self.add_user_type(diagnostics, struct_def.name.ident, UserType::Struct(struct_def))
     }
-    pub fn add_user_type(&mut self, diagnostics: &Diagnostics, name: &'i str, user_type: UserType<'a, 'i>) {
+    pub fn add_user_type(&mut self, diagnostics: &Diagnostics<ErrorCode>, name: &'i str, user_type: UserType<'a, 'i>) {
         let new_span = user_type.span();
         if let Some(old) = self.user_types.insert(name, user_type) {
             let mut spans = [old.span(), new_span];
@@ -242,7 +242,7 @@ impl<'a, 'i> MetaInfo<'a, 'i> {
                 .emit();
         }
     }
-    pub fn add_static(&mut self, diagnostics: &Diagnostics, static_def: &'a ExprStatic<'a, 'i>) {
+    pub fn add_static(&mut self, diagnostics: &Diagnostics<ErrorCode>, static_def: &'a ExprStatic<'a, 'i>) {
         let new_span = static_def.span();
         let name = match &static_def.sig.pattern {
             ExprPattern::Untyped(untyped) => untyped.binding.ident.ident,

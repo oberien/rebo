@@ -14,7 +14,7 @@ use crate::typeck::types::{Type, SpecificType};
 pub struct MatchLints;
 
 impl Visitor for MatchLints {
-    fn visit_match(&self, diagnostics: &Diagnostics, meta_info: &MetaInfo, _: &BlockStack<'_, '_, ()>, expr: &ExprMatch) {
+    fn visit_match(&self, diagnostics: &Diagnostics<ErrorCode>, meta_info: &MetaInfo, _: &BlockStack<'_, '_, ()>, expr: &ExprMatch) {
         let match_span = expr.span();
         let ExprMatch { expr, arms, .. } = expr;
 
@@ -189,7 +189,7 @@ impl<'i> Debug for RequiredEnumVariant<'i> {
 }
 
 struct VariantChecker<'i, T: Debug> {
-    diagnostics: &'i Diagnostics,
+    diagnostics: &'i Diagnostics<ErrorCode>,
     match_span: Span,
     catchall: Option<Span>,
     cases: IndexMap<T, Span>,
@@ -197,7 +197,7 @@ struct VariantChecker<'i, T: Debug> {
     had_required: bool,
 }
 impl<'i, T: Clone + Hash + Eq + Debug> VariantChecker<'i, T> {
-    fn new(diagnostics: &'i Diagnostics, match_span: Span, required: Option<&[T]>) -> Self {
+    fn new(diagnostics: &'i Diagnostics<ErrorCode>, match_span: Span, required: Option<&[T]>) -> Self {
         Self {
             diagnostics,
             match_span,

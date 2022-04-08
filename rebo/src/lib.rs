@@ -34,6 +34,7 @@ pub use typeck::types::{Type, FunctionType, SpecificType};
 pub use stdlib::{Stdlib, List, Map};
 pub use util::CowVec;
 use std::path::{PathBuf, Path};
+use diagnostic::Emitted;
 use crate::error_codes::ErrorCode;
 
 const EXTERNAL_SOURCE: &str = "defined externally";
@@ -43,7 +44,8 @@ const EXTERNAL_SPAN: Span = Span::new(FileId::synthetic("external.re"), 0, EXTER
 pub enum ReturnValue {
     Ok,
     ParseError,
-    Diagnostics(u32),
+    Diagnostics(Vec<Emitted<ErrorCode>>),
+    Panic,
 }
 
 #[derive(Debug, Clone)]
@@ -73,7 +75,7 @@ pub struct ReboConfig {
     interrupt_function: for<'a, 'i> fn(&mut VmContext<'a, '_, '_, 'i>) -> Result<(), ExecError<'a, 'i>>,
     diagnostic_output: Output,
     include_directory: IncludeDirectoryConfig,
-    external_type_adder_functions: Vec<for<'a, 'b, 'i> fn(&'a Arena<Expr<'a, 'i>>, &'i Diagnostics, &'b mut MetaInfo<'a, 'i>)>,
+    external_type_adder_functions: Vec<for<'a, 'b, 'i> fn(&'a Arena<Expr<'a, 'i>>, &'i Diagnostics<ErrorCode>, &'b mut MetaInfo<'a, 'i>)>,
     required_rebo_functions: Vec<RequiredReboFunctionStruct>,
 }
 impl ReboConfig {
@@ -114,7 +116,7 @@ impl ReboConfig {
         self
     }
     pub fn add_external_type<T: ExternalTypeType>(mut self, _: T) -> Self {
-        pub fn add_external_type<'a, 'b, 'i, T: ExternalType>(arena: &'a Arena<Expr<'a, 'i>>, diagnostics: &'i Diagnostics, meta_info: &'b mut MetaInfo<'a, 'i>) {
+        pub fn add_external_type<'a, 'b, 'i, T: ExternalType>(arena: &'a Arena<Expr<'a, 'i>>, diagnostics: &'i Diagnostics<ErrorCode>, meta_info: &'b mut MetaInfo<'a, 'i>) {
             meta_info.add_external_type::<T>(arena, diagnostics);
         }
         self.external_type_adder_functions.push(add_external_type::<T::Type>);
@@ -200,12 +202,10 @@ pub fn run_with_config(filename: String, code: String, config: ReboConfig) -> Re
     lints::lint(&diagnostics, &meta_info, &exprs);
     info!("Linting took {}μs", time.elapsed().as_micros());
 
-    let errors = diagnostics.errors_printed();
-    let diags = diagnostics.bugs_printed()
-        + errors
-        + diagnostics.warnings_printed()
-        + diagnostics.notes_printed()
-        + diagnostics.helps_printed();
+    let errors = diagnostics.emitted().into_iter().filter(|e| matches!(e, Emitted::Error(_))).count();
+    let mut diags = diagnostics.emitted();
+    diags.sort();
+    let diags = diags;
     if  errors > 0 {
         eprintln!("Aborted due to errors");
         return ReturnValue::Diagnostics(diags);
@@ -217,9 +217,12 @@ pub fn run_with_config(filename: String, code: String, config: ReboConfig) -> Re
     let result = vm.run(&exprs);
     info!("Execution took {}μs", time.elapsed().as_micros());
     println!("RESULT: {:?}", result);
-    if diags > 0 {
-        ReturnValue::Diagnostics(diags)
-    } else {
-        ReturnValue::Ok
+    match result {
+        Ok(_) if diags.len() > 0 => ReturnValue::Diagnostics(diags),
+        Ok(_) => ReturnValue::Ok,
+        Err(ExecError::Panic) => ReturnValue::Panic,
+        Err(ExecError::Continue(_)) => unreachable!("continue returned from Vm::run"),
+        Err(ExecError::Break(..)) => unreachable!("break returned from Vm::run"),
+        Err(ExecError::Return(_)) => unreachable!("return returned from Vm::run"),
     }
 }

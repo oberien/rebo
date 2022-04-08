@@ -11,7 +11,7 @@ use indexmap::IndexMap;
 pub struct StructDefLints;
 
 impl Visitor for StructDefLints {
-    fn visit_struct_definition(&self, diagnostics: &Diagnostics, meta_info: &MetaInfo, _: &BlockStack<'_, '_, ()>, def: &ExprStructDefinition) {
+    fn visit_struct_definition(&self, diagnostics: &Diagnostics<ErrorCode>, meta_info: &MetaInfo, _: &BlockStack<'_, '_, ()>, def: &ExprStructDefinition) {
         let ExprStructDefinition { name, fields, .. } = def;
 
         // ignore duplicate struct definitions
@@ -38,7 +38,7 @@ impl Visitor for StructDefLints {
     }
 }
 
-fn check_struct_recursion(diagnostics: &Diagnostics, meta_info: &MetaInfo, struct_name: &TokenIdent, field_typ: &Type, field_path: Vec<&str>) {
+fn check_struct_recursion(diagnostics: &Diagnostics<ErrorCode>, meta_info: &MetaInfo, struct_name: &TokenIdent, field_typ: &Type, field_path: Vec<&str>) {
     let field_struct_name = match &field_typ {
         Type::Specific(SpecificType::Struct(s, _)) => s,
         _ => return,

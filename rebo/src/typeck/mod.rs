@@ -7,6 +7,7 @@ use graph::Graph;
 
 use crate::common::MetaInfo;
 use crate::parser::Expr;
+use crate::ErrorCode;
 
 mod graph;
 pub mod types;
@@ -31,7 +32,7 @@ impl Borrow<Span> for TypeVar {
     }
 }
 
-pub fn typeck<'a, 'i>(diagnostics: &'i Diagnostics, meta_info: &mut MetaInfo<'a, 'i>, exprs: &[&'a Expr<'a, 'i>]) {
+pub fn typeck<'a, 'i>(diagnostics: &'i Diagnostics<ErrorCode>, meta_info: &mut MetaInfo<'a, 'i>, exprs: &[&'a Expr<'a, 'i>]) {
     let mut graph = Graph::create(diagnostics, meta_info, exprs);
     if Level::Trace <= log::max_level() {
         graph.dot();

@@ -9,14 +9,14 @@ use crate::typeck::types::{Type, SpecificType};
 pub struct StructFieldAssign;
 
 impl Visitor for StructFieldAssign {
-    fn visit_assign(&self, diagnostics: &Diagnostics, meta_info: &MetaInfo, _: &BlockStack<'_, '_, ()>, expr: &ExprAssign) {
+    fn visit_assign(&self, diagnostics: &Diagnostics<ErrorCode>, meta_info: &MetaInfo, _: &BlockStack<'_, '_, ()>, expr: &ExprAssign) {
         let ExprAssign { lhs, .. } = expr;
         if let ExprAssignLhs::FieldAccess(expr) = lhs {
             check_non_struct_field_access(diagnostics, meta_info, expr);
         }
     }
 }
-fn check_non_struct_field_access(diagnostics: &Diagnostics, meta_info: &MetaInfo, expr: &ExprFieldAccess) {
+fn check_non_struct_field_access(diagnostics: &Diagnostics<ErrorCode>, meta_info: &MetaInfo, expr: &ExprFieldAccess) {
     let ExprFieldAccess { variable, fields, .. } = expr;
     let mut typ = meta_info.types[&TypeVar::new(variable.binding.ident.span)].clone();
     let mut span = variable.span();

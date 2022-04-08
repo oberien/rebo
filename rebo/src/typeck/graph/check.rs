@@ -9,7 +9,7 @@ use std::collections::HashSet;
 use crate::util::CowVec;
 
 impl<'i> Graph<'i> {
-    pub fn check(&self, diagnostics: &Diagnostics, meta_info: &mut MetaInfo) {
+    pub fn check(&self, diagnostics: &Diagnostics<ErrorCode>, meta_info: &mut MetaInfo) {
         let mut already_errored = HashSet::new();
         for node in self.nodes() {
             let typ = match self.try_convert_possible_types(&mut already_errored, diagnostics, meta_info, node) {
@@ -21,7 +21,7 @@ impl<'i> Graph<'i> {
             }
         }
     }
-    fn try_convert_possible_types(&self, already_errored: &mut HashSet<Node>, diagnostics: &Diagnostics, meta_info: &mut MetaInfo, node: Node) -> Option<Type> {
+    fn try_convert_possible_types(&self, already_errored: &mut HashSet<Node>, diagnostics: &Diagnostics<ErrorCode>, meta_info: &mut MetaInfo, node: Node) -> Option<Type> {
         let types = self.possible_types(node);
         if types.len() == 1 {
             return Some(Type::Specific(match &types[0] {

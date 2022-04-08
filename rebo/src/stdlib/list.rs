@@ -10,7 +10,7 @@ use std::cell::RefCell;
 use std::marker::PhantomData;
 use itertools::Itertools;
 use rebo::stdlib::Sliceable;
-use crate::{CowVec, DisplayValue, ExternalType, FileId, FromValue, IntoValue, Typed};
+use crate::{CowVec, DisplayValue, ExternalType, FileId, FromValue, IntoValue, Typed, ErrorCode};
 
 #[derive(Debug)]
 pub struct List<T> {
@@ -64,7 +64,7 @@ impl<T> Typed for List<T> {
     );
 }
 
-pub fn add_list<'a, 'i>(diagnostics: &'i Diagnostics, arena: &'a Arena<Expr<'a, 'i>>, meta_info: &mut MetaInfo<'a, 'i>) {
+pub fn add_list<'a, 'i>(diagnostics: &'i Diagnostics<ErrorCode>, arena: &'a Arena<Expr<'a, 'i>>, meta_info: &mut MetaInfo<'a, 'i>) {
     meta_info.add_external_type::<List<Value>>(arena, diagnostics);
     meta_info.add_external_function(arena, diagnostics, list_new);
     meta_info.add_external_function(arena, diagnostics, list_of);

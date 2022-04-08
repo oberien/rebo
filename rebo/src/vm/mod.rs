@@ -9,7 +9,7 @@ use crate::parser::{Binding, BlockBody, Expr, ExprAdd, ExprAssign, ExprAssignLhs
 pub use crate::vm::scope::{Scopes, Scope};
 use diagnostic::{Diagnostics, Span};
 use rt_format::{Substitution, Specifier};
-use crate::{EXTERNAL_SPAN, IncludeDirectory};
+use crate::{EXTERNAL_SPAN, IncludeDirectory, ErrorCode};
 
 mod scope;
 
@@ -17,7 +17,7 @@ pub struct Vm<'a, 'b, 'i> {
     interrupt_interval: u32,
     instructions_since_last_interrupt: u32,
     interrupt_function: fn(&mut VmContext<'a, '_, '_, 'i>) -> Result<(), ExecError<'a, 'i>>,
-    diagnostics: &'i Diagnostics,
+    diagnostics: &'i Diagnostics<ErrorCode>,
     scopes: Scopes,
     meta_info: &'b MetaInfo<'a, 'i>,
     include_directory: IncludeDirectory,
@@ -37,7 +37,7 @@ pub struct VmContext<'a, 'b, 'vm, 'i> {
 }
 
 impl<'a, 'b, 'vm, 'i> VmContext<'a, 'b, 'vm, 'i> {
-    pub fn diagnostics(&self) -> &Diagnostics {
+    pub fn diagnostics(&self) -> &Diagnostics<ErrorCode> {
         self.vm.diagnostics
     }
 
@@ -54,7 +54,7 @@ impl<'a, 'b, 'vm, 'i> VmContext<'a, 'b, 'vm, 'i> {
 }
 
 impl<'a, 'b, 'i> Vm<'a, 'b, 'i> {
-    pub fn new(include_directory: IncludeDirectory, diagnostics: &'i Diagnostics, meta_info: &'b MetaInfo<'a, 'i>, interrupt_interval: u32, interrupt_function: fn(&mut VmContext<'a, '_, '_, 'i>) -> Result<(), ExecError<'a, 'i>>) -> Self {
+    pub fn new(include_directory: IncludeDirectory, diagnostics: &'i Diagnostics<ErrorCode>, meta_info: &'b MetaInfo<'a, 'i>, interrupt_interval: u32, interrupt_function: fn(&mut VmContext<'a, '_, '_, 'i>) -> Result<(), ExecError<'a, 'i>>) -> Self {
         let scopes = Scopes::new();
         let root_scope = Scope::new();
         // we don't want to drop the root-scope, it should exist at all times

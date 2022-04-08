@@ -16,7 +16,7 @@ pub enum MaybeToken<'i> {
     Diagnostic(usize),
 }
 
-pub fn lex_next<'i>(diagnostics: &Diagnostics, file: FileId, s: &'i str, mut index: usize, mode: LexerMode) -> Result<Token<'i>, Error> {
+pub fn lex_next<'i>(diagnostics: &Diagnostics<ErrorCode>, file: FileId, s: &'i str, mut index: usize, mode: LexerMode) -> Result<Token<'i>, Error> {
     loop {
         trace!("lex_next: {}", index);
         // skip preceding whitespace
@@ -100,7 +100,7 @@ macro_rules! lex_kws {
     }
 }
 
-pub fn try_lex_token<'i>(diagnostics: &Diagnostics, file: FileId, s: &'i str, index: usize) -> Result<MaybeToken<'i>, Error> {
+pub fn try_lex_token<'i>(diagnostics: &Diagnostics<ErrorCode>, file: FileId, s: &'i str, index: usize) -> Result<MaybeToken<'i>, Error> {
     trace!("try_lex_token: {}", index);
     lex_kws! {
         diagnostics, file, s, index;
@@ -198,7 +198,7 @@ pub fn try_lex_token<'i>(diagnostics: &Diagnostics, file: FileId, s: &'i str, in
     }
 }
 
-pub fn try_lex_number<'i>(diagnostics: &Diagnostics, file: FileId, s: &'i str, index: usize) -> Result<MaybeToken<'i>, Error> {
+pub fn try_lex_number<'i>(diagnostics: &Diagnostics<ErrorCode>, file: FileId, s: &'i str, index: usize) -> Result<MaybeToken<'i>, Error> {
     trace!("try_lex_number: {}", index);
     match util::try_parse_number(&s[index..]) {
         TryParseNumberResult::Int(value, radix, end) => Ok(MaybeToken::Token(Token::Integer(TokenInteger {
@@ -221,7 +221,7 @@ pub fn try_lex_number<'i>(diagnostics: &Diagnostics, file: FileId, s: &'i str, i
     }
 }
 
-pub fn try_lex_bool<'i>(_diagnostics: &Diagnostics, file: FileId, s: &'i str, index: usize) -> Result<MaybeToken<'i>, Error> {
+pub fn try_lex_bool<'i>(_diagnostics: &Diagnostics<ErrorCode>, file: FileId, s: &'i str, index: usize) -> Result<MaybeToken<'i>, Error> {
     trace!("try_lex_bool: {}", index);
     if s[index..].starts_with("true") {
         Ok(MaybeToken::Token(Token::Bool(TokenBool {
@@ -238,7 +238,7 @@ pub fn try_lex_bool<'i>(_diagnostics: &Diagnostics, file: FileId, s: &'i str, in
     }
 }
 
-pub fn try_lex_ident<'i>(_diagnostics: &Diagnostics, file: FileId, s: &'i str, mut index: usize) -> Result<MaybeToken<'i>, Error> {
+pub fn try_lex_ident<'i>(_diagnostics: &Diagnostics<ErrorCode>, file: FileId, s: &'i str, mut index: usize) -> Result<MaybeToken<'i>, Error> {
     trace!("try_lex_ident: {}", index);
     let start = index;
     // first character
@@ -258,7 +258,7 @@ pub fn try_lex_ident<'i>(_diagnostics: &Diagnostics, file: FileId, s: &'i str, m
     }
 }
 
-pub fn lex_line_comment<'i>(_diagnostics: &Diagnostics, file: FileId, s: &'i str, index: usize) -> Token<'i> {
+pub fn lex_line_comment<'i>(_diagnostics: &Diagnostics<ErrorCode>, file: FileId, s: &'i str, index: usize) -> Token<'i> {
     trace!("lex_line_comment: {}", index);
     assert_eq!(s[index..].chars().next(), Some('/'));
     assert_eq!(s[index+1..].chars().next(), Some('/'));
@@ -278,7 +278,7 @@ pub fn lex_line_comment<'i>(_diagnostics: &Diagnostics, file: FileId, s: &'i str
         comment: &s[index..end],
     })
 }
-pub fn lex_block_comment<'i>(diagnostics: &Diagnostics, file: FileId, s: &'i str, index: usize) -> Token<'i> {
+pub fn lex_block_comment<'i>(diagnostics: &Diagnostics<ErrorCode>, file: FileId, s: &'i str, index: usize) -> Token<'i> {
     trace!("lex_block_comment: {}", index);
     assert_eq!(s[index..].chars().next(), Some('/'));
     assert_eq!(s[index+1..].chars().next(), Some('*'));
@@ -319,7 +319,7 @@ pub fn lex_block_comment<'i>(diagnostics: &Diagnostics, file: FileId, s: &'i str
     }
 }
 
-pub fn lex_double_quoted_string<'i>(diagnostics: &Diagnostics, file: FileId, s: &'i str, mut index: usize) -> Result<Token<'i>, Error> {
+pub fn lex_double_quoted_string<'i>(diagnostics: &Diagnostics<ErrorCode>, file: FileId, s: &'i str, mut index: usize) -> Result<Token<'i>, Error> {
     trace!("lex_double_quoted_string: {}", index);
     assert_eq!(s[index..].chars().next(), Some('"'));
     let mut res = String::new();
@@ -374,7 +374,7 @@ fn lex_escaped_char(c: char) -> EscapedResult {
     }
 }
 
-pub fn lex_format_string<'i>(diagnostics: &Diagnostics, file: FileId, s: &'i str, mut index: usize) -> Result<Token<'i>, Error> {
+pub fn lex_format_string<'i>(diagnostics: &Diagnostics<ErrorCode>, file: FileId, s: &'i str, mut index: usize) -> Result<Token<'i>, Error> {
     trace!("lex_format_string: {}", index);
     assert_eq!(s[index..].chars().next(), Some('f'));
     assert_eq!(s[index+1..].chars().next(), Some('"'));

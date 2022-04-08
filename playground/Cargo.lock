@@ -179,7 +179,7 @@ dependencies = [
 [[package]]
 name = "diagnostic"
 version = "0.1.0"
-source = "git+https://github.com/oberien/diagnostic?rev=8138820#8138820a5fdd44a2611370331cbe3fd220c02c6c"
+source = "git+https://github.com/oberien/diagnostic?rev=e971eac15f0e8946aa8cee9b4f05e2392b654c00#e971eac15f0e8946aa8cee9b4f05e2392b654c00"
 dependencies = [
  "appendlist",
  "backtrace",

@@ -145,13 +145,13 @@ impl Drop for GenericGuard {
 }
 
 struct Context<'ctx, 'a, 'i> {
-    diagnostics: &'ctx Diagnostics,
+    diagnostics: &'ctx Diagnostics<ErrorCode>,
     meta_info: &'ctx MetaInfo<'a, 'i>,
     function_generics: &'ctx FunctionGenerics,
     block_stack: &'ctx BlockStack<'a, 'i, Node>,
 }
 
-fn convert_expr_type(typ: &ExprType, diagnostics: &Diagnostics, meta_info: &MetaInfo) -> Type {
+fn convert_expr_type(typ: &ExprType, diagnostics: &Diagnostics<ErrorCode>, meta_info: &MetaInfo) -> Type {
     match typ {
         ExprType::String(_) => Type::Specific(SpecificType::String),
         ExprType::Int(_) => Type::Specific(SpecificType::Integer),
@@ -245,7 +245,7 @@ fn convert_expr_type(typ: &ExprType, diagnostics: &Diagnostics, meta_info: &Meta
 }
 
 impl<'i> Graph<'i> {
-    fn add_user_types(diagnostics: &'i Diagnostics, meta_info: &mut MetaInfo) {
+    fn add_user_types(diagnostics: &'i Diagnostics<ErrorCode>, meta_info: &mut MetaInfo) {
         for user_type in meta_info.user_types.values() {
             match user_type {
                 UserType::Struct(struct_def) => {
@@ -284,7 +284,7 @@ impl<'i> Graph<'i> {
         }
     }
     /// Verify that all external types were defined correctly and match our internal types
-    fn verify_external_types(diagnostics: &'i Diagnostics, meta_info: &mut MetaInfo) {
+    fn verify_external_types(diagnostics: &'i Diagnostics<ErrorCode>, meta_info: &mut MetaInfo) {
         for (name, typ) in &meta_info.external_types {
             let (internal_generics, external_generics) = match typ {
                 SpecificType::Struct(_name, generics) => (
@@ -307,7 +307,7 @@ impl<'i> Graph<'i> {
             );
         }
     }
-    fn get_function_type(meta_info: &MetaInfo, diagnostics: &Diagnostics, sig: &ExprFunctionSignature, external: bool) -> FunctionType {
+    fn get_function_type(meta_info: &MetaInfo, diagnostics: &Diagnostics<ErrorCode>, sig: &ExprFunctionSignature, external: bool) -> FunctionType {
         FunctionType {
             is_method: if external {
                 sig.args.iter().next().map(|arg| arg.pattern.binding.ident.ident == "this").unwrap_or(false)
@@ -340,7 +340,7 @@ impl<'i> Graph<'i> {
                 .unwrap_or(Type::Specific(SpecificType::Unit)),
         }
     }
-    fn add_function_types(diagnostics: &'i Diagnostics, meta_info: &mut MetaInfo) {
+    fn add_function_types(diagnostics: &'i Diagnostics<ErrorCode>, meta_info: &mut MetaInfo) {
         for (name, fun) in &meta_info.functions {
             match fun {
                 Function::Rebo(..) => {
@@ -377,7 +377,7 @@ impl<'i> Graph<'i> {
         }
     }
     /// Check that required rebo functions are there and have the correct types
-    fn check_required_rebo_functions(diagnostics: &'i Diagnostics, meta_info: &mut MetaInfo) {
+    fn check_required_rebo_functions(diagnostics: &'i Diagnostics<ErrorCode>, meta_info: &mut MetaInfo) {
         for rrf in &meta_info.required_rebo_functions {
             let RequiredReboFunctionStruct { name, is_method, generics, args, ret } = rrf;
             let metfun = if *is_method { "method" } else { "function" };
@@ -428,7 +428,7 @@ impl<'i> Graph<'i> {
             }
         }
     }
-    pub fn create(diagnostics: &'i Diagnostics, meta_info: &mut MetaInfo<'_, 'i>, exprs: &[&Expr<'_, 'i>]) -> Graph<'i> {
+    pub fn create(diagnostics: &'i Diagnostics<ErrorCode>, meta_info: &mut MetaInfo<'_, 'i>, exprs: &[&Expr<'_, 'i>]) -> Graph<'i> {
         Self::add_user_types(diagnostics, meta_info);
         Self::verify_external_types(diagnostics, meta_info);
         Self::add_function_types(diagnostics, meta_info);

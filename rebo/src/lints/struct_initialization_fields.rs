@@ -8,7 +8,7 @@ use indexmap::set::IndexSet;
 pub struct StructInitializationFields;
 
 impl Visitor for StructInitializationFields {
-    fn visit_struct_initialization(&self, diagnostics: &Diagnostics, meta_info: &MetaInfo, _: &BlockStack<'_, '_, ()>, init: &ExprStructInitialization) {
+    fn visit_struct_initialization(&self, diagnostics: &Diagnostics<ErrorCode>, meta_info: &MetaInfo, _: &BlockStack<'_, '_, ()>, init: &ExprStructInitialization) {
         let ExprStructInitialization { name, fields, .. } = init;
         if name.ident == "List" {
             diagnostics.error(ErrorCode::ListStructInitialization)

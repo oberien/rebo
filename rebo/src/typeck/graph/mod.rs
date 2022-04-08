@@ -15,6 +15,7 @@ use strum::IntoEnumIterator;
 use crate::typeck::types::{ResolvableSpecificType, ResolvableSpecificTypeDiscriminants};
 use crate::typeck::TypeVar;
 use crate::typeck::graph::create::FunctionGenerics;
+use crate::ErrorCode;
 
 mod create;
 mod solve;
@@ -140,7 +141,7 @@ impl Display for Node {
 }
 
 pub struct Graph<'i> {
-    diagnostics: &'i Diagnostics,
+    diagnostics: &'i Diagnostics<ErrorCode>,
     graph: DiGraph<Node, Constraint>,
     graph_indices: IndexMap<Node, NodeIndex<u32>>,
     possible_types: IndexMap<Node, PossibleTypes>,
@@ -148,7 +149,7 @@ pub struct Graph<'i> {
 }
 
 impl<'i> Graph<'i> {
-    fn new(diagnostics: &'i Diagnostics) -> Graph {
+    fn new(diagnostics: &'i Diagnostics<ErrorCode>) -> Graph {
         Graph {
             diagnostics,
             graph: DiGraph::new(),

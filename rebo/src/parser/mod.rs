@@ -98,7 +98,7 @@ pub struct Parser<'a, 'b, 'i> {
     arena: &'a Arena<Expr<'a, 'i>>,
     /// tokens to be consumed
     lexer: Lexer<'i>,
-    diagnostics: &'i Diagnostics,
+    diagnostics: &'i Diagnostics<ErrorCode>,
     /// finished bindings that aren't live anymore
     bindings: Vec<Binding<'i>>,
     /// pre-info to add first-pass definitions to
@@ -124,7 +124,7 @@ impl<'i> Drop for ScopeGuard<'i> {
 
 /// All expression parsing function consume whitespace and comments before tokens, but not after.
 impl<'a, 'b, 'i> Parser<'a, 'b, 'i> {
-    pub fn new(include_directory: IncludeDirectory, arena: &'a Arena<Expr<'a, 'i>>, lexer: Lexer<'i>, diagnostics: &'i Diagnostics, meta_info: &'b mut MetaInfo<'a, 'i>) -> Self {
+    pub fn new(include_directory: IncludeDirectory, arena: &'a Arena<Expr<'a, 'i>>, lexer: Lexer<'i>, diagnostics: &'i Diagnostics<ErrorCode>, meta_info: &'b mut MetaInfo<'a, 'i>) -> Self {
         Parser {
             include_directory,
             arena,

@@ -8,7 +8,7 @@ use crate::typeck::types::{SpecificType, Type};
 pub struct EmptyFunctionBody;
 
 impl Visitor for EmptyFunctionBody {
-    fn visit_function_definition(&self, diagnostics: &Diagnostics, meta_info: &MetaInfo, _: &BlockStack<'_, '_, ()>, def: &ExprFunctionDefinition) {
+    fn visit_function_definition(&self, diagnostics: &Diagnostics<ErrorCode>, meta_info: &MetaInfo, _: &BlockStack<'_, '_, ()>, def: &ExprFunctionDefinition) {
         let ExprFunctionDefinition { sig, body: ExprBlock { body: BlockBody { exprs, .. }, .. }, .. } = def;
         // TODO: can this be better?
         let rebo_function = meta_info.rebo_functions.iter().find(|(_name, fun)| fun.span() == def.span());

@@ -9,7 +9,7 @@ use std::sync::Arc;
 use std::cell::RefCell;
 use std::collections::BTreeSet;
 use std::marker::PhantomData;
-use crate::{CowVec, ExternalType, FileId, FromValue, IntoValue, Typed};
+use crate::{CowVec, ExternalType, FileId, FromValue, IntoValue, Typed, ErrorCode};
 use crate::stdlib::list::List;
 
 pub struct Set<T> {
@@ -52,7 +52,7 @@ impl<T> Typed for Set<T> {
     );
 }
 
-pub fn add_set<'a, 'i>(diagnostics: &'i Diagnostics, arena: &'a Arena<Expr<'a, 'i>>, meta_info: &mut MetaInfo<'a, 'i>) {
+pub fn add_set<'a, 'i>(diagnostics: &'i Diagnostics<ErrorCode>, arena: &'a Arena<Expr<'a, 'i>>, meta_info: &mut MetaInfo<'a, 'i>) {
     meta_info.add_external_type::<Set<Value>>(arena, diagnostics);
 
     meta_info.add_external_function(arena, diagnostics, set_new);
