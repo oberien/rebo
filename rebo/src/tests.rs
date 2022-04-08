@@ -258,10 +258,8 @@ fn if_else_diagnostics() {
         if true { 1337 } else { "" }
         // missing else branch
         if true { 1337 }
-        // missing branch body
         // mismatched types
         if true { 1337 } else {}
-        // missing branch value
         // mismatched types
         if true { 1337 } else { 42; }
         // expected bool
@@ -270,9 +268,7 @@ fn if_else_diagnostics() {
         Emitted::Warning(ErrorCode::UnnecessaryIfConditionParenthesis),
         Emitted::Error(ErrorCode::UnableToInferType),
         Emitted::Error(ErrorCode::MissingElse),
-        Emitted::Error(ErrorCode::MissingBranchBody),
         Emitted::Error(ErrorCode::UnableToInferType),
-        Emitted::Error(ErrorCode::MissingBranchValue),
         Emitted::Error(ErrorCode::UnableToInferType),
         Emitted::Error(ErrorCode::UnableToInferType),
     ].sorted()));

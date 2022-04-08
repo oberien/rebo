@@ -22,7 +22,7 @@ impl Visitor for IfElseReturnValue {
             }
 
             return;
-            // TODO: unsure if these are needed later on
+            // TODO: unsure if these are needed later on; they are covered by type-checker errors already
             #[allow(unreachable_code)]
             for (_cond, block) in ifelse.iter_branches() {
                 // if returns value but block is empty
