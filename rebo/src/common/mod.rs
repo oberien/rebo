@@ -20,6 +20,7 @@ use std::cell::RefCell;
 
 mod values;
 
+#[derive(Debug)]
 pub enum UserType<'a, 'i> {
     Struct(&'a ExprStructDefinition<'a, 'i>),
     Enum(&'a ExprEnumDefinition<'a, 'i>),
