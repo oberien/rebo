@@ -93,21 +93,26 @@ impl<'a, 'b, 'i> Parser<'a, 'b, 'i> {
         self.add_statics();
 
         while self.peek_token(0).is_ok() && !matches!(self.peek_token(0).unwrap(), Token::Eof(_)) {
+            let scope = self.push_scope(ScopeType::Synthetic);
             if let Ok(impl_block_sig) = ImplBlockSignature::parse(self, Depth::start()) {
                 trace!("entering impl-block {}", impl_block_sig.name.ident);
                 stack.push(StackElement::ImplBlock(impl_block_sig.name.ident.to_string()));
+                std::mem::forget(scope);
                 continue;
             }
             if let Ok(Token::OpenCurly(_)) = self.peek_token(0) {
                 drop(self.next_token().unwrap());
                 trace!("entering block");
                 stack.push(StackElement::Block);
+                std::mem::forget(scope);
                 continue;
             }
+            drop(scope);
             if let Ok(Token::CloseCurly(_)) = self.peek_token(0) {
                 drop(self.next_token().unwrap());
                 trace!("leaving impl-block or block");
                 stack.pop();
+                self.scopes.borrow_mut().pop();
                 continue;
             }
 
