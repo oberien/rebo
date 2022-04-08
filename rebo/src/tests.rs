@@ -694,7 +694,7 @@ fn method_diagnostics() {
 }
 
 #[test]
-fn shadow_external_types() {
+fn redefine_external_types() {
     let _ = env_logger::builder().is_test(true).try_init();
     assert_eq!(rebo::run("test".to_string(), r#"
         // external type Option redefined

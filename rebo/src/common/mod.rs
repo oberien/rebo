@@ -3,7 +3,7 @@ use std::fmt::{self, Display, Formatter};
 use std::path::PathBuf;
 
 use diagnostic::{Diagnostics, Span};
-use indexmap::map::IndexMap;
+use indexmap::map::{IndexMap, Entry};
 use indexmap::set::IndexSet;
 use typed_arena::Arena;
 
@@ -233,13 +233,17 @@ impl<'a, 'i> MetaInfo<'a, 'i> {
     }
     pub fn add_user_type(&mut self, diagnostics: &Diagnostics<ErrorCode>, name: &'i str, user_type: UserType<'a, 'i>) {
         let new_span = user_type.span();
-        if let Some(old) = self.user_types.insert(name, user_type) {
-            let mut spans = [old.span(), new_span];
-            spans.sort();
-            diagnostics.error(ErrorCode::DuplicateGlobal)
-                .with_info_label(spans[0], "first defined here")
-                .with_error_label(spans[1], "also defined here")
-                .emit();
+        match self.user_types.entry(name) {
+            Entry::Vacant(vacant) => { vacant.insert(user_type); },
+            Entry::Occupied(occupied) => {
+                let old = occupied.get();
+                let mut spans = [old.span(), new_span];
+                spans.sort();
+                diagnostics.error(ErrorCode::DuplicateGlobal)
+                    .with_info_label(spans[0], "first defined here")
+                    .with_error_label(spans[1], "also defined here")
+                    .emit();
+            }
         }
     }
     pub fn add_static(&mut self, diagnostics: &Diagnostics<ErrorCode>, static_def: &'a ExprStatic<'a, 'i>) {
@@ -248,13 +252,17 @@ impl<'a, 'i> MetaInfo<'a, 'i> {
             ExprPattern::Untyped(untyped) => untyped.binding.ident.ident,
             ExprPattern::Typed(typed) => typed.pattern.binding.ident.ident,
         };
-        if let Some(old) = self.statics.insert(name, static_def) {
-            let mut spans = [old.span(), new_span];
-            spans.sort();
-            diagnostics.error(ErrorCode::DuplicateGlobal)
-                .with_info_label(spans[0], "first defined here")
-                .with_error_label(spans[1], "also defined here")
-                .emit();
+        match self.statics.entry(name) {
+            Entry::Vacant(vacant) => { vacant.insert(static_def); }
+            Entry::Occupied(occupied) => {
+                let old = occupied.get();
+                let mut spans = [old.span(), new_span];
+                spans.sort();
+                diagnostics.error(ErrorCode::DuplicateGlobal)
+                    .with_info_label(spans[0], "first defined here")
+                    .with_error_label(spans[1], "also defined here")
+                    .emit();
+            }
         }
     }
 }
