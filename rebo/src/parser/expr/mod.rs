@@ -945,8 +945,12 @@ pub struct ExprFormatString<'a, 'i> {
 }
 impl<'a, 'i> Parse<'a, 'i> for ExprFormatString<'a, 'i> {
     fn parse_marked(parser: &mut Parser<'a, '_, 'i>, depth: Depth) -> Result<Self, InternalError> {
-        let fmtstr: TokenFormatString = parser.parse(depth.next())?;
+        let mut fmtstr: TokenFormatString = parser.parse(depth.next())?;
         let mut parts = Vec::new();
+
+        if fmtstr.rogue {
+            fmtstr.parts.pop();
+        }
 
         for part in fmtstr.parts {
             match part {

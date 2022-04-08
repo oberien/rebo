@@ -374,12 +374,10 @@ fn format_string_diagnostics1() {
         // unescaped format string curly paren
         f"}";
         // unterminated format string arg
-        // unterminated format string
         f"uiae {";
     "#.to_string()).sorted(), ReturnValue::Diagnostics(vec![
         Emitted::Error(ErrorCode::UnescapedFormatStringCurlyParen),
         Emitted::Error(ErrorCode::UnterminatedFormatStringArg),
-        Emitted::Error(ErrorCode::UnterminatedFormatString),
     ].sorted()));
 }
 #[test]

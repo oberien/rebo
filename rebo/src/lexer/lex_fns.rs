@@ -191,7 +191,7 @@ pub fn try_lex_token<'i>(diagnostics: &Diagnostics<ErrorCode>, file: FileId, s: 
         '_' => Ok(MaybeToken::Token(Token::Underscore(TokenUnderscore { span }))),
         '"' => Ok(MaybeToken::Token(lex_double_quoted_string(diagnostics, file, s, index)?)),
         'f' => match char2 {
-            Some('"') => Ok(MaybeToken::Token(lex_format_string(diagnostics, file, s, index)?)),
+            Some('"') => Ok(MaybeToken::Token(lex_format_string(diagnostics, file, s, index))),
             _ => Ok(MaybeToken::Backtrack),
         }
         _ => Ok(MaybeToken::Backtrack),
@@ -374,10 +374,11 @@ fn lex_escaped_char(c: char) -> EscapedResult {
     }
 }
 
-pub fn lex_format_string<'i>(diagnostics: &Diagnostics<ErrorCode>, file: FileId, s: &'i str, mut index: usize) -> Result<Token<'i>, Error> {
+pub fn lex_format_string<'i>(diagnostics: &Diagnostics<ErrorCode>, file: FileId, s: &'i str, mut index: usize) -> Token<'i> {
     trace!("lex_format_string: {}", index);
     assert_eq!(s[index..].chars().next(), Some('f'));
     assert_eq!(s[index+1..].chars().next(), Some('"'));
+    let start = index;
     index += 2;
 
     #[derive(Debug, Copy, Clone)]
@@ -389,11 +390,11 @@ pub fn lex_format_string<'i>(diagnostics: &Diagnostics<ErrorCode>, file: FileId,
 
     let mut parts = Vec::new();
 
-    let start = index;
     let mut current = CurrentPart::Str;
-    let mut part_start = start;
+    let mut part_start = index;
     let mut depth = 0;
     let mut post_index = 0;
+    let mut rogue = false;
 
     fn make_part<'i>(s: &'i str, typ: CurrentPart, part_start: usize, part_end: usize) -> TokenFormatStringPart<'i> {
         match typ {
@@ -414,6 +415,7 @@ pub fn lex_format_string<'i>(diagnostics: &Diagnostics<ErrorCode>, file: FileId,
         match (s[index..].chars().next(), current) {
             (None, _) => {
                 if depth == 0 { err_diag(index) };
+                rogue = true;
                 break;
             },
             (Some('"'), CurrentPart::Str | CurrentPart::Escaped) => {
@@ -424,6 +426,7 @@ pub fn lex_format_string<'i>(diagnostics: &Diagnostics<ErrorCode>, file: FileId,
                 let next = match s[index..].chars().nth(1) {
                     None => {
                         if depth == 0 { err_diag(index) };
+                        rogue = true;
                         break;
                     },
                     Some(c) => c,
@@ -496,10 +499,12 @@ pub fn lex_format_string<'i>(diagnostics: &Diagnostics<ErrorCode>, file: FileId,
             .with_info_label(Span::new(file, start, index), "in this format string")
             .with_note("if you want to output a curly parenthesis, escape it like `\\{`")
             .emit();
+        rogue = true;
     }
     parts.push(make_part(s, current, part_start, index));
-    return Ok(Token::FormatString(TokenFormatString {
+    Token::FormatString(TokenFormatString {
         span: Span::new(file, start, index + post_index),
         parts,
-    }));
+        rogue,
+    })
 }

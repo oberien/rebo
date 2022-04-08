@@ -98,7 +98,7 @@ gen_tokens! {
     Integer, TokenInteger, "integer value", {value: i64, radix: Radix,}, (fmt = "{} ", "lexical::to_string_radix(*value, radix.to_u8())"), (Copy, Eq, Hash);
     Float, TokenFloat, "float value", {value: f64, radix: Radix,}, (fmt = "{} ", "lexical::to_string_radix(*value, radix.to_u8())"), (Copy);
     Bool, TokenBool, "bool value", {value: bool,}, (fmt = "{} ", value), (Copy, Eq, Hash);
-    FormatString<'i>, TokenFormatString, "format string", {parts: Vec<TokenFormatStringPart<'i>>,}, (fmt = "f{:?} ", "format_parts(parts)"), (Eq, Hash);
+    FormatString<'i>, TokenFormatString, "format string", {parts: Vec<TokenFormatStringPart<'i>>, rogue: bool,}, (fmt = "f{:?} ", "format_parts(parts)"), (Eq, Hash);
     // keywords
     Let, TokenLet, "let", {}, (fmt = "let "), (Copy, Eq, Hash);
     Mut, TokenMut, "mut", {}, (fmt = "mut "), (Copy, Eq, Hash);
