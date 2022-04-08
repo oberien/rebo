@@ -590,14 +590,12 @@ fn enum_diagnostics() {
             Bar(int),
         }
 
-        // missing enum field
-        let bar = Bar::Bar;
         // wrong number of enum fields (arguments)
         let bar = Bar::Bar();
         // wrong number of enum fields (arguments)
         let bar = Bar::Bar(42, true);
 
-        // unknown enum variant
+        // unknown function
         Bar::Foo;
 
         // compare between different struct types
@@ -609,10 +607,9 @@ fn enum_diagnostics() {
     "#.to_string()).sorted(), ReturnValue::Diagnostics(vec![
         Emitted::Error(ErrorCode::DuplicateGlobal),
         // Emitted::Error(ErrorCode::RecursiveEnum),
-        Emitted::Error(ErrorCode::InvalidNumberOfEnumVariantFields),
         Emitted::Error(ErrorCode::InvalidNumberOfArguments),
         Emitted::Error(ErrorCode::InvalidNumberOfArguments),
-        Emitted::Error(ErrorCode::UnknownEnumVariant),
+        Emitted::Error(ErrorCode::UnknownFunction),
         Emitted::Error(ErrorCode::UnableToInferType),
     ].sorted()));
 }

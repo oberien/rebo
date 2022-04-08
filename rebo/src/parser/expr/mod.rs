@@ -83,7 +83,7 @@ impl<'i> Binding<'i> {
             },
             _ => parser.parse(depth.last())?,
         };
-        // hack to allow functions as values for now
+        // hack to allow functions as values for now until we have proper path resolution
         let rest: Option<(TokenDoubleColon, TokenIdent<'i>)> = parser.parse(depth.next())?;
         let ident = match rest {
             None => ident,
