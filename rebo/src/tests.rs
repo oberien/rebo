@@ -668,6 +668,7 @@ fn method_diagnostics() {
         // unknown method
         foo.b();
         // not a method
+        // invalid number of arguments
         foo.a();
         // invalid argument type 0
         Foo::foo(1337, 42, "uiae");
@@ -680,6 +681,7 @@ fn method_diagnostics() {
     "#.to_string()).sorted(), ReturnValue::Diagnostics(vec![
         Emitted::Error(ErrorCode::UnknownMethod),
         Emitted::Error(ErrorCode::NotAMethod),
+        Emitted::Error(ErrorCode::InvalidNumberOfArguments),
         Emitted::Error(ErrorCode::UnableToInferType),
         Emitted::Error(ErrorCode::UnableToInferType),
         Emitted::Error(ErrorCode::UnableToInferType),
@@ -738,4 +740,17 @@ fn generic_diagnostics() {
         fn foo<U, V>(u: U, v: V) -> V { v }
         fn bar<T>(t: T) -> T { foo(t, 42) }
     "#.to_string()).sorted(), ReturnValue::Diagnostics(vec![Emitted::Error(ErrorCode::UnableToInferType)]));
+}
+
+#[test]
+fn method_arg_number() {
+    let _ = env_logger::builder().is_test(true).try_init();
+    assert_eq!(rebo::run("test".to_string(), r#"
+        struct Foo {}
+        impl Foo {
+            fn bar(self, a: int) { a; }
+        }
+        let foo = Foo {};
+        foo.bar();
+    "#.to_string()).sorted(), ReturnValue::Diagnostics(vec![Emitted::Error(ErrorCode::InvalidNumberOfArguments)]));
 }

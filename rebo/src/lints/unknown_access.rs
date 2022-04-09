@@ -2,7 +2,9 @@ use crate::lints::visitor::Visitor;
 use crate::parser::{Spanned, ExprAccess, FieldOrMethod};
 use crate::common::{MetaInfo, Function, BlockStack};
 use diagnostic::Diagnostics;
+use rebo::lints::invalid_number_of_arguments::check_function_call_arg_num;
 use crate::error_codes::ErrorCode;
+use crate::lints::invalid_number_of_arguments::CallType;
 use crate::typeck::types::{Type, SpecificType};
 use crate::typeck::TypeVar;
 
@@ -55,6 +57,11 @@ impl Visitor for UnknownAccess {
                 }
                 FieldOrMethod::Method(fn_call) => {
                     let fn_name = format!("{}::{}", typ.type_name(), fn_call.name.ident);
+
+                    match meta_info.function_types.get(fn_name.as_str()) {
+                        Some(fun) => check_function_call_arg_num(diagnostics, fun, CallType::MethodCall, fn_call.span(), &fn_call.open, &fn_call.args, &fn_call.close),
+                        None => (),
+                    }
 
                     match meta_info.functions.get(fn_name.as_str()) {
                         None => {
