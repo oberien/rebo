@@ -754,3 +754,15 @@ fn method_arg_number() {
         foo.bar();
     "#.to_string()).sorted(), ReturnValue::Diagnostics(vec![Emitted::Error(ErrorCode::InvalidNumberOfArguments)]));
 }
+
+#[test]
+fn idents_starting_with_underscore() {
+    let _ = env_logger::builder().is_test(true).try_init();
+    assert_eq!(rebo::run("test".to_string(), r#"
+        let _foo = 1337;
+        assert(_foo == 1337);
+        match true {
+            _val => (),
+        }
+    "#.to_string()).sorted(), ReturnValue::Ok);
+}

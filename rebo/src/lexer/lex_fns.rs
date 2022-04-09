@@ -188,7 +188,11 @@ pub fn try_lex_token<'i>(diagnostics: &Diagnostics<ErrorCode>, file: FileId, s: 
             (Some('.'), Some('.')) => Ok(MaybeToken::Token(Token::DotDotDot(TokenDotDotDot { span: span3 }))),
             _ => Ok(MaybeToken::Token(Token::Dot(TokenDot { span }))),
         }
-        '_' => Ok(MaybeToken::Token(Token::Underscore(TokenUnderscore { span }))),
+        '_' => match char2 {
+            // ident
+            Some('a'..='z' | 'A'..='Z' | '_' | '0'..='9') => Ok(MaybeToken::Backtrack),
+            _ => Ok(MaybeToken::Token(Token::Underscore(TokenUnderscore { span }))),
+        }
         '"' => Ok(MaybeToken::Token(lex_double_quoted_string(diagnostics, file, s, index)?)),
         'f' => match char2 {
             Some('"') => Ok(MaybeToken::Token(lex_format_string(diagnostics, file, s, index))),
