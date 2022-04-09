@@ -23,28 +23,31 @@ impl Sorted for ReturnValue {
     }
 }
 
+fn test(code: &str, expected: ReturnValue) {
+    let _ = env_logger::builder().is_test(true).try_init();
+    let res = rebo::run("test".to_string(), code.to_string());
+    assert_eq!(expected.sorted(), res.sorted());
+}
+
 #[test]
 fn other_stuff() {
-    let _ = env_logger::builder().is_test(true).try_init();
-    assert_eq!(rebo::run("test".to_string(), r#"
+    test(r#"
         // "integer" should not be parsed as Keyword("int"),Ident("eger") but as Ident("integer")
         let integer = 1337;
-    "#.to_string()).sorted(), ReturnValue::Ok);
+    "#, ReturnValue::Ok);
 }
 #[test]
 fn other_stuff_diagnostics() {
-    let _ = env_logger::builder().is_test(true).try_init();
-    assert_eq!(rebo::run("test".to_string(), r#"
+    test(r#"
         // immutable assign
         let foo = 1;
         foo = 42;
-    "#.to_string()).sorted(), ReturnValue::Diagnostics(vec![Emitted::Error(ErrorCode::ImmutableAssign)]));
+    "#, ReturnValue::Diagnostics(vec![Emitted::Error(ErrorCode::ImmutableAssign)]));
 }
 
 #[test]
 fn boolean_short_circuiting() {
-    let _ = env_logger::builder().is_test(true).try_init();
-    assert_eq!(rebo::run("test".to_string(), r#"
+    test(r#"
         assert((true));
         assert(!(false));
         assert(!(true && false));
@@ -58,13 +61,12 @@ fn boolean_short_circuiting() {
 
         assert(!(false && panic("")));
         assert(true || panic(""));
-    "#.to_string()).sorted(), ReturnValue::Ok);
+    "#, ReturnValue::Ok);
 }
 
 #[test]
 fn test_math_precedence() {
-    let _ = env_logger::builder().is_test(true).try_init();
-    assert_eq!(rebo::run("test".to_string(), r#"
+    test(r#"
         assert((1 + 2) * 3 == 9);
         assert(1 + 2 * 3 == 7);
         assert(1 * 2 + 3 == 5);
@@ -72,13 +74,12 @@ fn test_math_precedence() {
         assert((1 * 2) + 3 == 5);
         assert(1 * (2 + 3) == 5);
         assert(1 + 2 * 3 * 4 == 25);
-    "#.to_string()).sorted(), ReturnValue::Ok);
+    "#, ReturnValue::Ok);
 }
 
 #[test]
 fn test_comparison() {
-    let _ = env_logger::builder().is_test(true).try_init();
-    assert_eq!(rebo::run("test".to_string(), r#"
+    test(r#"
         // unit
         assert(!(() < ()) && () <= () && () == () && () >= () && !(() > ()));
         // int
@@ -106,36 +107,32 @@ fn test_comparison() {
         assert(foo == 1337);
         let bar = 1337;
         assert(foo == bar);
-    "#.to_string()).sorted(), ReturnValue::Ok);
+    "#, ReturnValue::Ok);
 }
 
 #[test]
 fn test_panic() {
-    let _ = env_logger::builder().is_test(true).try_init();
-    assert_eq!(rebo::run("test".to_string(), r#"
+    test(r#"
         panic("interesting message");
-    "#.to_string()).sorted(), ReturnValue::Panic);
+    "#, ReturnValue::Panic);
 }
 
 #[test]
 fn assert_false() {
-    let _ = env_logger::builder().is_test(true).try_init();
-    assert_eq!(rebo::run("test".to_string(), r#"
+    test(r#"
         assert(false);
-    "#.to_string()).sorted(), ReturnValue::Panic);
+    "#, ReturnValue::Panic);
 }
 #[test]
 fn assert_true() {
-    let _ = env_logger::builder().is_test(true).try_init();
-    assert_eq!(rebo::run("test".to_string(), r#"
+    test(r#"
         assert(true);
-    "#.to_string()).sorted(), ReturnValue::Ok);
+    "#, ReturnValue::Ok);
 }
 
 #[test]
 fn functions() {
-    let _ = env_logger::builder().is_test(true).try_init();
-    assert_eq!(rebo::run("test".to_string(), r#"
+    test(r#"
         fn foo(mut x: int, mut y: int) -> int {
             x = x + 10;
             y = y + 20;
@@ -164,12 +161,11 @@ fn functions() {
         assert(foo.x == 1);
         change(foo);
         assert(foo.x == 2);
-    "#.to_string()).sorted(), ReturnValue::Ok);
+    "#, ReturnValue::Ok);
 }
 #[test]
 fn free_function_diagnostics() {
-    let _ = env_logger::builder().is_test(true).try_init();
-    assert_eq!(rebo::run("test".to_string(), r#"
+    test(r#"
         // overwrite external function
         fn add_one() -> () {}
 
@@ -210,7 +206,7 @@ fn free_function_diagnostics() {
         fn qux() {
             foo
         }
-    "#.to_string()).sorted(), ReturnValue::Diagnostics(vec![
+    "#, ReturnValue::Diagnostics(vec![
         Emitted::Error(ErrorCode::DuplicateGlobal),
         Emitted::Error(ErrorCode::EmptyFunctionBody),
         Emitted::Error(ErrorCode::UnableToInferType),
@@ -221,24 +217,22 @@ fn free_function_diagnostics() {
         Emitted::Error(ErrorCode::UnknownFunction),
         Emitted::Error(ErrorCode::ImmutableAssign),
         Emitted::Error(ErrorCode::UnknownIdentifier),
-    ].sorted()));
+    ]));
 }
 #[test]
 fn pre_parsed() {
-    let _ = env_logger::builder().is_test(true).try_init();
-    assert_eq!(rebo::run("test".to_string(), r#"
+    test(r#"
         // type conflict bool-and targets must be bool
         // type conflict add targets must be float / int
         2 + fn foo() {} && true
-    "#.to_string()).sorted(), ReturnValue::Diagnostics(vec![
+    "#, ReturnValue::Diagnostics(vec![
         Emitted::Error(ErrorCode::UnableToInferType),
         Emitted::Error(ErrorCode::UnableToInferType),
-    ].sorted()));
+    ]));
 }
 #[test]
 fn if_else_usage() {
-    let _ = env_logger::builder().is_test(true).try_init();
-    assert_eq!(rebo::run("test".to_string(), r#"
+    test(r#"
         if true {} else { panic(""); }
         if true {} else if true { panic(""); }
         if true {} else if true { panic(""); } else { panic(""); }
@@ -246,12 +240,11 @@ fn if_else_usage() {
         if false { panic(""); } else if false { panic(""); } else {}
         assert(if true { true } else { false });
         assert(1342 == if true { 1337 } else { panic("") } + 5);
-    "#.to_string()).sorted(), ReturnValue::Ok);
+    "#, ReturnValue::Ok);
 }
 #[test]
 fn if_else_diagnostics() {
-    let _ = env_logger::builder().is_test(true).try_init();
-    assert_eq!(rebo::run("test".to_string(), r#"
+    test(r#"
         // unnecessary parens
         if (true) {} else {}
         // mismatched types
@@ -264,19 +257,18 @@ fn if_else_diagnostics() {
         if true { 1337 } else { 42; }
         // expected bool
         if 1337 {}
-    "#.to_string()).sorted(), ReturnValue::Diagnostics(vec![
+    "#, ReturnValue::Diagnostics(vec![
         Emitted::Warning(ErrorCode::UnnecessaryIfConditionParenthesis),
         Emitted::Error(ErrorCode::UnableToInferType),
         Emitted::Error(ErrorCode::MissingElse),
         Emitted::Error(ErrorCode::UnableToInferType),
         Emitted::Error(ErrorCode::UnableToInferType),
         Emitted::Error(ErrorCode::UnableToInferType),
-    ].sorted()));
+    ]));
 }
 #[test]
 fn match_usage() {
-    let _ = env_logger::builder().is_test(true).try_init();
-    assert_eq!(rebo::run("test".to_string(), r#"
+    test(r#"
         assert(match true { true => (), false => panic("") } == ());
         assert(match false { true => panic(""), _ => () } == ());
         assert(match false { true => panic(""), foo => assert(!foo) } == ());
@@ -297,12 +289,11 @@ fn match_usage() {
                 _ => 1337,
             },
         } == 42);
-    "#.to_string()).sorted(), ReturnValue::Ok);
+    "#, ReturnValue::Ok);
 }
 #[test]
 fn match_diagnostics() {
-    let _ = env_logger::builder().is_test(true).try_init();
-    assert_eq!(rebo::run("test".to_string(), r#"
+    test(r#"
         // empty body
         // non-exhaustive
         match true {}
@@ -317,7 +308,7 @@ fn match_diagnostics() {
         match Foo {} { _ => () }
         // non-exhaustive
         match true { true => (), }
-    "#.to_string()).sorted(), ReturnValue::Diagnostics(vec![
+    "#, ReturnValue::Diagnostics(vec![
         Emitted::Warning(ErrorCode::EmptyMatch),
         Emitted::Error(ErrorCode::NonExhaustiveMatch),
         Emitted::Warning(ErrorCode::UnreachableMatchArm),
@@ -325,68 +316,62 @@ fn match_diagnostics() {
         Emitted::Error(ErrorCode::MatchNoCatchall),
         Emitted::Error(ErrorCode::StructMatch),
         Emitted::Error(ErrorCode::NonExhaustiveMatch),
-    ].sorted()));
+    ]));
 }
 #[test]
 fn while_usage() {
-    let _ = env_logger::builder().is_test(true).try_init();
-    assert_eq!(rebo::run("test".to_string(), r#"
+    test(r#"
         let mut i = 0;
         while i < 3 {
             i = i + 1;
         }
         assert(i == 3);
-    "#.to_string()).sorted(), ReturnValue::Ok);
+    "#, ReturnValue::Ok);
 }
 #[test]
 fn while_diagnostics() {
-    let _ = env_logger::builder().is_test(true).try_init();
-    assert_eq!(rebo::run("test".to_string(), r#"
+    test(r#"
         // unnecessary parens
         while (true) {}
         // type conflict between bool & int
         while 1337 {}
-    "#.to_string()).sorted(), ReturnValue::Diagnostics(vec![
+    "#, ReturnValue::Diagnostics(vec![
         Emitted::Warning(ErrorCode::UnnecessaryWhileConditionParenthesis),
         Emitted::Error(ErrorCode::UnableToInferType),
-    ].sorted()));
+    ]));
 }
 #[test]
 fn format_strings() {
-    let _ = env_logger::builder().is_test(true).try_init();
-    assert_eq!(rebo::run("test".to_string(), r#"
+    test(r#"
         let foo = 42;
         assert(f"uiae" == "uiae");
         assert(f"{foo}" == "42");
         assert(f"{4 * 10 + 2}" == "42");
         assert(f"\{\}" == "{}");
         assert(f"{f"42"}" == "42");
-    "#.to_string()).sorted(), ReturnValue::Ok);
+    "#, ReturnValue::Ok);
 }
 #[test]
 fn format_string_diagnostics1() {
-    let _ = env_logger::builder().is_test(true).try_init();
-    assert_eq!(rebo::run("test".to_string(), r#"
+    test(r#"
         // unescaped format string curly paren
         f"}";
         // unterminated format string arg
         f"uiae {";
-    "#.to_string()).sorted(), ReturnValue::Diagnostics(vec![
+    "#, ReturnValue::Diagnostics(vec![
         Emitted::Error(ErrorCode::UnescapedFormatStringCurlyParen),
         Emitted::Error(ErrorCode::UnterminatedFormatStringArg),
-    ].sorted()));
+    ]));
 }
 #[test]
 fn format_string_diagnostics2() {
-    let _ = env_logger::builder().is_test(true).try_init();
-    assert_eq!(rebo::run("test".to_string(), r#"
+    test(r#"
         f"uiae
-    "#.to_string()).sorted(), ReturnValue::Diagnostics(vec![Emitted::Error(ErrorCode::UnterminatedFormatString)]));
+    "#, ReturnValue::Diagnostics(vec![Emitted::Error(ErrorCode::UnterminatedFormatString)]));
 }
 #[test]
 fn struct_definitions() {
-    let _ = env_logger::builder().is_test(true).try_init();
-    assert_eq!(rebo::run("test".to_string(), r#"
+    test(r#"
         // struct definition
         struct Empty {}
         struct Foo {
@@ -436,13 +421,12 @@ fn struct_definitions() {
         assert(foo.bar() == 42);
         assert(Foo::foo(foo) == 42);
         assert(Foo::bar(foo) == 42);
-    "#.to_string()).sorted(), ReturnValue::Ok);
+    "#, ReturnValue::Ok);
 }
 
 #[test]
 fn struct_diagnostics() {
-    let _ = env_logger::builder().is_test(true).try_init();
-    assert_eq!(rebo::run("test".to_string(), r#"
+    test(r#"
         // duplicate struct name (global)
         struct Foo {}
         struct Foo { foo: int }
@@ -488,7 +472,7 @@ fn struct_diagnostics() {
             foo: int,
             foo: float,
         }
-    "#.to_string()).sorted(), ReturnValue::Diagnostics(vec![
+    "#, ReturnValue::Diagnostics(vec![
         Emitted::Error(ErrorCode::DuplicateGlobal),
         // Emitted::Error(ErrorCode::RecursiveStruct),
         // Emitted::Error(ErrorCode::RecursiveStruct),
@@ -498,13 +482,12 @@ fn struct_diagnostics() {
         Emitted::Error(ErrorCode::UnableToInferType),
         Emitted::Error(ErrorCode::ImmutableAssign),
         Emitted::Error(ErrorCode::DuplicateStructField),
-    ].sorted()));
+    ]));
 }
 
 #[test]
 fn enum_definitions() {
-    let _ = env_logger::builder().is_test(true).try_init();
-    assert_eq!(rebo::run("test".to_string(), r#"
+    test(r#"
         // enum definition
         enum Never {}
         enum Foo {
@@ -563,13 +546,12 @@ fn enum_definitions() {
         assert(bar.unwrap_bar());
         assert(Bar::unwrap_foo(foo) == 42);
         assert(Bar::unwrap_bar(bar));
-    "#.to_string()).sorted(), ReturnValue::Ok);
+    "#, ReturnValue::Ok);
 }
 
 #[test]
 fn enum_diagnostics() {
-    let _ = env_logger::builder().is_test(true).try_init();
-    assert_eq!(rebo::run("test".to_string(), r#"
+    test(r#"
         // duplicate enum name
         enum Foo {}
         // // recursive enum definition
@@ -604,20 +586,19 @@ fn enum_diagnostics() {
         let baz = Baz::Baz;
         let qux = Qux::Qux;
         baz == qux;
-    "#.to_string()).sorted(), ReturnValue::Diagnostics(vec![
+    "#, ReturnValue::Diagnostics(vec![
         Emitted::Error(ErrorCode::DuplicateGlobal),
         // Emitted::Error(ErrorCode::RecursiveEnum),
         Emitted::Error(ErrorCode::InvalidNumberOfArguments),
         Emitted::Error(ErrorCode::InvalidNumberOfArguments),
         Emitted::Error(ErrorCode::UnknownFunction),
         Emitted::Error(ErrorCode::UnableToInferType),
-    ].sorted()));
+    ]));
 }
 
 #[test]
 fn associated_functions() {
-    let _ = env_logger::builder().is_test(true).try_init();
-    assert_eq!(rebo::run("test".to_string(), r#"
+    test(r#"
         struct Foo {
             a: int,
             b: string,
@@ -633,32 +614,29 @@ fn associated_functions() {
         }
         assert(Foo::new(42, "uiae") == Foo { a: 42, b: "uiae", });
         assert(Foo::foo(42) == 52);
-    "#.to_string()).sorted(), ReturnValue::Ok);
+    "#, ReturnValue::Ok);
 }
 #[test]
 fn associated_function_diagnostics() {
-    let _ = env_logger::builder().is_test(true).try_init();
-    assert_eq!(rebo::run("test".to_string(), r#"
+    test(r#"
         struct Foo {}
         // empty impl block
         impl Foo {}
-    "#.to_string()).sorted(), ReturnValue::Diagnostics(vec![Emitted::Warning(ErrorCode::EmptyImplBlock)]));
+    "#, ReturnValue::Diagnostics(vec![Emitted::Warning(ErrorCode::EmptyImplBlock)]));
 }
 #[test]
 fn associated_function_diagnostics2() {
-    let _ = env_logger::builder().is_test(true).try_init();
-    assert_eq!(rebo::run("test".to_string(), r#"
+    test(r#"
         // unknown impl block target
         impl Foo {
             fn foo() {}
         }
-    "#.to_string()).sorted(), ReturnValue::Diagnostics(vec![Emitted::Error(ErrorCode::UnknownImplBlockTarget)]));
+    "#, ReturnValue::Diagnostics(vec![Emitted::Error(ErrorCode::UnknownImplBlockTarget)]));
 }
 
 #[test]
 fn method_diagnostics() {
-    let _ = env_logger::builder().is_test(true).try_init();
-    assert_eq!(rebo::run("test".to_string(), r#"
+    test(r#"
         struct Foo {}
         let foo = Foo {};
         impl Foo {
@@ -678,7 +656,7 @@ fn method_diagnostics() {
         foo.foo(1337, 42);
         // invalid return type
         let a: string = foo.foo(1337, "uiae");
-    "#.to_string()).sorted(), ReturnValue::Diagnostics(vec![
+    "#, ReturnValue::Diagnostics(vec![
         Emitted::Error(ErrorCode::UnknownMethod),
         Emitted::Error(ErrorCode::NotAMethod),
         Emitted::Error(ErrorCode::InvalidNumberOfArguments),
@@ -686,22 +664,20 @@ fn method_diagnostics() {
         Emitted::Error(ErrorCode::UnableToInferType),
         Emitted::Error(ErrorCode::UnableToInferType),
         Emitted::Error(ErrorCode::UnableToInferType),
-    ].sorted()));
+    ]));
 }
 
 #[test]
 fn redefine_external_types() {
-    let _ = env_logger::builder().is_test(true).try_init();
-    assert_eq!(rebo::run("test".to_string(), r#"
+    test(r#"
         // external type Option redefined
         enum Option<T> {}
-    "#.to_string()).sorted(), ReturnValue::Diagnostics(vec![Emitted::Error(ErrorCode::DuplicateGlobal)]));
+    "#, ReturnValue::Diagnostics(vec![Emitted::Error(ErrorCode::DuplicateGlobal)]));
 }
 
 #[test]
 fn generics() {
-    let _ = env_logger::builder().is_test(true).try_init();
-    assert_eq!(rebo::run("test".to_string(), r#"
+    test(r#"
         enum MyOption<T> {
             Some(T),
             None,
@@ -730,39 +706,36 @@ fn generics() {
 
         fn foo<U, V>(u: U, v: V) -> V { v }
         fn bar<T>(t: T) -> T { foo(42, t) }
-    "#.to_string()).sorted(), ReturnValue::Ok);
+    "#, ReturnValue::Ok);
 }
 #[test]
 fn generic_diagnostics() {
-    let _ = env_logger::builder().is_test(true).try_init();
-    assert_eq!(rebo::run("test".to_string(), r#"
+    test(r#"
         // T and V are not unifyable, because V is int
         fn foo<U, V>(u: U, v: V) -> V { v }
         fn bar<T>(t: T) -> T { foo(t, 42) }
-    "#.to_string()).sorted(), ReturnValue::Diagnostics(vec![Emitted::Error(ErrorCode::UnableToInferType)]));
+    "#, ReturnValue::Diagnostics(vec![Emitted::Error(ErrorCode::UnableToInferType)]));
 }
 
 #[test]
 fn method_arg_number() {
-    let _ = env_logger::builder().is_test(true).try_init();
-    assert_eq!(rebo::run("test".to_string(), r#"
+    test(r#"
         struct Foo {}
         impl Foo {
             fn bar(self, a: int) { a; }
         }
         let foo = Foo {};
         foo.bar();
-    "#.to_string()).sorted(), ReturnValue::Diagnostics(vec![Emitted::Error(ErrorCode::InvalidNumberOfArguments)]));
+    "#, ReturnValue::Diagnostics(vec![Emitted::Error(ErrorCode::InvalidNumberOfArguments)]));
 }
 
 #[test]
 fn idents_starting_with_underscore() {
-    let _ = env_logger::builder().is_test(true).try_init();
-    assert_eq!(rebo::run("test".to_string(), r#"
+    test(r#"
         let _foo = 1337;
         assert(_foo == 1337);
         match true {
             _val => (),
         }
-    "#.to_string()).sorted(), ReturnValue::Ok);
+    "#, ReturnValue::Ok);
 }
