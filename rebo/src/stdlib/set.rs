@@ -62,6 +62,7 @@ pub fn add_set<'a, 'i>(diagnostics: &'i Diagnostics<ErrorCode>, arena: &'a Arena
     meta_info.add_external_function(arena, diagnostics, set_values);
     meta_info.add_external_function(arena, diagnostics, set_union);
     meta_info.add_external_function(arena, diagnostics, set_len);
+    meta_info.add_external_function(arena, diagnostics, set_clear);
     meta_info.add_external_function(arena, diagnostics, set_is_empty);
 }
 
@@ -110,6 +111,10 @@ fn set_union<T>(this: Set<T>, other: Set<T>) -> Set<T> {
 #[rebo::function("Set::len")]
 fn set_len<T>(this: Set<T>) -> usize {
     this.arc.set.lock().borrow().len()
+}
+#[rebo::function("Set::clear")]
+fn set_clear<T>(this: Set<T>) {
+    this.arc.set.lock().borrow_mut().clear()
 }
 #[rebo::function("Set::is_empty")]
 fn set_is_empty<T>(this: Set<T>) -> bool {
