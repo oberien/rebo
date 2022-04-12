@@ -27,14 +27,18 @@ pub fn enum_type(e: ItemEnum) -> TokenStream {
     let idents = vec![&ident; variant_names.len()];
     let ident_strings = vec![&ident_string; variant_names.len()];
     let field_names = field_types.iter()
-        .map(|types| if types.is_empty() {
+        .map(|types| {
+            types.iter().enumerate()
+                .map(|(i, _)| Ident::new(&format!("f{}", i), Span::call_site()))
+                .collect::<Vec<_>>()
+        }).collect::<Vec<_>>();
+    let field_names_concat: Vec<_> = field_names.iter().map(|field_names| {
+        if field_names.is_empty() {
             quote::quote!()
         } else {
-            let names = types.iter().enumerate()
-                .map(|(i, _)| Ident::new(&format!("f{}", i), Span::call_site()))
-                .collect::<Vec<_>>();
-            quote::quote!((#(#names,)*))
-        }).collect::<Vec<_>>();
+            quote::quote!((#(#field_names,)*))
+        }
+    }).collect();
 
     let generic_idents = util::generic_idents(&generics, "rebo enums");
 
@@ -98,12 +102,12 @@ pub fn enum_type(e: ItemEnum) -> TokenStream {
             fn into_value(self) -> ::rebo::Value {
                 match self {
                     #(
-                        #idents::#variant_names#field_names => ::rebo::Value::Enum(::rebo::EnumArc::new(::rebo::Enum {
+                        #idents::#variant_names#field_names_concat => ::rebo::Value::Enum(::rebo::EnumArc::new(::rebo::Enum {
                             name: #ident_strings.to_string(),
                             variant: #variant_name_strings.to_string(),
                             fields: vec![
                                 #(
-                                    <#field_types as ::rebo::IntoValue>::into_value#field_names,
+                                    <#field_types as ::rebo::IntoValue>::into_value(#field_names),
                                 )*
                             ],
                         })),
