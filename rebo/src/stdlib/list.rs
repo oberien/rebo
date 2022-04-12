@@ -64,6 +64,20 @@ impl<T> Typed for List<T> {
     );
 }
 
+impl<T: IntoValue> IntoValue for Vec<T> {
+    fn into_value(self) -> Value {
+        Value::List(List::new(self).arc)
+    }
+}
+impl<T: FromValue> FromValue for Vec<T> {
+    fn from_value(value: Value) -> Self {
+        match value {
+            Value::List(arc) => arc.list.lock().borrow().iter().cloned().map(FromValue::from_value).collect(),
+            _ => unreachable!("Vec::from_value called with non-List"),
+        }
+    }
+}
+
 pub fn add_list<'a, 'i>(diagnostics: &'i Diagnostics<ErrorCode>, arena: &'a Arena<Expr<'a, 'i>>, meta_info: &mut MetaInfo<'a, 'i>) {
     meta_info.add_external_type::<List<Value>>(arena, diagnostics);
     meta_info.add_external_function(arena, diagnostics, list_new);

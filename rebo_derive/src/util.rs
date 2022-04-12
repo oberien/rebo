@@ -50,7 +50,13 @@ pub fn transform_path_type(typ: &Type, callback: &impl Fn(&Ident) -> Option<Toke
         if !res.is_empty() {
             res = quote::quote!(#res::);
         }
-        let ident = &segment.ident;
+        let ident = match callback(&segment.ident) {
+            Some(name) => name,
+            None => {
+                let ident = &segment.ident;
+                quote::quote!(#ident)
+            },
+        };
         res = quote::quote!(#res #ident);
         let generics = match &segment.arguments {
             PathArguments::None => continue,
@@ -92,6 +98,7 @@ pub fn convert_type_to_rebo(typ: &Type) -> TokenStream2 {
         else if ident == "usize" { Some(quote::quote!(int)) }
         else if ident == "isize" { Some(quote::quote!(int)) }
         else if ident == "String" { Some(quote::quote!(string)) }
+        else if ident == "Vec" { Some(quote::quote!(List)) }
         else { None }
     })
 }
