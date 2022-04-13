@@ -1,6 +1,6 @@
 use std::fmt;
 use std::borrow::Cow;
-use std::collections::{HashMap, BTreeMap, btree_map::Entry, HashSet};
+use std::collections::{HashMap, BTreeMap, btree_map::Entry, HashSet, BTreeSet};
 
 use typed_arena::Arena;
 use diagnostic::{Span, Diagnostics, DiagnosticBuilder, FileId};
@@ -39,7 +39,7 @@ pub enum InternalError {
     Error(Error),
     /// This function doesn't handle the tokens in the token stream. Everything was rolled back,
     /// the next function should be checked.
-    Backtrack(Span, Cow<'static, [Expected]>),
+    Backtrack(Backtrack),
 }
 impl From<Error> for InternalError {
     fn from(e: Error) -> Self {
@@ -53,6 +53,11 @@ impl From<crate::lexer::Error> for InternalError {
             crate::lexer::Error::UnexpectedEof(span) => InternalError::Error(Error::UnexpectedEof(span)),
         }
     }
+}
+#[derive(Debug, Clone, Ord, PartialOrd, Eq, PartialEq)]
+pub struct Backtrack {
+    span: Span,
+    expected: Cow<'static, [Expected]>,
 }
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Ord, PartialOrd)]
 pub enum Expected {
@@ -111,6 +116,14 @@ pub struct Parser<'a, 'b, 'i> {
     binding_memoization: BTreeMap<Span, Binding<'i>>,
     generic_memoization: HashSet<Span>,
     rebo_function_names: IndexSet<(String, TokenIdent<'i>)>,
+    /// List of all encountered backtracks.
+    ///
+    /// If an error should be printed out, the backtrack that starts furthest in the code is used.
+    /// For example `List::of(1,2;3)` is parsed as `Variable(List::of)` followed by a `Parenthesized`
+    /// error at the first `,` because it's not allowed in `Parenthesized`.
+    /// By using this list, we can see that the parser that actually got furthest was `FunctionCall`
+    /// and print its error message instead.
+    backtracks: BTreeSet<Backtrack>,
 }
 
 pub struct ScopeGuard<'i> {
@@ -138,6 +151,7 @@ impl<'a, 'b, 'i> Parser<'a, 'b, 'i> {
             binding_memoization: BTreeMap::new(),
             generic_memoization: HashSet::new(),
             rebo_function_names: IndexSet::new(),
+            backtracks: BTreeSet::new(),
         }
     }
 
@@ -160,8 +174,10 @@ impl<'a, 'b, 'i> Parser<'a, 'b, 'i> {
         // file scope
         match self.parse(Depth::start()) {
             Ok(body) => Ok(body),
-            Err(InternalError::Backtrack(span, expected)) => {
-                self.diagnostic_expected(ErrorCode::InvalidExpression, span, &expected);
+            Err(InternalError::Backtrack(backtrack)) => {
+                self.backtracks.insert(backtrack);
+                let last = self.backtracks.iter().next_back().unwrap();
+                self.diagnostic_expected(ErrorCode::InvalidExpression, last.span, &last.expected);
                 Err(Error::Abort)
             },
             Err(InternalError::Error(e)) => Err(e),

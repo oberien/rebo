@@ -231,10 +231,10 @@ macro_rules! impl_for_tokens {
                             drop(parser.next_token());
                             Ok(t)
                         },
-                        _ => Err(crate::parser::InternalError::Backtrack(
-                            parser.lexer.next_span(),
-                            ::std::borrow::Cow::Borrowed(&[crate::parser::Expected::Token(crate::lexer::TokenType::$name)]),
-                        )),
+                        _ => Err(crate::parser::InternalError::Backtrack(crate::parser::Backtrack {
+                            span: parser.lexer.next_span(),
+                            expected: ::std::borrow::Cow::Borrowed(&[crate::parser::Expected::Token(crate::lexer::TokenType::$name)]),
+                        })),
                     }
                 }
             }

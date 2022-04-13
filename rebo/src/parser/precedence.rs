@@ -1,7 +1,7 @@
 use std::borrow::Cow;
 
 use crate::lexer::Token;
-use super::{Expr, InternalError, Parser};
+use super::{Expr, InternalError, Parser, Backtrack};
 use crate::parser::{Expected};
 use crate::parser::expr::{ExprBoolAnd, ExprBoolOr, ExprAdd, ExprSub, ExprMul, ExprDiv, ParseUntil};
 use crate::common::Depth;
@@ -38,7 +38,7 @@ impl Precedence for Math {
             Token::Minus(_) => Ok(Math::Sub),
             Token::Star(_) => Ok(Math::Mul),
             Token::Slash(_) => Ok(Math::Div),
-            _ => Err(InternalError::Backtrack(token.span(), Self::expected())),
+            _ => Err(InternalError::Backtrack(Backtrack { span: token.span(), expected: Self::expected() })),
         }
     }
 
@@ -78,7 +78,7 @@ impl Precedence for BooleanExpr {
         match token {
             Token::DoubleAmp(_) => Ok(BooleanExpr::And),
             Token::DoublePipe(_) => Ok(BooleanExpr::Or),
-            _ => Err(InternalError::Backtrack(token.span(), Self::expected())),
+            _ => Err(InternalError::Backtrack(Backtrack { span: token.span(), expected: Self::expected() })),
         }
     }
 

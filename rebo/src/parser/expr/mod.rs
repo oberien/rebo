@@ -7,7 +7,7 @@ use derive_more::Display;
 use crate::parser::scope::{BindingId, ScopeType};
 use crate::util::{PadFmt, ResolveFileError};
 use crate::lexer::{TokenOpenParen, TokenCloseParen, TokenIdent, TokenInteger, TokenFloat, TokenBool, TokenDqString, TokenType, TokenStringType, TokenIntType, TokenFloatType, TokenBoolType, Token, TokenLet, TokenColon, TokenMut, TokenAssign, TokenOpenCurly, TokenCloseCurly, TokenComma, TokenArrow, TokenFn, TokenBang, TokenPlus, TokenMinus, TokenStar, TokenSlash, TokenDoubleAmp, TokenDoublePipe, TokenLessThan, TokenLessEquals, TokenEquals, TokenNotEquals, TokenGreaterEquals, TokenGreaterThan, TokenStruct, TokenDot, TokenIf, TokenElse, TokenWhile, TokenFormatString, TokenFormatStringPart, Lexer, TokenMatch, TokenFatArrow, TokenEnum, TokenDoubleColon, TokenImpl, TokenFor, TokenIn, TokenStatic, TokenInclude, TokenDotDotDot, TokenPipe, TokenAmp, TokenApostrophe, TokenLoop, TokenBreak, TokenContinue, TokenReturn, LexerMode};
-use crate::parser::{Parse, InternalError, Parser, Expected};
+use crate::parser::{Parse, InternalError, Parser, Expected, Backtrack};
 use crate::error_codes::ErrorCode;
 use std::borrow::Cow;
 use crate::parser::parse::{Separated, Spanned, Scoped};
@@ -59,7 +59,10 @@ impl<'i> Binding<'i> {
                 .emit();
         }
         if require_self && ident.ident != "self" {
-            return Err(InternalError::Backtrack(ident.span, Cow::Borrowed(&[Expected::Token(TokenType::Ident)])));
+            return Err(InternalError::Backtrack(Backtrack {
+                span: ident.span,
+                expected: Cow::Borrowed( & [Expected::Token(TokenType::Ident)]),
+            }));
         }
         mark.apply();
         let binding = parser.add_binding(ident, mut_token);
@@ -570,18 +573,21 @@ impl<'a, 'i> Expr<'a, 'i> {
                     mark.apply();
                     return Ok(expr)
                 },
-                Err(InternalError::Backtrack(span, expect)) => expected.push((span, expect)),
+                Err(InternalError::Backtrack(backtrack)) => {
+                    parser.backtracks.insert(backtrack.clone());
+                    expected.push(backtrack)
+                },
                 e @ Err(InternalError::Error(_)) => return e,
             }
         }
-        let max_span = expected.iter().map(|(span, _)| span).max().copied().unwrap();
+        let max_span = expected.iter().map(|Backtrack { span, expected: _ }| span).max().copied().unwrap();
         let expected: IndexSet<_> = expected.into_iter()
-            .filter(|(span, _)| *span == max_span)
-            .flat_map(|(_, expected)| expected.into_owned())
+            .filter(|Backtrack { span, expected: _ }| *span == max_span)
+            .flat_map(|backtrack| backtrack.expected.into_owned())
             .collect();
         let mut expected: Vec<_> = expected.into_iter().collect();
         expected.sort();
-        Err(InternalError::Backtrack(max_span, Cow::Owned(expected)))
+        Err(InternalError::Backtrack(Backtrack { span: max_span, expected: Cow::Owned(expected) }))
     }
 
     fn try_parse_compare(parser: &mut Parser<'a, '_, 'i>, depth: Depth) -> Result<&'a Expr<'a, 'i>, InternalError> {
@@ -596,7 +602,10 @@ impl<'a, 'i> Expr<'a, 'i> {
             op @ Token::NotEquals(_) => (ExprNotEquals::new_as_expr, op),
             op @ Token::GreaterEquals(_) => (ExprGreaterEquals::new_as_expr, op),
             op @ Token::GreaterThan(_) => (ExprGreaterThan::new_as_expr, op),
-            token => return Err(InternalError::Backtrack(token.span(), Cow::Borrowed(Expected::COMPARE_OP))),
+            token => return Err(InternalError::Backtrack(Backtrack {
+                span: token.span(),
+                expected: Cow::Borrowed(Expected::COMPARE_OP),
+            })),
         };
         let right = Expr::try_parse_until_including(parser, ParseUntil::Compare, depth.last())?;
         trace!("{}    right: {}", depth, right);
@@ -655,10 +664,10 @@ impl<'a, 'i> Parse<'a, 'i> for ExprType<'a, 'i> {
                         drop(parser.next_token());
                         ExprType::Unit(o, c)
                     }
-                    _ => return Err(InternalError::Backtrack(
-                        parser.lexer.next_span_from(1),
-                        Cow::Borrowed(&[Expected::Token(TokenType::CloseParen)])
-                    )),
+                    _ => return Err(InternalError::Backtrack(Backtrack {
+                        span: parser.lexer.next_span_from(1),
+                        expected: Cow::Borrowed(&[Expected::Token(TokenType::CloseParen)]),
+                    })),
                 }
             }
             // defer struct type resolution until the typechecker
@@ -679,10 +688,10 @@ impl<'a, 'i> Parse<'a, 'i> for ExprType<'a, 'i> {
                 trace!("{} TokenBang::parse        ({:?})", depth.next(), parser.peek_token(0));
                 ExprType::Never(b)
             },
-            _ => return Err(InternalError::Backtrack(
-                parser.lexer.next_span(),
-                Cow::Borrowed(&[Expected::Type])
-            )),
+            _ => return Err(InternalError::Backtrack(Backtrack {
+                span: parser.lexer.next_span(),
+                expected: Cow::Borrowed(&[Expected::Type]),
+            })),
         };
         drop(parser.next_token());
         Ok(res)
@@ -1186,7 +1195,10 @@ impl<'a, 'i> Parse<'a, 'i> for ExprFieldAccess<'a, 'i> {
         let fields: Separated<TokenIdent, TokenDot> = parser.parse(depth.last())?;
         // check length
         if fields.is_empty() {
-            return Err(InternalError::Backtrack(parser.lexer.next_span(), Cow::Borrowed(&[Expected::Token(TokenType::Ident)])));
+            return Err(InternalError::Backtrack(Backtrack {
+                span: parser.lexer.next_span(),
+                expected: Cow::Borrowed( & [Expected::Token(TokenType::Ident)]),
+            }));
         }
         // check trailing dot
         if fields.is_terminated() {
@@ -1222,7 +1234,10 @@ impl<'a, 'i> Parse<'a, 'i> for ExprAccess<'a, 'i> {
         let accesses: Separated<FieldOrMethod, TokenDot> = parser.parse(depth.last())?;
         // check length
         if accesses.is_empty() {
-            return Err(InternalError::Backtrack(parser.lexer.next_span(), Cow::Borrowed(&[Expected::Token(TokenType::Ident)])));
+            return Err(InternalError::Backtrack(Backtrack {
+                span: parser.lexer.next_span(),
+                expected: Cow::Borrowed( & [Expected::Token(TokenType::Ident)]),
+            }));
         }
         // check trailing dot
         if accesses.is_terminated() {
@@ -2165,7 +2180,10 @@ impl<'a, 'i> Parse<'a, 'i> for ExprStructInitialization<'a, 'i> {
     fn parse_marked(parser: &mut Parser<'a, '_, 'i>, depth: Depth) -> Result<Self, InternalError> {
         let name: TokenIdent = parser.parse(depth.next())?;
         if parser.meta_info.user_types.get(name.ident).is_none() {
-            return Err(InternalError::Backtrack(name.span, Cow::Borrowed(&[Expected::Token(TokenType::Ident)])));
+            return Err(InternalError::Backtrack(Backtrack {
+                span: name.span,
+                expected: Cow::Borrowed(&[Expected::Token(TokenType::Ident)]),
+            }));
         }
         let open = parser.parse(depth.next())?;
         let fields: ExprStructInitFields = parser.parse(depth.next())?;
@@ -2278,7 +2296,10 @@ impl<'a, 'i> Parse<'a, 'i> for ExprEnumInitialization<'i> {
                     variant_name,
                 })
             }
-            _ => Err(InternalError::Backtrack(enum_name.span, Cow::Borrowed(&[Expected::Token(TokenType::Ident)])))
+            _ => Err(InternalError::Backtrack(Backtrack {
+                span: enum_name.span,
+                expected: Cow::Borrowed(&[Expected::Token(TokenType::Ident)]),
+            })),
         }
     }
 }
