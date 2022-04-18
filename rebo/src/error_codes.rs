@@ -75,6 +75,7 @@ pub enum ErrorCode {
     ContinueOutsideOfLoopLike,
     ReturnOutsideOfFunction,
     UnexpectedCharacter,
+    NonVariableAssign,
 
     Panic,
     AssertionFailed,
@@ -161,6 +162,7 @@ impl diagnostic::ErrorCode for ErrorCode {
             ContinueOutsideOfLoopLike => "0074",
             ReturnOutsideOfFunction => "0075",
             UnexpectedCharacter => "0076",
+            NonVariableAssign => "0076",
 
             Panic => "9999",
             AssertionFailed => "9998",
@@ -246,6 +248,7 @@ impl diagnostic::ErrorCode for ErrorCode {
             ContinueOutsideOfLoopLike => "continue used outside of loop-like",
             ReturnOutsideOfFunction => "return used outside of function",
             UnexpectedCharacter => "unexpected character",
+            NonVariableAssign => "tried to assign to something other than a variable",
 
             Panic => "explicit panic",
             AssertionFailed => "assertion failed",
