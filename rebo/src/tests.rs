@@ -23,7 +23,7 @@ impl Sorted for ReturnValue {
     }
 }
 
-fn test(code: &str, expected: ReturnValue) {
+pub fn test(code: &str, expected: ReturnValue) {
     let _ = env_logger::builder().is_test(true).try_init();
     let res = rebo::run("test".to_string(), code.to_string());
     assert_eq!(expected.sorted(), res.sorted());

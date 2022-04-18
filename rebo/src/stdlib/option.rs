@@ -27,6 +27,12 @@ impl Option<T> {
             Option::None => default,
         }
     }
+    fn or(self, other: Option<T>) -> Option<T> {
+        match self {
+            Option::Some(t) => self,
+            Option::None => other,
+        }
+    }
     fn is_some(self) -> bool {
         match self {
             Option::Some(t) => true,
@@ -77,4 +83,23 @@ impl<T> Typed for Option<T> {
         Cow::Borrowed("Option"),
         CowVec::Borrowed(&[(OPTION_T, Type::Top)]),
     );
+}
+
+#[cfg(test)]
+mod test {
+    use crate::ReturnValue;
+    use crate::tests::test;
+
+    #[test]
+    fn option_or() {
+        test(r#"
+            let some0 = Option::Some(0);
+            let some1 = Option::Some(1);
+            let none = Option::None;
+            assert(some0.or(some1) == some0);
+            assert(some0.or(none) == some0);
+            assert(some1.or(some0) == some1);
+            assert(none.or(some0) == some0);
+        "#, ReturnValue::Ok)
+    }
 }
