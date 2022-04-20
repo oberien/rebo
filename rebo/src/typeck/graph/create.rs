@@ -849,7 +849,7 @@ impl<'i> Graph<'i> {
                         .next();
                     let expected_type = match expected_type {
                         Some(typ) => typ,
-                        None => continue,
+                        None => &Type::Top,
                     };
                     let expr_node = self.visit_expr(ctx, expr);
                     field_nodes.push((expr_node, expected_type));
