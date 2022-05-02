@@ -419,9 +419,12 @@ mod test {
     #[test]
     fn test_float_rounding() {
         test(r#"
-            let val = 3.14559;
-            let ceil_test = float::floor(val, 2);
-            print(ceil_test);
+            // floor without decimals
+            let val = 3.14545454;
+
+            // ceil without decimals
+
+            // round without decimals
         "#, ReturnValue::Ok)
     }
 }

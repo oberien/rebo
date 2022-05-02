@@ -329,3 +329,8 @@ assert(s.slice(1, 3) == "βγ");
 assert(s.slice(0, -1) == "αβγδε");
 assert(s.slice(1, -1) == "βγδε");
 assert(s.slice(-2, -1) == "ε");
+
+let val = 3.14545454;
+print(f"float::floor 1dp: {float::floor(val, 1)}");
+print(f"float::ceil  1dp: {float::ceil(val, 1)}");
+print(f"float::round 1dp: {float::round(val, 1)}");
