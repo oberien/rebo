@@ -46,7 +46,9 @@ pub fn add_to_meta_info<'a, 'i>(stdlib: Stdlib, diagnostics: &'i Diagnostics<Err
     meta_info.add_external_function(arena, diagnostics, bool_to_int);
     meta_info.add_external_function(arena, diagnostics, float_min);
     meta_info.add_external_function(arena, diagnostics, float_max);
+    meta_info.add_external_function(arena, diagnostics, float_floor);
     meta_info.add_external_function(arena, diagnostics, float_round);
+    meta_info.add_external_function(arena, diagnostics, float_ceil);
     meta_info.add_external_function(arena, diagnostics, float_sqrt);
     meta_info.add_external_function(arena, diagnostics, int_min);
     meta_info.add_external_function(arena, diagnostics, int_max);
@@ -128,6 +130,16 @@ fn float_min(this: FuzzyFloat, ..: FuzzyFloat) -> FuzzyFloat {
 fn float_max(this: FuzzyFloat, ..: FuzzyFloat) -> FuzzyFloat {
     let floats = std::iter::once(this).chain(args.map(|val| val.expect_float("TypedVarargs is broken")));
     floats.max().unwrap()
+}
+#[rebo::function("float::floor")]
+fn float_floor(this: f64, decimals: u8) -> f64 {
+    let factor = 10f64.powi(decimals as i32);
+    (this * factor).floor() / factor
+}
+#[rebo::function("float::ceil")]
+fn float_ceil(this: f64, decimals: u8) -> f64 {
+    let factor = 10f64.powi(decimals as i32);
+    (this * factor).ceil() / factor
 }
 #[rebo::function("float::round")]
 fn float_round(this: f64, decimals: u8) -> f64 {
@@ -398,4 +410,18 @@ fn file_read_to_string(name: String) -> Result<String, FileError> {
             Err(_) => Ok(Err(FileError::AccessError)),
         }
     })()?
+}
+#[cfg(test)]
+mod test {
+    use crate::ReturnValue;
+    use crate::tests::test;
+
+    #[test]
+    fn test_float_rounding() {
+        test(r#"
+            let val = 3.14559;
+            let ceil_test = float::floor(val, 2);
+            print(ceil_test);
+        "#, ReturnValue::Ok)
+    }
 }
