@@ -397,7 +397,7 @@ fn file_read_to_string(name: String) -> Result<String, FileError> {
             }
             Err(ResolveFileError::StartsWith(path)) => {
                 vm.diagnostics().error(ErrorCode::FileError)
-                    .with_error_label(expr_span, "the file in not in the include directory")
+                    .with_error_label(expr_span, "the file is not in the include directory")
                     .with_info_label(expr_span, format!("this file resolved to {}", path.display()))
                     .with_error_label(expr_span, format!("included files must be in {}", vm.include_directory().unwrap_path().display()))
                     .emit();
@@ -421,10 +421,13 @@ mod test {
         test(r#"
             // floor without decimals
             let val = 3.14545454;
+            assert(float::floor(val, 0) == 3.);
 
             // ceil without decimals
+            assert(float::ceil(val, 0) == 4.);
 
             // round without decimals
+            assert(float::round(val, 0) == 3.);
         "#, ReturnValue::Ok)
     }
 }
