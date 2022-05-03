@@ -419,15 +419,27 @@ mod test {
     #[test]
     fn test_float_rounding() {
         test(r#"
-            // floor without decimals
-            let val = 3.14545454;
+            let val = 3.1454545494545454628;
             assert(float::floor(val, 0) == 3.);
-
-            // ceil without decimals
             assert(float::ceil(val, 0) == 4.);
-
-            // round without decimals
             assert(float::round(val, 0) == 3.);
+
+            assert(float::floor(val, 2) == 3.14);
+            assert(float::ceil(val, 2) == 3.15);
+            assert(float::round(val, 2) == 3.15);
+
+            assert(float::floor(val, 9) == 3.145454549);
+            assert(float::ceil(val, 9) == 3.14545455);
+            assert(float::round(val, 9) == 3.145454549);
+
+            assert(float::round(0.5, 0) == 1.);
+            assert(float::round(0.99999, 0) == 1.);
+            assert(float::round(0.99999, 2) == 1.);
+            assert(float::round(0.00001, 0) == 0.);
+            assert(float::round(1.0, 0) == 1.);
+            assert(float::round(1.0, 1) == 1.0);
+            assert(float::round(0.0, 0) == 0.);
+            assert(float::round(0.0, 1) == 0.0);
         "#, ReturnValue::Ok)
     }
 }
