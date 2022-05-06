@@ -125,7 +125,7 @@ fn fib_iter(mut i: int) -> int {
     }
     b
 }
-assert(fib(10) == 55);
+assert(fib(6) == 8);
 assert(fib_iter(90) == 2880067194370816120);
 
 // string lengths
