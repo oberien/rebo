@@ -112,12 +112,14 @@ pub fn try_resolve_file<P: AsRef<Path>>(include_directory: &IncludeDirectory, fi
         }
     };
     // we all love UNC
-    let mut path_str = path.to_str().unwrap();
-    if path_str.starts_with("\\\\?\\") {
-        path_str = &path_str[4..];
-    }
-    if !path_str.starts_with(include_directory.to_str().unwrap()) {
-        return Err(ResolveFileError::StartsWith(PathBuf::from(path_str)));
+    let include_directory = match include_directory.canonicalize() {
+        Ok(include_directory) => include_directory,
+        Err(e) => {
+            return Err(ResolveFileError::Canonicalize(include_directory.clone(), e));
+        }
+    };
+    if !path.starts_with(&include_directory) {
+        return Err(ResolveFileError::StartsWith(path));
     }
     Ok(path)
 }
