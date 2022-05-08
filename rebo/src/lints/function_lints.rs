@@ -5,16 +5,16 @@ use crate::parser::{ExprFunctionDefinition, ExprBlock, BlockBody, Spanned};
 use crate::error_codes::ErrorCode;
 use crate::typeck::types::{SpecificType, Type};
 
-pub struct EmptyFunctionBody;
+pub struct FunctionLints;
 
-impl Visitor for EmptyFunctionBody {
+impl Visitor for FunctionLints {
     fn visit_function_definition(&self, diagnostics: &Diagnostics<ErrorCode>, meta_info: &MetaInfo, _: &BlockStack<'_, '_, ()>, def: &ExprFunctionDefinition) {
-        let ExprFunctionDefinition { sig, body: ExprBlock { body: BlockBody { exprs, .. }, .. }, .. } = def;
+        let ExprFunctionDefinition { sig, captures, body: ExprBlock { body: BlockBody { exprs, .. }, .. }, .. } = def;
         // TODO: can this be better?
         let rebo_function = meta_info.rebo_functions.iter().find(|(_name, fun)| fun.span() == def.span());
         let full_name = match rebo_function {
             Some((name, _def)) => name,
-            // function was already defined and not added
+            // external function
             None => return,
         };
         let ret_type = &meta_info.function_types[full_name].ret;
@@ -23,6 +23,15 @@ impl Visitor for EmptyFunctionBody {
             diagnostics.error(ErrorCode::EmptyFunctionBody)
                 .with_error_label(sig.span(), format!("this function returns {} but has an empty body", ret_type))
                 .emit();
+        }
+
+        if sig.name.is_some() && !captures.is_empty() {
+            for capture in captures {
+                diagnostics.error(ErrorCode::NamedFunctionCapture)
+                    .with_error_label(sig.span(), format!("this function captures binding `{}` but isn't allowed to", capture.ident.ident))
+                    .with_note("only closures / anonymous functions can capture bindings from outer scopes")
+                    .emit();
+            }
         }
     }
 }

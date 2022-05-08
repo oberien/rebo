@@ -14,6 +14,8 @@ use crate::typeck::types::SpecificType;
 use std::collections::{BTreeMap, BTreeSet};
 use std::convert::TryInto;
 use rt_format::{FormatArgument, Specifier};
+use rebo::common::FunctionValue::{Anonymous, Named};
+use rebo::vm::Scope;
 
 pub trait ExternalTypeType {
     type Type: ExternalType;
@@ -47,10 +49,25 @@ pub enum Value {
     // function name
     Function(FunctionValue),
 }
-#[derive(Debug, Clone, PartialOrd, Ord, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum FunctionValue {
     Named(String),
-    Anonymous(Span),
+    Anonymous(Scope, Span),
+}
+impl PartialOrd for FunctionValue {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        match (self, other) {
+            (Named(_), Anonymous(..)) => Some(Ordering::Greater),
+            (Anonymous(..), Named(_)) => Some(Ordering::Less),
+            (Named(a), Named(b)) => a.partial_cmp(b),
+            (Anonymous(_, a), Anonymous(_, b)) => a.partial_cmp(b),
+        }
+    }
+}
+impl Ord for FunctionValue {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.partial_cmp(other).unwrap()
+    }
 }
 
 impl Value {
@@ -195,7 +212,7 @@ macro_rules! fmt_value_wrappers {
                     }
                     Value::Function(fun) =>  match fun {
                         FunctionValue::Named(name) => write!(f, "function {}", name),
-                        FunctionValue::Anonymous(span) => write!(f, "anonymous function at {}:{}:{}", span.file, span.start, span.end),
+                        FunctionValue::Anonymous(_, span) => write!(f, "anonymous function at {}:{}:{}", span.file, span.start, span.end),
                     },
                 }
             }

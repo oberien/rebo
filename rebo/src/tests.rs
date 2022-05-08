@@ -138,11 +138,11 @@ fn functions() {
             y = y + 20;
             x + y
         }
-        assert(foo(10, 20) == 60);
+        assert_eq(foo(10, 20), 60);
         fn bar(x: int) -> int { x }
-        assert(bar(5) == 5);
+        assert_eq(bar(5), 5);
         fn baz() {}
-        assert(baz() == ());
+        assert_eq(baz(), ());
 
         // allow usage before definition
         fn a() { b() }
@@ -158,9 +158,39 @@ fn functions() {
             foo.x = 2;
             foo = Foo { x: 3 };
         }
-        assert(foo.x == 1);
+        assert_eq(foo.x, 1);
         change(foo);
-        assert(foo.x == 2);
+        assert_eq(foo.x, 2);
+
+        // closures capture copies of primitives
+        let mut foo = 5;
+        let closure = fn() {
+            assert_eq(5, foo);
+            foo = 7;
+            assert_eq(7, foo);
+        };
+        foo = 8;
+        closure();
+        assert_eq(8, foo);
+        // closures don't modify their internal state
+        closure();
+
+        // closures can modify fields of structs
+        let mut foo = Foo { x: 5 };
+        let closure = fn() {
+            assert_eq(5, foo.x);
+            foo.x = 7;
+            assert_eq(7, foo.x);
+        };
+        closure();
+        assert_eq(7, foo.x);
+        foo.x = 5;
+        closure();
+
+        Option::None;
+        fn quux() {
+            print(Option::None);
+        }
     "#, ReturnValue::Ok);
 }
 #[test]
@@ -201,10 +231,10 @@ fn free_function_diagnostics() {
         let foo = Foo { x: 1337 };
         change(foo);
         
-        // unknown identifier foo (functions must be parsed in their own scope)
-        let foo = ();
+        // named function can't capture variable foo
+        let binding = ();
         fn qux() {
-            foo
+            binding
         }
     "#, ReturnValue::Diagnostics(vec![
         Emitted::Error(ErrorCode::DuplicateGlobal),
@@ -217,6 +247,7 @@ fn free_function_diagnostics() {
         Emitted::Error(ErrorCode::UnknownFunction),
         Emitted::Error(ErrorCode::ImmutableAssign),
         Emitted::Error(ErrorCode::UnknownIdentifier),
+        Emitted::Error(ErrorCode::NamedFunctionCapture),
     ]));
 }
 #[test]

@@ -412,6 +412,10 @@ impl<'a, 'i> Expr<'a, 'i> {
                 let fun = &*parser.arena.alloc(Expr::FunctionDefinition(expr));
                 match fun {
                     Expr::FunctionDefinition(fun) => {
+                        if let Some(name) = fun.sig.name {
+                            // add function to globals if it isn't there already (needed for included functions)
+                            parser.add_function_binding(name.ident.to_string(), name);
+                        }
                         let name = fun.sig.name.map(|name| Cow::Borrowed(name.ident));
                         parser.meta_info.add_function(parser.diagnostics, name, fun);
                     },
@@ -445,6 +449,7 @@ impl<'a, 'i> Expr<'a, 'i> {
                     Expr::Static(stati) => stati,
                     _ => unreachable!("we just created you"),
                 };
+                // add static to globals if it isn't there already (needed for included statics)
                 parser.meta_info.add_static(parser.diagnostics, stati);
                 Ok(static_expr)
             },
@@ -517,8 +522,8 @@ impl<'a, 'i> Expr<'a, 'i> {
             |parser: &mut Parser<'a, '_, 'i>, depth| Ok(parser.arena.alloc(Expr::BoolNot(ExprBoolNot::parse(parser, depth)?))),
             |parser: &mut Parser<'a, '_, 'i>, depth| Ok(parser.arena.alloc(Expr::Neg(ExprNeg::parse(parser, depth)?))),
             |parser: &mut Parser<'a, '_, 'i>, depth| Ok(parser.arena.alloc(Expr::Bind(ExprBind::parse(parser, depth)?))),
-            |parser: &mut Parser<'a, '_, 'i>, depth| Ok(parser.arena.alloc(Expr::FunctionCall(ExprFunctionCall::parse(parser, depth)?))),
             |parser: &mut Parser<'a, '_, 'i>, depth| Ok(parser.arena.alloc(Expr::EnumInitialization(ExprEnumInitialization::parse(parser, depth)?))),
+            |parser: &mut Parser<'a, '_, 'i>, depth| Ok(parser.arena.alloc(Expr::FunctionCall(ExprFunctionCall::parse(parser, depth)?))),
             |parser: &mut Parser<'a, '_, 'i>, depth| Ok(parser.arena.alloc(Expr::Literal(ExprLiteral::parse(parser, depth)?))),
             |parser: &mut Parser<'a, '_, 'i>, depth| Ok(parser.arena.alloc(Expr::FormatString(ExprFormatString::parse(parser, depth)?))),
             |parser: &mut Parser<'a, '_, 'i>, depth| Ok(parser.arena.alloc(Expr::Assign(ExprAssign::parse(parser, depth)?))),
@@ -1115,8 +1120,13 @@ pub struct ExprStatic<'a, 'i> {
 }
 impl<'a, 'i> Parse<'a, 'i> for ExprStatic<'a, 'i> {
     fn parse_marked(parser: &mut Parser<'a, '_, 'i>, depth: Depth) -> Result<Self, InternalError> {
+        // add the static binding to the global scope instead of the inner scope
+        let guard = parser.push_scope(ScopeType::Synthetic);
+        let signature: ExprStaticSignature = parser.parse(depth.next())?;
+        drop(guard);
+        parser.add_static(signature.pattern.binding());
         Ok(ExprStatic {
-            sig: parser.parse(depth.next())?,
+            sig: signature,
             expr: parser.parse(depth.last())?,
         })
     }
@@ -2076,6 +2086,7 @@ impl<'a, 'i> Display for ExprFunctionSignature<'a, 'i> {
 #[derive(Debug, Clone)]
 pub struct ExprFunctionDefinition<'a, 'i> {
     pub sig: ExprFunctionSignature<'a, 'i>,
+    pub captures: IndexSet<Binding<'i>>,
     pub body: ExprBlock<'a, 'i>,
 }
 impl<'a, 'i> ExprFunctionDefinition<'a, 'i> {
@@ -2083,12 +2094,8 @@ impl<'a, 'i> ExprFunctionDefinition<'a, 'i> {
         Span::new(self.sig.open.span.file, self.sig.open.span.start, self.sig.close.span.end)
     }
     fn parse_with_generics(parser: &mut Parser<'a, '_, 'i>, depth: Depth, generics: &[Generic<'i>]) -> Result<Self, InternalError> {
-        // functions must be parsed in their own scope
-        let old_scopes = std::mem::take(&mut parser.scopes);
         // scope for generics and argument-bindings
-        let scope_guard = parser.push_scope(ScopeType::Synthetic);
-        // statics are available in functions
-        parser.add_statics();
+        let scope_guard = parser.push_scope(ScopeType::Function);
 
         for &generic in generics {
             parser.add_generic(generic);
@@ -2096,17 +2103,18 @@ impl<'a, 'i> ExprFunctionDefinition<'a, 'i> {
         trace!("{} ExprFunctionDefinition::parse_with_generics ({:?})        ({:?})", depth, parser.generic_names(), parser.peek_token(0));
         let result = Self::parse_internal(parser, depth.next());
         drop(scope_guard);
-        parser.scopes = old_scopes;
         result
     }
     fn parse_internal(parser: &mut Parser<'a, '_, 'i>, depth: Depth) -> Result<Self, InternalError> {
         trace!("{} ExprFunctionDefinition::parse_internal        ({:?})", depth, parser.peek_token(0));
         let mark = parser.lexer.mark();
         let sig = parser.parse(depth.next())?;
-        let _guard = parser.push_scope(ScopeType::Function);
-        let body = parser.parse(depth.last())?;
+        let old_captures = parser.captures.replace(IndexSet::new());
+        let body = parser.parse(depth.last());
+        let captures = std::mem::replace(&mut parser.captures, old_captures).unwrap();
+        let body = body?;
         mark.apply();
-        Ok(ExprFunctionDefinition { sig, body })
+        Ok(ExprFunctionDefinition { sig, captures, body })
     }
 }
 impl<'a, 'i> Parse<'a, 'i> for ExprFunctionDefinition<'a, 'i> {

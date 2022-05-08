@@ -29,6 +29,7 @@ bitflags::bitflags! {
         const PRINT = 0x1;
         const ASSERT = 0x2;
         const PANIC = 0x4;
+        const ASSERT_EQ = 0x8;
     }
 }
 
@@ -83,6 +84,9 @@ pub fn add_to_meta_info<'a, 'i>(stdlib: Stdlib, diagnostics: &'i Diagnostics<Err
 
     if stdlib.contains(Stdlib::ASSERT) {
         meta_info.add_external_function(arena, diagnostics, assert);
+    }
+    if stdlib.contains(Stdlib::ASSERT_EQ) {
+        meta_info.add_external_function(arena, diagnostics, assert_eq);
     }
     if stdlib.contains(Stdlib::PANIC) {
         meta_info.add_external_function(arena, diagnostics, panic);
@@ -180,6 +184,15 @@ fn assert(condition: bool) {
     if !condition {
         vm.diagnostics().error(ErrorCode::AssertionFailed)
             .with_error_label(expr_span, "this assertion failed")
+            .emit();
+        return Err(ExecError::Panic);
+    }
+}
+#[rebo::function(raw("assert_eq"))]
+fn assert_eq<T>(left: T, right: T) {
+    if left != right {
+        vm.diagnostics().error(ErrorCode::AssertionFailed)
+            .with_error_label(expr_span, format!("this assertion failed with `{}` != `{}`", DisplayValue(&left), DisplayValue(&right)))
             .emit();
         return Err(ExecError::Panic);
     }

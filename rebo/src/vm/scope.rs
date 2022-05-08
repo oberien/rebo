@@ -8,6 +8,7 @@ pub struct Scopes {
     scopes: Rc<RefCell<Vec<Scope>>>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Scope {
     variables: HashMap<BindingId, Value>,
 }

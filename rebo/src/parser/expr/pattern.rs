@@ -24,6 +24,14 @@ pub enum ExprPattern<'a, 'i> {
     Typed(ExprPatternTyped<'a, 'i>),
     Untyped(ExprPatternUntyped<'i>),
 }
+impl<'a, 'i> ExprPattern<'a, 'i> {
+    pub fn binding(&self) -> Binding<'i> {
+        match self {
+            ExprPattern::Typed(ExprPatternTyped { pattern: ExprPatternUntyped { binding, .. }, .. }) => *binding,
+            ExprPattern::Untyped(ExprPatternUntyped { binding, .. }) => *binding,
+        }
+    }
+}
 impl<'a, 'i> Parse<'a, 'i> for ExprPattern<'a, 'i> {
     fn parse_marked(parser: &mut Parser<'a, '_, 'i>, depth: Depth) -> Result<Self, InternalError> {
         let err1 = match ExprPatternTyped::parse(parser, depth.next()) {

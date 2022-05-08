@@ -16,11 +16,11 @@ mod first_pass;
 
 pub use expr::*;
 pub use parse::{Parse, Spanned, Separated};
-pub use scope::BindingId;
+pub use scope::{BindingId, ScopeType};
 use crate::common::{MetaInfo, Depth, Function};
 use indexmap::map::IndexMap;
 use itertools::Itertools;
-use crate::parser::scope::{Scope, ScopeType};
+use crate::parser::scope::Scope;
 use std::cell::RefCell;
 use std::rc::Rc;
 use indexmap::set::IndexSet;
@@ -112,6 +112,8 @@ pub struct Parser<'a, 'b, 'i> {
     pre_parsed: HashMap<(FileId, usize), &'a Expr<'a, 'i>>,
     /// stack of scopes with bindings that are still live
     scopes: Rc<RefCell<Vec<Scope<'i>>>>,
+    /// track captures within closures
+    captures: Option<IndexSet<Binding<'i>>>,
     memoization: IndexMap<(FileId, usize), (&'a Expr<'a, 'i>, ParseUntil)>,
     binding_memoization: BTreeMap<Span, Binding<'i>>,
     generic_memoization: HashSet<Span>,
@@ -146,7 +148,8 @@ impl<'a, 'b, 'i> Parser<'a, 'b, 'i> {
             bindings: Vec::new(),
             meta_info,
             pre_parsed: HashMap::new(),
-            scopes: Rc::new(RefCell::new(vec![Scope { idents: IndexMap::new(), generics: IndexMap::new(), typ: ScopeType::Synthetic }])),
+            scopes: Rc::new(RefCell::new(vec![])),
+            captures: None,
             memoization: IndexMap::new(),
             binding_memoization: BTreeMap::new(),
             generic_memoization: HashSet::new(),
@@ -170,8 +173,10 @@ impl<'a, 'b, 'i> Parser<'a, 'b, 'i> {
         self.first_pass();
         self.second_pass();
         // add statics to global scope
+        let _guard = self.push_scope(ScopeType::Global);
         self.add_statics();
         // file scope
+        let _guard = self.push_scope(ScopeType::File);
         match self.parse(Depth::start()) {
             Ok(body) => Ok(body),
             Err(InternalError::Backtrack(backtrack)) => {
@@ -211,22 +216,32 @@ impl<'a, 'b, 'i> Parser<'a, 'b, 'i> {
                 // added separately
                 Function::Rebo(..) => continue,
             };
-            let binding = self.add_binding_internal(name.clone().into_owned(), ident, None, false);
-            self.meta_info.function_bindings.insert(binding, name.into_owned());
+            self.add_function_binding(name.clone().into_owned(), ident);
         }
         for (name, ident) in self.rebo_function_names.clone() {
-            let binding = self.add_binding_internal(name.clone(), ident, None, false);
-            self.meta_info.function_bindings.insert(binding, name);
+            self.add_function_binding(name.clone(), ident);
         }
     }
 
+    /// add a static from an included file to the global scope
+    fn add_static(&mut self, binding: Binding<'i>) {
+        let mut scopes = self.scopes.borrow_mut();
+        let global = scopes.get_mut(0).unwrap();
+        assert!(matches!(global.typ, ScopeType::Global));
+        global.idents.insert(binding.ident.ident.to_string(), binding);
+    }
+    fn add_function_binding(&mut self, name: String, ident: TokenIdent<'i>) {
+        let binding = self.add_binding_internal(name.clone(), ident, None, false, true);
+        self.meta_info.function_bindings.insert(binding, name);
+    }
+
     fn add_binding(&mut self, ident: TokenIdent<'i>, mutable: Option<TokenMut>) -> Binding<'i> {
-        self.add_binding_internal(ident.ident.to_string(), ident, mutable, false)
+        self.add_binding_internal(ident.ident.to_string(), ident, mutable, false, false)
     }
     fn add_rogue_binding(&mut self, ident: TokenIdent<'i>, mutable: Option<TokenMut>) -> Binding<'i> {
-        self.add_binding_internal(ident.ident.to_string(), ident, mutable, true)
+        self.add_binding_internal(ident.ident.to_string(), ident, mutable, true, false)
     }
-    fn add_binding_internal(&mut self, name: String, ident: TokenIdent<'i>, mutable: Option<TokenMut>, rogue: bool) -> Binding<'i> {
+    fn add_binding_internal(&mut self, name: String, ident: TokenIdent<'i>, mutable: Option<TokenMut>, rogue: bool, global: bool) -> Binding<'i> {
         let binding = match self.binding_memoization.entry(ident.span()) {
             Entry::Vacant(vacant) => {
                 let id = BindingId::unique();
@@ -236,14 +251,32 @@ impl<'a, 'b, 'i> Parser<'a, 'b, 'i> {
             }
             Entry::Occupied(occupied) => *occupied.get(),
         };
-        self.scopes.borrow_mut().last_mut().unwrap().idents.insert(name, binding);
+        if global {
+            let mut scopes = self.scopes.borrow_mut();
+            let global = scopes.get_mut(0).unwrap();
+            assert!(matches!(global.typ, ScopeType::Global));
+            global.idents.insert(name, binding);
+        } else {
+            self.scopes.borrow_mut().last_mut().unwrap().idents.insert(name, binding);
+        }
         binding
     }
-    fn get_binding(&self, ident: &str) -> Option<Binding<'i>> {
-        self.scopes.borrow().iter().rev()
-            .filter_map(|scope| scope.idents.get(ident))
-            .cloned()
-            .next()
+    fn get_binding(&mut self, ident: &str) -> Option<Binding<'i>> {
+        let mut track_capture = false;
+        for scope in self.scopes.borrow().iter().rev() {
+            if let Some(ident) = scope.idents.get(ident) {
+                if track_capture && !matches!(scope.typ, ScopeType::Global) {
+                    if let Some(captures) = self.captures.as_mut() {
+                        captures.insert(ident.clone());
+                    }
+                }
+                return Some(ident.clone());
+            }
+            if matches!(scope.typ, ScopeType::Function) {
+                track_capture = true;
+            }
+        }
+        None
     }
     fn add_generic(&mut self, generic: Generic<'i>) {
         if self.get_generic(generic.def_ident.ident).is_some() && self.generic_memoization.contains(&generic.def_ident.span) {
@@ -277,7 +310,8 @@ impl<'a, 'b, 'i> Parser<'a, 'b, 'i> {
             .cloned()
             .collect()
     }
-    fn push_scope(&self, typ: ScopeType<'i>) -> ScopeGuard<'i> {
+    #[must_use]
+    pub fn push_scope(&self, typ: ScopeType<'i>) -> ScopeGuard<'i> {
         self.scopes.borrow_mut().push(Scope { idents: IndexMap::new(), generics: IndexMap::new(), typ });
         ScopeGuard {
             scopes: Rc::clone(&self.scopes)

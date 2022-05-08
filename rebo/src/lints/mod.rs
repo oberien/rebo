@@ -2,7 +2,7 @@ mod visitor;
 mod unknown_function;
 mod invalid_number_of_arguments;
 mod immutable_assign;
-mod empty_function_body;
+mod function_lints;
 mod unknown_struct_field_type;
 mod unknown_struct;
 mod struct_initialization_fields;
@@ -24,7 +24,7 @@ use crate::lints::visitor::{Visitor, VisitorDriver};
 use crate::lints::unknown_function::UnknownFunction;
 use crate::lints::invalid_number_of_arguments::InvalidNumberOfArguments;
 use crate::lints::immutable_assign::ImmutableAssign;
-use crate::lints::empty_function_body::EmptyFunctionBody;
+use crate::lints::function_lints::FunctionLints;
 use crate::lints::unknown_struct_field_type::UnknownStructFieldType;
 use crate::lints::unknown_struct::UnknownStruct;
 use crate::lints::struct_def::StructDefLints;
@@ -46,7 +46,7 @@ pub fn lint<'a, 'b, 'i>(diagnostics: &'b Diagnostics<ErrorCode>, meta_info: &'b 
         &UnknownFunction as &dyn Visitor,
         &InvalidNumberOfArguments,
         &ImmutableAssign,
-        &EmptyFunctionBody,
+        &FunctionLints,
         &UnknownStructFieldType,
         &UnknownStruct,
         &StructInitializationFields,

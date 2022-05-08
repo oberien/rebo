@@ -43,6 +43,7 @@ impl<'a, 'b, 'i> Parser<'a, 'b, 'i> {
             // function signatures
             |parser: &mut Parser<'a, '_, 'i>, stack: &Vec<StackElement>, depth| {
                 let old_scopes = std::mem::take(&mut parser.scopes);
+                // let scope_guard = parser.push_scope(ScopeType::Global);
                 let scope_guard = parser.push_scope(ScopeType::Synthetic);
                 let result = <(ExprFunctionSignature, TokenOpenCurly)>::parse_reset(parser, depth);
                 drop(scope_guard);
@@ -87,10 +88,11 @@ impl<'a, 'b, 'i> Parser<'a, 'b, 'i> {
     fn do_pass(&mut self, functions: &[for<'x> fn(&'x mut Parser<'a, 'b, 'i>, &Vec<StackElement>, Depth) -> Result<Option<&'a Expr<'a, 'i>>, InternalError>]) {
         let mut stack: Vec<StackElement> = Vec::new();
         // create rogue scopes
-        let old_scopes = ::std::mem::replace(&mut self.scopes, Rc::new(RefCell::new(vec![Scope { idents: IndexMap::new(), generics: IndexMap::new(), typ: ScopeType::Synthetic }])));
+        let old_scopes = ::std::mem::replace(&mut self.scopes, Rc::new(RefCell::new(vec![Scope { idents: IndexMap::new(), generics: IndexMap::new(), typ: ScopeType::Global }])));
         let mark = self.lexer.mark();
 
         self.add_statics();
+        let _guard = self.push_scope(ScopeType::Synthetic);
 
         while self.peek_token(0).is_ok() && !matches!(self.peek_token(0).unwrap(), Token::Eof(_)) {
             let scope = self.push_scope(ScopeType::Synthetic);

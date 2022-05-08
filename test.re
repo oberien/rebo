@@ -272,7 +272,6 @@ fn use_static() {
     assert(MY_STATIC == 1337);
     MY_STATIC = 21;
 }
-static CURRENT_UI = List::new();
 
 // includes
 assert(include "test-include.re" == "this is the inclusion result");

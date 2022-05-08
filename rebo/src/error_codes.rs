@@ -76,6 +76,7 @@ pub enum ErrorCode {
     ReturnOutsideOfFunction,
     UnexpectedCharacter,
     NonVariableAssign,
+    NamedFunctionCapture,
 
     Panic,
     AssertionFailed,
@@ -162,7 +163,8 @@ impl diagnostic::ErrorCode for ErrorCode {
             ContinueOutsideOfLoopLike => "0074",
             ReturnOutsideOfFunction => "0075",
             UnexpectedCharacter => "0076",
-            NonVariableAssign => "0076",
+            NonVariableAssign => "0077",
+            NamedFunctionCapture => "0078",
 
             Panic => "9999",
             AssertionFailed => "9998",
@@ -249,6 +251,7 @@ impl diagnostic::ErrorCode for ErrorCode {
             ReturnOutsideOfFunction => "return used outside of function",
             UnexpectedCharacter => "unexpected character",
             NonVariableAssign => "tried to assign to something other than a variable",
+            NamedFunctionCapture => "named function cannot capture binding",
 
             Panic => "explicit panic",
             AssertionFailed => "assertion failed",

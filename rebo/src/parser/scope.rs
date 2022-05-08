@@ -9,7 +9,10 @@ pub struct Scope<'i> {
     pub typ: ScopeType<'i>,
 }
 
+#[derive(Debug)]
 pub enum ScopeType<'i> {
+    Global,
+    File,
     Function,
     While(Option<ExprLabelDef<'i>>),
     For(Option<ExprLabelDef<'i>>),

@@ -913,7 +913,7 @@ impl<'i> Graph<'i> {
 
         let node = Node::type_var(function.span());
         self.add_node(node);
-        let ExprFunctionDefinition { sig, body } = function;
+        let ExprFunctionDefinition { sig, captures: _, body } = function;
 
         for ExprPatternTyped { pattern: ExprPatternUntyped { binding }, typ, .. } in &sig.args {
             let arg_node = Node::type_var(binding.ident.span);

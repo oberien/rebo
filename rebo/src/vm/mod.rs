@@ -359,10 +359,17 @@ impl<'a, 'b, 'i> Vm<'a, 'b, 'i> {
                 let args = args.iter().map(|expr| self.eval_expr(expr, depth.next())).collect::<Result<_, _>>()?;
                 self.call_function(&fun, expr.span(), args, depth.last())
             },
-            // ignore function definitions as we have those handled already
             Expr::FunctionDefinition(fun) => match fun.sig.name {
+                // ignore function definitions as we have those handled already
                 Some(_) => Ok(Value::Unit),
-                None => Ok(Value::Function(FunctionValue::Anonymous(fun.span()))),
+                None => {
+                    let mut scope = Scope::new();
+                    for binding in &fun.captures {
+                        let val = self.load_binding(binding, depth.next());
+                        scope.create(binding.id, val);
+                    }
+                    Ok(Value::Function(FunctionValue::Anonymous(scope, fun.span())))
+                },
             },
             Expr::StructDefinition(ExprStructDefinition { .. }) => Ok(Value::Unit),
             Expr::StructInitialization(ExprStructInitialization { name, fields, .. }) => {
@@ -405,10 +412,10 @@ impl<'a, 'b, 'i> Vm<'a, 'b, 'i> {
     }
     fn call_function(&mut self, fun: &FunctionValue, expr_span: Span, args: Vec<Value>, depth: Depth) -> Result<Value, ExecError<'a, 'i>> {
         trace!("{}call_function: {:?}({:?})", depth, fun, args);
-        let (arg_binding_ids, fun) = match fun {
-            FunctionValue::Anonymous(span) => {
+        let (arg_binding_ids, mut scope, fun) = match fun {
+            FunctionValue::Anonymous(scope, span) => {
                 let (arg_binding_ids, fun) = &self.meta_info.anonymous_rebo_functions[span];
-                (arg_binding_ids, *fun)
+                (arg_binding_ids, scope.clone(), *fun)
             },
             FunctionValue::Named(name) => match &self.meta_info.functions.get(name.as_str()).expect(&format!("can't find function {}", name.as_str())) {
                 Function::Rust(f) => return (*f)(expr_span, &mut VmContext { vm: self }, args),
@@ -420,12 +427,11 @@ impl<'a, 'b, 'i> Vm<'a, 'b, 'i> {
                     })))}));
                 }
                 Function::Rebo(name, arg_binding_ids) => {
-                    (arg_binding_ids, self.meta_info.rebo_functions[name.as_str()])
+                    (arg_binding_ids, Scope::new(), self.meta_info.rebo_functions[name.as_str()])
                 }
             }
         };
 
-        let mut scope = Scope::new();
         for (&id, val) in arg_binding_ids.iter().zip(args) {
             scope.create(id, val);
         }

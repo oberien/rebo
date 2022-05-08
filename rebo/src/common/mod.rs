@@ -17,6 +17,7 @@ use crate::typeck::types::{EnumType, FunctionType, StructType, Type};
 use crate::typeck::TypeVar;
 use std::rc::Rc;
 use std::cell::RefCell;
+use rebo::parser::ScopeType;
 
 mod values;
 
@@ -167,6 +168,8 @@ impl<'a, 'i> MetaInfo<'a, 'i> {
         self.functions.insert(Cow::Borrowed(fun.name), Function::Rust(fun.imp));
         let lexer = Lexer::new(diagnostics, file);
         let mut parser = Parser::new(IncludeDirectory::Path(PathBuf::new()), arena, lexer, diagnostics, self);
+        let _guard = parser.push_scope(ScopeType::Global);
+        let _guard = parser.push_scope(ScopeType::File);
         let sig = ExprFunctionSignature::parse(&mut parser, Depth::start()).unwrap();
         self.external_function_signatures.insert(fun.name, sig);
     }
