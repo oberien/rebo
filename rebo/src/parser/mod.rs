@@ -191,8 +191,7 @@ impl<'a, 'b, 'i> Parser<'a, 'b, 'i> {
 
     fn add_statics(&mut self) {
         for binding in self.meta_info.static_bindings.clone() {
-            // the memoized binding will be used
-            self.add_binding(binding.ident, binding.mutable);
+            self.add_static(binding);
         }
         // add functions to scope
         for (name, function) in self.meta_info.functions.clone() {
@@ -222,13 +221,9 @@ impl<'a, 'b, 'i> Parser<'a, 'b, 'i> {
             self.add_function_binding(name.clone(), ident);
         }
     }
-
-    /// add a static from an included file to the global scope
     fn add_static(&mut self, binding: Binding<'i>) {
-        let mut scopes = self.scopes.borrow_mut();
-        let global = scopes.get_mut(0).unwrap();
-        assert!(matches!(global.typ, ScopeType::Global));
-        global.idents.insert(binding.ident.ident.to_string(), binding);
+        // the memoized binding will be used
+        self.add_binding_internal(binding.ident.ident.to_string(), binding.ident, binding.mutable, false, true);
     }
     fn add_function_binding(&mut self, name: String, ident: TokenIdent<'i>) {
         let binding = self.add_binding_internal(name.clone(), ident, None, false, true);

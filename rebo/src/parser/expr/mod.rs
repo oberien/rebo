@@ -412,10 +412,6 @@ impl<'a, 'i> Expr<'a, 'i> {
                 let fun = &*parser.arena.alloc(Expr::FunctionDefinition(expr));
                 match fun {
                     Expr::FunctionDefinition(fun) => {
-                        if let Some(name) = fun.sig.name {
-                            // add function to globals if it isn't there already (needed for included functions)
-                            parser.add_function_binding(name.ident.to_string(), name);
-                        }
                         let name = fun.sig.name.map(|name| Cow::Borrowed(name.ident));
                         parser.meta_info.add_function(parser.diagnostics, name, fun);
                     },
@@ -1124,7 +1120,6 @@ impl<'a, 'i> Parse<'a, 'i> for ExprStatic<'a, 'i> {
         let guard = parser.push_scope(ScopeType::Synthetic);
         let signature: ExprStaticSignature = parser.parse(depth.next())?;
         drop(guard);
-        parser.add_static(signature.pattern.binding());
         Ok(ExprStatic {
             sig: signature,
             expr: parser.parse(depth.last())?,
