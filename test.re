@@ -274,7 +274,11 @@ fn use_static() {
 }
 
 // includes
+assert_eq(1, DEFINED_IN_INCLUDE);
+assert_eq(2, defined_in_include());
 assert(include "test-include.re" == "this is the inclusion result");
+static DEFINED_AFTER_INCLUDE = 5;
+fn defined_after_include() -> int { 7 }
 assert(MY_INCLUDED_STATIC == "uiae");
 assert(included_fn() == 21);
 let content = File::read_to_string("test-include.re");

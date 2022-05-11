@@ -64,6 +64,10 @@ impl<'a, 'i> UserType<'a, 'i> {
 
 /// Metadata / information needed before and/or during static analyses
 pub struct MetaInfo<'a, 'i> {
+    /// map from `ExprInclude::span` to its FileId
+    ///
+    /// Available after parser's first-pass.
+    pub included_files: IndexMap<Span, FileId>,
     /// map of all rust / rebo functions or associated functions to their implementation reference
     ///
     /// Available after the parser's first-pass.
@@ -125,6 +129,7 @@ pub struct MetaInfo<'a, 'i> {
 impl<'a, 'i> MetaInfo<'a, 'i> {
     pub fn new() -> Self {
         MetaInfo {
+            included_files: IndexMap::new(),
             functions: IndexMap::new(),
             function_bindings: IndexMap::new(),
             rebo_functions: IndexMap::new(),
@@ -288,6 +293,11 @@ impl Depth {
     pub fn last(&self) -> Depth {
         Depth {
             last_list: self.last_list.iter().cloned().chain(Some(true)).collect(),
+        }
+    }
+    pub fn duplicate(&self) -> Depth {
+        Depth {
+            last_list: self.last_list.clone(),
         }
     }
 }

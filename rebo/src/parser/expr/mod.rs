@@ -5,7 +5,7 @@ pub use pattern::{ExprPattern, ExprPatternTyped, ExprPatternUntyped, ExprMatchPa
 use std::fmt::{self, Write, Display, Formatter, Debug};
 use derive_more::Display;
 use crate::parser::scope::{BindingId, ScopeType};
-use crate::util::{PadFmt, ResolveFileError};
+use crate::util::PadFmt;
 use crate::lexer::{TokenOpenParen, TokenCloseParen, TokenIdent, TokenInteger, TokenFloat, TokenBool, TokenDqString, TokenType, TokenStringType, TokenIntType, TokenFloatType, TokenBoolType, Token, TokenLet, TokenColon, TokenMut, TokenAssign, TokenOpenCurly, TokenCloseCurly, TokenComma, TokenArrow, TokenFn, TokenBang, TokenPlus, TokenMinus, TokenStar, TokenSlash, TokenDoubleAmp, TokenDoublePipe, TokenLessThan, TokenLessEquals, TokenEquals, TokenNotEquals, TokenGreaterEquals, TokenGreaterThan, TokenStruct, TokenDot, TokenIf, TokenElse, TokenWhile, TokenFormatString, TokenFormatStringPart, Lexer, TokenMatch, TokenFatArrow, TokenEnum, TokenDoubleColon, TokenImpl, TokenFor, TokenIn, TokenStatic, TokenInclude, TokenDotDotDot, TokenPipe, TokenAmp, TokenApostrophe, TokenLoop, TokenBreak, TokenContinue, TokenReturn, LexerMode};
 use crate::parser::{Parse, InternalError, Parser, Expected, Backtrack};
 use crate::error_codes::ErrorCode;
@@ -459,35 +459,10 @@ impl<'a, 'i> Expr<'a, 'i> {
                     close: TokenCloseParen { span: Span::new(include.file.span.file, include.file.span.end, include.file.span.end) },
                 }))));
 
-                let path = match util::try_resolve_file(&parser.include_directory, &include.file.string) {
-                    Ok(path) => path,
-                    Err(ResolveFileError::Canonicalize(path, e)) => {
-                        parser.diagnostics.error(ErrorCode::ErrorReadingIncludedFile)
-                            .with_error_label(include.span(), format!("error canonicalizing `{}`", path.display()))
-                            .with_error_label(include.span(), e.to_string())
-                            .emit();
-                        return err;
-                    }
-                    Err(ResolveFileError::StartsWith(path)) => {
-                        parser.diagnostics.error(ErrorCode::ErrorReadingIncludedFile)
-                            .with_error_label(include.span(), "the file is not in the include directory")
-                            .with_info_label(include.span(), format!("this file resolved to {}", path.display()))
-                            .with_error_label(include.span(), format!("included files must be in {}", parser.include_directory.unwrap_path().display()))
-                            .emit();
-                        return err;
-                    }
+                let file = match parser.meta_info.included_files.get(&include.span()) {
+                    Some(&file) => file,
+                    None => return err,
                 };
-                let code = match ::std::fs::read_to_string(&path) {
-                    Ok(code) => code,
-                    Err(e) => {
-                        parser.diagnostics.error(ErrorCode::ErrorReadingIncludedFile)
-                            .with_error_label(include.span(), format!("error reading file `{}`", path.display()))
-                            .with_error_label(include.span(), e.to_string())
-                            .emit();
-                        return err;
-                    }
-                };
-                let (file, _) = parser.diagnostics.add_file(include.file.string.clone(), code);
                 let lexer = Lexer::new(parser.diagnostics, file);
                 let old_lexer = ::std::mem::replace(&mut parser.lexer, lexer);
                 let body_res = parser.parse_file_content();
