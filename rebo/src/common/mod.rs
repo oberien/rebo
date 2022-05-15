@@ -7,11 +7,11 @@ use indexmap::map::{IndexMap, Entry};
 use indexmap::set::IndexSet;
 use typed_arena::Arena;
 
-pub use values::{Typed, FromValue, Function, ExternalFunction, RequiredReboFunction, RequiredReboFunctionStruct, ExternalType, ExternalTypeType, FuzzyFloat, IntoValue, Struct, StructArc, Enum, EnumArc, Value, FunctionValue, ListArc, MapArc, DisplayValue, DebugValue, OctalValue, LowerHexValue, UpperHexValue, BinaryValue, LowerExpValue, UpperExpValue, SetArc};
+pub use values::{Typed, FromValue, Function, ExternalFunction, RequiredReboFunction, RequiredReboFunctionStruct, ExternalType, ExternalTypeType, FuzzyFloat, IntoValue, Struct, StructArc, Enum, EnumArc, Value, FunctionValue, ListArc, MapArc, DisplayValue, DebugValue, OctalValue, LowerHexValue, UpperHexValue, BinaryValue, LowerExpValue, UpperExpValue, SetArc, DeepCopy};
 
 use crate::error_codes::ErrorCode;
 use crate::{FileId, SpecificType, IncludeDirectory};
-use crate::lexer::Lexer;
+use crate::lexer::{Lexer, TokenIdent};
 use crate::parser::{ExprEnumDefinition, ExprFunctionDefinition, ExprPatternTyped, ExprPatternUntyped, ExprStructDefinition, Spanned, ExprGenerics, ExprStatic, ExprPattern, Expr, Parser, Binding, ExprFunctionSignature, Parse, BindingId, ExprLabel};
 use crate::typeck::types::{EnumType, FunctionType, StructType, Type};
 use crate::typeck::TypeVar;
@@ -78,6 +78,10 @@ pub struct MetaInfo<'a, 'i> {
     ///
     /// Available after the parser.
     pub function_bindings: IndexMap<Binding<'i>, String>,
+    /// function names found in code
+    ///
+    /// Available after the parser's first pass.
+    pub rebo_function_names: IndexSet<(String, TokenIdent<'i>)>,
     /// functions or associated functions found in the code
     ///
     /// Available after the parser.
@@ -94,7 +98,7 @@ pub struct MetaInfo<'a, 'i> {
     ///
     /// Available before the parser.
     pub external_function_signatures: IndexMap<&'static str, ExprFunctionSignature<'a, 'i>>,
-    /// enum and struct definitions found in the code
+    /// map names to enum / struct definitions found in the code
     ///
     /// Available after the first-pass of the parser.
     pub user_types: IndexMap<&'i str, UserType<'a, 'i>>,
@@ -132,6 +136,7 @@ impl<'a, 'i> MetaInfo<'a, 'i> {
             included_files: IndexMap::new(),
             functions: IndexMap::new(),
             function_bindings: IndexMap::new(),
+            rebo_function_names: IndexSet::new(),
             rebo_functions: IndexMap::new(),
             anonymous_rebo_functions: IndexMap::new(),
             external_functions: IndexMap::new(),
@@ -172,7 +177,7 @@ impl<'a, 'i> MetaInfo<'a, 'i> {
         self.external_functions.insert(fun.name, fun.clone());
         self.functions.insert(Cow::Borrowed(fun.name), Function::Rust(fun.imp));
         let lexer = Lexer::new(diagnostics, file);
-        let mut parser = Parser::new(IncludeDirectory::Path(PathBuf::new()), arena, lexer, diagnostics, self);
+        let mut parser = Parser::new(IncludeDirectory::Path(PathBuf::new()), arena, lexer, diagnostics, self, true);
         let _guard = parser.push_scope(ScopeType::Global);
         let _guard = parser.push_scope(ScopeType::File);
         let sig = ExprFunctionSignature::parse(&mut parser, Depth::start()).unwrap();
@@ -224,7 +229,14 @@ impl<'a, 'i> MetaInfo<'a, 'i> {
         self.external_types.insert(T::TYPE.type_name(), T::TYPE);
 
         let lexer = Lexer::new(diagnostics, file);
-        let parser = Parser::new(IncludeDirectory::Path(PathBuf::new()), arena, lexer, diagnostics, self);
+        let parser = Parser::new(IncludeDirectory::Path(PathBuf::new()), arena, lexer, diagnostics, self, true);
+        parser.parse_ast().unwrap();
+    }
+    pub fn add_external_code(&mut self, filename: String, code: String, arena: &'a Arena<Expr<'a, 'i>>, diagnostics: &'i Diagnostics<ErrorCode>, add_clone: bool) {
+        let (file, _) = diagnostics.add_file(filename, code);
+
+        let lexer = Lexer::new(diagnostics, file);
+        let parser = Parser::new(IncludeDirectory::Path(PathBuf::new()), arena, lexer, diagnostics, self, add_clone);
         parser.parse_ast().unwrap();
     }
     pub fn add_enum(&mut self, diagnostics: &Diagnostics<ErrorCode>, enum_def: &'a ExprEnumDefinition<'a, 'i>) {

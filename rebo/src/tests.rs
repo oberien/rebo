@@ -770,3 +770,33 @@ fn idents_starting_with_underscore() {
         }
     "#, ReturnValue::Ok);
 }
+
+#[test]
+fn test_clone() {
+    test(r#"
+        struct Foo { x: int }
+        let mut a = Foo { x: 0 };
+        let mut b = a;
+        let mut c = a.clone();
+        let mut d = c;
+        assert_eq(0, a.x);
+        assert_eq(0, b.x);
+        assert_eq(0, c.x);
+        assert_eq(0, d.x);
+        a.x = 1;
+        assert_eq(1, a.x);
+        assert_eq(1, b.x);
+        assert_eq(0, c.x);
+        assert_eq(0, d.x);
+        b.x = 2;
+        assert_eq(2, a.x);
+        assert_eq(2, b.x);
+        assert_eq(0, c.x);
+        assert_eq(0, d.x);
+        d.x = 3;
+        assert_eq(2, a.x);
+        assert_eq(2, b.x);
+        assert_eq(3, c.x);
+        assert_eq(3, d.x);
+    "#, ReturnValue::Ok);
+}

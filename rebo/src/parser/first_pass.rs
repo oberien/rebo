@@ -61,7 +61,7 @@ impl<'a, 'b, 'i> Parser<'a, 'b, 'i> {
                 };
                 if let Some(name) = name {
                     trace!("found function {}", name);
-                    parser.rebo_function_names.insert((name, function_sig.name.unwrap()));
+                    parser.meta_info.rebo_function_names.insert((name, function_sig.name.unwrap()));
                 }
                 Ok(None)
             },

@@ -6,7 +6,6 @@ use crate::typeck::types::{Type, SpecificType};
 use std::borrow::Cow;
 use parking_lot::ReentrantMutex;
 use std::sync::Arc;
-use std::cell::RefCell;
 use std::marker::PhantomData;
 use itertools::Itertools;
 use rebo::stdlib::Sliceable;
@@ -20,7 +19,7 @@ pub struct List<T> {
 impl<T: IntoValue> List<T> {
     pub fn new(values: impl IntoIterator<Item = T>) -> List<T> {
         List {
-            arc: ListArc { list: Arc::new(ReentrantMutex::new(RefCell::new(values.into_iter().map(IntoValue::into_value).collect()))) },
+            arc: ListArc::new(values.into_iter().map(IntoValue::into_value).collect()),
             _marker: PhantomData,
         }
     }

@@ -175,7 +175,7 @@ pub fn run_with_config(filename: String, code: String, config: ReboConfig) -> Re
         IncludeDirectoryConfig::Path(path) => IncludeDirectory::Path(path),
     };
     let time = Instant::now();
-    let parser = Parser::new(include_directory.clone(), &arena, lexer, &diagnostics, &mut meta_info);
+    let parser = Parser::new(include_directory.clone(), &arena, lexer, &diagnostics, &mut meta_info, true);
     let ast = match parser.parse_ast() {
         Ok(ast) => ast,
         Err(e) => {

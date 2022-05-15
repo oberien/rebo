@@ -4,10 +4,6 @@ use crate::parser::Expr;
 use crate::common::{MetaInfo, Value, SetArc};
 use crate::typeck::types::{Type, SpecificType};
 use std::borrow::Cow;
-use parking_lot::ReentrantMutex;
-use std::sync::Arc;
-use std::cell::RefCell;
-use std::collections::BTreeSet;
 use std::marker::PhantomData;
 use crate::{CowVec, ExternalType, FileId, FromValue, IntoValue, Typed, ErrorCode};
 use crate::stdlib::list::List;
@@ -19,7 +15,7 @@ pub struct Set<T> {
 impl<T: IntoValue> Set<T> {
     pub fn new(values: impl IntoIterator<Item = T>) -> Set<T> {
         Set {
-            arc: SetArc { set: Arc::new(ReentrantMutex::new(RefCell::new(values.into_iter().map(IntoValue::into_value).collect()))) },
+            arc: SetArc::new(values.into_iter().map(IntoValue::into_value).collect()),
             _marker: PhantomData,
         }
     }
@@ -68,10 +64,7 @@ pub fn add_set<'a, 'i>(diagnostics: &'i Diagnostics<ErrorCode>, arena: &'a Arena
 
 #[rebo::function("Set::new")]
 fn set_new<T>() -> Set<T> {
-    Set {
-        arc: SetArc { set: Arc::new(ReentrantMutex::new(RefCell::new(BTreeSet::new()))) },
-        _marker: PhantomData,
-    }
+    Set::new(Vec::new())
 }
 
 #[rebo::function("Set::insert")]

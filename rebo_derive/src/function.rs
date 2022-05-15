@@ -30,7 +30,7 @@ impl Parse for Args {
 
 fn clean_generics(typ: &Type, generic_idents: &Vec<Ident>) -> TokenStream2 {
     util::transform_path_type(typ, &|ident| if generic_idents.iter().any(|i| i == ident) {
-        Some(quote::quote!(Value))
+        Some(quote::quote!(::rebo::Value))
     } else {
         None
     })

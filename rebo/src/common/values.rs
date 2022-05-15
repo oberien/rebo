@@ -34,6 +34,10 @@ pub trait Typed {
     const TYPE: SpecificType;
 }
 
+pub trait DeepCopy {
+    fn deep_copy(&self) -> Self;
+}
+
 #[derive(Debug, Clone, PartialOrd, Ord, PartialEq, Eq)]
 pub enum Value {
     Unit,
@@ -46,13 +50,50 @@ pub enum Value {
     List(ListArc),
     Map(MapArc),
     Set(SetArc),
-    // function name
     Function(FunctionValue),
+}
+impl DeepCopy for i64 {
+    fn deep_copy(&self) -> Self {
+        *self
+    }
+}
+impl DeepCopy for bool {
+    fn deep_copy(&self) -> Self {
+        *self
+    }
+}
+impl DeepCopy for String {
+    fn deep_copy(&self) -> Self {
+        self.clone()
+    }
+}
+impl DeepCopy for Value {
+    fn deep_copy(&self) -> Self {
+       match self {
+           Value::Unit => Value::Unit,
+           Value::Integer(val) => Value::Integer(val.deep_copy()),
+           Value::Float(val) => Value::Float(val.deep_copy()),
+           Value::Bool(val) => Value::Bool(val.deep_copy()),
+           Value::String(val) => Value::String(val.deep_copy()),
+           Value::Struct(val) => Value::Struct(val.deep_copy()),
+           Value::Enum(val) => Value::Enum(val.deep_copy()),
+           Value::List(val) => Value::List(val.deep_copy()),
+           Value::Map(val) => Value::Map(val.deep_copy()),
+           Value::Set(val) => Value::Set(val.deep_copy()),
+           Value::Function(val) => Value::Function(val.deep_copy()),
+       }
+    }
 }
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum FunctionValue {
     Named(String),
     Anonymous(Scope, Span),
+}
+impl DeepCopy for FunctionValue {
+    fn deep_copy(&self) -> Self {
+        // the anonymous' function scope should only shallow-copy
+        self.clone()
+    }
 }
 impl PartialOrd for FunctionValue {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
@@ -298,7 +339,11 @@ impl FormatArgument for Value {
 /// Float with fuzzy equality
 #[derive(Debug, Clone, PartialOrd)]
 pub struct FuzzyFloat(pub f64);
-
+impl DeepCopy for FuzzyFloat {
+    fn deep_copy(&self) -> Self {
+        self.clone()
+    }
+}
 impl PartialEq for FuzzyFloat {
     fn eq(&self, other: &Self) -> bool {
         let a = self.0;
@@ -457,6 +502,11 @@ impl StructArc {
         StructArc { s: Arc::new(ReentrantMutex::new(RefCell::new(s))) }
     }
 }
+impl DeepCopy for StructArc {
+    fn deep_copy(&self) -> Self {
+        StructArc::new(self.s.lock().borrow().clone())
+    }
+}
 impl PartialOrd for StructArc {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         self.s.lock().borrow().partial_cmp(&other.s.lock().borrow())
@@ -488,6 +538,11 @@ impl EnumArc {
         EnumArc { e: Arc::new(ReentrantMutex::new(RefCell::new(e))) }
     }
 }
+impl DeepCopy for EnumArc {
+    fn deep_copy(&self) -> Self {
+        EnumArc::new(self.e.lock().borrow().clone())
+    }
+}
 impl PartialOrd for EnumArc {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         self.e.lock().borrow().partial_cmp(&other.e.lock().borrow())
@@ -515,6 +570,16 @@ pub struct Enum {
 pub struct ListArc {
     pub list: Arc<ReentrantMutex<RefCell<Vec<Value>>>>,
 }
+impl ListArc {
+    pub fn new(values: Vec<Value>) -> ListArc {
+        ListArc { list: Arc::new(ReentrantMutex::new(RefCell::new(values))) }
+    }
+}
+impl DeepCopy for ListArc {
+    fn deep_copy(&self) -> Self {
+        ListArc::new(self.list.lock().borrow().clone())
+    }
+}
 impl PartialOrd for ListArc {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         self.list.lock().borrow().partial_cmp(&other.list.lock().borrow())
@@ -536,6 +601,16 @@ impl Eq for ListArc {}
 pub struct MapArc {
     pub map: Arc<ReentrantMutex<RefCell<BTreeMap<Value, Value>>>>,
 }
+impl MapArc {
+    pub fn new(map: BTreeMap<Value, Value>) -> MapArc {
+        MapArc { map: Arc::new(ReentrantMutex::new(RefCell::new(map))) }
+    }
+}
+impl DeepCopy for MapArc {
+    fn deep_copy(&self) -> Self {
+        MapArc::new(self.map.lock().borrow().clone())
+    }
+}
 impl PartialOrd for MapArc {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         self.map.lock().borrow().partial_cmp(&other.map.lock().borrow())
@@ -556,6 +631,16 @@ impl Eq for MapArc {}
 #[derive(Debug, Clone)]
 pub struct SetArc {
     pub set: Arc<ReentrantMutex<RefCell<BTreeSet<Value>>>>,
+}
+impl SetArc {
+    pub fn new(set: BTreeSet<Value>) -> SetArc {
+        SetArc { set: Arc::new(ReentrantMutex::new(RefCell::new(set))) }
+    }
+}
+impl DeepCopy for SetArc {
+    fn deep_copy(&self) -> Self {
+        SetArc::new(self.set.lock().borrow().clone())
+    }
 }
 impl PartialOrd for SetArc {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {

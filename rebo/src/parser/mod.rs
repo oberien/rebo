@@ -117,7 +117,6 @@ pub struct Parser<'a, 'b, 'i> {
     memoization: IndexMap<(FileId, usize), (&'a Expr<'a, 'i>, ParseUntil)>,
     binding_memoization: BTreeMap<Span, Binding<'i>>,
     generic_memoization: HashSet<Span>,
-    rebo_function_names: IndexSet<(String, TokenIdent<'i>)>,
     /// List of all encountered backtracks.
     ///
     /// If an error should be printed out, the backtrack that starts furthest in the code is used.
@@ -126,6 +125,12 @@ pub struct Parser<'a, 'b, 'i> {
     /// By using this list, we can see that the parser that actually got furthest was `FunctionCall`
     /// and print its error message instead.
     backtracks: BTreeSet<Backtrack>,
+    /// Whether to add clone impls after the first passes.
+    ///
+    /// Adding clone impls parses a new ast, at which point the clone impls would be added again,
+    /// resulting in a stack overflow.
+    /// Setting this bool to `true` during that process fixes the problem.
+    add_clone: bool,
 }
 
 pub struct ScopeGuard<'i> {
@@ -139,7 +144,7 @@ impl<'i> Drop for ScopeGuard<'i> {
 
 /// All expression parsing function consume whitespace and comments before tokens, but not after.
 impl<'a, 'b, 'i> Parser<'a, 'b, 'i> {
-    pub fn new(include_directory: IncludeDirectory, arena: &'a Arena<Expr<'a, 'i>>, lexer: Lexer<'i>, diagnostics: &'i Diagnostics<ErrorCode>, meta_info: &'b mut MetaInfo<'a, 'i>) -> Self {
+    pub fn new(include_directory: IncludeDirectory, arena: &'a Arena<Expr<'a, 'i>>, lexer: Lexer<'i>, diagnostics: &'i Diagnostics<ErrorCode>, meta_info: &'b mut MetaInfo<'a, 'i>, add_clone: bool) -> Self {
         Parser {
             include_directory,
             arena,
@@ -153,8 +158,8 @@ impl<'a, 'b, 'i> Parser<'a, 'b, 'i> {
             memoization: IndexMap::new(),
             binding_memoization: BTreeMap::new(),
             generic_memoization: HashSet::new(),
-            rebo_function_names: IndexSet::new(),
             backtracks: BTreeSet::new(),
+            add_clone,
         }
     }
 
@@ -198,22 +203,17 @@ impl<'a, 'b, 'i> Parser<'a, 'b, 'i> {
     }
 
     fn add_statics(&mut self) {
+        // statics
         for binding in self.meta_info.static_bindings.clone() {
             // the memoized binding will be used
             self.add_binding_internal(binding.ident.ident.to_string(), binding.ident, binding.mutable, false);
         }
-        // add functions to scope
+        // functions
         for (name, function) in self.meta_info.functions.clone() {
             let ident = match function {
                 Function::Rust(_) => {
-                    let ext = &self.meta_info.external_functions[name.as_ref()];
-                    TokenIdent {
-                        span: Span::new(FileId::synthetic(ext.file_name), 0, ext.code.len()),
-                        ident: match name {
-                            Cow::Borrowed(s) => s,
-                            Cow::Owned(_) => unreachable!("external function name isn't &'static str: {}", name),
-                        }
-                    }
+                    let sig = &self.meta_info.external_function_signatures[name.as_ref()];
+                    sig.name.unwrap()
                 },
                 Function::EnumInitializer(enum_name, variant) => {
                     self.meta_info.user_types[enum_name.as_str()].unwrap_enum().variants.iter()
@@ -228,9 +228,25 @@ impl<'a, 'b, 'i> Parser<'a, 'b, 'i> {
             let binding = self.add_binding_internal(name.clone(), ident, None, false);
             self.meta_info.function_bindings.insert(binding, name);
         }
-        for (name, ident) in self.rebo_function_names.clone() {
+        for (name, ident) in self.meta_info.rebo_function_names.clone() {
             let binding = self.add_binding_internal(name.clone(), ident, None, false);
             self.meta_info.function_bindings.insert(binding, name);
+        }
+
+        // add <T>::clone() method to all types
+        if self.add_clone {
+            let types: Vec<_> = self.meta_info.user_types.iter().map(|(name, typ)| (*name, typ.generics())).collect();
+            let mut clone_code = String::new();
+            for (type_name, generics) in types {
+                let name = format!("{type_name}::clone");
+                if let Some(_) = self.get_binding(&name) {
+                    continue;
+                }
+
+                let generics = generics.map(ToString::to_string).unwrap_or_default();
+                clone_code.push_str(&format!("impl {type_name}{generics} {{\n    fn clone(self) -> {type_name}{generics} {{\n        __internal_clone_(self)\n    }}\n}}\n"));
+            }
+            self.meta_info.add_external_code("external-clone.re".to_string(), clone_code, self.arena, self.diagnostics, false);
         }
     }
 

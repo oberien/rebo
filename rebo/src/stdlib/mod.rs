@@ -34,6 +34,8 @@ bitflags::bitflags! {
 }
 
 pub fn add_to_meta_info<'a, 'i>(stdlib: Stdlib, diagnostics: &'i Diagnostics<ErrorCode>, arena: &'a Arena<Expr<'a, 'i>>, meta_info: &mut MetaInfo<'a, 'i>) {
+    meta_info.add_external_function(arena, diagnostics, clone);
+
     meta_info.add_external_type::<FileError>(arena, diagnostics);
 
     if stdlib.contains(Stdlib::PRINT) {
@@ -423,6 +425,12 @@ fn file_read_to_string(name: String) -> Result<String, FileError> {
             Err(_) => Ok(Err(FileError::AccessError)),
         }
     })()?
+}
+
+#[rebo::function("__internal_clone_")]
+fn clone<T>(t: T) -> T {
+    use crate::common::DeepCopy;
+    t.deep_copy()
 }
 #[cfg(test)]
 mod test {

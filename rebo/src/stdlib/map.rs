@@ -4,9 +4,6 @@ use crate::parser::Expr;
 use crate::common::{MetaInfo, Value, MapArc};
 use crate::typeck::types::{Type, SpecificType};
 use std::borrow::Cow;
-use parking_lot::ReentrantMutex;
-use std::sync::Arc;
-use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::marker::PhantomData;
 use crate::{CowVec, ExternalType, FileId, FromValue, IntoValue, Typed, ErrorCode};
@@ -20,9 +17,7 @@ pub struct Map<K, V> {
 impl<K: IntoValue, V: IntoValue> Map<K, V> {
     pub fn new(values: impl IntoIterator<Item=(K, V)>) -> Map<K, V> {
         Map {
-            arc: MapArc { map: Arc::new(ReentrantMutex::new(RefCell::new(
-                values.into_iter().map(|(k, v)| (k.into_value(), v.into_value())).collect())
-            )) },
+            arc: MapArc::new(values.into_iter().map(|(k, v)| (k.into_value(), v.into_value())).collect()),
             _marker: PhantomData,
         }
     }
