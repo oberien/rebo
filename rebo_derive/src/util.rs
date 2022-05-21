@@ -29,7 +29,7 @@ pub fn generic_spans(generic_idents: &Vec<Ident>, code_filename: &str, code_stri
             .map(str::trim)
             .map(|g| (g.as_ptr() as usize - code_string.as_ptr() as usize, g.len()))
             .map(|(start, len)| (start, start + len))
-            .map(|(start, end)| quote::quote!(::rebo::Span::new(::rebo::FileId::synthetic(#code_filename), #start, #end)))
+            .map(|(start, end)| quote::quote!(::rebo::Span::new(::rebo::SyntheticFileId::new(#code_filename), #start, #end)))
             .collect()
     }
 }
@@ -84,6 +84,7 @@ pub fn transform_path_type(typ: &Type, callback: &impl Fn(&Ident) -> Option<Toke
 
 pub fn convert_type_to_rebo(typ: &Type) -> TokenStream2 {
     transform_path_type(typ, &|ident| {
+        #[allow(clippy::if_same_then_else)]
         if ident == "f32" { Some(quote::quote!(float)) }
         else if ident == "f64" { Some(quote::quote!(float)) }
         else if ident == "FuzzyFloat" { Some(quote::quote!(float)) }

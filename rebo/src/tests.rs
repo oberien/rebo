@@ -163,12 +163,14 @@ fn functions() {
         assert_eq(foo.x, 2);
 
         // closures capture copies of primitives
-        let mut foo = 5;
+        let foo = 5;
         let closure = fn() {
+            let mut foo = foo;
             assert_eq(5, foo);
             foo = 7;
             assert_eq(7, foo);
         };
+        let mut foo = foo;
         foo = 8;
         closure();
         assert_eq(8, foo);
@@ -191,6 +193,14 @@ fn functions() {
         fn quux() {
             print(Option::None);
         }
+
+        let mut fns = List::new();
+        for i in List::of(0,1,2) {
+            fns.push(fn() -> int { i });
+        }
+        assert_eq({ let f = fns.get(0).unwrap(); f() }, 0);
+        assert_eq({ let f = fns.get(1).unwrap(); f() }, 1);
+        assert_eq({ let f = fns.get(2).unwrap(); f() }, 2);
     "#, ReturnValue::Ok);
 }
 #[test]
@@ -241,6 +251,11 @@ fn free_function_diagnostics() {
         let mut foo = 42;
         let closure = fn() { foo += 1 };
         closure();
+
+        // can't modify immutably captured primitives
+        let foo = 42;
+        let closure = fn() { foo += 1 };
+        closure();
     "#, ReturnValue::Diagnostics(vec![
         Emitted::Error(ErrorCode::DuplicateGlobal),
         Emitted::Error(ErrorCode::EmptyFunctionBody),
@@ -254,6 +269,7 @@ fn free_function_diagnostics() {
         Emitted::Error(ErrorCode::UnknownIdentifier),
         Emitted::Error(ErrorCode::NamedFunctionCapture),
         Emitted::Error(ErrorCode::ClosureCapturesMutablePrimitive),
+        Emitted::Error(ErrorCode::ImmutableAssign),
     ]));
 }
 #[test]
