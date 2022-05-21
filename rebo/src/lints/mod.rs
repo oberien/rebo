@@ -16,6 +16,7 @@ mod enum_def_init_lints;
 mod unknown_access;
 mod break_continue_return;
 mod variable_without_function;
+mod closure_capture_primitives;
 
 use crate::parser::Expr;
 use crate::common::MetaInfo;
@@ -38,6 +39,7 @@ use crate::lints::enum_def_init_lints::EnumDefInitLints;
 use crate::lints::unknown_access::UnknownAccess;
 use crate::lints::break_continue_return::BreakContinueReturn;
 use crate::lints::variable_without_function::VariableWithoutFunction;
+use crate::lints::closure_capture_primitives::ClosureCapturePrimitives;
 use crate::ErrorCode;
 
 pub fn lint<'a, 'b, 'i>(diagnostics: &'b Diagnostics<ErrorCode>, meta_info: &'b MetaInfo<'a, 'i>, exprs: &[&'a Expr<'a, 'i>]) {
@@ -60,6 +62,7 @@ pub fn lint<'a, 'b, 'i>(diagnostics: &'b Diagnostics<ErrorCode>, meta_info: &'b 
         &UnknownAccess,
         &BreakContinueReturn,
         &VariableWithoutFunction,
+        &ClosureCapturePrimitives,
     ]);
 
     visitor_driver.visit_exprs(exprs);

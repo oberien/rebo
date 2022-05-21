@@ -77,6 +77,7 @@ pub enum ErrorCode {
     UnexpectedCharacter,
     NonVariableAssign,
     NamedFunctionCapture,
+    ClosureCapturesMutablePrimitive,
 
     Panic,
     AssertionFailed,
@@ -165,6 +166,7 @@ impl diagnostic::ErrorCode for ErrorCode {
             UnexpectedCharacter => "0076",
             NonVariableAssign => "0077",
             NamedFunctionCapture => "0078",
+            ClosureCapturesMutablePrimitive => "0079",
 
             Panic => "9999",
             AssertionFailed => "9998",
@@ -252,6 +254,7 @@ impl diagnostic::ErrorCode for ErrorCode {
             UnexpectedCharacter => "unexpected character",
             NonVariableAssign => "tried to assign to something other than a variable",
             NamedFunctionCapture => "named function cannot capture binding",
+            ClosureCapturesMutablePrimitive => "closure captures mutable primitive",
 
             Panic => "explicit panic",
             AssertionFailed => "assertion failed",

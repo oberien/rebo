@@ -236,6 +236,11 @@ fn free_function_diagnostics() {
         fn qux() {
             binding
         }
+
+        // can't capture mutable primitives
+        let mut foo = 42;
+        let closure = fn() { foo += 1 };
+        closure();
     "#, ReturnValue::Diagnostics(vec![
         Emitted::Error(ErrorCode::DuplicateGlobal),
         Emitted::Error(ErrorCode::EmptyFunctionBody),
@@ -248,6 +253,7 @@ fn free_function_diagnostics() {
         Emitted::Error(ErrorCode::ImmutableAssign),
         Emitted::Error(ErrorCode::UnknownIdentifier),
         Emitted::Error(ErrorCode::NamedFunctionCapture),
+        Emitted::Error(ErrorCode::ClosureCapturesMutablePrimitive),
     ]));
 }
 #[test]

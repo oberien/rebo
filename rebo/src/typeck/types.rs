@@ -132,6 +132,20 @@ impl SpecificType {
             SpecificType::Generic(Span { file, start, end }) => format!("<{}:{}:{}>", file, start, end),
         }
     }
+
+    pub fn is_primitive(&self) -> bool {
+        match self {
+            SpecificType::Unit
+            | SpecificType::Integer
+            | SpecificType::Float
+            | SpecificType::Bool
+            | SpecificType::String => true,
+            SpecificType::Struct(..)
+            | SpecificType::Enum(..)
+            | SpecificType::Function(_)
+            | SpecificType::Generic(..) => false,
+        }
+    }
 }
 impl ResolvableSpecificType {
     pub fn type_name(&self) -> String {
