@@ -83,6 +83,7 @@ pub enum ErrorCode {
     AssertionFailed,
     InvalidRegex,
     FileError,
+    VmBindingIsNone,
 }
 use ErrorCode::*;
 
@@ -172,6 +173,7 @@ impl diagnostic::ErrorCode for ErrorCode {
             AssertionFailed => "9998",
             InvalidRegex => "9997",
             FileError => "9996",
+            VmBindingIsNone => "9995",
         }.to_string()
     }
 
@@ -260,6 +262,7 @@ impl diagnostic::ErrorCode for ErrorCode {
             AssertionFailed => "assertion failed",
             InvalidRegex => "invalid regex",
             FileError => "access denied to file for security reasons",
+            VmBindingIsNone => "binding is None during execution",
         }.to_string()
     }
 }
