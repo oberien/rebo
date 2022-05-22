@@ -63,6 +63,7 @@ pub fn functions(input: TokenStream) -> TokenStream {
     let enum_name = input.ident;
     let generics = input.generics;
     let functions: Result<Vec<_>> = input.attrs.into_iter()
+        .filter(|Attribute { path, .. }| path.get_ident().is_some() && path.get_ident().unwrap() == "function")
         .map(|Attribute { tokens, .. }| syn::parse2::<Function>(tokens))
         .collect();
     let functions = match functions {

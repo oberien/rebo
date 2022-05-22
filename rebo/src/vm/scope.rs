@@ -8,7 +8,7 @@ pub struct Scopes {
     scopes: Rc<RefCell<Vec<Scope>>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Scope {
     variables: HashMap<BindingId, Value>,
 }
@@ -56,9 +56,7 @@ impl Scopes {
 
 impl Scope {
     pub fn new() -> Scope {
-        Scope {
-            variables: HashMap::new(),
-        }
+        Self::default()
     }
 
     // runtime functions

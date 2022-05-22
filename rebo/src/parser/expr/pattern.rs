@@ -100,6 +100,7 @@ impl<'a, 'i> Display for ExprPatternTyped<'a, 'i> {
 }
 
 #[derive(Debug, Clone, Display)]
+#[allow(clippy::large_enum_variant)]
 pub enum ExprMatchPattern<'a, 'i> {
     Literal(ExprLiteral),
     Variant(ExprMatchPatternVariant<'a, 'i>),

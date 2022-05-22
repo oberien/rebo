@@ -210,7 +210,7 @@ impl<'a, 'i> MetaInfo<'a, 'i> {
                     .with_note("use a different name")
                     .emit(),
                 Function::EnumInitializer(enum_name, variant_name) => {
-                    let new_span = self.user_types[enum_name.as_str()].variant_initializer_span(&variant_name).unwrap();
+                    let new_span = self.user_types[enum_name.as_str()].variant_initializer_span(variant_name).unwrap();
                     duplicate(new_span, span);
                 }
             }
@@ -285,6 +285,11 @@ impl<'a, 'i> MetaInfo<'a, 'i> {
                     .emit();
             }
         }
+    }
+}
+impl<'a, 'i> Default for MetaInfo<'a, 'i> {
+    fn default() -> Self {
+        Self::new()
     }
 }
 

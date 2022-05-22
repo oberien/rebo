@@ -78,7 +78,7 @@ pub fn extern_rebo(_args: TokenStream, input: TokenStream) -> TokenStream {
                 }
                 match *pat {
                     Pat::Ident(pat) => {
-                        if pat.ident.to_string() == "this" {
+                        if pat.ident == "this" {
                             if i != 0 {
                                 abort!(pat, "this-argument must be the first argument");
                             }

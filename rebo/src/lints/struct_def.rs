@@ -33,7 +33,7 @@ impl Visitor for StructDefLints {
         // TODO: proper struct recursion recursing into all usertypes (structs, enums, ...)
         // check struct recursion
         for (ident, field_typ) in &meta_info.struct_types[name.ident].fields {
-            check_struct_recursion(diagnostics, meta_info, name, &field_typ, vec![&ident]);
+            check_struct_recursion(diagnostics, meta_info, name, field_typ, vec![ident]);
         }
     }
 }

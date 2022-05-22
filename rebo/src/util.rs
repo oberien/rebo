@@ -145,7 +145,7 @@ pub fn try_parse_number(s: &str) -> TryParseNumberResult {
     let mut radix = Radix::Dec;
     let mut factor_int = 1;
     let mut factor_float = 1.;
-    if s.starts_with("-") {
+    if s.starts_with('-') {
         index += 1;
         factor_int = -1;
         factor_float = -1.;

@@ -19,7 +19,7 @@ pub fn generic_idents(generics: &Generics, context: &str) -> Vec<Ident> {
     generic_idents
 }
 
-pub fn generic_spans(generic_idents: &Vec<Ident>, code_filename: &str, code_string: &str) -> Vec<TokenStream> {
+pub fn generic_spans(generic_idents: &[Ident], code_filename: &str, code_string: &str) -> Vec<TokenStream> {
     if generic_idents.is_empty() {
         Vec::new()
     } else {
@@ -71,7 +71,7 @@ pub fn transform_path_type(typ: &Type, callback: &impl Fn(&Ident) -> Option<Toke
         for arg in &generics.args {
             match arg {
                 GenericArgument::Type(typ) => {
-                    let transformed = transform_path_type(&typ, callback);
+                    let transformed = transform_path_type(typ, callback);
                     res = quote::quote!(#res #transformed,);
                 }
                 _ => abort!(arg, "generics can only be types"),

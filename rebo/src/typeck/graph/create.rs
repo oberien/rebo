@@ -358,13 +358,13 @@ impl<'i> Graph<'i> {
                         .unwrap();
                     let typ = FunctionType {
                         is_method: false,
-                        generics: get_user_type_generics(meta_info, &enum_name).into_iter()
+                        generics: get_user_type_generics(meta_info, enum_name).into_iter()
                             .map(|(span, _typ)| span)
                             .collect(),
                         args: Cow::Owned(variant.fields.as_ref().unwrap().1.iter()
                             .map(|typ| convert_expr_type(typ, diagnostics, meta_info))
                             .collect()),
-                        ret: Type::Specific(SpecificType::Enum(Cow::Owned(enum_name.clone()), CowVec::Owned(get_user_type_generics(meta_info, &enum_name)))),
+                        ret: Type::Specific(SpecificType::Enum(Cow::Owned(enum_name.clone()), CowVec::Owned(get_user_type_generics(meta_info, enum_name)))),
                     };
                     meta_info.function_types.insert(name.clone(), typ);
                 }

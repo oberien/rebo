@@ -89,7 +89,7 @@ impl<'i> Lexer<'i> {
         self.inner.borrow_mut().next()
     }
     pub fn iter(&self) -> <&Self as IntoIterator>::IntoIter {
-        (&self).into_iter()
+        self.into_iter()
     }
 
     pub fn next_span(&self) -> Span {

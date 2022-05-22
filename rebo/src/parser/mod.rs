@@ -239,7 +239,7 @@ impl<'a, 'b, 'i> Parser<'a, 'b, 'i> {
             let mut clone_code = String::new();
             for (type_name, generics) in types {
                 let name = format!("{type_name}::clone");
-                if let Some(_) = self.get_binding(&name) {
+                if self.get_binding(&name).is_some() {
                     continue;
                 }
 
@@ -275,10 +275,10 @@ impl<'a, 'b, 'i> Parser<'a, 'b, 'i> {
             if let Some(ident) = scope.idents.get(ident) {
                 if track_capture && !matches!(scope.typ, ScopeType::Global) {
                     if let Some(captures) = self.captures.as_mut() {
-                        captures.insert(ident.clone());
+                        captures.insert(*ident);
                     }
                 }
-                return Some(ident.clone());
+                return Some(*ident);
             }
             if matches!(scope.typ, ScopeType::Function) {
                 track_capture = true;
@@ -388,6 +388,7 @@ impl<'a, 'b, 'i> Parser<'a, 'b, 'i> {
     }
 
     fn consume_comments(&mut self) {
+        #[allow(clippy::while_let_loop)]
         loop {
             match self.lexer.peek(0) {
                 Ok(Token::LineComment(TokenLineComment { .. }))

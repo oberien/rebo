@@ -16,7 +16,7 @@ impl Visitor for ClosureCapturePrimitives {
             return;
         }
         for binding in captures {
-            if !binding.mutable.is_some() {
+            if binding.mutable.is_none() {
                 continue;
             }
             let typ = &meta_info.types[&TypeVar::new(binding.ident.span)];

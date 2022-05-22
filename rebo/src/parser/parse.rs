@@ -126,7 +126,7 @@ impl<'b, 'a: 'b, 'i: 'b, T: 'a, D: 'a> Separated<'a, 'i, T, D> {
         self.len() == 0
     }
     pub fn iter(&'b self) -> <&'b Self as IntoIterator>::IntoIter {
-        (&self).into_iter()
+        self.into_iter()
     }
     pub fn iter_mut(&'b mut self) -> <&'b mut Self as IntoIterator>::IntoIter {
         self.into_iter()

@@ -144,9 +144,9 @@ impl<'i> Graph<'i> {
         todos.add(self, field_node);
 
         self.graph.remove_edge(edge_index);
-        function_generics.apply_type_reduce(struct_node, field_node, &typ, self);
+        function_generics.apply_type_reduce(struct_node, field_node, typ, self);
     }
-    fn get_function_function_generics<'a>(&mut self, source_node: Node, call_index: u64) -> Option<(FunctionGenerics, FunctionType)> {
+    fn get_function_function_generics(&mut self, source_node: Node, call_index: u64) -> Option<(FunctionGenerics, FunctionType)> {
         let possible_types = &mut self.possible_types[&source_node];
         if possible_types.0.len() != 1 {
             return None;
@@ -177,7 +177,7 @@ impl<'i> Graph<'i> {
 
         self.get_function_generics(fn_typ, Some(typ), call_index)
     }
-    fn get_function_generics<'a>(&mut self, fn_typ: FunctionType, typ: Option<ResolvableSpecificType>, call_index: u64) -> Option<(FunctionGenerics, FunctionType)> {
+    fn get_function_generics(&mut self, fn_typ: FunctionType, typ: Option<ResolvableSpecificType>, call_index: u64) -> Option<(FunctionGenerics, FunctionType)> {
         // function generics
         let default_function_generics = FunctionGenerics::new();
         if let Some(typ) = typ {
@@ -219,6 +219,7 @@ impl<'i> Graph<'i> {
             todos.add(self, generic);
         }
     }
+    #[allow(clippy::too_many_arguments)]
     fn method_call_arg(&mut self, todos: &mut WorkQueue, edge_index: EdgeIndex, meta_info: &MetaInfo, field_access: Node, arg: Node, method_name: &str, call_index: u64, arg_index: usize) {
         let (function_generics, fn_typ) = match self.get_method_function_generics(meta_info, field_access, method_name, call_index) {
             Some(t) => t,
@@ -226,6 +227,7 @@ impl<'i> Graph<'i> {
         };
         self.call_arg(todos, edge_index, function_generics, &fn_typ, field_access, arg, arg_index)
     }
+    #[allow(clippy::too_many_arguments)]
     fn method_call_ret(&mut self, todos: &mut WorkQueue, edge_index: EdgeIndex, meta_info: &MetaInfo, field_access: Node, method_call: Node, method_name: &str, call_index: u64) {
         let (function_generics, fn_typ) = match self.get_method_function_generics(meta_info, field_access, method_name, call_index) {
             Some(t) => t,
@@ -240,6 +242,7 @@ impl<'i> Graph<'i> {
             todos.add(self, generic);
         }
     }
+    #[allow(clippy::too_many_arguments)]
     fn call_arg(&mut self, todos: &mut WorkQueue, edge_index: EdgeIndex, function_generics: FunctionGenerics, fn_typ: &FunctionType, source: Node, arg: Node, arg_index: usize) {
         let expected_arg_type = match fn_typ.args.get(arg_index) {
             Some(typ) => typ,

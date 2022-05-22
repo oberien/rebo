@@ -14,11 +14,12 @@ enum StackElement {
     ImplBlock(String),
 }
 
+type DoPassFunction<'a, 'b, 'i> = for<'x> fn(&'x mut Parser<'a, 'b, 'i>, &Vec<StackElement>, Depth) -> Result<Option<&'a Expr<'a, 'i>>, InternalError>;
 impl<'a, 'b, 'i> Parser<'a, 'b, 'i> {
     /// Parse struct and enum definitions
     pub(super) fn first_pass(&mut self, depth: Depth) {
         debug!("first_pass");
-        let functions: &[for<'x> fn(&'x mut Parser<'a, 'b, 'i>, &Vec<StackElement>, _) -> Result<_, InternalError>] = &[
+        let functions: &[DoPassFunction<'a, 'b, 'i>] = &[
             // struct definitions
             |parser: &mut Parser<'a, '_, 'i>, _, depth| {
                 let struct_def = &*parser.arena.alloc(Expr::StructDefinition(ExprStructDefinition::parse_reset(parser, depth)?));
@@ -110,7 +111,7 @@ impl<'a, 'b, 'i> Parser<'a, 'b, 'i> {
     }
     pub(super) fn second_pass(&mut self, depth: Depth) {
         debug!("second_pass");
-        let functions: &[for<'x> fn(&'x mut Parser<'a, 'b, 'i>, &Vec<StackElement>, _) -> Result<_, InternalError>] = &[
+        let functions: &[DoPassFunction<'a, 'b, 'i>] = &[
             // static signatures
             |parser: &mut Parser<'a, '_, 'i>, _, depth| {
                 let static_sig = ExprStaticSignature::parse_reset(parser, depth)?;
@@ -140,7 +141,7 @@ impl<'a, 'b, 'i> Parser<'a, 'b, 'i> {
         debug!("second pass done");
     }
 
-    fn do_pass(&mut self, functions: &[for<'x> fn(&'x mut Parser<'a, 'b, 'i>, &Vec<StackElement>, Depth) -> Result<Option<&'a Expr<'a, 'i>>, InternalError>], depth: Depth) {
+    fn do_pass(&mut self, functions: &[DoPassFunction<'a, 'b, 'i>], depth: Depth) {
         let mut stack: Vec<StackElement> = Vec::new();
         // create rogue scopes
         let old_scopes = ::std::mem::replace(&mut self.scopes, Rc::new(RefCell::new(vec![Scope { idents: IndexMap::new(), generics: IndexMap::new(), typ: ScopeType::Global }])));

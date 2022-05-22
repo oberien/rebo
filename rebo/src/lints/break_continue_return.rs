@@ -45,27 +45,21 @@ impl Visitor for BreakContinueReturn {
                 diagnostics.error(ErrorCode::ContinueLabelNotFound)
                     .with_error_label(label.span(), "unknown continue label")
                     .emit();
-                return
             }
             (None, None) => {
                 diagnostics.error(ErrorCode::ContinueOutsideOfLoopLike)
                     .with_error_label(cont.span(), "this continue is not inside a loop")
                     .emit();
-                return
             }
             _ => (),
         }
     }
 
     fn visit_return(&self, diagnostics: &Diagnostics<ErrorCode>, _: &MetaInfo, block_stack: &BlockStack<'_, '_, ()>, ret: &ExprReturn) {
-        match block_stack.get_function() {
-            None => {
-                diagnostics.error(ErrorCode::ReturnOutsideOfFunction)
-                    .with_error_label(ret.span(), "this return is not inside a function")
-                    .emit();
-                return
-            }
-            _ => (),
+        if block_stack.get_function().is_none() {
+            diagnostics.error(ErrorCode::ReturnOutsideOfFunction)
+                .with_error_label(ret.span(), "this return is not inside a function")
+                .emit();
         }
     }
 }

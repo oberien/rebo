@@ -56,7 +56,7 @@ pub enum IncludeDirectory {
 impl IncludeDirectory {
     pub fn unwrap_path(&self) -> &Path {
         match self {
-            IncludeDirectory::Path(path) => &path,
+            IncludeDirectory::Path(path) => path,
             IncludeDirectory::Everywhere => panic!("IncludeDirectory::unwrap_path called with everywhere"),
         }
     }
@@ -68,6 +68,7 @@ pub enum IncludeDirectoryConfig {
     Everywhere,
 }
 
+pub type ExternalTypeAdderFunction = for<'a, 'b, 'i> fn(&'a Arena<Expr<'a, 'i>>, &'i Diagnostics<ErrorCode>, &'b mut MetaInfo<'a, 'i>);
 pub struct ReboConfig {
     stdlib: Stdlib,
     functions: Vec<ExternalFunction>,
@@ -75,7 +76,7 @@ pub struct ReboConfig {
     interrupt_function: for<'a, 'i> fn(&mut VmContext<'a, '_, '_, 'i>) -> Result<(), ExecError<'a, 'i>>,
     diagnostic_output: Output,
     include_directory: IncludeDirectoryConfig,
-    external_type_adder_functions: Vec<for<'a, 'b, 'i> fn(&'a Arena<Expr<'a, 'i>>, &'i Diagnostics<ErrorCode>, &'b mut MetaInfo<'a, 'i>)>,
+    external_type_adder_functions: Vec<ExternalTypeAdderFunction>,
     required_rebo_functions: Vec<RequiredReboFunctionStruct>,
 }
 impl ReboConfig {
@@ -125,6 +126,11 @@ impl ReboConfig {
     pub fn add_required_rebo_function<T: RequiredReboFunction>(mut self, _: T) -> Self {
         self.required_rebo_functions.push(RequiredReboFunctionStruct::from_required_rebo_function::<T>());
         self
+    }
+}
+impl Default for ReboConfig {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -218,7 +224,7 @@ pub fn run_with_config(filename: String, code: String, config: ReboConfig) -> Re
     info!("Execution took {}μs", time.elapsed().as_micros());
     println!("RESULT: {:?}", result);
     match result {
-        Ok(_) if diags.len() > 0 => ReturnValue::Diagnostics(diags),
+        Ok(_) if !diags.is_empty() => ReturnValue::Diagnostics(diags),
         Ok(_) => ReturnValue::Ok,
         Err(ExecError::Panic) => ReturnValue::Panic,
         Err(ExecError::Continue(_)) => unreachable!("continue returned from Vm::run"),

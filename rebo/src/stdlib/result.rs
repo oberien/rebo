@@ -4,7 +4,7 @@ use std::sync::Arc;
 use parking_lot::ReentrantMutex;
 use crate::{CowVec, Enum, EnumArc, ExternalType, FileId, FromValue, IntoValue, Span, SpecificType, Type, Typed, Value};
 
-const FILE_NAME: &'static str = "external-Result.re";
+const FILE_NAME: &str = "external-Result.re";
 const RESULT_T: Span = Span::new(FileId::synthetic(FILE_NAME), 12, 13);
 const RESULT_E: Span = Span::new(FileId::synthetic(FILE_NAME), 15, 16);
 

@@ -112,7 +112,7 @@ impl Ord for FunctionValue {
 }
 
 impl Value {
-    pub fn expect_unit(self, msg: &'static str) -> () {
+    pub fn expect_unit(self, msg: &'static str) {
         match self {
             Value::Unit => (),
             _ => panic!("{}", msg),
@@ -337,7 +337,7 @@ impl FormatArgument for Value {
 }
 
 /// Float with fuzzy equality
-#[derive(Debug, Clone, PartialOrd)]
+#[derive(Debug, Clone)]
 pub struct FuzzyFloat(pub f64);
 impl DeepCopy for FuzzyFloat {
     fn deep_copy(&self) -> Self {
@@ -365,11 +365,14 @@ impl PartialEq for FuzzyFloat {
         }
     }
 }
+impl PartialOrd for FuzzyFloat {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        self.0.partial_cmp(&other.0)
+    }
+}
 impl Ord for FuzzyFloat {
     fn cmp(&self, other: &Self) -> Ordering {
-        if self.0.is_nan() && other.0.is_nan() {
-            Ordering::Equal
-        } else if self.eq(other) {
+        if self.0.is_nan() && other.0.is_nan() || self.eq(other) {
             Ordering::Equal
         } else {
             match self.0.partial_cmp(&other.0) {

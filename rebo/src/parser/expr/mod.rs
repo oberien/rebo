@@ -270,6 +270,7 @@ impl Spanned for ExprLiteral {
 
 #[derive(Debug, Display, rebo_derive::Functions)]
 #[function(fn span(&self) -> Span = expr => expr.span())]
+#[allow(clippy::large_enum_variant)]
 pub enum Expr<'a, 'i> {
     Literal(ExprLiteral),
     /// f"abc {expr} def"
@@ -597,6 +598,7 @@ impl<'a, 'i> Parse<'a, 'i> for &'a Expr<'a, 'i> {
     }
 }
 
+pub type TypeGenerics<'a, 'i> = (TokenLessThan, Box<Separated<'a, 'i, ExprType<'a, 'i>, TokenComma>>, TokenGreaterThan);
 #[derive(Debug, Clone)]
 pub enum ExprType<'a, 'i> {
     String(TokenStringType),
@@ -606,7 +608,7 @@ pub enum ExprType<'a, 'i> {
     Unit(TokenOpenParen, TokenCloseParen),
     // struct, enum, typedef, ...
     /// name, generics
-    UserType(TokenIdent<'i>, Option<(TokenLessThan, Box<Separated<'a, 'i, ExprType<'a, 'i>, TokenComma>>, TokenGreaterThan)>),
+    UserType(TokenIdent<'i>, Option<TypeGenerics<'a, 'i>>),
     Generic(Generic<'i>),
     Function(Box<ExprFunctionType<'a, 'i>>),
     Never(TokenBang),
@@ -1946,7 +1948,7 @@ impl<'a, 'i> Parse<'a, 'i> for ExprFunctionType<'a, 'i> {
                     });
                     generics.as_mut().unwrap().generics.as_mut().unwrap()
                 },
-                Some(g) => g.generics.get_or_insert_with(|| Separated::default()),
+                Some(g) => g.generics.get_or_insert_with(Separated::default),
             };
 
             // prepend existing generics
@@ -2005,7 +2007,8 @@ impl<'a, 'i> Parse<'a, 'i> for ExprFunctionSignature<'a, 'i> {
         let name = parser.parse(depth.next())?;
         let generics = parser.parse(depth.next())?;
         let open = parser.parse(depth.next())?;
-        let self_with_args: Option<(SelfBinding<'i>, Option<(TokenComma, Separated<'a, 'i, ExprPatternTyped<'a, 'i>, TokenComma>)>)> = parser.parse(depth.next())?;
+        type SelfWithArgs<'a, 'i> = Option<(SelfBinding<'i>, Option<(TokenComma, Separated<'a, 'i, ExprPatternTyped<'a, 'i>, TokenComma>)>)>;
+        let self_with_args: SelfWithArgs<'a, 'i> = parser.parse(depth.next())?;
         let (self_arg, self_arg_comma, args) = match self_with_args {
             Some((self_binding, rest)) => match rest {
                 Some((comma, args)) => (Some(self_binding.b), Some(comma), args),
@@ -2317,13 +2320,13 @@ impl<'a, 'i> Parse<'a, 'i> for ExprImplBlock<'a, 'i> {
                 None => return,
             };
             let expected_generics = user_type.generics();
-            let expected_generic_span = expected_generics.map(|g| g.span()).unwrap_or(Span::new(user_type.name_span().file, user_type.name_span().end, user_type.name_span().end));
+            let expected_generic_span = expected_generics.map(|g| g.span()).unwrap_or_else(|| Span::new(user_type.name_span().file, user_type.name_span().end, user_type.name_span().end));
             let expected_generics = expected_generics.and_then(|g| g.generics.as_ref());
             let expected_generic_iter = match expected_generics {
                 Some(generics) => Either::Left(generics.iter().map(Some).chain(std::iter::repeat(None))),
                 None => Either::Right(std::iter::repeat(None)),
             };
-            let generic_span = generics.as_ref().map(|g| g.span()).unwrap_or(Span::new(name.span.file, name.span.end, name.span.end));
+            let generic_span = generics.as_ref().map(|g| g.span()).unwrap_or_else(|| Span::new(name.span.file, name.span.end, name.span.end));
             let generics = generics.as_mut().and_then(|g| g.generics.as_mut());
             let generics_iter = match generics {
                 Some(generics) => Either::Left(generics.iter_mut().map(Some).chain(std::iter::repeat_with(|| None))),
@@ -2357,9 +2360,8 @@ impl<'a, 'i> Parse<'a, 'i> for ExprImplBlock<'a, 'i> {
         let mut functions = Vec::new();
         let generic_list: Vec<_> = generics.iter().flat_map(|g| g.generics.iter().flat_map(|g| g.iter())).copied().collect();
         let close = loop {
-            match parser.parse(depth.last()) {
-                Ok(close) => break close,
-                Err(_) => (),
+            if let Ok(close) = parser.parse(depth.last()) {
+                break close
             }
             let function = ExprFunctionDefinition::parse_with_generics(parser, depth.next(), &generic_list)?;
             functions.push(function);
@@ -2374,7 +2376,7 @@ impl<'a, 'i> Parse<'a, 'i> for ExprImplBlock<'a, 'i> {
                 match &mut fun.sig.generics {
                     None => fun.sig.generics = Some(generics.clone().unwrap()),
                     Some(g) => {
-                        let g = g.generics.get_or_insert_with(|| Separated::default());
+                        let g = g.generics.get_or_insert_with(Separated::default);
                         for (&generic, delim) in generics.as_ref().unwrap().generics.as_ref().unwrap().iter_with_delimiters() {
                             let comma = delim.copied().unwrap_or(TokenComma {
                                 span: Span::new(generic.span().file, generic.span().end, generic.span().end),

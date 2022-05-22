@@ -28,7 +28,7 @@ impl Parse for Args {
     }
 }
 
-fn clean_generics(typ: &Type, generic_idents: &Vec<Ident>) -> TokenStream2 {
+fn clean_generics(typ: &Type, generic_idents: &[Ident]) -> TokenStream2 {
     util::transform_path_type(typ, &|ident| if generic_idents.iter().any(|i| i == ident) {
         Some(quote::quote!(::rebo::Value))
     } else {
@@ -36,6 +36,7 @@ fn clean_generics(typ: &Type, generic_idents: &Vec<Ident>) -> TokenStream2 {
     })
 }
 
+#[allow(clippy::large_enum_variant)]
 enum Varargs {
     Typed(Type),
     Untyped,
@@ -101,10 +102,8 @@ pub fn function(args: TokenStream, input: TokenStream) -> TokenStream {
                 }
                 match *pat {
                     Pat::Ident(pat) => {
-                        if pat.ident.to_string() == "this" {
-                            if !is_first_argument {
-                                abort!(pat, "this-argument must be the first argument");
-                            }
+                        if pat.ident == "this" && !is_first_argument {
+                            abort!(pat, "this-argument must be the first argument");
                         }
                         args.push((pat, ty));
                     }

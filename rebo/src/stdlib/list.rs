@@ -1,17 +1,15 @@
 use diagnostic::{Diagnostics, Span};
 use typed_arena::Arena;
 use crate::parser::Expr;
-use crate::common::{MetaInfo, Value, ListArc};
+use crate::common::{MetaInfo, Value, ListArc, DeepCopy};
 use crate::typeck::types::{Type, SpecificType};
 use std::borrow::Cow;
-use parking_lot::ReentrantMutex;
-use std::sync::Arc;
 use std::marker::PhantomData;
 use itertools::Itertools;
 use rebo::stdlib::Sliceable;
 use crate::{CowVec, DisplayValue, ExternalType, FileId, FromValue, IntoValue, Typed, ErrorCode};
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct List<T> {
     pub arc: ListArc,
     _marker: PhantomData<T>,
@@ -27,16 +25,8 @@ impl<T: IntoValue> List<T> {
         self.arc.list.lock().borrow().iter().cloned().map(FromValue::from_value).collect()
     }
 }
-impl<T: Clone> Clone for List<T> {
-    fn clone(&self) -> Self {
-        List {
-            arc: ListArc { list: Arc::new(ReentrantMutex::new(self.arc.list.lock().clone())) },
-            _marker: PhantomData,
-        }
-    }
-}
 
-const FILE_NAME: &'static str = "external-List.re";
+const FILE_NAME: &str = "external-List.re";
 const LIST_T: Span = Span::new(FileId::synthetic(FILE_NAME), 12, 13);
 
 impl<T: FromValue + IntoValue> ExternalType for List<T> {
@@ -73,6 +63,14 @@ impl<T: FromValue> FromValue for Vec<T> {
         match value {
             Value::List(arc) => arc.list.lock().borrow().iter().cloned().map(FromValue::from_value).collect(),
             _ => unreachable!("Vec::from_value called with non-List"),
+        }
+    }
+}
+impl<T> DeepCopy for List<T> {
+    fn deep_copy(&self) -> Self {
+        List {
+            arc: self.arc.deep_copy(),
+            _marker: PhantomData,
         }
     }
 }
@@ -189,7 +187,7 @@ impl<T> Sliceable for List<T> {
 }
 #[rebo::function(raw("List::slice"))]
 fn list_slice<T>(this: List<T>, start: i64, ..: i64) -> List<T> {
-    this.clone().slice(vm, expr_span, start, args)?
+    this.deep_copy().slice(vm, expr_span, start, args)?
 }
 #[rebo::function(raw("List::clear"))]
 fn list_clear<T>(this: List<T>) {

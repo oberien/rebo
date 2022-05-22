@@ -5,6 +5,7 @@ use crate::common::{MetaInfo, Value, SetArc};
 use crate::typeck::types::{Type, SpecificType};
 use std::borrow::Cow;
 use std::marker::PhantomData;
+use rebo::common::DeepCopy;
 use crate::{CowVec, ExternalType, FileId, FromValue, IntoValue, Typed, ErrorCode};
 use crate::stdlib::list::List;
 
@@ -21,7 +22,7 @@ impl<T: IntoValue> Set<T> {
     }
 }
 
-const FILE_NAME: &'static str = "external-Set.re";
+const FILE_NAME: &str = "external-Set.re";
 const SET_T: Span = Span::new(FileId::synthetic(FILE_NAME), 11, 12);
 
 impl<T: FromValue + IntoValue> ExternalType for Set<T> {
@@ -46,6 +47,14 @@ impl<T> Typed for Set<T> {
         Cow::Borrowed("Set"),
         CowVec::Borrowed(&[(SET_T, Type::Top)]),
     );
+}
+impl<T> DeepCopy for Set<T> {
+    fn deep_copy(&self) -> Self {
+        Set {
+            arc: self.arc.deep_copy(),
+            _marker: PhantomData,
+        }
+    }
 }
 
 pub fn add_set<'a, 'i>(diagnostics: &'i Diagnostics<ErrorCode>, arena: &'a Arena<Expr<'a, 'i>>, meta_info: &mut MetaInfo<'a, 'i>) {

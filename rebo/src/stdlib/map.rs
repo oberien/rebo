@@ -1,7 +1,7 @@
 use diagnostic::{Diagnostics, Span};
 use typed_arena::Arena;
 use crate::parser::Expr;
-use crate::common::{MetaInfo, Value, MapArc};
+use crate::common::{MetaInfo, Value, MapArc, DeepCopy};
 use crate::typeck::types::{Type, SpecificType};
 use std::borrow::Cow;
 use std::collections::BTreeMap;
@@ -28,7 +28,7 @@ impl<K: IntoValue, V: IntoValue> Map<K, V> {
     }
 }
 
-const FILE_NAME: &'static str = "external-Map.re";
+const FILE_NAME: &str = "external-Map.re";
 const MAP_K: Span = Span::new(FileId::synthetic(FILE_NAME), 11, 12);
 const MAP_V: Span = Span::new(FileId::synthetic(FILE_NAME), 14, 15);
 
@@ -55,6 +55,14 @@ impl<K, V> Typed for Map<K, V> {
         CowVec::Borrowed(&[(MAP_K, Type::Top), (MAP_V, Type::Top)]),
     );
 }
+impl<K, V> DeepCopy for Map<K, V> {
+    fn deep_copy(&self) -> Self {
+        Map {
+            arc: self.arc.deep_copy(),
+            _marker: PhantomData,
+        }
+    }
+}
 
 pub fn add_map<'a, 'i>(diagnostics: &'i Diagnostics<ErrorCode>, arena: &'a Arena<Expr<'a, 'i>>, meta_info: &mut MetaInfo<'a, 'i>) {
     meta_info.add_external_type::<Map<Value, Value>>(arena, diagnostics);
@@ -79,20 +87,14 @@ fn map_new<K, V>() -> Map<K, V> {
 fn map_insert<K, V>(this: Map<K, V>, key: K, value: V) -> Option<V> {
     let this = this.arc.map.lock();
     let mut this = this.borrow_mut();
-    match this.insert(key, value) {
-        Some(v) => Some(v),
-        None => None,
-    }
+    this.insert(key, value)
 }
 
 #[rebo::function("Map::get")]
 fn map_get<K, V>(this: Map<K, V>, key: K) -> Option<V> {
     let this = this.arc.map.lock();
     let this = this.borrow();
-    match this.get(&key) {
-        Some(v) => Some(v.clone()),
-        None => None,
-    }
+    this.get(&key).cloned()
 }
 #[rebo::function("Map::get_or_insert")]
 fn map_get_or_insert<K, V>(this: Map<K, V>, key: K, default: V) -> V {
@@ -105,10 +107,7 @@ fn map_get_or_insert<K, V>(this: Map<K, V>, key: K, default: V) -> V {
 fn map_remove<K, V>(this: Map<K, V>, key: K) -> Option<V> {
     let this = this.arc.map.lock();
     let mut this = this.borrow_mut();
-    match this.remove(&key) {
-        Some(v) => Some(v),
-        None => None,
-    }
+    this.remove(&key)
 }
 
 #[rebo::function("Map::keys")]

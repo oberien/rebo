@@ -103,7 +103,7 @@ pub fn add_to_meta_info<'a, 'i>(stdlib: Stdlib, diagnostics: &'i Diagnostics<Err
 
 #[rebo::function(raw("print"))]
 fn print(..: _) {
-    let joined = args.as_slice().into_iter().map(|arg| DisplayValue(arg)).join(", ");
+    let joined = args.as_slice().iter().map(DisplayValue).join(", ");
     println!("{}", joined);
 }
 
@@ -334,13 +334,13 @@ fn compile_regex<'a, 'i>(regex: String, vm: &VmContext<'a, '_, '_, 'i>, expr_spa
             vm.diagnostics().error(ErrorCode::InvalidRegex)
                 .with_error_label(expr_span, format!("syntax error: {}", msg))
                 .emit();
-            return Err(ExecError::Panic);
+            Err(ExecError::Panic)
         }
         Err(_) => {
             vm.diagnostics().error(ErrorCode::InvalidRegex)
                 .with_error_label(expr_span, "invalid regex")
                 .emit();
-            return Err(ExecError::Panic);
+            Err(ExecError::Panic)
         }
     }
 }

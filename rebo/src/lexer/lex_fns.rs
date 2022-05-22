@@ -400,7 +400,7 @@ pub fn lex_format_string<'i>(diagnostics: &Diagnostics<ErrorCode>, file: FileId,
     let mut post_index = 0;
     let mut rogue = false;
 
-    fn make_part<'i>(s: &'i str, typ: CurrentPart, part_start: usize, part_end: usize) -> TokenFormatStringPart<'i> {
+    fn make_part(s: &str, typ: CurrentPart, part_start: usize, part_end: usize) -> TokenFormatStringPart<'_> {
         match typ {
             CurrentPart::Str => TokenFormatStringPart::Str(&s[part_start..part_end]),
             CurrentPart::Escaped => TokenFormatStringPart::Escaped(&s[part_start..part_end]),

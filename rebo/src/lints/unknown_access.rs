@@ -58,9 +58,8 @@ impl Visitor for UnknownAccess {
                 FieldOrMethod::Method(fn_call) => {
                     let fn_name = format!("{}::{}", typ.type_name(), fn_call.name.ident);
 
-                    match meta_info.function_types.get(fn_name.as_str()) {
-                        Some(fun) => check_function_call_arg_num(diagnostics, fun, CallType::MethodCall, fn_call.span(), &fn_call.open, &fn_call.args, &fn_call.close),
-                        None => (),
+                    if let Some(fun) = meta_info.function_types.get(fn_name.as_str()) {
+                        check_function_call_arg_num(diagnostics, fun, CallType::MethodCall, fn_call.span(), &fn_call.open, &fn_call.args, &fn_call.close)
                     }
 
                     match meta_info.functions.get(fn_name.as_str()) {
