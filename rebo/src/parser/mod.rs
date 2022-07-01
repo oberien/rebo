@@ -70,6 +70,12 @@ impl Expected {
         Expected::Token(TokenType::Minus),
         Expected::Token(TokenType::Star),
         Expected::Token(TokenType::Slash),
+        Expected::Token(TokenType::Percent),
+        Expected::Token(TokenType::Circumflex),
+    ];
+    const BOOL_OP: &'static [Expected] = &[
+        Expected::Token(TokenType::DoubleAmp),
+        Expected::Token(TokenType::DoublePipe),
     ];
     const COMPARE_OP: &'static [Expected] = &[
         Expected::Token(TokenType::LessThan),

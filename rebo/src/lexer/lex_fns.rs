@@ -158,6 +158,8 @@ pub fn try_lex_token<'i>(diagnostics: &Diagnostics<ErrorCode>, file: FileId, s: 
             Some('*') => Ok(MaybeToken::Token(lex_block_comment(diagnostics, file, s, index))),
             _ => Ok(MaybeToken::Token(Token::Slash(TokenSlash { span }))),
         }
+        '%' => Ok(MaybeToken::Token(Token::Percent(TokenPercent { span }))),
+        '^' => Ok(MaybeToken::Token(Token::Circumflex(TokenCircumflex { span }))),
         ',' => Ok(MaybeToken::Token(Token::Comma(TokenComma { span }))),
         '=' => match char2 {
             Some('=') => Ok(MaybeToken::Token(Token::Equals(TokenEquals { span: span2 }))),

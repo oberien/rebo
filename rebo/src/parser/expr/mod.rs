@@ -6,7 +6,7 @@ use std::fmt::{self, Write, Display, Formatter, Debug};
 use derive_more::Display;
 use crate::parser::scope::{BindingId, ScopeType};
 use crate::util::PadFmt;
-use crate::lexer::{TokenOpenParen, TokenCloseParen, TokenIdent, TokenInteger, TokenFloat, TokenBool, TokenDqString, TokenType, TokenStringType, TokenIntType, TokenFloatType, TokenBoolType, Token, TokenLet, TokenColon, TokenMut, TokenAssign, TokenOpenCurly, TokenCloseCurly, TokenComma, TokenArrow, TokenFn, TokenBang, TokenPlus, TokenMinus, TokenStar, TokenSlash, TokenDoubleAmp, TokenDoublePipe, TokenLessThan, TokenLessEquals, TokenEquals, TokenNotEquals, TokenGreaterEquals, TokenGreaterThan, TokenStruct, TokenDot, TokenIf, TokenElse, TokenWhile, TokenFormatString, TokenFormatStringPart, Lexer, TokenMatch, TokenFatArrow, TokenEnum, TokenDoubleColon, TokenImpl, TokenFor, TokenIn, TokenStatic, TokenInclude, TokenDotDotDot, TokenPipe, TokenAmp, TokenApostrophe, TokenLoop, TokenBreak, TokenContinue, TokenReturn, LexerMode};
+use crate::lexer::{TokenOpenParen, TokenCloseParen, TokenIdent, TokenInteger, TokenFloat, TokenBool, TokenDqString, TokenType, TokenStringType, TokenIntType, TokenFloatType, TokenBoolType, Token, TokenLet, TokenColon, TokenMut, TokenAssign, TokenOpenCurly, TokenCloseCurly, TokenComma, TokenArrow, TokenFn, TokenBang, TokenPlus, TokenMinus, TokenStar, TokenSlash, TokenPercent, TokenCircumflex, TokenDoubleAmp, TokenDoublePipe, TokenLessThan, TokenLessEquals, TokenEquals, TokenNotEquals, TokenGreaterEquals, TokenGreaterThan, TokenStruct, TokenDot, TokenIf, TokenElse, TokenWhile, TokenFormatString, TokenFormatStringPart, Lexer, TokenMatch, TokenFatArrow, TokenEnum, TokenDoubleColon, TokenImpl, TokenFor, TokenIn, TokenStatic, TokenInclude, TokenDotDotDot, TokenPipe, TokenAmp, TokenApostrophe, TokenLoop, TokenBreak, TokenContinue, TokenReturn, LexerMode};
 use crate::parser::{Parse, InternalError, Parser, Expected, Backtrack};
 use crate::error_codes::ErrorCode;
 use std::borrow::Cow;
@@ -295,6 +295,10 @@ pub enum Expr<'a, 'i> {
     Mul(ExprMul<'a, 'i>),
     /// expr / expr
     Div(ExprDiv<'a, 'i>),
+    /// expr % expr
+    Mod(ExprMod<'a, 'i>),
+    /// expr ^ expr
+    Xor(ExprXor<'a, 'i>),
     /// expr && expr
     BoolAnd(ExprBoolAnd<'a, 'i>),
     /// expr || bar
@@ -308,6 +312,10 @@ pub enum Expr<'a, 'i> {
     MulAssign(ExprMulAssign<'a, 'i>),
     /// lhs /= expr
     DivAssign(ExprDivAssign<'a, 'i>),
+    /// lhs %= expr
+    ModAssign(ExprModAssign<'a, 'i>),
+    /// lhs ^= expr
+    XorAssign(ExprXorAssign<'a, 'i>),
     /// lhs &= expr
     BoolAndAssign(ExprBoolAndAssign<'a, 'i>),
     /// lhs |= bar
@@ -1405,6 +1413,8 @@ binop! {
     ExprSub, Sub, TokenMinus, Minus, ExprSubAssign, TokenMinus;
     ExprMul, Mul, TokenStar, Star, ExprMulAssign, TokenStar;
     ExprDiv, Div, TokenSlash, Slash, ExprDivAssign, TokenSlash;
+    ExprMod, Mod, TokenPercent, Percent, ExprModAssign, TokenPercent;
+    ExprXor, Xor, TokenCircumflex, Circumflex, ExprXorAssign, TokenCircumflex;
     ExprBoolAnd, BoolAnd, TokenDoubleAmp, DoubleAmp, ExprBoolAndAssign, TokenAmp;
     ExprBoolOr, BoolOr, TokenDoublePipe, DoublePipe, ExprBoolOrAssign, TokenPipe;
     ExprLessThan, LessThan, TokenLessThan, LessThan;

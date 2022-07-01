@@ -135,6 +135,8 @@ gen_tokens! {
     Minus, TokenMinus, "-", {}, (fmt = "- "), (Copy, Eq, Hash);
     Star, TokenStar, "*", {}, (fmt = "* "), (Copy, Eq, Hash);
     Slash, TokenSlash, "/", {}, (fmt = "/ "), (Copy, Eq, Hash);
+    Percent, TokenPercent, "%", {}, (fmt = "% "), (Copy, Eq, Hash);
+    Circumflex, TokenCircumflex, "^", {}, (fmt = "^ "), (Copy, Eq, Hash);
     Bang, TokenBang, "!", {}, (fmt = "! "), (Copy, Eq, Hash);
     Amp, TokenAmp, "&", {}, (fmt = "& "), (Copy, Eq, Hash);
     DoubleAmp, TokenDoubleAmp, "&&", {}, (fmt = "&& "), (Copy, Eq, Hash);

@@ -16,6 +16,8 @@ assert(choose(false, 1, 2) == 2);
 assert(1 + 2 * 3 == 7);
 assert(5 - -5 - 10 == 0);
 assert(0b1 + 0x2 * 3 * 4 == 25);
+assert_eq(1 ^ 3, 2);
+assert_eq(5 % 2, 1);
 let a = 0;
 let mut a = a + 1;
 let mut c = add_one(a);

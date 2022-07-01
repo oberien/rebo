@@ -1,5 +1,5 @@
 use crate::typeck::graph::{Graph, Node, PossibleTypes, Constraint};
-use crate::parser::{Expr, Spanned, ExprFormatString, ExprFormatStringPart, ExprBind, ExprPattern, ExprPatternTyped, ExprPatternUntyped, ExprAssign, ExprAssignLhs, ExprVariable, ExprFieldAccess, ExprBoolNot, ExprAdd, ExprSub, ExprMul, ExprDiv, ExprBoolAnd, ExprBoolOr, ExprLessThan, ExprLessEquals, ExprEquals, ExprNotEquals, ExprGreaterEquals, ExprGreaterThan, ExprBlock, BlockBody, ExprParenthesized, ExprMatch, ExprMatchPattern, ExprWhile, ExprFunctionCall, ExprFunctionDefinition, ExprStructInitialization, ExprImplBlock, ExprType, ExprGenerics, ExprAccess, FieldOrMethod, ExprFor, ExprStatic, ExprFunctionType, ExprFunctionSignature, ExprNeg, ExprStaticSignature, ExprAddAssign, ExprSubAssign, ExprMulAssign, ExprDivAssign, ExprBoolAndAssign, ExprBoolOrAssign, ExprLoop, ExprBreak, ExprContinue, ExprReturn};
+use crate::parser::{Expr, Spanned, ExprFormatString, ExprFormatStringPart, ExprBind, ExprPattern, ExprPatternTyped, ExprPatternUntyped, ExprAssign, ExprAssignLhs, ExprVariable, ExprFieldAccess, ExprBoolNot, ExprAdd, ExprSub, ExprMul, ExprDiv, ExprMod, ExprXor, ExprBoolAnd, ExprBoolOr, ExprLessThan, ExprLessEquals, ExprEquals, ExprNotEquals, ExprGreaterEquals, ExprGreaterThan, ExprBlock, BlockBody, ExprParenthesized, ExprMatch, ExprMatchPattern, ExprWhile, ExprFunctionCall, ExprFunctionDefinition, ExprStructInitialization, ExprImplBlock, ExprType, ExprGenerics, ExprAccess, FieldOrMethod, ExprFor, ExprStatic, ExprFunctionType, ExprFunctionSignature, ExprNeg, ExprStaticSignature, ExprAddAssign, ExprSubAssign, ExprMulAssign, ExprDivAssign, ExprModAssign, ExprXorAssign, ExprBoolAndAssign, ExprBoolOrAssign, ExprLoop, ExprBreak, ExprContinue, ExprReturn};
 use crate::common::{MetaInfo, UserType, Function, RequiredReboFunctionStruct, BlockStack, BlockType};
 use itertools::Either;
 use crate::typeck::types::{StructType, EnumType, EnumTypeVariant, SpecificType, FunctionType, Type, ResolvableSpecificType};
@@ -589,6 +589,24 @@ impl<'i> Graph<'i> {
                 self.add_eq_constraint(a_node, node);
                 self.add_eq_constraint(b_node, node);
             }
+            Expr::Mod(ExprMod { a, b, .. }) => {
+                let a_node = self.visit_expr(ctx, a);
+                let b_node = self.visit_expr(ctx, b);
+                self.add_reduce_constraint(node, a_node, vec![ResolvableSpecificType::Integer]);
+                self.add_reduce_constraint(node, b_node, vec![ResolvableSpecificType::Integer]);
+                self.add_reduce_constraint(node, node, vec![ResolvableSpecificType::Integer]);
+                self.add_eq_constraint(a_node, node);
+                self.add_eq_constraint(b_node, node);
+            }
+            Expr::Xor(ExprXor { a, b, .. }) => {
+                let a_node = self.visit_expr(ctx, a);
+                let b_node = self.visit_expr(ctx, b);
+                self.add_reduce_constraint(node, a_node, vec![ResolvableSpecificType::Integer, ResolvableSpecificType::Bool]);
+                self.add_reduce_constraint(node, b_node, vec![ResolvableSpecificType::Integer, ResolvableSpecificType::Bool]);
+                self.add_reduce_constraint(node, node, vec![ResolvableSpecificType::Integer, ResolvableSpecificType::Bool]);
+                self.add_eq_constraint(a_node, node);
+                self.add_eq_constraint(b_node, node);
+            }
             Expr::AddAssign(ExprAddAssign { lhs, expr, .. })
             | Expr::SubAssign(ExprSubAssign { lhs, expr, .. })
             | Expr::MulAssign(ExprMulAssign { lhs, expr, .. })
@@ -597,6 +615,22 @@ impl<'i> Graph<'i> {
                 let expr_node = self.visit_expr(ctx, expr);
                 self.add_reduce_constraint(node, lhs_node, vec![ResolvableSpecificType::Integer, ResolvableSpecificType::Float]);
                 self.add_reduce_constraint(node, expr_node, vec![ResolvableSpecificType::Integer, ResolvableSpecificType::Float]);
+                self.add_reduce_constraint(node, node, vec![ResolvableSpecificType::Unit]);
+                self.add_eq_constraint(lhs_node, expr_node);
+            }
+            Expr::ModAssign(ExprModAssign { lhs, expr, .. }) => {
+                let lhs_node = self.visit_expr_assign_lhs(lhs);
+                let expr_node = self.visit_expr(ctx, expr);
+                self.add_reduce_constraint(node, lhs_node, vec![ResolvableSpecificType::Integer]);
+                self.add_reduce_constraint(node, expr_node, vec![ResolvableSpecificType::Integer]);
+                self.add_reduce_constraint(node, node, vec![ResolvableSpecificType::Unit]);
+                self.add_eq_constraint(lhs_node, expr_node);
+            }
+            Expr::XorAssign(ExprXorAssign { lhs, expr, .. }) => {
+                let lhs_node = self.visit_expr_assign_lhs(lhs);
+                let expr_node = self.visit_expr(ctx, expr);
+                self.add_reduce_constraint(node, lhs_node, vec![ResolvableSpecificType::Integer, ResolvableSpecificType::Bool]);
+                self.add_reduce_constraint(node, expr_node, vec![ResolvableSpecificType::Integer, ResolvableSpecificType::Bool]);
                 self.add_reduce_constraint(node, node, vec![ResolvableSpecificType::Unit]);
                 self.add_eq_constraint(lhs_node, expr_node);
             }

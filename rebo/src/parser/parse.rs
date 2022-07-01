@@ -291,6 +291,8 @@ impl_for_tokens! {
     Minus, TokenMinus;
     Star, TokenStar;
     Slash, TokenSlash;
+    Percent, TokenPercent;
+    Circumflex, TokenCircumflex;
     Bang, TokenBang;
     Amp, TokenAmp;
     DoubleAmp, TokenDoubleAmp;

@@ -5,7 +5,7 @@ use parking_lot::ReentrantMutex;
 
 use crate::common::{Depth, Enum, EnumArc, Function, FunctionValue, FuzzyFloat, MetaInfo, RequiredReboFunction, RequiredReboFunctionStruct, Struct, StructArc, Value};
 use crate::lexer::{TokenBool, TokenDqString, TokenFloat, TokenIdent, TokenInteger};
-use crate::parser::{Binding, BlockBody, Expr, ExprAdd, ExprAssign, ExprAssignLhs, ExprBind, ExprBlock, ExprBool, ExprBoolAnd, ExprBoolNot, ExprBoolOr, ExprDiv, ExprEnumDefinition, ExprEnumInitialization, ExprEquals, ExprFieldAccess, ExprFloat, ExprFormatString, ExprFormatStringPart, ExprFunctionCall, ExprGreaterEquals, ExprGreaterThan, ExprIfElse, ExprInteger, ExprLessEquals, ExprLessThan, ExprLiteral, ExprMatch, ExprMatchPattern, ExprMul, ExprNotEquals, ExprParenthesized, ExprPattern, ExprPatternTyped, ExprPatternUntyped, ExprString, ExprStructDefinition, ExprStructInitialization, ExprSub, ExprVariable, ExprWhile, ExprAccess, FieldOrMethod, Spanned, ExprFor, ExprMethodCall, ExprNeg, ExprAddAssign, ExprSubAssign, ExprMulAssign, ExprDivAssign, ExprBoolAndAssign, ExprBoolOrAssign, ExprLoop, ExprBreak, ExprContinue, ExprReturn, ExprLabel};
+use crate::parser::{Binding, BlockBody, Expr, ExprAdd, ExprAssign, ExprAssignLhs, ExprBind, ExprBlock, ExprBool, ExprBoolAnd, ExprBoolNot, ExprBoolOr, ExprDiv, ExprMod, ExprModAssign, ExprXor, ExprXorAssign, ExprEnumDefinition, ExprEnumInitialization, ExprEquals, ExprFieldAccess, ExprFloat, ExprFormatString, ExprFormatStringPart, ExprFunctionCall, ExprGreaterEquals, ExprGreaterThan, ExprIfElse, ExprInteger, ExprLessEquals, ExprLessThan, ExprLiteral, ExprMatch, ExprMatchPattern, ExprMul, ExprNotEquals, ExprParenthesized, ExprPattern, ExprPatternTyped, ExprPatternUntyped, ExprString, ExprStructDefinition, ExprStructInitialization, ExprSub, ExprVariable, ExprWhile, ExprAccess, FieldOrMethod, Spanned, ExprFor, ExprMethodCall, ExprNeg, ExprAddAssign, ExprSubAssign, ExprMulAssign, ExprDivAssign, ExprBoolAndAssign, ExprBoolOrAssign, ExprLoop, ExprBreak, ExprContinue, ExprReturn, ExprLabel};
 pub use crate::vm::scope::{Scopes, Scope};
 use diagnostic::{Diagnostics, Span};
 use rt_format::{Substitution, Specifier};
@@ -179,6 +179,19 @@ impl<'a, 'b, 'i> Vm<'a, 'b, 'i> {
             Expr::Sub(ExprSub { a, b, .. }) => Ok(math::<Sub>(self.eval_expr(a, depth.next())?, self.eval_expr(b, depth.next())?, depth.last())),
             Expr::Mul(ExprMul { a, b, .. }) => Ok(math::<Mul>(self.eval_expr(a, depth.next())?, self.eval_expr(b, depth.next())?, depth.last())),
             Expr::Div(ExprDiv { a, b, .. }) => Ok(math::<Div>(self.eval_expr(a, depth.next())?, self.eval_expr(b, depth.next())?, depth.last())),
+            Expr::Mod(ExprMod { a, b, .. }) => {
+                let a = self.eval_expr(a, depth.next())?.expect_int("mod only allows ints");
+                let b = self.eval_expr(b, depth.next())?.expect_int("mod only allows ints");
+                Ok(Value::Integer(a % b))
+            },
+            Expr::Xor(ExprXor { a, b, .. }) => {
+                let (a, b) = (self.eval_expr(a, depth.next())?, self.eval_expr(b, depth.next())?);
+                match (a, b) {
+                    (Value::Integer(a), Value::Integer(b)) => Ok(Value::Integer(a ^ b)),
+                    (Value::Bool(a), Value::Bool(b)) => Ok(Value::Bool(a ^ b)),
+                    _ => unreachable!("xor called on non-int and non-bool"),
+                }
+            },
             Expr::AddAssign(ExprAddAssign { lhs, expr, .. }) => {
                 let value = math::<Add>(self.load_lhs_value(lhs, depth.next())?, self.eval_expr(expr, depth.next())?, depth.next());
                 self.assign(lhs, value, depth.last());
@@ -196,6 +209,23 @@ impl<'a, 'b, 'i> Vm<'a, 'b, 'i> {
             },
             Expr::DivAssign(ExprDivAssign { lhs, expr, .. }) => {
                 let value = math::<Div>(self.load_lhs_value(lhs, depth.next())?, self.eval_expr(expr, depth.next())?, depth.next());
+                self.assign(lhs, value, depth.last());
+                Ok(Value::Unit)
+            },
+            Expr::ModAssign(ExprModAssign { lhs, expr, .. }) => {
+                let a = self.load_lhs_value(lhs, depth.next())?.expect_int("mod only allows ints");
+                let b = self.eval_expr(expr, depth.next())?.expect_int("mod only allows ints");
+                let value = Value::Integer(a % b);
+                self.assign(lhs, value, depth.last());
+                Ok(Value::Unit)
+            },
+            Expr::XorAssign(ExprXorAssign { lhs, expr, .. }) => {
+                let (a, b) = (self.load_lhs_value(lhs, depth.next())?, self.eval_expr(expr, depth.next())?);
+                let value = match (a, b) {
+                    (Value::Integer(a), Value::Integer(b)) => Value::Integer(a ^ b),
+                    (Value::Bool(a), Value::Bool(b)) => Value::Bool(a ^ b),
+                    _ => unreachable!("xor called on non-int and non-bool"),
+                };
                 self.assign(lhs, value, depth.last());
                 Ok(Value::Unit)
             },

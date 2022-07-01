@@ -3,7 +3,7 @@ use std::borrow::Cow;
 use crate::lexer::Token;
 use super::{Expr, InternalError, Parser, Backtrack};
 use crate::parser::{Expected};
-use crate::parser::expr::{ExprBoolAnd, ExprBoolOr, ExprAdd, ExprSub, ExprMul, ExprDiv, ParseUntil};
+use crate::parser::expr::{ExprBoolAnd, ExprBoolOr, ExprAdd, ExprSub, ExprMul, ExprDiv, ExprMod, ExprXor, ParseUntil};
 use crate::common::Depth;
 
 // make trace! here log as if this still was the parser module
@@ -29,6 +29,8 @@ pub enum Math {
     Sub,
     Mul,
     Div,
+    Mod,
+    Xor,
 }
 
 impl Precedence for Math {
@@ -38,6 +40,8 @@ impl Precedence for Math {
             Token::Minus(_) => Ok(Math::Sub),
             Token::Star(_) => Ok(Math::Mul),
             Token::Slash(_) => Ok(Math::Div),
+            Token::Percent(_) => Ok(Math::Mod),
+            Token::Circumflex(_) => Ok(Math::Xor),
             _ => Err(InternalError::Backtrack(Backtrack { span: token.span(), expected: Self::expected() })),
         }
     }
@@ -45,7 +49,8 @@ impl Precedence for Math {
     fn precedence(self) -> u8 {
         match self {
             Math::Add | Math::Sub => 0,
-            Math::Mul | Math::Div => 1,
+            Math::Mul | Math::Div | Math::Mod => 1,
+            Math::Xor => 2,
         }
     }
 
@@ -55,11 +60,13 @@ impl Precedence for Math {
             Math::Sub => ExprSub::new_as_expr,
             Math::Mul => ExprMul::new_as_expr,
             Math::Div => ExprDiv::new_as_expr,
+            Math::Mod => ExprMod::new_as_expr,
+            Math::Xor => ExprXor::new_as_expr,
         }
     }
 
     fn expected() -> Cow<'static, [Expected]> {
-        Cow::Borrowed(Expected::COMPARE_OP)
+        Cow::Borrowed(Expected::MATH_OP)
     }
 
     fn primitive_parse_fn<'a, 'b, 'i>() -> fn(&mut Parser<'a, 'b, 'i>, Depth) -> Result<&'a Expr<'a, 'i>, InternalError> {
@@ -97,7 +104,7 @@ impl Precedence for BooleanExpr {
     }
 
     fn expected() -> Cow<'static, [Expected]> {
-        Cow::Borrowed(Expected::MATH_OP)
+        Cow::Borrowed(Expected::BOOL_OP)
     }
 
     fn primitive_parse_fn<'a, 'b, 'i>() -> fn(&mut Parser<'a, 'b, 'i>, Depth) -> Result<&'a Expr<'a, 'i>, InternalError> {

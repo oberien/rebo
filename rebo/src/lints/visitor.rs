@@ -1,4 +1,4 @@
-use crate::parser::{ExprLiteral, ExprFormatString, ExprBind, ExprAssign, ExprBoolNot, ExprAdd, ExprSub, ExprMul, ExprDiv, ExprBoolAnd, ExprBoolOr, ExprLessThan, ExprLessEquals, ExprEquals, ExprNotEquals, ExprGreaterEquals, ExprGreaterThan, ExprBlock, ExprVariable, ExprParenthesized, ExprIfElse, ExprMatch, ExprWhile, ExprFunctionCall, ExprFunctionDefinition, ExprStructDefinition, ExprStructInitialization, ExprImplBlock, Expr, ExprFormatStringPart, ExprEnumDefinition, ExprEnumInitialization, ExprAccess, FieldOrMethod, ExprFor, ExprStatic, ExprNeg, ExprAddAssign, ExprSubAssign, ExprMulAssign, ExprDivAssign, ExprBoolAndAssign, ExprBoolOrAssign, ExprLoop, ExprContinue, ExprBreak, ExprReturn};
+use crate::parser::{ExprLiteral, ExprFormatString, ExprBind, ExprAssign, ExprBoolNot, ExprAdd, ExprSub, ExprMul, ExprDiv, ExprMod, ExprXor, ExprBoolAnd, ExprBoolOr, ExprLessThan, ExprLessEquals, ExprEquals, ExprNotEquals, ExprGreaterEquals, ExprGreaterThan, ExprBlock, ExprVariable, ExprParenthesized, ExprIfElse, ExprMatch, ExprWhile, ExprFunctionCall, ExprFunctionDefinition, ExprStructDefinition, ExprStructInitialization, ExprImplBlock, Expr, ExprFormatStringPart, ExprEnumDefinition, ExprEnumInitialization, ExprAccess, FieldOrMethod, ExprFor, ExprStatic, ExprNeg, ExprAddAssign, ExprSubAssign, ExprMulAssign, ExprDivAssign, ExprModAssign, ExprXorAssign, ExprBoolAndAssign, ExprBoolOrAssign, ExprLoop, ExprContinue, ExprBreak, ExprReturn};
 use diagnostic::Diagnostics;
 use crate::common::{MetaInfo, BlockStack, BlockType};
 use crate::ErrorCode;
@@ -22,12 +22,16 @@ pub trait Visitor {
     fn visit_sub(&self, _: &Diagnostics<ErrorCode>, _: &MetaInfo, _: &BlockStack<'_, '_, ()>, _: &ExprSub) {}
     fn visit_mul(&self, _: &Diagnostics<ErrorCode>, _: &MetaInfo, _: &BlockStack<'_, '_, ()>, _: &ExprMul) {}
     fn visit_div(&self, _: &Diagnostics<ErrorCode>, _: &MetaInfo, _: &BlockStack<'_, '_, ()>, _: &ExprDiv) {}
+    fn visit_mod(&self, _: &Diagnostics<ErrorCode>, _: &MetaInfo, _: &BlockStack<'_, '_, ()>, _: &ExprMod) {}
+    fn visit_xor(&self, _: &Diagnostics<ErrorCode>, _: &MetaInfo, _: &BlockStack<'_, '_, ()>, _: &ExprXor) {}
     fn visit_bool_and(&self, _: &Diagnostics<ErrorCode>, _: &MetaInfo, _: &BlockStack<'_, '_, ()>, _: &ExprBoolAnd) {}
     fn visit_bool_or(&self, _: &Diagnostics<ErrorCode>, _: &MetaInfo, _: &BlockStack<'_, '_, ()>, _: &ExprBoolOr) {}
     fn visit_add_assign(&self, _: &Diagnostics<ErrorCode>, _: &MetaInfo, _: &BlockStack<'_, '_, ()>, _: &ExprAddAssign) {}
     fn visit_sub_assign(&self, _: &Diagnostics<ErrorCode>, _: &MetaInfo, _: &BlockStack<'_, '_, ()>, _: &ExprSubAssign) {}
     fn visit_mul_assign(&self, _: &Diagnostics<ErrorCode>, _: &MetaInfo, _: &BlockStack<'_, '_, ()>, _: &ExprMulAssign) {}
     fn visit_div_assign(&self, _: &Diagnostics<ErrorCode>, _: &MetaInfo, _: &BlockStack<'_, '_, ()>, _: &ExprDivAssign) {}
+    fn visit_mod_assign(&self, _: &Diagnostics<ErrorCode>, _: &MetaInfo, _: &BlockStack<'_, '_, ()>, _: &ExprModAssign) {}
+    fn visit_xor_assign(&self, _: &Diagnostics<ErrorCode>, _: &MetaInfo, _: &BlockStack<'_, '_, ()>, _: &ExprXorAssign) {}
     fn visit_bool_and_assign(&self, _: &Diagnostics<ErrorCode>, _: &MetaInfo, _: &BlockStack<'_, '_, ()>, _: &ExprBoolAndAssign) {}
     fn visit_bool_or_assign(&self, _: &Diagnostics<ErrorCode>, _: &MetaInfo, _: &BlockStack<'_, '_, ()>, _: &ExprBoolOrAssign) {}
     fn visit_less_than(&self, _: &Diagnostics<ErrorCode>, _: &MetaInfo, _: &BlockStack<'_, '_, ()>, _: &ExprLessThan) {}
@@ -140,6 +144,16 @@ impl<'a, 'b, 'i, 'v> VisitorDriver<'a, 'b, 'i, 'v> {
                 self.visit_expr(div.a);
                 self.visit_expr(div.b);
             }
+            Expr::Mod(m) => {
+                visit!(self, visit_mod, m);
+                self.visit_expr(m.a);
+                self.visit_expr(m.b);
+            }
+            Expr::Xor(xor) => {
+                visit!(self, visit_xor, xor);
+                self.visit_expr(xor.a);
+                self.visit_expr(xor.b);
+            }
             Expr::BoolAnd(bool_and) => {
                 visit!(self, visit_bool_and, bool_and);
                 self.visit_expr(bool_and.a);
@@ -165,6 +179,14 @@ impl<'a, 'b, 'i, 'v> VisitorDriver<'a, 'b, 'i, 'v> {
             Expr::DivAssign(div) => {
                 visit!(self, visit_div_assign, div);
                 self.visit_expr(div.expr);
+            }
+            Expr::ModAssign(m) => {
+                visit!(self, visit_mod_assign, m);
+                self.visit_expr(m.expr);
+            }
+            Expr::XorAssign(xor) => {
+                visit!(self, visit_xor_assign, xor);
+                self.visit_expr(xor.expr);
             }
             Expr::BoolAndAssign(bool_and) => {
                 visit!(self, visit_bool_and_assign, bool_and);
