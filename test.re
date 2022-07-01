@@ -18,6 +18,8 @@ assert(5 - -5 - 10 == 0);
 assert(0b1 + 0x2 * 3 * 4 == 25);
 assert_eq(1 ^ 3, 2);
 assert_eq(5 % 2, 1);
+assert_eq(float::to_bits(0.0), 0);
+assert_eq(float::from_bits(0x4060B66666666666), 133.7);
 let a = 0;
 let mut a = a + 1;
 let mut c = add_one(a);
