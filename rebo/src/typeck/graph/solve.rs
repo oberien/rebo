@@ -79,7 +79,7 @@ impl<'i> Graph<'i> {
                     Constraint::MethodCallReturnType(name, call_index) => {
                         self.method_call_ret(&mut todos, edge_index, meta_info, source, node, &name, call_index);
                     }
-                    Constraint::Generic => (),
+                    Constraint::Generic | Constraint::GenericEqSource => (),
                 };
                 // self.dot();
             }
@@ -126,6 +126,7 @@ impl<'i> Graph<'i> {
             if expected != gotten.span() {
                 let synthetic = Node::synthetic(expected);
                 self.add_node(synthetic);
+                self.add_generic_constraint(field_node, synthetic);
                 self.add_eq_constraint(gotten, synthetic);
                 function_generics.insert_generic(synthetic);
             }
@@ -159,7 +160,7 @@ impl<'i> Graph<'i> {
                 return None;
             }
         };
-        self.get_function_generics(fn_typ, None, call_index)
+        self.get_function_generics(source_node, fn_typ, None, call_index)
     }
     fn get_method_function_generics<'a>(&mut self, meta_info: &'a MetaInfo, source_node: Node, method_name: &str, call_index: u64) -> Option<(FunctionGenerics, FunctionType)> {
         let possible_types = &self.possible_types[&source_node];
@@ -175,9 +176,9 @@ impl<'i> Graph<'i> {
             None => return None,
         };
 
-        self.get_function_generics(fn_typ, Some(typ), call_index)
+        self.get_function_generics(source_node, fn_typ, Some(typ), call_index)
     }
-    fn get_function_generics(&mut self, fn_typ: FunctionType, typ: Option<ResolvableSpecificType>, call_index: u64) -> Option<(FunctionGenerics, FunctionType)> {
+    fn get_function_generics(&mut self, source_node: Node, fn_typ: FunctionType, typ: Option<ResolvableSpecificType>, call_index: u64) -> Option<(FunctionGenerics, FunctionType)> {
         // function generics
         let default_function_generics = FunctionGenerics::new();
         if let Some(typ) = typ {
@@ -191,6 +192,7 @@ impl<'i> Graph<'i> {
             }
             let node = Node::synthetic(generic_span);
             self.add_node(node);
+            self.add_generic_constraint(source_node, node);
             default_function_generics.insert_generic(node);
         }
         let function_generics = self.method_function_generics.entry(call_index)
@@ -268,7 +270,7 @@ impl<'i> Graph<'i> {
             return;
         }
 
-        // check generics
+        // sanity check generics
         let reduce_generic = reduce.iter().filter_map(|typ| match typ {
             ResolvableSpecificType::UnUnifyableGeneric(span) => Some(*span),
             _ => None,
@@ -284,7 +286,8 @@ impl<'i> Graph<'i> {
             assert_eq!(possible_types.0.len(), 1);
         }
 
-        // handle generics
+        // handle ununifyable generics
+
         // make sure all branches are covered
         struct Unit;
         let _: Unit = match (self_generic, reduce_generic) {
@@ -317,6 +320,8 @@ impl<'i> Graph<'i> {
             (None, None) => Unit,
         };
 
+        // handle rest
+
         fn function_types_unifyable(f1: &FunctionType, f2: &FunctionType) -> bool {
             let FunctionType { is_method: _, generics: generics1, args: args1, ret: ret1 } = f1;
             let FunctionType { is_method: _, generics: generics2, args: args2, ret: ret2 } = f2;
@@ -342,7 +347,6 @@ impl<'i> Graph<'i> {
                 && type_equal(ret1, ret2)
         }
 
-        // handle rest
         let mut reduced = Vec::new();
         for typ in &possible_types.0.clone() {
             match typ {
@@ -381,6 +385,8 @@ impl<'i> Graph<'i> {
                         (a, a_generics, Some((b, b_generics))) if a == b => {
                             for (&ag, &bg) in a_generics.iter().zip(b_generics).filter(|(ag, bg)| ag != bg) {
                                 self.add_eq_constraint(ag, bg);
+                                self.add_generic_eq_source_constraint(node, ag);
+                                self.add_generic_eq_source_constraint(node, bg);
                                 todos.add_single(ag);
                                 todos.add_single(bg);
                             }
@@ -401,6 +407,8 @@ impl<'i> Graph<'i> {
                         (a, a_generics, Some((b, b_generics))) if a == b => {
                             for (&ag, &bg) in a_generics.iter().zip(b_generics).filter(|(ag, bg)| ag != bg) {
                                 self.add_eq_constraint(ag, bg);
+                                self.add_generic_eq_source_constraint(node, ag);
+                                self.add_generic_eq_source_constraint(node, bg);
                                 todos.add_single(ag);
                                 todos.add_single(bg);
                             }

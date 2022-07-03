@@ -742,6 +742,7 @@ impl<'i> Graph<'i> {
                             for (gen, _) in &generics {
                                 let synthetic = Node::synthetic(*gen);
                                 self.add_node(synthetic);
+                                self.add_generic_constraint(node, synthetic);
                                 ctx.function_generics.insert_generic(synthetic);
                             }
                             let typ = SpecificType::Enum(Cow::Owned(variant.enum_name.ident.to_string()), CowVec::Owned(generics));
@@ -815,6 +816,7 @@ impl<'i> Graph<'i> {
 
                 let synthetic = Node::synthetic(list_t);
                 self.add_node(synthetic);
+                self.add_generic_constraint(node, synthetic);
                 self.add_reduce_constraint(node, expr_node, vec![ResolvableSpecificType::Struct("List".to_string(), vec![synthetic])]);
                 self.add_eq_constraint(binding_node, synthetic);
                 self.add_reduce_constraint(node, block_node, vec![ResolvableSpecificType::Unit]);
@@ -894,6 +896,7 @@ impl<'i> Graph<'i> {
                 for (span, _) in &generics {
                     let synthetic = Node::synthetic(*span);
                     self.add_node(synthetic);
+                    self.add_generic_constraint(node, synthetic);
                     ctx.function_generics.insert_generic(synthetic);
                 }
                 ctx.function_generics.apply_specific_type_reduce(node, node, &typ, self);
@@ -908,6 +911,7 @@ impl<'i> Graph<'i> {
                 for (span, _) in &generics {
                     let synthetic = Node::synthetic(*span);
                     self.add_node(synthetic);
+                    self.add_generic_constraint(node, synthetic);
                     ctx.function_generics.insert_generic(synthetic);
                 }
                 let typ = SpecificType::Enum(Cow::Owned(enum_init.enum_name.ident.to_string()), CowVec::Owned(generics));
@@ -1031,8 +1035,11 @@ impl<'i> Graph<'i> {
         self.add_nonduplicate_edge(source, method_call_node, Constraint::MethodCallReturnType(method_name, method_call_index));
     }
 
-    fn add_generic_constraint(&mut self, from: Node, to: Node) {
+    pub(super) fn add_generic_constraint(&mut self, from: Node, to: Node) {
         self.add_nonduplicate_edge(from, to, Constraint::Generic);
+    }
+    pub(super) fn add_generic_eq_source_constraint(&mut self, from: Node, to: Node) {
+        self.add_nonduplicate_edge(from, to, Constraint::GenericEqSource);
     }
 
     fn add_nonduplicate_edge(&mut self, from: Node, to: Node, constraint: Constraint) {

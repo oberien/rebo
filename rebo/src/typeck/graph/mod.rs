@@ -90,6 +90,8 @@ pub enum Constraint {
     MethodCallReturnType(String, u64),
     /// can be ignored for everything, just there to make the graph look better
     Generic,
+    /// for type error messages: indicates where the equality between two generics stems from
+    GenericEqSource,
 }
 impl Display for Constraint {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
@@ -106,6 +108,7 @@ impl Display for Constraint {
             Constraint::MethodCallArg(name, idx, arg) => write!(f, "{}[{}]({})", name, idx, arg),
             Constraint::MethodCallReturnType(name, idx) => write!(f, "{}[{}](...) -> ret", name, idx),
             Constraint::Generic => write!(f, "Generic"),
+            Constraint::GenericEqSource => write!(f, "GenericEqSource"),
         }
     }
 }

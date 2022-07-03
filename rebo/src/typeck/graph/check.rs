@@ -5,7 +5,7 @@ use crate::common::MetaInfo;
 use crate::error_codes::ErrorCode;
 use itertools::Itertools;
 use crate::typeck::types::{Type, SpecificType, ResolvableSpecificType};
-use std::collections::HashSet;
+use std::collections::{HashSet, VecDeque};
 use crate::util::CowVec;
 
 impl<'i> Graph<'i> {
@@ -58,11 +58,13 @@ impl<'i> Graph<'i> {
             diagnostics.error(ErrorCode::UnableToInferType)
                 .with_error_label(node.span(), "can't infer this type")
         } else {
+            // TODO: unreachable branch?
             diagnostics.error(ErrorCode::TypeConflict)
                 .with_error_label(node.span(), "can't infer this type")
                 .with_info_label(node.span(), "must be a single type")
                 .with_info_label(node.span(), format!("inferred `{}`", types.iter().join(", ")))
         };
+        let mut visited_generic_eq_sources = HashSet::new();
         for (_, constraint, incoming) in self.incoming(node) {
             let msg = match constraint {
                 Constraint::Eq => format!("must have same type as this (`{}`)", self.possible_types(incoming).iter().join(", ")),
@@ -156,9 +158,25 @@ impl<'i> Graph<'i> {
                         }
                     }
                 }
-                Constraint::Generic => continue,
+                Constraint::Generic | Constraint::GenericEqSource => continue,
             };
             diag = diag.with_info_label(incoming.span(), msg);
+
+            // improve error messages of generics
+            let mut todo = VecDeque::new();
+            todo.push_back(incoming);
+            while let Some(node) = todo.pop_front() {
+                for (_edge_index, constraint, node) in self.incoming(node) {
+                    if constraint != Constraint::GenericEqSource {
+                        continue;
+                    }
+                    if !visited_generic_eq_sources.contains(&node) {
+                        visited_generic_eq_sources.insert(node);
+                        todo.push_back(node);
+                        diag = diag.with_info_label(node.span(), "used here");
+                    }
+                }
+            }
         }
         diag.emit();
         None
