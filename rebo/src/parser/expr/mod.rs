@@ -341,15 +341,15 @@ pub enum Expr<'a, 'i> {
     Access(ExprAccess<'a, 'i>),
     /// (expr)
     Parenthesized(ExprParenthesized<'a, 'i>),
-    /// if expr {...} else if {...} else if {...} else {...}
+    /// if expr {...} else if expr {...} else if expr {...} else {...}
     IfElse(ExprIfElse<'a, 'i>),
     /// match expr { pat => expr, pat => expr, ... }
     Match(ExprMatch<'a, 'i>),
-    /// while expr {...}
+    /// 'label: while expr {...}
     While(ExprWhile<'a, 'i>),
-    /// for binding in expr {...}
+    /// 'label: for binding in expr {...}
     For(ExprFor<'a, 'i>),
-    /// loop {...}
+    /// 'label: loop {...}
     Loop(ExprLoop<'a, 'i>),
     /// break 'label expr
     Break(ExprBreak<'a, 'i>),
@@ -357,9 +357,9 @@ pub enum Expr<'a, 'i> {
     Continue(ExprContinue<'i>),
     /// return expr
     Return(ExprReturn<'a, 'i>),
-    /// (ident::)*ident(expr, expr, ...)
+    /// (ident::)?ident(expr, expr, ...)
     FunctionCall(ExprFunctionCall<'a, 'i>),
-    /// fn ident(ident: typ, ident: typ, ...) -> typ { expr... }
+    /// fn ident(pat: typ, pat: typ, ...) -> typ { expr... }
     FunctionDefinition(ExprFunctionDefinition<'a, 'i>),
     /// struct ident { ident: typ, ident: typ, ... }
     StructDefinition(ExprStructDefinition<'a, 'i>),
@@ -370,7 +370,7 @@ pub enum Expr<'a, 'i> {
     // enum tuple-variant initialization is handled with an associated function
     /// C-Like enum variants: ident::ident
     EnumInitialization(ExprEnumInitialization<'i>),
-    /// impl name { fn foo(...) {...} fn bar(self, ...) {...} }
+    /// impl ident { fn foo(...) {...} fn bar(self, ...) {...} ... }
     ImplBlock(ExprImplBlock<'a, 'i>),
 }
 impl<'a, 'i> Spanned for Expr<'a, 'i> {

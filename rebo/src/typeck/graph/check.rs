@@ -64,7 +64,6 @@ impl<'i> Graph<'i> {
                 .with_info_label(node.span(), "must be a single type")
                 .with_info_label(node.span(), format!("inferred `{}`", types.iter().join(", ")))
         };
-        let mut visited_generic_eq_sources = HashSet::new();
         for (_, constraint, incoming) in self.incoming(node) {
             let msg = match constraint {
                 Constraint::Eq => format!("must have same type as this (`{}`)", self.possible_types(incoming).iter().join(", ")),
@@ -161,20 +160,21 @@ impl<'i> Graph<'i> {
                 Constraint::Generic | Constraint::GenericEqSource => continue,
             };
             diag = diag.with_info_label(incoming.span(), msg);
+        }
 
-            // improve error messages of generics
-            let mut todo = VecDeque::new();
-            todo.push_back(incoming);
-            while let Some(node) = todo.pop_front() {
-                for (_edge_index, constraint, node) in self.incoming(node) {
-                    if constraint != Constraint::GenericEqSource {
-                        continue;
-                    }
-                    if !visited_generic_eq_sources.contains(&node) {
-                        visited_generic_eq_sources.insert(node);
-                        todo.push_back(node);
-                        diag = diag.with_info_label(node.span(), "used here");
-                    }
+        // improve error messages of generics
+        let mut visited_generic_eq_sources = HashSet::new();
+        let mut todo = VecDeque::new();
+        todo.push_back(node);
+        while let Some(node) = todo.pop_front() {
+            for (_edge_index, constraint, node) in self.incoming(node) {
+                if constraint != Constraint::GenericEqSource {
+                    continue;
+                }
+                if !visited_generic_eq_sources.contains(&node) {
+                    visited_generic_eq_sources.insert(node);
+                    todo.push_back(node);
+                    diag = diag.with_info_label(node.span(), "used here");
                 }
             }
         }
