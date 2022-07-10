@@ -17,6 +17,12 @@ static CALL_INDEX: AtomicU64 = AtomicU64::new(0);
 #[derive(Clone)]
 pub(super) struct FunctionGenerics {
     /// ununifyable generics within function definitions
+    ///
+    /// When visting a function's body, the generics of that function must not
+    /// unify with any other type. For example `fn foo<T>(t: T) -> int { t }`
+    /// must produce an error because `T` isn't guaranteed to be `int`.
+    /// Thus, within a function body, all generics of that function must
+    /// be represented by an ununifyable generic type.
     ununifyable: Rc<RefCell<Vec<Span>>>,
     /// generics of a called function
     generic_nodes: Rc<RefCell<Vec<Vec<Node>>>>,
@@ -69,18 +75,18 @@ impl FunctionGenerics {
     pub(super) fn get_generic(&self, span: Span) -> Option<Node> {
         self.generics().find(|n| n.span() == span)
     }
-    pub(super) fn apply_type_reduce(&self, from: Node, to: Node, typ: &Type, graph: &mut Graph) {
+    pub(super) fn apply_type_reduce(&self, source: Node, from: Node, to: Node, typ: &Type, graph: &mut Graph) {
         match typ {
             Type::Top | Type::Bottom | Type::UntypedVarargs => (),
             Type::TypedVarargs(specific)
-            | Type::Specific(specific) => self.apply_specific_type_reduce(from, to, specific, graph),
+            | Type::Specific(specific) => self.apply_specific_type_reduce(source, from, to, specific, graph),
         }
     }
-    pub(super) fn apply_specific_type_reduce(&self, from: Node, to: Node, typ: &SpecificType, graph: &mut Graph) {
-        self.apply_specific_type_reduce_internal(from, to, typ, graph);
+    pub(super) fn apply_specific_type_reduce(&self, source: Node, from: Node, to: Node, typ: &SpecificType, graph: &mut Graph) {
+        self.apply_specific_type_reduce_internal(source, from, to, typ, graph);
         // graph.dot();
     }
-    fn apply_specific_type_reduce_internal(&self, from: Node, to: Node, typ: &SpecificType, graph: &mut Graph) {
+    fn apply_specific_type_reduce_internal(&self, source: Node, from: Node, to: Node, typ: &SpecificType, graph: &mut Graph) {
         let (type_constructor, generics, name): (fn(_, _) -> _, _, _) =  match typ {
             SpecificType::Unit => { graph.add_reduce_constraint(from, to, vec![ResolvableSpecificType::Unit]); return },
             SpecificType::Bool => { graph.add_reduce_constraint(from, to, vec![ResolvableSpecificType::Bool]); return },
@@ -103,6 +109,8 @@ impl FunctionGenerics {
                 return;
             } else if let Some(node) = self.get_generic(span) {
                 graph.add_generic_constraint(from, node);
+                graph.add_generic_eq_source_constraint(source, to);
+                graph.add_generic_eq_source_constraint(source, node);
                 graph.add_eq_constraint(to, node);
                 return;
             } else {
@@ -115,7 +123,7 @@ impl FunctionGenerics {
         for (span, generic) in generics {
             let synthetic = Node::synthetic(*span);
             graph.add_node(synthetic);
-            self.apply_type_reduce(synthetic, synthetic, generic, graph);
+            self.apply_type_reduce(source, synthetic, synthetic, generic, graph);
             graph.add_generic_constraint(from, synthetic);
             resolvable_generics.push(synthetic);
         }
@@ -549,7 +557,7 @@ impl<'i> Graph<'i> {
                         let var_node = Node::type_var(binding.ident.span);
                         self.add_node(var_node);
                         let typ = convert_expr_type(typ, ctx.diagnostics, ctx.meta_info);
-                        ctx.function_generics.apply_type_reduce(var_node, var_node, &typ, self);
+                        ctx.function_generics.apply_type_reduce(var_node, var_node, var_node, &typ, self);
                         var_node
                     }
                     ExprPattern::Untyped(ExprPatternUntyped { binding }) => {
@@ -746,7 +754,7 @@ impl<'i> Graph<'i> {
                                 ctx.function_generics.insert_generic(synthetic);
                             }
                             let typ = SpecificType::Enum(Cow::Owned(variant.enum_name.ident.to_string()), CowVec::Owned(generics));
-                            ctx.function_generics.apply_specific_type_reduce(pat_node, pat_node, &typ, self);
+                            ctx.function_generics.apply_specific_type_reduce(pat_node, pat_node, pat_node, &typ, self);
                             self.add_eq_constraint(expr_node, pat_node);
 
                             let repeat_top = std::iter::repeat(&Type::Top);
@@ -770,7 +778,7 @@ impl<'i> Graph<'i> {
                                 let field_binding_node = Node::type_var(field_binding.ident.span);
                                 // always add all field type-vars even for unknown enums / variants
                                 self.add_node(field_binding_node);
-                                ctx.function_generics.apply_type_reduce(pat_node, field_binding_node, expected_type, self);
+                                ctx.function_generics.apply_type_reduce(pat_node, pat_node, field_binding_node, expected_type, self);
                             }
                         }
                         ExprMatchPattern::Binding(binding) => {
@@ -899,9 +907,9 @@ impl<'i> Graph<'i> {
                     self.add_generic_constraint(node, synthetic);
                     ctx.function_generics.insert_generic(synthetic);
                 }
-                ctx.function_generics.apply_specific_type_reduce(node, node, &typ, self);
+                ctx.function_generics.apply_specific_type_reduce(node, node, node, &typ, self);
                 for (expr_node, expected_type) in field_nodes {
-                    ctx.function_generics.apply_type_reduce(struct_def_node, expr_node, expected_type, self);
+                    ctx.function_generics.apply_type_reduce(struct_def_node, struct_def_node, expr_node, expected_type, self);
                 }
             }
             Expr::EnumDefinition(_) => self.add_reduce_constraint(node, node, vec![ResolvableSpecificType::Unit]),
@@ -915,7 +923,7 @@ impl<'i> Graph<'i> {
                     ctx.function_generics.insert_generic(synthetic);
                 }
                 let typ = SpecificType::Enum(Cow::Owned(enum_init.enum_name.ident.to_string()), CowVec::Owned(generics));
-                ctx.function_generics.apply_specific_type_reduce(node, node, &typ, self);
+                ctx.function_generics.apply_specific_type_reduce(node, node, node, &typ, self);
             },
             Expr::ImplBlock(ExprImplBlock { functions, .. }) => {
                 for function in functions {
@@ -957,7 +965,7 @@ impl<'i> Graph<'i> {
             let arg_node = Node::type_var(binding.ident.span);
             self.add_node(arg_node);
             let arg_type = convert_expr_type(typ, ctx.diagnostics, ctx.meta_info);
-            ctx.function_generics.apply_type_reduce(arg_node, arg_node, &arg_type, self);
+            ctx.function_generics.apply_type_reduce(arg_node, arg_node, arg_node, &arg_type, self);
         }
 
         let body_node = Node::type_var(body.span());
@@ -967,7 +975,7 @@ impl<'i> Graph<'i> {
         assert_eq!(body_node, body_node2);
         if let Some((_arrow, ret_type)) = &sig.ret_type {
             let ret_type = convert_expr_type(ret_type, ctx.diagnostics, ctx.meta_info);
-            ctx.function_generics.apply_type_reduce(node, body_node, &ret_type, self);
+            ctx.function_generics.apply_type_reduce(node, node, body_node, &ret_type, self);
         }
         if sig.name.is_some() {
             self.add_reduce_constraint(node, node, vec![ResolvableSpecificType::Unit]);

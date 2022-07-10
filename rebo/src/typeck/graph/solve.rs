@@ -127,6 +127,8 @@ impl<'i> Graph<'i> {
                 let synthetic = Node::synthetic(expected);
                 self.add_node(synthetic);
                 self.add_generic_constraint(field_node, synthetic);
+                self.add_generic_eq_source_constraint(field_node, gotten);
+                self.add_generic_eq_source_constraint(field_node, synthetic);
                 self.add_eq_constraint(gotten, synthetic);
                 function_generics.insert_generic(synthetic);
             }
@@ -145,7 +147,7 @@ impl<'i> Graph<'i> {
         todos.add(self, field_node);
 
         self.graph.remove_edge(edge_index);
-        function_generics.apply_type_reduce(struct_node, field_node, typ, self);
+        function_generics.apply_type_reduce(struct_node, struct_node, field_node, typ, self);
     }
     fn get_function_function_generics(&mut self, source_node: Node, call_index: u64) -> Option<(FunctionGenerics, FunctionType)> {
         let possible_types = &mut self.possible_types[&source_node];
@@ -214,7 +216,7 @@ impl<'i> Graph<'i> {
         };
 
         self.graph.remove_edge(edge_index);
-        function_generics.apply_type_reduce(source, function_call, &fn_typ.ret, self);
+        function_generics.apply_type_reduce(function_call, source, function_call, &fn_typ.ret, self);
         todos.add(self, source);
         todos.add(self, function_call);
         for generic in function_generics.generics() {
@@ -237,7 +239,7 @@ impl<'i> Graph<'i> {
         };
 
         self.graph.remove_edge(edge_index);
-        function_generics.apply_type_reduce(field_access, method_call, &fn_typ.ret, self);
+        function_generics.apply_type_reduce(method_call, field_access, method_call, &fn_typ.ret, self);
         todos.add(self, field_access);
         todos.add(self, method_call);
         for generic in function_generics.generics() {
@@ -255,7 +257,7 @@ impl<'i> Graph<'i> {
         };
 
         self.graph.remove_edge(edge_index);
-        function_generics.apply_type_reduce(source, arg, expected_arg_type, self);
+        function_generics.apply_type_reduce(arg, source, arg, expected_arg_type, self);
         todos.add(self, source);
         todos.add(self, arg);
         for generic in function_generics.generics() {
@@ -384,9 +386,9 @@ impl<'i> Graph<'i> {
                         | (name, generics, Some(("struct", _))) => reduced.push(ResolvableSpecificType::Struct(name.to_string(), generics.clone())),
                         (a, a_generics, Some((b, b_generics))) if a == b => {
                             for (&ag, &bg) in a_generics.iter().zip(b_generics).filter(|(ag, bg)| ag != bg) {
-                                self.add_eq_constraint(ag, bg);
                                 self.add_generic_eq_source_constraint(node, ag);
                                 self.add_generic_eq_source_constraint(node, bg);
+                                self.add_eq_constraint(ag, bg);
                                 todos.add_single(ag);
                                 todos.add_single(bg);
                             }
@@ -406,9 +408,9 @@ impl<'i> Graph<'i> {
                         | (name, generics, Some(("enum", _))) => reduced.push(ResolvableSpecificType::Enum(name.to_string(), generics.clone())),
                         (a, a_generics, Some((b, b_generics))) if a == b => {
                             for (&ag, &bg) in a_generics.iter().zip(b_generics).filter(|(ag, bg)| ag != bg) {
-                                self.add_eq_constraint(ag, bg);
                                 self.add_generic_eq_source_constraint(node, ag);
                                 self.add_generic_eq_source_constraint(node, bg);
+                                self.add_eq_constraint(ag, bg);
                                 todos.add_single(ag);
                                 todos.add_single(bg);
                             }
