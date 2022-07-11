@@ -673,19 +673,22 @@ impl<'i> Graph<'i> {
             Expr::Block(block) => {
                 assert_eq!(self.visit_block(ctx, block), node);
             }
-            Expr::Variable(ExprVariable { binding, .. }) => {
-                let var_node = Node::type_var(binding.ident.span);
+            Expr::Variable(var @ ExprVariable { binding, .. }) => {
+                let binding_node = Node::type_var(binding.ident.span);
+                assert_eq!(node, Node::type_var(var.span()));
+                let var_node = node;
+                self.add_node(binding_node);
                 self.add_node(var_node);
-                self.add_unidirectional_eq_constraint(var_node, node);
+                self.add_eq_constraint(var_node, binding_node);
                 return var_node;
             }
             Expr::Access(ExprAccess { variable, accesses, .. }) => {
-                let var_node = Node::type_var(variable.span());
                 let binding_node = Node::type_var(variable.binding.ident.span);
-                self.add_node(var_node);
+                let var_node = Node::type_var(variable.span());
                 self.add_node(binding_node);
-                self.add_unidirectional_eq_constraint(binding_node, var_node);
-                let mut access_node = binding_node;
+                self.add_node(var_node);
+                self.add_eq_constraint(binding_node, var_node);
+                let mut access_node = var_node;
                 for access in accesses {
                     access_node = match access {
                         FieldOrMethod::Field(field) => {
@@ -946,7 +949,7 @@ impl<'i> Graph<'i> {
         }
         match (terminated_with_semicolon, last) {
             (true, _) | (false, None) => self.add_reduce_constraint(node, node, vec![ResolvableSpecificType::Unit]),
-            (false, Some(var)) => self.add_eq_constraint(node, var),
+            (false, Some(last)) => self.add_eq_constraint(node, last),
         }
         node
     }
@@ -987,16 +990,22 @@ impl<'i> Graph<'i> {
 
     fn visit_expr_assign_lhs(&mut self, lhs: &ExprAssignLhs) -> Node {
         match lhs {
-            ExprAssignLhs::Variable(ExprVariable { binding, .. }) => {
-                let var_node = Node::type_var(binding.ident.span);
+            ExprAssignLhs::Variable(var @ ExprVariable { binding, .. }) => {
+                let binding_node = Node::type_var(binding.ident.span);
+                let var_node = Node::type_var(var.span());
+                self.add_node(binding_node);
                 self.add_node(var_node);
+                self.add_eq_constraint(binding_node, var_node);
                 var_node
             }
-            ExprAssignLhs::FieldAccess(ExprFieldAccess { variable: ExprVariable { binding, .. }, fields, .. }) => {
-                let var_node = Node::type_var(binding.ident.span);
+            ExprAssignLhs::FieldAccess(ExprFieldAccess { variable: var @ ExprVariable { binding, .. }, fields, .. }) => {
+                let binding_node = Node::type_var(binding.ident.span);
+                let var_node = Node::type_var(var.span());
                 let field_node = Node::type_var(lhs.span());
+                self.add_node(binding_node);
                 self.add_node(var_node);
                 self.add_node(field_node);
+                self.add_eq_constraint(binding_node, var_node);
                 let fields = fields.iter().map(|ident| ident.ident.to_string()).collect();
                 self.add_field_access(var_node, field_node, fields);
                 field_node
@@ -1016,9 +1025,6 @@ impl<'i> Graph<'i> {
     pub(super) fn add_eq_constraint(&mut self, from: Node, to: Node) {
         self.add_nonduplicate_edge(from, to, Constraint::Eq);
         self.add_nonduplicate_edge(to, from, Constraint::Eq);
-    }
-    fn add_unidirectional_eq_constraint(&mut self, from: Node, to: Node) {
-        self.add_nonduplicate_edge(from, to, Constraint::Eq);
     }
 
     fn add_reduce_constraint(&mut self, from: Node, to: Node, reduce: Vec<ResolvableSpecificType>) {
