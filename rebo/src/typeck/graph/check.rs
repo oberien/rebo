@@ -159,27 +159,85 @@ impl<'i> Graph<'i> {
                 }
                 Constraint::Generic | Constraint::GenericEqSource => continue,
             };
-            diag = diag.with_info_label(incoming.span(), msg);
+            let normalized = self.normalize(incoming);
+            diag = diag.with_info_label(normalized.span(), msg);
         }
 
-        // improve error messages of generics
-        let mut visited_generic_eq_sources = HashSet::new();
-        let mut todo = VecDeque::new();
-        todo.push_back(node);
-        while let Some(node) = todo.pop_front() {
-            for (_edge_index, constraint, node) in self.incoming(node) {
-                if constraint != Constraint::GenericEqSource {
-                    continue;
-                }
-                if !visited_generic_eq_sources.contains(&node) {
-                    visited_generic_eq_sources.insert(node);
-                    todo.push_back(node);
-                    diag = diag.with_info_label(node.span(), "used here");
+        diag.emit();
+        None
+    }
+
+    /// Normalize nodes before being used in diagnostics.
+    ///
+    /// When generic nodes are used in diagnostics, they shouldn't be shown when displaying
+    /// sources of the errors.
+    /// Type conflicts in generics always happen because two nodes representing the same generic
+    /// have an equal constraint but different types.
+    /// Displaying one of them as the error and the other as the source of the error results
+    /// in both messages just being highlighted on the generic in the original type instead
+    /// of where the type is actually used.
+    /// Take the following code:
+    /// ```rust,ignore
+    /// fn foo(l: List<int>) {}
+    /// fn bar(l: List<float>) {}
+    /// let mut list = List::new();
+    /// foo(list);
+    /// bar(list);
+    /// ```
+    /// The error diagnostic would be
+    /// ```rust,ignore
+    /// error[0012]: unable to infer type
+    ///   ┌─ external-List.re:1:13
+    ///   │
+    /// 1 │ struct List<T> {
+    ///   │             ^
+    ///   │             │
+    ///   │             can't infer this type
+    ///   │             this means it can only be `int`
+    ///   │             must have same type as this (`float`)
+    /// ```
+    /// This diagnostic doesn't show where the actual error occurred in the code in
+    /// possibly thousands of lines of code.
+    ///
+    /// To resolve this problem, when displaying the sources of why there was a type error,
+    /// we normalize generic nodes to instead show the usage which resulted in the type error
+    /// of the generic in the diagnostic.
+    fn normalize(&self, node: Node) -> Node {
+        match node {
+            // early return on non-generics
+            Node::TypeVar(_) => return node,
+            Node::Synthetic(..) => (),
+        }
+
+        // start from all nodes with a `GenericEqSource` as those are usages of the generic
+        // which produced the equal constraint which resulted in the type error.
+        let incoming_generic_eq_source = self.incoming(node).into_iter().filter_map(|(_ix, constraint, node)| match constraint {
+            Constraint::GenericEqSource => Some(node),
+            _ => None,
+        });
+        let mut visited = HashSet::new();
+        let mut todo: VecDeque<_> = incoming_generic_eq_source.collect();
+
+        // breadth-first-search over `Eq` edges to find an incoming `Reduce` containing the generic_id
+        while let Some(current) = todo.pop_front() {
+            for (_edge_index, constraint, incoming) in self.incoming(current) {
+                match constraint {
+                    Constraint::Eq => {
+                        if !visited.contains(&incoming) {
+                            visited.insert(incoming);
+                            todo.push_back(incoming);
+                        }
+                    },
+                    Constraint::Reduce(reduce) => {
+                        if reduce.iter().any(|typ| typ.generics().contains(&node)) {
+                            return current;
+                        }
+                    }
+                    _ => (),
                 }
             }
         }
-        diag.emit();
-        None
+        node
     }
 
     fn possible_types(&self, node: Node) -> &[ResolvableSpecificType] {
