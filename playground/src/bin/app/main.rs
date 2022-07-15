@@ -222,7 +222,7 @@ fn load_fragment_code() -> Option<String> {
 fn worker_new() -> Worker {
     let window = window().expect("can't get window()");
     let origin = window.location().origin().expect("can't get origin()");
-    let url = format!("{}/worker.js", origin);
+    let url = format!("{}/worker-start.js", origin);
 
     Worker::new(&url).expect("failed to spawn worker")
 }

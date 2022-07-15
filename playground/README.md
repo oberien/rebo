@@ -4,7 +4,6 @@
 
 * `rustup target add wasm32-unknown-unknown`
 * `cargo install trunk --git https://github.com/oberien/trunk --branch master`
-    * <https://github.com/thedodd/trunk/pull/285>
     * <https://github.com/thedodd/trunk/pull/322>
 * `trunk serve`
 
