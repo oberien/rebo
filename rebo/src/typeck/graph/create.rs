@@ -859,8 +859,11 @@ impl<'i> Graph<'i> {
                 // return returns bottom, which is top during type resolution, which is the default
             }
             Expr::FunctionCall(ExprFunctionCall { name, args, .. }) => {
-                let var_node = Node::type_var(name.binding.ident.span);
+                let binding_node = Node::type_var(name.binding.ident.span);
+                let var_node = Node::type_var(name.span());
+                self.add_node(binding_node);
                 self.add_node(var_node);
+                self.add_eq_constraint(binding_node, var_node);
                 if let Some(name) = ctx.meta_info.function_bindings.get(&name.binding) {
                     if let Some(fun) = ctx.meta_info.function_types.get(name.as_str()) {
                         self.add_reduce_constraint(var_node, var_node, vec![ResolvableSpecificType::Function(Some(fun.clone()))]);

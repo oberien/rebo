@@ -1,5 +1,5 @@
 use std::borrow::Cow;
-use diagnostic::Diagnostics;
+use diagnostic::{DiagnosticBuilder, Diagnostics};
 use crate::typeck::graph::{Graph, Constraint, Node};
 use crate::common::MetaInfo;
 use crate::error_codes::ErrorCode;
@@ -167,87 +167,7 @@ impl<'i> Graph<'i> {
             };
             let normalized = self.normalize(incoming);
             diag = diag.with_info_label(normalized.span(), msg);
-            let range = Range {
-                start: (normalized.span().file, normalized.span().start),
-                end: (normalized.span().file, normalized.span().end),
-            };
-            // if the node is used within a function or method call, display the signature of the
-            // function as well
-            'expr: for element in meta_info.expression_spans.query(range) {
-                let (function_name, def_span) = match element.value {
-                    Expr::FunctionCall(call) => {
-                        let node = Node::type_var(call.name.binding.ident.span);
-                        let possible_types = &self.possible_types[&node];
-                        if possible_types.len() != 1 {
-                            continue;
-                        }
-                        let typ = &possible_types.0[0];
-                        match typ {
-                            ResolvableSpecificType::Function(Some(_fn_typ)) => (),
-                            _ => continue,
-                        };
-
-                        let mut visited = HashSet::new();
-                        let mut todo: VecDeque<_> = VecDeque::new();
-                        todo.push_back(node);
-
-                        // breadth-first search over `Eq`-edges to find the function-definition
-                        // node (which has a self-reduce edge to our type)
-                        'bfsearch: loop {
-                            let current = match todo.pop_front() {
-                                Some(current) => current,
-                                None => continue 'expr,
-                            };
-                            for (_edge_index, constraint, incoming) in self.incoming(current) {
-                                match constraint {
-                                    Constraint::Eq => {
-                                        if !visited.contains(&incoming) {
-                                            visited.insert(incoming);
-                                            todo.push_back(incoming);
-                                        }
-                                    },
-                                    Constraint::Reduce(reduce) if reduce.len() == 1 => {
-                                        if reduce[0] == *typ {
-                                            break 'bfsearch (call.name.binding.ident.to_string(), current.span());
-                                        }
-                                    }
-                                    _ => (),
-                                }
-                            }
-                        }
-                    },
-                    Expr::Access(access) => match access.accesses.last().unwrap() {
-                        FieldOrMethod::Method(method) => {
-                            let method_node = Node::type_var(method.name.span);
-                            let incoming = self.incoming(method_node);
-                            assert_eq!(incoming.len(), 1);
-                            let (_edge_index, constraint, incoming) = &incoming[0];
-                            match constraint {
-                                // not resolved successfully
-                                Constraint::Method => continue,
-                                Constraint::Reduce(_) => (),
-                                c => unreachable!("Method-node has non-Method non-Reduce incoming edge {:?}", c),
-                            }
-
-                            let incoming_types = &self.possible_types[incoming];
-                            assert_eq!(incoming_types.len(), 1);
-
-                            let type_name = incoming_types.0[0].type_name();
-                            let method_name = diagnostics.resolve_span(method_node.span());
-                            let name = format!("{}::{}", type_name, method_name);
-                            (name, incoming.span())
-                        },
-                        FieldOrMethod::Field(_) => continue,
-                    }
-                    _ => continue,
-                };
-
-                let function_sig = match meta_info.get_function_signature(&function_name, def_span) {
-                    Some(sig) => sig,
-                    None => continue,
-                };
-                diag = diag.with_info_label(function_sig.span(), format!("`{}` defined here", function_name));
-            }
+            diag = self.check_in_function_call(normalized, diag, meta_info);
         }
 
         diag.emit();
@@ -325,6 +245,91 @@ impl<'i> Graph<'i> {
             }
         }
         node
+    }
+
+    fn check_in_function_call(&self, normalized: Node, mut diag: DiagnosticBuilder<'i, ErrorCode>, meta_info: &MetaInfo) -> DiagnosticBuilder<'i, ErrorCode> {
+        // if the node is used within a function or method call, display the signature of the
+        // function as well
+        let range = Range {
+            start: (normalized.span().file, normalized.span().start),
+            end: (normalized.span().file, normalized.span().end),
+        };
+        'expr: for element in meta_info.expression_spans.query(range) {
+            let (function_name, def_span) = match element.value {
+                Expr::FunctionCall(call) => {
+                    let node = Node::type_var(call.name.binding.ident.span);
+                    let possible_types = &self.possible_types[&node];
+                    if possible_types.len() != 1 {
+                        continue;
+                    }
+                    let typ = &possible_types.0[0];
+                    match typ {
+                        ResolvableSpecificType::Function(Some(_fn_typ)) => (),
+                        _ => continue,
+                    };
+
+                    let mut visited = HashSet::new();
+                    let mut todo: VecDeque<_> = VecDeque::new();
+                    todo.push_back(node);
+
+                    // breadth-first search over `Eq`-edges to find the function-definition
+                    // node (which has a self-reduce edge to our type)
+                    'bfsearch: loop {
+                        let current = match todo.pop_front() {
+                            Some(current) => current,
+                            None => continue 'expr,
+                        };
+                        for (_edge_index, constraint, incoming) in self.incoming(current) {
+                            match constraint {
+                                Constraint::Eq => {
+                                    if !visited.contains(&incoming) {
+                                        visited.insert(incoming);
+                                        todo.push_back(incoming);
+                                    }
+                                },
+                                Constraint::Reduce(reduce) if reduce.len() == 1 => {
+                                    if reduce[0] == *typ {
+                                        break 'bfsearch (call.name.binding.ident.to_string(), current.span());
+                                    }
+                                }
+                                _ => (),
+                            }
+                        }
+                    }
+                },
+                Expr::Access(access) => match access.accesses.last().unwrap() {
+                    FieldOrMethod::Method(method) => {
+                        let method_node = Node::type_var(method.name.span);
+                        let incoming = self.incoming(method_node);
+                        assert_eq!(incoming.len(), 1);
+                        let (_edge_index, constraint, incoming) = &incoming[0];
+                        match constraint {
+                            // not resolved successfully
+                            Constraint::Method => continue,
+                            Constraint::Reduce(_) => (),
+                            c => unreachable!("Method-node has non-Method non-Reduce incoming edge {:?}", c),
+                        }
+
+                        let incoming_types = &self.possible_types[incoming];
+                        assert_eq!(incoming_types.len(), 1);
+
+                        let type_name = incoming_types.0[0].type_name();
+                        let method_name = self.diagnostics.resolve_span(method_node.span());
+                        let name = format!("{}::{}", type_name, method_name);
+                        (name, incoming.span())
+                    },
+                    FieldOrMethod::Field(_) => continue,
+                }
+                _ => continue,
+            };
+
+            let function_sig = match meta_info.get_function_signature(&function_name, def_span) {
+                Some(sig) => sig,
+                None => continue,
+            };
+            diag = diag.with_info_label(function_sig.span(), format!("`{}` defined here", function_name));
+        }
+        diag
     }
 
     fn possible_types(&self, node: Node) -> &[ResolvableSpecificType] {
