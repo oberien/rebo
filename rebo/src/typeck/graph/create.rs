@@ -698,19 +698,21 @@ impl<'i> Graph<'i> {
                             field_node
                         }
                         FieldOrMethod::Method(fn_call) => {
-
+                            let method_name_node = Node::type_var(fn_call.name.span);
+                            self.add_node(method_name_node);
                             let method_call_node = Node::type_var(fn_call.span());
                             self.add_node(method_call_node);
 
                             let idx = CALL_INDEX.fetch_add(1, Ordering::SeqCst);
-                            self.add_method_call_ret(access_node, method_call_node, fn_call.name.ident.to_string(), idx);
+                            self.add_method(access_node, method_name_node);
+                            self.add_method_call_ret(method_name_node, method_call_node, idx);
                             // self-argument
-                            self.add_method_call_arg(access_node, access_node, fn_call.name.ident.to_string(), idx, 0);
+                            self.add_method_call_arg(method_name_node, access_node, idx, 0);
                             for (i, arg_expr) in fn_call.args.iter().enumerate() {
                                 let arg_node = self.visit_expr(ctx, arg_expr);
                                 // arg 0 is `self`
                                 let arg_index = i + 1;
-                                self.add_method_call_arg(access_node, arg_node, fn_call.name.ident.to_string(), idx, arg_index);
+                                self.add_method_call_arg(method_name_node, arg_node, idx, arg_index);
                             }
                             method_call_node
                         }
@@ -1027,7 +1029,7 @@ impl<'i> Graph<'i> {
         self.add_nonduplicate_edge(to, from, Constraint::Eq);
     }
 
-    fn add_reduce_constraint(&mut self, from: Node, to: Node, reduce: Vec<ResolvableSpecificType>) {
+    pub(super) fn add_reduce_constraint(&mut self, from: Node, to: Node, reduce: Vec<ResolvableSpecificType>) {
         self.add_nonduplicate_edge(from, to, Constraint::Reduce(reduce));
     }
 
@@ -1042,11 +1044,14 @@ impl<'i> Graph<'i> {
     fn add_function_call_ret(&mut self, source: Node, function_call_node: Node, function_call_index: u64) {
         self.add_nonduplicate_edge(source, function_call_node, Constraint::FunctionCallReturnType(function_call_index));
     }
-    fn add_method_call_arg(&mut self, source: Node, arg: Node, method_name: String, method_call_index: u64, arg_index: usize) {
-        self.add_nonduplicate_edge(source, arg, Constraint::MethodCallArg(method_name, method_call_index, arg_index));
+    fn add_method(&mut self, source: Node, method_name: Node) {
+        self.add_nonduplicate_edge(source, method_name, Constraint::Method);
     }
-    fn add_method_call_ret(&mut self, source: Node, method_call_node: Node, method_name: String, method_call_index: u64) {
-        self.add_nonduplicate_edge(source, method_call_node, Constraint::MethodCallReturnType(method_name, method_call_index));
+    fn add_method_call_arg(&mut self, source: Node, arg: Node, method_call_index: u64, arg_index: usize) {
+        self.add_nonduplicate_edge(source, arg, Constraint::MethodCallArg(method_call_index, arg_index));
+    }
+    fn add_method_call_ret(&mut self, source: Node, method_call_node: Node, method_call_index: u64) {
+        self.add_nonduplicate_edge(source, method_call_node, Constraint::MethodCallReturnType(method_call_index));
     }
 
     pub(super) fn add_generic_constraint(&mut self, from: Node, to: Node) {

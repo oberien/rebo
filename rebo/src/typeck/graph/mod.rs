@@ -84,10 +84,14 @@ pub enum Constraint {
     FunctionCallArg(u64, usize),
     /// call_index (to identify FunctionGenerics)
     FunctionCallReturnType(u64),
+    /// indicates where a method-name access node stems from; call_index (to identify FunctionGenerics)
+    Method,
     /// name of the method (not fully qualified yet), call_index (to identify FunctionGenerics), arg-index
-    MethodCallArg(String, u64, usize),
+    MethodCallArg(u64, usize),
     /// name of the method (not fully qualified yet), call_index (to identify FunctionGenerics)
-    MethodCallReturnType(String, u64),
+    MethodCallReturnType(u64),
+    /// indicates where a generic stems from / which node created the generic
+    ///
     /// can be ignored for everything, just there to make the graph look better
     Generic,
     /// for type error messages: indicates where the equality between two generics stems from
@@ -105,8 +109,9 @@ impl Display for Constraint {
             }
             Constraint::FunctionCallArg(idx, arg) => write!(f, "...[{}]({})", idx, arg),
             Constraint::FunctionCallReturnType(idx) => write!(f, "...[{}](...) -> ret", idx),
-            Constraint::MethodCallArg(name, idx, arg) => write!(f, "{}[{}]({})", name, idx, arg),
-            Constraint::MethodCallReturnType(name, idx) => write!(f, "{}[{}](...) -> ret", name, idx),
+            Constraint::MethodCallArg(idx, arg) => write!(f, "...[{}]({})", idx, arg),
+            Constraint::MethodCallReturnType(idx) => write!(f, "...[{}](...) -> ret", idx),
+            Constraint::Method => write!(f, "Method"),
             Constraint::Generic => write!(f, "Generic"),
             Constraint::GenericEqSource => write!(f, "GenericEqSource"),
         }
@@ -185,7 +190,7 @@ impl<'i> Graph<'i> {
         let f1 = &|_, e: EdgeReference<Constraint>| format!("label = {:?}", e.weight().to_string());
         let f2 = &|_, (_, n): (NodeIndex<u32>, &Node)| {
             let code = format!("{:?}", self.diagnostics.resolve_span(n.span()));
-            format!("label = \"{}: {}\\n{}\"", n, &code[1..code.len()-1], self.possible_types[n])
+            format!("label = \"[{}:{}:{}]: {}\\n{}\"", self.diagnostics.file_name(n.span().file), n.span().start, n.span().end, &code[1..code.len()-1], self.possible_types[n])
         };
         let dot = Dot::with_attr_getters(
             &self.graph,

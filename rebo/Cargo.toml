@@ -10,7 +10,7 @@ edition = "2018"
 thiserror = "1.0.20"
 lexical = { version = "5.2.2", features = ["radix"] }
 typed-arena = "2.0.1"
-diagnostic = { git = "https://github.com/oberien/diagnostic", rev = "e971eac15f0e8946aa8cee9b4f05e2392b654c00" }
+diagnostic = { git = "https://github.com/oberien/diagnostic", rev = "9f50f20db81e03459c7eb89f246bd8727e4dbc12" }
 log = "0.4.11"
 env_logger = "0.8.4"
 rebo_derive = { path = "../rebo_derive" }
@@ -32,3 +32,4 @@ rt-format = "0.3.0"
 rand = "0.8.4"
 rand_chacha = "0.3.1"
 unicode-segmentation = "1.8.0"
+intervaltree = "0.2.7"

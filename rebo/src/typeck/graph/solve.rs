@@ -73,11 +73,14 @@ impl<'i> Graph<'i> {
                     Constraint::FunctionCallReturnType(call_index) => {
                         self.function_call_ret(&mut todos, edge_index, source, node, call_index);
                     }
-                    Constraint::MethodCallArg(name, call_index, arg_index) => {
-                        self.method_call_arg(&mut todos, edge_index, meta_info, source, node, &name, call_index, arg_index);
+                    Constraint::Method => {
+                        self.method(&mut todos, edge_index, meta_info, source, node);
                     }
-                    Constraint::MethodCallReturnType(name, call_index) => {
-                        self.method_call_ret(&mut todos, edge_index, meta_info, source, node, &name, call_index);
+                    Constraint::MethodCallArg(call_index, arg_index) => {
+                        self.method_call_arg(&mut todos, edge_index, source, node, call_index, arg_index);
+                    }
+                    Constraint::MethodCallReturnType(call_index) => {
+                        self.method_call_ret(&mut todos, edge_index, source, node, call_index);
                     }
                     Constraint::Generic | Constraint::GenericEqSource => (),
                 };
@@ -164,21 +167,19 @@ impl<'i> Graph<'i> {
         };
         self.get_function_generics(source_node, fn_typ, None, call_index)
     }
-    fn get_method_function_generics<'a>(&mut self, meta_info: &'a MetaInfo, source_node: Node, method_name: &str, call_index: u64) -> Option<(FunctionGenerics, FunctionType)> {
-        let possible_types = &self.possible_types[&source_node];
+    fn get_method_function_generics<'a>(&mut self, method_node: Node, call_index: u64) -> Option<(FunctionGenerics, FunctionType)> {
+        let possible_types = &self.possible_types[&method_node];
         if possible_types.0.len() != 1 {
             return None;
         }
 
-        let typ = possible_types.0[0].clone();
-        let type_name = typ.type_name();
-        let fn_name = format!("{}::{}", type_name, method_name);
-        let fn_typ = match meta_info.function_types.get(fn_name.as_str()) {
-            Some(fn_typ) => fn_typ.clone(),
-            None => return None,
+        let fn_typ = match possible_types.0[0].clone() {
+            ResolvableSpecificType::Function(Some(f)) => f,
+            t => unreachable!("method node with non-function type {:?}", t),
         };
 
-        self.get_function_generics(source_node, fn_typ, Some(typ), call_index)
+        // self.get_function_generics(method_node, fn_typ, Some(typ), call_index)
+        self.get_function_generics(method_node, fn_typ, None, call_index)
     }
     fn get_function_generics(&mut self, source_node: Node, fn_typ: FunctionType, typ: Option<ResolvableSpecificType>, call_index: u64) -> Option<(FunctionGenerics, FunctionType)> {
         // function generics
@@ -224,23 +225,42 @@ impl<'i> Graph<'i> {
         }
     }
     #[allow(clippy::too_many_arguments)]
-    fn method_call_arg(&mut self, todos: &mut WorkQueue, edge_index: EdgeIndex, meta_info: &MetaInfo, field_access: Node, arg: Node, method_name: &str, call_index: u64, arg_index: usize) {
-        let (function_generics, fn_typ) = match self.get_method_function_generics(meta_info, field_access, method_name, call_index) {
+    fn method(&mut self, todos: &mut WorkQueue, edge_index: EdgeIndex, meta_info: &MetaInfo, source_node: Node, method_node: Node) {
+        let possible_types = &self.possible_types[&source_node];
+        if possible_types.0.len() != 1 {
+            return;
+        }
+
+        let method_name = self.diagnostics.resolve_span(method_node.span());
+        let typ = possible_types.0[0].clone();
+        let type_name = typ.type_name();
+        let fn_name = format!("{}::{}", type_name, method_name);
+        let fn_typ = match meta_info.function_types.get(fn_name.as_str()) {
+            Some(fn_typ) => fn_typ.clone(),
+            None => return,
+        };
+        self.graph.remove_edge(edge_index);
+        self.add_reduce_constraint(source_node, method_node, vec![ResolvableSpecificType::Function(Some(fn_typ))]);
+        todos.add_single(method_node);
+    }
+    #[allow(clippy::too_many_arguments)]
+    fn method_call_arg(&mut self, todos: &mut WorkQueue, edge_index: EdgeIndex, method_node: Node, arg: Node, call_index: u64, arg_index: usize) {
+        let (function_generics, fn_typ) = match self.get_method_function_generics(method_node, call_index) {
             Some(t) => t,
             None => return,
         };
-        self.call_arg(todos, edge_index, function_generics, &fn_typ, field_access, arg, arg_index)
+        self.call_arg(todos, edge_index, function_generics, &fn_typ, method_node, arg, arg_index)
     }
     #[allow(clippy::too_many_arguments)]
-    fn method_call_ret(&mut self, todos: &mut WorkQueue, edge_index: EdgeIndex, meta_info: &MetaInfo, field_access: Node, method_call: Node, method_name: &str, call_index: u64) {
-        let (function_generics, fn_typ) = match self.get_method_function_generics(meta_info, field_access, method_name, call_index) {
+    fn method_call_ret(&mut self, todos: &mut WorkQueue, edge_index: EdgeIndex, method_node: Node, method_call: Node, call_index: u64) {
+        let (function_generics, fn_typ) = match self.get_method_function_generics(method_node, call_index) {
             Some(t) => t,
             None => return,
         };
 
         self.graph.remove_edge(edge_index);
-        function_generics.apply_type_reduce(method_call, field_access, method_call, &fn_typ.ret, self);
-        todos.add(self, field_access);
+        function_generics.apply_type_reduce(method_call, method_node, method_call, &fn_typ.ret, self);
+        todos.add(self, method_node);
         todos.add(self, method_call);
         for generic in function_generics.generics() {
             todos.add(self, generic);

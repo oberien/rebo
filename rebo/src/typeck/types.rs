@@ -47,8 +47,6 @@ pub enum ResolvableSpecificType {
     Struct(String, Vec<Node>),
     /// name, generics
     Enum(String, Vec<Node>),
-    /// generics, args, ret
-    ///
     /// None means could be any function
     Function(Option<FunctionType>),
     /// def_ident-span: a generic inside a function definition or impl-block definition, which must not

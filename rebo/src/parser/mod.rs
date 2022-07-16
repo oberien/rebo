@@ -22,8 +22,10 @@ use indexmap::map::IndexMap;
 use itertools::Itertools;
 use crate::parser::scope::Scope;
 use std::cell::RefCell;
+use std::ops::Range;
 use std::rc::Rc;
 use indexmap::set::IndexSet;
+use intervaltree::Element;
 use crate::IncludeDirectory;
 
 #[derive(Debug, Clone)]
@@ -181,6 +183,17 @@ impl<'a, 'b, 'i> Parser<'a, 'b, 'i> {
         // make sure everything parsed during first-pass was consumed and used by the second pass
         assert!(self.pre_parsed.is_empty(), "not everything from first-pass was consumed: {:?}", self.pre_parsed);
         assert!(matches!(self.peek_token(0), Ok(Token::Eof(_))), "not all tokens were consumed: {}", self.lexer.iter().map(|t| format!("    {:?}", t)).join("\n"));
+
+        // build expression span IntervalTree
+        self.meta_info.expression_spans = body.exprs.iter().copied()
+            .map(|expr| Element {
+                range: Range {
+                    start: (expr.span().file, expr.span().start),
+                    end: (expr.span().file, expr.span().end),
+                },
+                value: expr,
+            }).collect();
+
         Ok(Ast {
             exprs: body.exprs,
             bindings: self.bindings,

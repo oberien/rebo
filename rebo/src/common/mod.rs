@@ -17,6 +17,8 @@ use crate::typeck::types::{EnumType, FunctionType, StructType, Type};
 use crate::typeck::TypeVar;
 use std::rc::Rc;
 use std::cell::RefCell;
+use std::iter::FromIterator;
+use intervaltree::{Element, IntervalTree};
 use rebo::parser::ScopeType;
 
 mod values;
@@ -64,6 +66,10 @@ impl<'a, 'i> UserType<'a, 'i> {
 
 /// Metadata / information needed before and/or during static analyses
 pub struct MetaInfo<'a, 'i> {
+    /// Tree of all the spans of expressions
+    ///
+    /// Available after the parser
+    pub expression_spans: IntervalTree<(FileId, usize), &'a Expr<'a, 'i>>,
     /// map from `ExprInclude::span` to its FileId
     ///
     /// Available after parser's first-pass.
@@ -133,6 +139,7 @@ pub struct MetaInfo<'a, 'i> {
 impl<'a, 'i> MetaInfo<'a, 'i> {
     pub fn new() -> Self {
         MetaInfo {
+            expression_spans: <IntervalTree<_, _> as FromIterator<Element<_, _>>>::from_iter([]),
             included_files: IndexMap::new(),
             functions: IndexMap::new(),
             function_bindings: IndexMap::new(),
@@ -153,6 +160,18 @@ impl<'a, 'i> MetaInfo<'a, 'i> {
         }
     }
 
+    pub fn get_function_signature(&self, name: &str, def_span: Span) -> Option<&ExprFunctionSignature<'a, 'i>> {
+        if let Some(fun) = self.anonymous_rebo_functions.get(&def_span) {
+            return Some(&fun.1.sig);
+        }
+        if let Some(sig) = self.external_function_signatures.get(name) {
+            return Some(sig);
+        }
+        if let Some(fun) = self.rebo_functions.get(name) {
+            return Some(&fun.sig);
+        }
+        None
+    }
     pub fn add_function(&mut self, diagnostics: &Diagnostics<ErrorCode>, name: Option<Cow<'i, str>>, fun: &'a ExprFunctionDefinition<'a, 'i>) {
         let arg_binding_ids = fun.sig.args.iter().map(|ExprPatternTyped { pattern: ExprPatternUntyped { binding }, .. }| binding.id).collect();
         match name {

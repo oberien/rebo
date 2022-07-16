@@ -1226,7 +1226,7 @@ impl<'a, 'i> Parse<'a, 'i> for ExprAccess<'a, 'i> {
         if accesses.is_empty() {
             return Err(InternalError::Backtrack(Backtrack {
                 span: parser.lexer.next_span(),
-                expected: Cow::Borrowed( & [Expected::Token(TokenType::Ident)]),
+                expected: Cow::Borrowed(&[Expected::Token(TokenType::Ident)]),
             }));
         }
         // check trailing dot

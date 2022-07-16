@@ -140,6 +140,9 @@ impl<'b, 'a: 'b, 'i: 'b, T: 'a, D: 'a> Separated<'a, 'i, T, D> {
     pub fn last_terminated(&'b self) -> Option<&T> {
         self.inner.last().map(|(t, _d)| t)
     }
+    pub fn last(&'b self) -> Option<&T> {
+        self.last_unterminated().or_else(|| self.last_terminated())
+    }
     pub fn is_terminated(&self) -> bool {
         self.last.is_none()
     }

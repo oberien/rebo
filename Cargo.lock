@@ -130,7 +130,7 @@ dependencies = [
 [[package]]
 name = "diagnostic"
 version = "0.1.0"
-source = "git+https://github.com/oberien/diagnostic?rev=e971eac15f0e8946aa8cee9b4f05e2392b654c00#e971eac15f0e8946aa8cee9b4f05e2392b654c00"
+source = "git+https://github.com/oberien/diagnostic?rev=9f50f20db81e03459c7eb89f246bd8727e4dbc12#9f50f20db81e03459c7eb89f246bd8727e4dbc12"
 dependencies = [
  "appendlist",
  "backtrace",
@@ -229,6 +229,15 @@ dependencies = [
  "js-sys",
  "wasm-bindgen",
  "web-sys",
+]
+
+[[package]]
+name = "intervaltree"
+version = "0.2.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "270bc34e57047cab801a8c871c124d9dc7132f6473c6401f645524f4e6edd111"
+dependencies = [
+ "smallvec",
 ]
 
 [[package]]
@@ -478,6 +487,7 @@ dependencies = [
  "env_logger",
  "indexmap",
  "instant",
+ "intervaltree",
  "itertools 0.9.0",
  "lazy_static",
  "lexical",
