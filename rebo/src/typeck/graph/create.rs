@@ -866,7 +866,7 @@ impl<'i> Graph<'i> {
                 self.add_eq_constraint(binding_node, var_node);
                 if let Some(name) = ctx.meta_info.function_bindings.get(&name.binding) {
                     if let Some(fun) = ctx.meta_info.function_types.get(name.as_str()) {
-                        self.add_reduce_constraint(var_node, var_node, vec![ResolvableSpecificType::Function(Some(fun.clone()))]);
+                        self.add_reduce_constraint(binding_node, binding_node, vec![ResolvableSpecificType::Function(Some(fun.clone()))]);
                     }
                 }
 

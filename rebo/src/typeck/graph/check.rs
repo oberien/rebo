@@ -289,7 +289,7 @@ impl<'i> Graph<'i> {
                                 },
                                 Constraint::Reduce(reduce) if reduce.len() == 1 => {
                                     if reduce[0] == *typ {
-                                        break 'bfsearch (call.name.binding.ident.to_string(), current.span());
+                                        break 'bfsearch (call.name.binding.ident.ident.to_string(), current.span());
                                     }
                                 }
                                 _ => (),
