@@ -10,6 +10,7 @@ use petgraph::Direction;
 use petgraph::dot::{Config, Dot};
 use petgraph::graph::{EdgeIndex, EdgeReference};
 use petgraph::prelude::{DiGraph, EdgeRef, NodeIndex};
+use petgraph::visit::NodeFiltered;
 use strum::IntoEnumIterator;
 
 use crate::typeck::types::{ResolvableSpecificType, ResolvableSpecificTypeDiscriminants};
@@ -192,8 +193,13 @@ impl<'i> Graph<'i> {
             let code = format!("{:?}", self.diagnostics.resolve_span(n.span()));
             format!("label = \"[{}:{}:{}]: {}\\n{}\"", self.diagnostics.file_name(n.span().file), n.span().start, n.span().end, &code[1..code.len()-1], self.possible_types[n])
         };
+        let graph = NodeFiltered::from_fn(&self.graph, |nid| {
+            let fileid = self.graph.node_weight(nid).unwrap().span().file;
+            let file_name = self.diagnostics.file_name(fileid);
+            !file_name.starts_with("external-")
+        });
         let dot = Dot::with_attr_getters(
-            &self.graph,
+            &graph,
             &[Config::NodeNoLabel, Config::EdgeNoLabel, Config::GraphContentOnly],
             f1,
             f2,
