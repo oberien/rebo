@@ -1,4 +1,5 @@
 use std::cell::RefCell;
+use std::rc::Rc;
 use std::sync::Arc;
 
 use parking_lot::ReentrantMutex;
@@ -19,6 +20,8 @@ pub struct Vm<'a, 'b, 'i> {
     interrupt_function: fn(&mut VmContext<'a, '_, '_, 'i>) -> Result<(), ExecError<'a, 'i>>,
     diagnostics: &'i Diagnostics<ErrorCode>,
     scopes: Scopes,
+    // read in the voice of Brüggi
+    callstack: Rc<RefCell<Vec<Span>>>,
     meta_info: &'b MetaInfo<'a, 'i>,
     include_directory: IncludeDirectory,
 }
@@ -51,6 +54,20 @@ impl<'a, 'b, 'vm, 'i> VmContext<'a, 'b, 'vm, 'i> {
         }
         self.vm.call_function(&FunctionValue::Named(T::NAME.to_string()), EXTERNAL_SPAN, args, Depth::start())
     }
+
+    pub fn callstack(&self) -> Vec<Span> {
+        self.vm.callstack.borrow().clone()
+    }
+}
+
+#[must_use]
+struct CallstackGuard {
+    callstack: Rc<RefCell<Vec<Span>>>,
+}
+impl Drop for CallstackGuard {
+    fn drop(&mut self) {
+        self.callstack.borrow_mut().pop().expect("callstack guard dropped without callstack element left");
+    }
 }
 
 impl<'a, 'b, 'i> Vm<'a, 'b, 'i> {
@@ -65,6 +82,7 @@ impl<'a, 'b, 'i> Vm<'a, 'b, 'i> {
             interrupt_function,
             diagnostics,
             scopes,
+            callstack: Rc::new(RefCell::new(Vec::new())),
             meta_info,
             include_directory,
         }
@@ -91,6 +109,13 @@ impl<'a, 'b, 'i> Vm<'a, 'b, 'i> {
             value = Some(self.eval_expr(expr, Depth::start())?);
         }
         Ok(value.unwrap_or(Value::Unit))
+    }
+
+    fn push_callstack(&mut self, expr_span: Span) -> CallstackGuard {
+        self.callstack.borrow_mut().push(expr_span);
+        CallstackGuard {
+            callstack: Rc::clone(&self.callstack),
+        }
     }
 
     fn load_binding(&self, binding: &Binding, span: Span, depth: Depth) -> Value {
@@ -449,6 +474,7 @@ impl<'a, 'b, 'i> Vm<'a, 'b, 'i> {
     }
     fn call_function(&mut self, fun: &FunctionValue, expr_span: Span, args: Vec<Value>, depth: Depth) -> Result<Value, ExecError<'a, 'i>> {
         trace!("{}call_function: {:?}({:?})", depth, fun, args);
+        let _guard = self.push_callstack(expr_span);
         let (arg_binding_ids, mut scope, fun) = match fun {
             FunctionValue::Anonymous(scope, span) => {
                 let (arg_binding_ids, fun) = &self.meta_info.anonymous_rebo_functions[span];

@@ -2,7 +2,7 @@ use std::io::ErrorKind;
 use crate::common::{Value, MetaInfo, FuzzyFloat, DisplayValue};
 use crate as rebo;
 use itertools::Itertools;
-use diagnostic::{Diagnostics, Span};
+use diagnostic::{DiagnosticBuilder, Diagnostics, Span};
 use crate::error_codes::ErrorCode;
 use crate::parser::Expr;
 use typed_arena::Arena;
@@ -194,28 +194,39 @@ fn int_abs(this: i64) -> i64 {
 #[rebo::function(raw("assert"))]
 fn assert(condition: bool) {
     if !condition {
-        vm.diagnostics().error(ErrorCode::AssertionFailed)
-            .with_error_label(expr_span, "this assertion failed")
-            .emit();
+        let diag = vm.diagnostics().error(ErrorCode::AssertionFailed)
+            .with_error_label(expr_span, "this assertion failed");
+        emit_stacktrace(vm, diag).emit();
         return Err(ExecError::Panic);
     }
 }
 #[rebo::function(raw("assert_eq"))]
 fn assert_eq<T>(left: T, right: T) {
     if left != right {
-        vm.diagnostics().error(ErrorCode::AssertionFailed)
-            .with_error_label(expr_span, format!("this assertion failed with `{}` != `{}`", DisplayValue(&left), DisplayValue(&right)))
-            .emit();
+        let diag = vm.diagnostics().error(ErrorCode::AssertionFailed)
+            .with_error_label(expr_span, format!("this assertion failed with `{}` != `{}`", DisplayValue(&left), DisplayValue(&right)));
+        emit_stacktrace(vm, diag).emit();
         return Err(ExecError::Panic);
     }
 }
 #[rebo::function(raw("panic"))]
 fn panic(message: String) -> ! {
-    vm.diagnostics().error(ErrorCode::Panic)
-        .with_error_label(expr_span, message)
-        .emit();
+    let diag = vm.diagnostics().error(ErrorCode::Panic)
+        .with_error_label(expr_span, message);
+    emit_stacktrace(vm, diag).emit();
     Err(ExecError::Panic)
 }
+
+fn emit_stacktrace<'i>(vm: &VmContext, mut diag: DiagnosticBuilder<'i, ErrorCode>) -> DiagnosticBuilder<'i, ErrorCode> {
+    let mut callstack = vm.callstack();
+    // last call is the rust function itself
+    callstack.pop().expect("emit_stacktrace called without being in a rust-functiontcall");
+    for (i, span) in callstack.into_iter().enumerate() {
+        diag = diag.with_info_label(span, format!("{}. in this function call", i+1));
+    }
+    diag
+}
+
 trait Sliceable: Sized {
     fn len(&self) -> usize;
     fn remove_start(&mut self, num: usize);
