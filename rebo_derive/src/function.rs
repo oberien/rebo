@@ -5,6 +5,7 @@ use syn::parse::{Parse, ParseStream};
 use syn::token::Paren;
 use itertools::Itertools;
 use proc_macro2::TokenStream as TokenStream2;
+use syn::spanned::Spanned;
 use crate::util;
 
 struct Args {
@@ -20,17 +21,18 @@ impl Parse for Args {
             }
             let content;
             let _: Paren = syn::parenthesized!(content in input);
-            let name = content.parse::<LitStr>()?.value();
-            Ok(Args { is_raw: true, name })
+            let lit = content.parse::<LitStr>()?;
+            Ok(Args { is_raw: true, name: lit.value() })
         } else {
-            Ok(Args { is_raw: false, name: input.parse::<LitStr>()?.value() })
+            let lit = input.parse::<LitStr>()?;
+            Ok(Args { is_raw: false, name: lit.value() })
         }
     }
 }
 
 fn clean_generics(typ: &Type, generic_idents: &[Ident]) -> TokenStream2 {
     util::transform_path_type(typ, &|ident| if generic_idents.iter().any(|i| i == ident) {
-        Some(quote::quote!(::rebo::Value))
+        Some(quote::quote_spanned!(ident.span() => ::rebo::Value))
     } else {
         None
     })
@@ -150,19 +152,19 @@ pub fn function(args: TokenStream, input: TokenStream) -> TokenStream {
             quote::quote!(let #pat: #clean = ::rebo::FromValue::from_value(args.next().unwrap());)
         }).collect();
 
-    let (output_type, ret_val) = match output {
+    let (output_type, ret_val) = match &output {
         ReturnType::Default => (
-            quote::quote!{ () },
+            quote::quote_spanned!{ output.span() => () },
             quote::quote!(Ok(::rebo::IntoValue::into_value(res))),
         ),
-        ReturnType::Type(_, typ) => match &*typ {
+        ReturnType::Type(_, typ) => match &**typ {
             Type::Never(_) => (
-                quote::quote!(_),
+                quote::quote_spanned!(output.span() => _),
                 quote::quote!(res),
             ),
             _ => {
                 let clean = clean_generics(&typ, &generic_idents);
-                (clean, quote::quote!(Ok(::rebo::IntoValue::into_value(res))))
+                (quote::quote_spanned!(output.span() => #clean), quote::quote!(Ok(::rebo::IntoValue::into_value(res))))
             }
         },
     };
@@ -175,9 +177,9 @@ pub fn function(args: TokenStream, input: TokenStream) -> TokenStream {
         }
     };
     let block = if macro_args.is_raw {
-        quote::quote! { #block }
+        quote::quote_spanned! { block.span() => #block }
     } else {
-        quote::quote! { (|| #block)() }
+        quote::quote_spanned! { block.span() =>  (|| #block)() }
     };
 
     (quote::quote! {

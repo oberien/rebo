@@ -1,6 +1,6 @@
 use proc_macro2::TokenStream;
 use proc_macro_error::abort;
-use syn::{GenericArgument, GenericParam, Generics, Ident, PathArguments, Type};
+use syn::{GenericArgument, GenericParam, Generics, Ident, PathArguments, Type, spanned::Spanned};
 use syn::__private::TokenStream2;
 
 pub fn generic_idents(generics: &Generics, context: &str) -> Vec<Ident> {
@@ -37,9 +37,9 @@ pub fn generic_spans(generic_idents: &[Ident], code_filename: &str, code_string:
 pub fn transform_path_type(typ: &Type, callback: &impl Fn(&Ident) -> Option<TokenStream2>) -> TokenStream2 {
     let path = match typ {
         Type::Path(path) => path,
-        typ => return quote::quote!(#typ),
+        typ => return quote::quote_spanned!(typ.span() => #typ),
     };
-    let mut res = quote::quote!();
+    let mut res = quote::quote_spanned!(typ.span() => );
     if let Some(ident) = path.path.get_ident() {
         if let Some(res) = callback(ident) {
             return res;
@@ -48,16 +48,16 @@ pub fn transform_path_type(typ: &Type, callback: &impl Fn(&Ident) -> Option<Toke
 
     for segment in &path.path.segments {
         if !res.is_empty() {
-            res = quote::quote!(#res::);
+            res = quote::quote_spanned!(segment.span() => #res::);
         }
         let ident = match callback(&segment.ident) {
             Some(name) => name,
             None => {
                 let ident = &segment.ident;
-                quote::quote!(#ident)
+                quote::quote_spanned!(ident.span() => #ident)
             },
         };
-        res = quote::quote!(#res #ident);
+        res = quote::quote_spanned!(segment.span() => #res #ident);
         let generics = match &segment.arguments {
             PathArguments::None => continue,
             PathArguments::Parenthesized(par) => abort!(par, "generics can only be <...>"),
@@ -67,19 +67,19 @@ pub fn transform_path_type(typ: &Type, callback: &impl Fn(&Ident) -> Option<Toke
             continue;
         }
 
-        res = quote::quote!(#res<);
+        res = quote::quote_spanned!(segment.span() => #res<);
         for arg in &generics.args {
             match arg {
                 GenericArgument::Type(typ) => {
                     let transformed = transform_path_type(typ, callback);
-                    res = quote::quote!(#res #transformed,);
+                    res = quote::quote_spanned!(arg.span() => #res #transformed,);
                 }
                 _ => abort!(arg, "generics can only be types"),
             }
         }
-        res = quote::quote!(#res>);
+        res = quote::quote_spanned!(segment.span() => #res>);
     }
-    res
+    quote::quote_spanned!(typ.span() => #res)
 }
 
 pub fn convert_type_to_rebo(typ: &Type) -> TokenStream2 {
