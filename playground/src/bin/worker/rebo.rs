@@ -71,10 +71,10 @@ pub fn run_rebo(buf: Uint32Array, code: CodePayload) {
                     if state.transmitted > MAX_OUTPUT {
                         output.truncate(left);
                         output.push_str("\n\n\x1b[31;1;4mToo much output. Killed\x1b[0m");
-                        post_output(state.current_serial, output);
+                        post_output(state.current_serial, output, None, None);
                         return Err(ExecError::Panic)
                     }
-                    post_output(state.current_serial, output);
+                    post_output(state.current_serial, output, None, None);
                 }
                 Ok(())
             }))
@@ -91,14 +91,14 @@ pub fn run_rebo(buf: Uint32Array, code: CodePayload) {
     };
     STATE.with(|state| {
         let mut state = state.borrow_mut();
-        match ret {
+        match ret.return_value {
             ReturnValue::Ok => state.output_buffer.push_str("\n\nExecution successful."),
             ReturnValue::Diagnostics(diags) => state.output_buffer.push_str(&format!("\n\n{} diagnostics.", diags.len())),
             ReturnValue::ParseError => state.output_buffer.push_str("\n\nParse error."),
             ReturnValue::Panic => state.output_buffer.push_str("\n\nPanic occurred during execution."),
         }
         let output = std::mem::take(&mut state.output_buffer);
-        post_output(state.current_serial, output);
+        post_output(state.current_serial, output, ret.type_graph_before, ret.type_graph_after);
     });
 }
 

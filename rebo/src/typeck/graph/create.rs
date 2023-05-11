@@ -115,7 +115,7 @@ impl FunctionGenerics {
                 return;
             } else {
                 eprintln!("tried to convert unknown generic {}", typ);
-                graph.dot();
+                graph.xdot();
                 unreachable!("tried to convert unknown generic {}", typ);
             }
         };

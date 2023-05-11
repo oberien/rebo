@@ -20,9 +20,10 @@ debug = true
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-yew = "0.19.3"
+yew = { version = "0.20.0", features = ["csr"] }
 web-sys = { version = "0.3.56", features = ["Worker", "DedicatedWorkerGlobalScope", "MessageEvent", "HtmlSelectElement", "Navigator"] }
 wasm-bindgen = "0.2.79"
+wasm-bindgen-futures = "0.4.35"
 rebo = { path = "../rebo" }
 getrandom = { version = "0.2.4", features = ["js"] }
 wasm-logger = "0.2.0"

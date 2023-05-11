@@ -1,3 +1,6 @@
+static/viz.js
+static/lite.render.js
+static/svg-pan-zoom.min.js
 static/ace.js
 static/mode-rust.js
 static/theme-idle_fingers.js

@@ -17,4 +17,6 @@ pub struct CodePayload {
 pub struct OutputPayload {
     pub serial: i32,
     pub output: String,
+    pub type_graph_before: Option<String>,
+    pub type_graph_after: Option<String>,
 }

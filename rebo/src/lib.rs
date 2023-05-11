@@ -41,6 +41,13 @@ const EXTERNAL_SOURCE: &str = "defined externally";
 const EXTERNAL_SPAN: Span = Span::new(FileId::synthetic("external.re"), 0, EXTERNAL_SOURCE.len());
 
 #[derive(Debug, PartialEq, Eq)]
+pub struct RunResult {
+    pub return_value: ReturnValue,
+    pub type_graph_before: Option<String>,
+    pub type_graph_after: Option<String>,
+}
+
+#[derive(Debug, PartialEq, Eq)]
 pub enum ReturnValue {
     Ok,
     ParseError,
@@ -134,10 +141,10 @@ impl Default for ReboConfig {
     }
 }
 
-pub fn run(filename: String, code: String) -> ReturnValue {
+pub fn run(filename: String, code: String) -> RunResult {
     run_with_config(filename, code, ReboConfig::new())
 }
-pub fn run_with_config(filename: String, code: String, config: ReboConfig) -> ReturnValue {
+pub fn run_with_config(filename: String, code: String, config: ReboConfig) -> RunResult {
     let ReboConfig { stdlib, functions, interrupt_interval, interrupt_function, diagnostic_output, include_directory, external_type_adder_functions, required_rebo_functions } = config;
 
     let diagnostics = Diagnostics::with_output(diagnostic_output);
@@ -191,7 +198,11 @@ pub fn run_with_config(filename: String, code: String, config: ReboConfig) -> Re
                     .emit(),
                 parser::Error::Abort => (),
             }
-            return ReturnValue::ParseError
+            return RunResult {
+                return_value: ReturnValue::ParseError,
+                type_graph_before: None,
+                type_graph_after: None,
+            }
         },
     };
     info!("Parsing took {}μs", time.elapsed().as_micros());
@@ -200,7 +211,7 @@ pub fn run_with_config(filename: String, code: String, config: ReboConfig) -> Re
 
     // typeck
     let time = Instant::now();
-    typeck::typeck(&diagnostics, &mut meta_info, &exprs);
+    let (type_graph_before, type_graph_after) = typeck::typeck(&diagnostics, &mut meta_info, &exprs);
     info!("Typechecking took {}μs", time.elapsed().as_micros());
 
     // lint
@@ -214,7 +225,11 @@ pub fn run_with_config(filename: String, code: String, config: ReboConfig) -> Re
     let diags = diags;
     if  errors > 0 {
         eprintln!("Aborted due to errors");
-        return ReturnValue::Diagnostics(diags);
+        return RunResult {
+            return_value: ReturnValue::Diagnostics(diags),
+            type_graph_before: Some(type_graph_before),
+            type_graph_after: Some(type_graph_after),
+        }
     }
 
     // run
@@ -223,12 +238,17 @@ pub fn run_with_config(filename: String, code: String, config: ReboConfig) -> Re
     let result = vm.run(&exprs);
     info!("Execution took {}μs", time.elapsed().as_micros());
     println!("RESULT: {:?}", result);
-    match result {
+    let return_value = match result {
         Ok(_) if !diags.is_empty() => ReturnValue::Diagnostics(diags),
         Ok(_) => ReturnValue::Ok,
         Err(ExecError::Panic) => ReturnValue::Panic,
         Err(ExecError::Continue(_)) => unreachable!("continue returned from Vm::run"),
         Err(ExecError::Break(..)) => unreachable!("break returned from Vm::run"),
         Err(ExecError::Return(_)) => unreachable!("return returned from Vm::run"),
+    };
+    RunResult {
+        return_value,
+        type_graph_before: Some(type_graph_before),
+        type_graph_after: Some(type_graph_after),
     }
 }

@@ -1,4 +1,4 @@
-use yew::{function_component, use_state, InputEvent, Event, html, Callback, use_effect_with_deps};
+use yew::{function_component, use_state, InputEvent, Event, html, Callback, use_effect_with_deps, Html};
 use wasm_bindgen::{JsCast, UnwrapThrowExt};
 use web_sys::HtmlTextAreaElement;
 use crate::editor::EditorProps;

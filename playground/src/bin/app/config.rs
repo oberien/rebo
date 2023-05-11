@@ -1,4 +1,4 @@
-use yew::{Properties, function_component, html, Callback, Event};
+use yew::{Properties, function_component, html, Callback, Event, Html};
 use web_sys::{HtmlSelectElement, window};
 use wasm_bindgen::{UnwrapThrowExt, JsCast};
 use serde::{Serialize, Deserialize};

@@ -32,14 +32,17 @@ impl Borrow<Span> for TypeVar {
     }
 }
 
-pub fn typeck<'a, 'i>(diagnostics: &'i Diagnostics<ErrorCode>, meta_info: &mut MetaInfo<'a, 'i>, exprs: &[&'a Expr<'a, 'i>]) {
+pub fn typeck<'a, 'i>(diagnostics: &'i Diagnostics<ErrorCode>, meta_info: &mut MetaInfo<'a, 'i>, exprs: &[&'a Expr<'a, 'i>]) -> (String, String) {
     let mut graph = Graph::create(diagnostics, meta_info, exprs);
     if Level::Trace <= log::max_level() {
-        graph.dot();
+        graph.xdot();
     }
+    let before = graph.to_string();
     graph.solve(meta_info);
+    let after = graph.to_string();
     if Level::Trace <= log::max_level() {
-        graph.dot();
+        graph.xdot();
     }
     graph.check(diagnostics, meta_info);
+    (before, after)
 }

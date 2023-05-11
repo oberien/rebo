@@ -1,21 +1,43 @@
 [serve]
-headers = { "Cross-Origin-Opener-Policy" = "same-origin", "Cross-Origin-Embedder-Policy" = "require-corp" }
+headers = { "Cross-Origin-Opener-Policy" = "same-origin", "Cross-Origin-Embedder-Policy" = "require-corp", "content-security-policy" = "default-src 'none'; worker-src 'self'; font-src 'self'; script-src 'self' 'wasm-unsafe-eval' 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'; child-src 'self'" }
 
+# Due to using WebWorker with shared state we require strict COOP and COEP headers.
+# Those headers forbid us to include any content from third-party sites.
+# Thus, we need to vendor all libraries we want to use, which is what we do below.
+
+# include svg rendering
+[[hooks]]
+stage = "pre_build"
+command = "sh"
+command_arguments = ["-c", "test -f static/viz.js || wget https://github.com/mdaines/viz.js/releases/latest/download/viz.js -P static/"]
+[[hooks]]
+stage = "pre_build"
+command = "sh"
+command_arguments = ["-c", "test -f static/lite.render.js || wget https://github.com/mdaines/viz.js/releases/latest/download/lite.render.js -P static/"]
+[[hooks]]
+stage = "pre_build"
+command = "sh"
+command_arguments = ["-c", "test -f static/svg-pan-zoom.min.js || wget https://cdn.jsdelivr.net/npm/svg-pan-zoom@3.5.0/dist/svg-pan-zoom.min.js -P static/"]
+
+# include ace editor
 [[hooks]]
 stage = "pre_build"
 command = "sh"
 command_arguments = ["-c", "test -f static/ace.js || wget https://ajaxorg.github.io/ace-builds/src-min-noconflict/ace.js -P static/"]
 
+# include idle_fingers theme for ace editor
 [[hooks]]
 stage = "pre_build"
 command = "sh"
 command_arguments = ["-c", "test -f static/theme-idle_fingers.js || wget https://ajaxorg.github.io/ace-builds/src-min-noconflict/theme-idle_fingers.js -P static/"]
 
+# include rust syntax highlighting for ace editor
 [[hooks]]
 stage = "pre_build"
 command = "sh"
 command_arguments = ["-c", "test -f static/mode-rust.js || wget https://ajaxorg.github.io/ace-builds/src-min-noconflict/mode-rust.js -P static/"]
 
+# include vim, emacs, sublime and vscode key-bindings for ace editor
 [[hooks]]
 stage = "pre_build"
 command = "sh"
@@ -32,3 +54,15 @@ command_arguments = ["-c", "test -f static/keybinding-sublime.js || wget https:/
 stage = "pre_build"
 command = "sh"
 command_arguments = ["-c", "test -f static/keybinding-vscode.js || wget https://ajaxorg.github.io/ace-builds/src-min-noconflict/keybinding-vscode.js -P static/"]
+
+# FireFox dynamic wasm caching is super bad and never cleans the cache,
+# not even with Ctrl+F5 or when explicitly disabling caching in the dev-tools.
+# Trunk already uses hashes for uniqueness of wasm files it generates.
+# For our worker_bg.wasm, we can't use trunk's blob-wasm mechanisms, because that would
+# require us to dynamically blob-load, which goes against our Content-Security-Policy header.
+# Therefore, we need to manually add a random blob to the `worker_bg.wasm` file
+# and to where it's used in `worker-start.js`.
+[[hooks]]
+stage = "post_build"
+command = "sh"
+command_arguments = ["-c", "HASH=$(sha256sum \"$TRUNK_STAGING_DIR/worker_bg.wasm\" | cut -c1-16); mv \"$TRUNK_STAGING_DIR/worker_bg.wasm\" \"$TRUNK_STAGING_DIR/worker_bg-$HASH.wasm\"; sed -i \"s/worker_bg.wasm/worker_bg-$HASH.wasm/\" \"$TRUNK_STAGING_DIR/worker-start.js\""]

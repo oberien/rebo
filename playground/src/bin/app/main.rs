@@ -1,14 +1,15 @@
 use flate2::Compression;
 use flate2::bufread::{GzDecoder, GzEncoder};
-use yew::{function_component, Html, Properties, Component, Context, html};
+use yew::{function_component, Html, Properties, Component, Context, html, use_memo, use_effect_with_deps, use_state};
 use js_sys::{Uint32Array, Atomics};
-use web_sys::{Worker, window, MessageEvent};
+use web_sys::{Worker, window, MessageEvent, Node};
 use wasm_bindgen::{JsCast, JsValue};
 use playground::{OutputPayload, CodePayload};
 use gloo_storage::{LocalStorage, Storage};
 use gloo_events::EventListener;
 use std::io::{Read, Cursor};
 use url::Url;
+use wasm_bindgen::prelude::wasm_bindgen;
 use editor::Editor;
 use crate::config::{EditorType, Config, ConfigComponent, KeyboardHandler};
 
@@ -20,7 +21,7 @@ static ALLOC: wee_alloc::WeeAlloc = wee_alloc::WeeAlloc::INIT;
 
 fn main() {
     playground::setup();
-    yew::start_app::<MainComponent>();
+    yew::Renderer::<MainComponent>::new().render();
 }
 
 const DEFAULT_CODE: &str = r#"print("Hello, world!");"#;
@@ -42,6 +43,8 @@ pub struct MainComponent {
     default_code_serial: i32,
     code: String,
     output: String,
+    type_graph_before: Option<String>,
+    type_graph_after: Option<String>,
     shared_buffer: Uint32Array,
     worker: Worker,
     _worker_onmessage_event_listener: EventListener,
@@ -105,6 +108,8 @@ impl Component for MainComponent {
             default_code_serial: 0,
             code,
             output: String::new(),
+            type_graph_before: None,
+            type_graph_after: None,
             shared_buffer,
             worker,
             _worker_onmessage_event_listener: worker_onmessage_event_listener,
@@ -119,11 +124,13 @@ impl Component for MainComponent {
                 send_code(&self.shared_buffer, &self.worker, &self.code);
                 false
             }
-            Msg::WorkerOutput(OutputPayload { output, serial }) => {
+            Msg::WorkerOutput(OutputPayload { output, serial, type_graph_before, type_graph_after }) => {
                 let expected_serial = Atomics::load(&self.shared_buffer, 0)
                     .expect("can't load atomic");
                 if serial == expected_serial {
                     self.output.push_str(&output);
+                    self.type_graph_before = type_graph_before;
+                    self.type_graph_after = type_graph_after;
                     true
                 } else {
                     false
@@ -136,6 +143,8 @@ impl Component for MainComponent {
                     send_code(&self.shared_buffer, &self.worker, &self.code);
                 }
                 self.output.clear();
+                self.type_graph_before = None;
+                self.type_graph_after = None;
                 LocalStorage::set("code", &self.code).expect("can't store code in localStorage");
                 // set fragment
                 let mut encoder = GzEncoder::new(Cursor::new(self.code.as_bytes()), Compression::new(6));
@@ -174,13 +183,25 @@ impl Component for MainComponent {
             <>
             <h1>{ "Rebo Playground" }</h1>
             <div class="outer">
-                <div class="code-wrapper">
+                <div class="left">
                     <ConfigComponent config={self.config.clone()} {on_editor_change} {on_keyboard_handler_change} />
                     <Editor config={self.config.clone()} default_value={self.default_code.clone()} default_value_serial={self.default_code_serial} {on_change} />
                 </div>
-                <div class="output">
-                    <h3>{ "Output: "}</h3>
-                    <AnsiOutput text={self.output.clone()} />
+                <div class="right">
+                    <div class="right-top">
+                        <h3>{ "Output:" }</h3>
+                        <AnsiOutput text={self.output.clone()} />
+                    </div>
+                    <div class="right-bottom">
+                        <div class="graph">
+                            <h3>{ "Graph Before typeck:" }</h3>
+                            <VizGraph content={self.type_graph_before.clone()} />
+                        </div>
+                        <div class="graph">
+                            <h3>{ "Graph After typeck:" }</h3>
+                            <VizGraph content={self.type_graph_after.clone()} />
+                        </div>
+                    </div>
                 </div>
             </div>
             </>
@@ -244,7 +265,6 @@ fn send_code(shared_buffer: &Uint32Array, worker: &Worker, code: &str) {
 struct AnsiOutputProps {
     text: String,
 }
-
 #[function_component(AnsiOutput)]
 fn ansi_output(props: &AnsiOutputProps) -> Html {
     let rendered = ansi_to_html::convert_escaped(&props.text)
@@ -253,4 +273,71 @@ fn ansi_output(props: &AnsiOutputProps) -> Html {
         .expect("can't create element `pre`");
     pre.set_inner_html(&rendered);
     Html::VRef(pre.into())
+}
+
+#[derive(Properties, PartialEq)]
+struct VizProperties {
+    content: Option<String>,
+}
+#[function_component(VizGraph)]
+fn viz_graph(props: &VizProperties) -> Html {
+    let viz_counter = use_state(|| 0);
+    let viz = use_memo(
+        |_| Viz::new("/static/full.render.js".to_string()),
+        *viz_counter,
+    );
+    let svg = use_state(|| Option::<Node>::None);
+    let content = props.content.clone();
+    let svg_inner = svg.clone();
+    let _ = use_effect_with_deps(
+        move |_| {
+            let Some(graph) = content else { return };
+            let promise = async move {
+                let res = viz.render_svg_element(graph.clone()).await;
+                match res {
+                    Ok(svg) => svg_inner.set(Some(svg.dyn_into().unwrap())),
+                    Err(e) => {
+                        viz_counter.set(*viz_counter + 1);
+                        log::error!("{e:?}")
+                    },
+                }
+            };
+            wasm_bindgen_futures::spawn_local(promise);
+        },
+        props.content.clone(),
+    );
+    let svg_inner = svg.clone();
+    use_effect_with_deps(
+        move |_| {
+            if let Some(svg) = (*svg_inner).clone() {
+                svg_pan_zoom(svg.dyn_into().unwrap());
+            }
+        },
+        (*svg).clone(),
+    );
+
+
+    let inner = match &*svg {
+        Some(e) => {
+            Html::VRef(e.clone())
+        },
+        None => html! {},
+    };
+    html! {
+        <div class ="viz-graph">
+            { inner }
+        </div>
+    }
+}
+
+#[wasm_bindgen]
+extern "C" {
+    type Viz;
+
+    #[wasm_bindgen(constructor)]
+    fn new(path: String) -> Viz;
+    #[wasm_bindgen(method, catch, js_name = "renderSVGElement")]
+    async fn render_svg_element(this: &Viz, graph: String) -> Result<JsValue, JsValue>;
+    #[wasm_bindgen(js_name="svgPanZoom")]
+    fn svg_pan_zoom(element: JsValue);
 }

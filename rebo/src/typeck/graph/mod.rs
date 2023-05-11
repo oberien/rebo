@@ -187,7 +187,24 @@ impl<'i> Graph<'i> {
             .map(move |ix| *self.graph.node_weight(ix).unwrap())
     }
 
-    pub fn dot(&self) {
+    pub fn xdot(&self) {
+        let mut xdot = Command::new("xdot")
+            .arg("-")
+            .stdin(Stdio::piped())
+            .stdout(Stdio::inherit())
+            .stderr(Stdio::inherit())
+            .spawn()
+            .unwrap();
+        {
+            writeln!(xdot.stdin.take().unwrap(), "{}", self).unwrap();
+        }
+        xdot.wait().unwrap();
+    }
+}
+
+impl<'i> Display for Graph<'i> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        // create Dot graph
         let f1 = &|_, e: EdgeReference<Constraint>| format!("label = {:?}", e.weight().to_string());
         let f2 = &|_, (_, n): (NodeIndex<u32>, &Node)| {
             let code = format!("{:?}", self.diagnostics.resolve_span(n.span()));
@@ -204,25 +221,13 @@ impl<'i> Graph<'i> {
             f1,
             f2,
         );
-        let dot = {
-            let mut vec = Vec::new();
-            writeln!(vec, "digraph {{").unwrap();
-            writeln!(vec, "    ranksep = .1;").unwrap();
-            writeln!(vec, "rankdir = LR;").unwrap();
-            writeln!(vec, "{:?}", dot).unwrap();
-            writeln!(vec, "}}").unwrap();
-            String::from_utf8(vec).unwrap()
-        };
-        let mut xdot = Command::new("xdot")
-            .arg("-")
-            .stdin(Stdio::piped())
-            .stdout(Stdio::inherit())
-            .stderr(Stdio::inherit())
-            .spawn()
-            .unwrap();
-        {
-            xdot.stdin.take().unwrap().write_all(dot.as_bytes()).unwrap();
-        }
-        xdot.wait().unwrap();
+
+        // write Dot Graph
+        writeln!(f, "digraph {{")?;
+        writeln!(f, "    ranksep = .1;")?;
+        writeln!(f, "rankdir = LR;")?;
+        writeln!(f, "{:?}", dot)?;
+        writeln!(f, "}}")?;
+        Ok(())
     }
 }

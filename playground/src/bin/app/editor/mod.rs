@@ -1,4 +1,4 @@
-use yew::{html, function_component, Callback, Properties};
+use yew::{html, function_component, Callback, Properties, Html};
 use ace_editor::AceEditor;
 use text_area_editor::TextAreaEditor;
 use crate::config::{Config, EditorType};

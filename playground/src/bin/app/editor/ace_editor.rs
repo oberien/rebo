@@ -1,4 +1,4 @@
-use yew::{function_component, use_node_ref, use_effect_with_deps, use_mut_ref, html};
+use yew::{function_component, use_node_ref, use_effect_with_deps, use_mut_ref, html, Html};
 use web_sys::Element;
 use wasm_bindgen::prelude::wasm_bindgen;
 use serde::Serialize;
@@ -36,7 +36,7 @@ pub fn ace_editor(props: &EditorProps) -> Html {
                     on_change.emit(editor.ace_get_value());
                 }) as Box<dyn FnMut()>).into_js_value()
             };
-            editor.ace_session_on("change".to_string(), on_change);
+            editor.session().on("change".to_string(), on_change);
             *editor_inner.borrow_mut() = editor;
             || ()
         }, deps);
@@ -79,11 +79,14 @@ struct AceEditorConfig {
 extern "C" {
     #[derive(Clone, Default)]
     type Editor;
+    type EditorSession;
 
     #[wasm_bindgen(js_name = "ace.edit")]
     fn ace_edit(node: &Element, cfg: JsValue) -> Editor;
-    #[wasm_bindgen(method, js_name = "session.on")]
-    fn ace_session_on(this: &Editor, target: String, on_change: JsValue);
+    #[wasm_bindgen(method, getter = session, structural)]
+    fn session(this: &Editor) -> EditorSession;
+    #[wasm_bindgen(method, js_name = "on")]
+    fn on(this: &EditorSession, target: String, on_change: JsValue);
     #[wasm_bindgen(method, js_name = "getValue")]
     fn ace_get_value(this: &Editor) -> String;
     #[wasm_bindgen(method, js_name = "setValue")]

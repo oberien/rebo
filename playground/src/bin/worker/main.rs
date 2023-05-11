@@ -13,10 +13,12 @@ fn post_message<T: Into<JsValue>>(t: T) {
     worker_global_scope().post_message(&t.into())
         .expect("can't post_message from worker");
 }
-fn post_output(serial: i32, output: String) {
+fn post_output(serial: i32, output: String, type_graph_before: Option<String>, type_graph_after: Option<String>) {
     let val = serde_wasm_bindgen::to_value(&OutputPayload {
         serial,
         output,
+        type_graph_before,
+        type_graph_after,
     }).expect("can't serialize OutputPayload");
     post_message(val);
 }
