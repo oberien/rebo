@@ -1,6 +1,6 @@
 use flate2::Compression;
 use flate2::bufread::{GzDecoder, GzEncoder};
-use yew::{function_component, Html, Properties, Component, Context, html, use_memo, use_effect_with_deps, use_state};
+use yew::{function_component, Html, Properties, Component, Context, html, use_memo, use_effect_with_deps, use_state, classes, Callback};
 use js_sys::{Uint32Array, Atomics};
 use web_sys::{Worker, window, MessageEvent, Node};
 use wasm_bindgen::{JsCast, JsValue};
@@ -281,21 +281,23 @@ struct VizProperties {
 }
 #[function_component(VizGraph)]
 fn viz_graph(props: &VizProperties) -> Html {
-    let viz_counter = use_state(|| 0);
+    let viz_counter_outer = use_state(|| 0);
     let viz = use_memo(
         |_| Viz::new("/static/full.render.js".to_string()),
-        *viz_counter,
+        *viz_counter_outer,
     );
-    let svg = use_state(|| Option::<Node>::None);
+
+    let svg_outer = use_state(|| Option::<Node>::None);
     let content = props.content.clone();
-    let svg_inner = svg.clone();
+    let svg = svg_outer.clone();
+    let viz_counter = viz_counter_outer.clone();
     let _ = use_effect_with_deps(
         move |_| {
             let Some(graph) = content else { return };
             let promise = async move {
                 let res = viz.render_svg_element(graph.clone()).await;
                 match res {
-                    Ok(svg) => svg_inner.set(Some(svg.dyn_into().unwrap())),
+                    Ok(s) => svg.set(Some(s.dyn_into().unwrap())),
                     Err(e) => {
                         viz_counter.set(*viz_counter + 1);
                         log::error!("{e:?}")
@@ -306,25 +308,46 @@ fn viz_graph(props: &VizProperties) -> Html {
         },
         props.content.clone(),
     );
-    let svg_inner = svg.clone();
+
+    let pan_zoom_outer = use_state(|| None);
+    let svg = svg_outer.clone();
+    let pan_zoom = pan_zoom_outer.clone();
     use_effect_with_deps(
         move |_| {
-            if let Some(svg) = (*svg_inner).clone() {
-                svg_pan_zoom(svg.dyn_into().unwrap());
+            if let Some(svg) = (*svg).clone() {
+                pan_zoom.set(Some(svg_pan_zoom(svg.dyn_into().unwrap())));
             }
         },
-        (*svg).clone(),
+        (*svg_outer).clone(),
     );
 
+    let maximized_outer = use_state(|| false);
+    let maximized = maximized_outer.clone();
+    let maximize = Callback::from(move |_| maximized.set(!*maximized));
 
-    let inner = match &*svg {
+    let inner = match &*svg_outer {
         Some(e) => {
             Html::VRef(e.clone())
         },
         None => html! {},
     };
+
+
+    let pan_zoom = pan_zoom_outer.clone();
+    use_effect_with_deps(
+        move |_| {
+            if let Some(pan_zoom) = (*pan_zoom).as_ref() {
+                pan_zoom.resize();
+                // pan_zoom.fit();
+                // pan_zoom.center();
+            }
+        },
+        *maximized_outer
+    );
+
     html! {
-        <div class ="viz-graph">
+        <div class={classes!("viz-graph", if *maximized_outer { Some("maximized") } else { None })}>
+            <div class="maximize-icon" onclick={maximize}>{ "\u{26F6}" }</div>
             { inner }
         </div>
     }
@@ -333,11 +356,18 @@ fn viz_graph(props: &VizProperties) -> Html {
 #[wasm_bindgen]
 extern "C" {
     type Viz;
+    type SvgPanZoom;
 
     #[wasm_bindgen(constructor)]
     fn new(path: String) -> Viz;
     #[wasm_bindgen(method, catch, js_name = "renderSVGElement")]
     async fn render_svg_element(this: &Viz, graph: String) -> Result<JsValue, JsValue>;
     #[wasm_bindgen(js_name="svgPanZoom")]
-    fn svg_pan_zoom(element: JsValue);
+    fn svg_pan_zoom(element: JsValue) -> SvgPanZoom;
+    #[wasm_bindgen(method)]
+    fn resize(this: &SvgPanZoom);
+    #[wasm_bindgen(method)]
+    fn fit(this: &SvgPanZoom);
+    #[wasm_bindgen(method)]
+    fn center(this: &SvgPanZoom);
 }
