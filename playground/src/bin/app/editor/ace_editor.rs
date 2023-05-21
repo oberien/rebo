@@ -21,7 +21,7 @@ pub fn ace_editor(props: &EditorProps) -> Html {
         use_effect_with_deps(move |_| {
             let editor = ace_edit(
                 &editor_ref.cast::<Element>().expect("cast editor to Element failed"),
-                JsValue::from_serde(&AceEditorConfig {
+                serde_wasm_bindgen::to_value(&AceEditorConfig {
                     mode: "ace/mode/rust",
                     theme: "ace/theme/idle_fingers",
                     selectionStyle: "text",

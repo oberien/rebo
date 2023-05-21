@@ -860,7 +860,7 @@ dependencies = [
  "rebo",
  "regex",
  "serde",
- "serde-wasm-bindgen 0.4.2",
+ "serde-wasm-bindgen 0.5.0",
  "url",
  "wasm-bindgen",
  "wasm-bindgen-futures",
@@ -1117,11 +1117,10 @@ dependencies = [
 
 [[package]]
 name = "serde-wasm-bindgen"
-version = "0.4.2"
+version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d5d0927d4115e78b52dfd4cabcb3cc79bd56b94a53cf27c074bf8b83af1765d1"
+checksum = "f3b143e2833c57ab9ad3ea280d21fd34e285a42837aeb0ee301f4f41890fa00e"
 dependencies = [
- "fnv",
  "js-sys",
  "serde",
  "wasm-bindgen",

@@ -8,6 +8,7 @@ use playground::{OutputPayload, CodePayload};
 use gloo_storage::{LocalStorage, Storage};
 use gloo_events::EventListener;
 use std::io::{Read, Cursor};
+use serde::{Deserialize, Serialize};
 use url::Url;
 use wasm_bindgen::prelude::wasm_bindgen;
 use editor::Editor;
@@ -309,13 +310,13 @@ fn viz_graph(props: &VizProperties) -> Html {
         props.content.clone(),
     );
 
-    let pan_zoom_outer = use_state(|| None);
+    let svgpanzoom_outer = use_state(|| None);
     let svg = svg_outer.clone();
-    let pan_zoom = pan_zoom_outer.clone();
+    let svgpanzoom = svgpanzoom_outer.clone();
     use_effect_with_deps(
         move |_| {
             if let Some(svg) = (*svg).clone() {
-                pan_zoom.set(Some(svg_pan_zoom(svg.dyn_into().unwrap())));
+                svgpanzoom.set(Some(svg_pan_zoom(svg.dyn_into().unwrap())));
             }
         },
         (*svg_outer).clone(),
@@ -333,13 +334,26 @@ fn viz_graph(props: &VizProperties) -> Html {
     };
 
 
-    let pan_zoom = pan_zoom_outer.clone();
+    let svgpanzoom = svgpanzoom_outer.clone();
     use_effect_with_deps(
         move |_| {
-            if let Some(pan_zoom) = (*pan_zoom).as_ref() {
-                pan_zoom.resize();
-                // pan_zoom.fit();
-                // pan_zoom.center();
+            if let Some(svgpanzoom) = (*svgpanzoom).as_ref() {
+                let before = SvgPanZoomSizeState::load(svgpanzoom);
+                svgpanzoom.resize();
+                // keep same relative zoom
+                svgpanzoom.zoom(JsValue::from(before.zoom));
+                let after = SvgPanZoomSizeState::load(svgpanzoom);
+
+                // keep the center centered via panning
+                let before_center_x = before.size.width / 2.;
+                let before_center_y = before.size.height / 2.;
+                let after_center_x = after.size.width / 2.;
+                let after_center_y = after.size.height / 2.;
+                let real_center_x = (before_center_x - before.pan.x) / before.size.real_zoom;
+                let real_center_y = (before_center_y - before.pan.y) / before.size.real_zoom;
+                let after_pan_x = after_center_x - real_center_x * after.size.real_zoom;
+                let after_pan_y = after_center_y - real_center_y * after.size.real_zoom;
+                svgpanzoom.pan(serde_wasm_bindgen::to_value(&Pan { x: after_pan_x, y: after_pan_y }).unwrap());
             }
         },
         *maximized_outer
@@ -351,6 +365,45 @@ fn viz_graph(props: &VizProperties) -> Html {
             { inner }
         </div>
     }
+}
+
+#[derive(Debug, Clone)]
+struct SvgPanZoomSizeState {
+    size: Size,
+    pan: Pan,
+    zoom: f64,
+}
+impl SvgPanZoomSizeState {
+    fn load(svgpanzoom: &SvgPanZoom) -> Self {
+        SvgPanZoomSizeState {
+            size: serde_wasm_bindgen::from_value(svgpanzoom.get_sizes()).unwrap(),
+            pan: serde_wasm_bindgen::from_value(svgpanzoom.get_pan()).unwrap(),
+            zoom: svgpanzoom.get_zoom().as_f64().unwrap(),
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Copy)]
+struct Size {
+    width: f64,
+    height: f64,
+    #[serde(rename = "realZoom")]
+    real_zoom: f64,
+    #[serde(rename = "viewBox")]
+    view_box: ViewBox,
+}
+#[derive(Serialize, Deserialize, Debug, Clone, Copy)]
+struct ViewBox {
+    width: f64,
+    height: f64,
+    x: f64,
+    y: f64,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Copy)]
+struct Pan {
+    x: f64,
+    y: f64,
 }
 
 #[wasm_bindgen]
@@ -370,4 +423,14 @@ extern "C" {
     fn fit(this: &SvgPanZoom);
     #[wasm_bindgen(method)]
     fn center(this: &SvgPanZoom);
+    #[wasm_bindgen(method, js_name="getPan")]
+    fn get_pan(this: &SvgPanZoom) -> JsValue;
+    #[wasm_bindgen(method, js_name="pan")]
+    fn pan(this: &SvgPanZoom, xy: JsValue);
+    #[wasm_bindgen(method, js_name="getZoom")]
+    fn get_zoom(this: &SvgPanZoom) -> JsValue;
+    #[wasm_bindgen(method, js_name="zoom")]
+    fn zoom(this: &SvgPanZoom, xy: JsValue);
+    #[wasm_bindgen(method, js_name="getSizes")]
+    fn get_sizes(this: &SvgPanZoom) -> JsValue;
 }
