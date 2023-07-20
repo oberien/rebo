@@ -277,7 +277,7 @@ fn use_static() {
     MY_STATIC = 21;
 }
 
-// includes
+// includes -- #[remove block in playground] (instruction for the wasm playground)
 assert_eq(1, DEFINED_IN_INCLUDE);
 assert_eq(2, defined_in_include());
 assert(include "test-include.re" == "this is the inclusion result");

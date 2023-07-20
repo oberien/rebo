@@ -25,7 +25,7 @@ fn main() {
     yew::Renderer::<MainComponent>::new().render();
 }
 
-const DEFAULT_CODE: &str = r#"print("Hello, world!");"#;
+const DEFAULT_CODE: &str = include_str!("../../../../test.re");
 
 pub enum Msg {
     WorkerStarted(Uint32Array),
@@ -66,7 +66,7 @@ impl Component for MainComponent {
             let code: Result<String, _> = LocalStorage::get("code");
             code.ok()
                 .and_then(|s| if s.is_empty() { None } else { Some(s) })
-        }).unwrap_or_else(|| DEFAULT_CODE.to_string());
+        }).unwrap_or_else(|| default_code());
         let shared_buffer = Uint32Array::default();
 
         let worker = worker_new();
@@ -212,6 +212,23 @@ impl Component for MainComponent {
     fn destroy(&mut self, _ctx: &Context<Self>) {
         self.worker.terminate();
     }
+}
+
+fn default_code() -> String {
+    let mut default_code = String::with_capacity(DEFAULT_CODE.len());
+    let mut skipping = false;
+    for line in DEFAULT_CODE.lines() {
+        if line.contains("#[remove block in playground]") {
+            skipping = true;
+        } else if line == "" {
+            skipping = false;
+        }
+        if !skipping {
+            default_code.push_str(line);
+            default_code.push('\n');
+        }
+    }
+    default_code
 }
 
 /// Load code from the location's URL-fragment
