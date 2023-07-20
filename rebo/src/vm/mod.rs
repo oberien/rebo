@@ -103,6 +103,10 @@ impl<'a, 'b, 'i> Vm<'a, 'b, 'i> {
             let value = self.eval_expr(static_def.expr, Depth::start())?;
             self.bind(&binding, value, Depth::start());
         }
+        // add external values
+        for (binding, value) in self.meta_info.external_values.clone() {
+            self.bind(&binding, value, Depth::start());
+        }
 
         let mut value = None;
         for expr in ast {

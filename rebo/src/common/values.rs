@@ -1,6 +1,7 @@
 use crate::vm::{ExecError, VmContext};
 use crate::parser::BindingId;
 use std::sync::Arc;
+use std::hash::Hash;
 use std::fmt;
 use std::ops::{Add, Sub, Mul, Div};
 use std::cmp::Ordering;
@@ -779,4 +780,3 @@ impl FromValue for f64 {
         }
     }
 }
-

@@ -175,9 +175,12 @@ impl<'a, 'b, 'i> Parser<'a, 'b, 'i> {
         trace!("parse_ast");
         self.first_pass(Depth::start());
         self.second_pass(Depth::start());
-        // add statics to global scope
+        // add statics and external values to global scope
         let _guard = self.push_scope(ScopeType::Global);
         self.add_statics();
+        for binding in self.meta_info.external_values.keys().copied() {
+            self.scopes.borrow_mut().last_mut().unwrap().idents.insert(binding.ident.ident.to_string(), binding);
+        }
 
         let body: BlockBody = self.parse_file_content()?;
         // make sure everything parsed during first-pass was consumed and used by the second pass

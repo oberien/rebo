@@ -104,6 +104,10 @@ pub struct MetaInfo<'a, 'i> {
     ///
     /// Available before the parser.
     pub external_function_signatures: IndexMap<&'static str, ExprFunctionSignature<'a, 'i>>,
+    /// variables defined by the user
+    ///
+    /// Available before the parser
+    pub external_values: IndexMap<Binding<'i>, Value>,
     /// map names to enum / struct definitions found in the code
     ///
     /// Available after the first-pass of the parser.
@@ -148,6 +152,7 @@ impl<'a, 'i> MetaInfo<'a, 'i> {
             anonymous_rebo_functions: IndexMap::new(),
             external_functions: IndexMap::new(),
             external_function_signatures: IndexMap::new(),
+            external_values: IndexMap::new(),
             user_types: IndexMap::new(),
             statics: IndexMap::new(),
             static_bindings: IndexSet::new(),

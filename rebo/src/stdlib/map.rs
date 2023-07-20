@@ -4,7 +4,8 @@ use crate::parser::Expr;
 use crate::common::{MetaInfo, Value, MapArc, DeepCopy};
 use crate::typeck::types::{Type, SpecificType};
 use std::borrow::Cow;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
+use std::hash::Hash;
 use std::marker::PhantomData;
 use crate::{CowVec, ExternalType, FileId, FromValue, IntoValue, Typed, ErrorCode};
 use crate::stdlib::list::List;
@@ -63,6 +64,29 @@ impl<K, V> DeepCopy for Map<K, V> {
         }
     }
 }
+
+macro_rules! impl_map {
+    ($t:ty where K: $k:ident $(+ $ks:ident)*) => {
+        impl<K: $k $(+ $ks)* + IntoValue, V: IntoValue> IntoValue for $t {
+            fn into_value(self) -> Value {
+                let map = self.into_iter().map(|(k, v)| (k.into_value(), v.into_value())).collect();
+                Value::Map(MapArc::new(map))
+            }
+        }
+        impl<K: $k $(+ $ks)* + FromValue, V: FromValue> FromValue for $t {
+            fn from_value(value: Value) -> Self {
+                match value {
+                    Value::Map(map) => map.map.lock().borrow().iter()
+                        .map(|(k, v)| (K::from_value(k.clone()), V::from_value(v.clone())))
+                        .collect(),
+                    _ => unreachable!("HashMap::from_value called with non-map: {:?}", value),
+                }
+            }
+        }
+    }
+}
+impl_map! { HashMap<K, V> where K: Hash + Eq }
+impl_map! { BTreeMap<K, V> where K: Ord }
 
 pub fn add_map<'a, 'i>(diagnostics: &'i Diagnostics<ErrorCode>, arena: &'a Arena<Expr<'a, 'i>>, meta_info: &mut MetaInfo<'a, 'i>) {
     meta_info.add_external_type::<Map<Value, Value>>(arena, diagnostics);

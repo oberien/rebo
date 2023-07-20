@@ -62,7 +62,7 @@ impl<T: FromValue> FromValue for Vec<T> {
     fn from_value(value: Value) -> Self {
         match value {
             Value::List(arc) => arc.list.lock().borrow().iter().cloned().map(FromValue::from_value).collect(),
-            _ => unreachable!("Vec::from_value called with non-List"),
+            _ => unreachable!("Vec::from_value called with non-List: {:?}", value),
         }
     }
 }

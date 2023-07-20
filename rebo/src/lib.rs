@@ -9,8 +9,8 @@ use itertools::Itertools;
 use typed_arena::Arena;
 
 use crate::common::{MetaInfo, RequiredReboFunctionStruct};
-use crate::lexer::Lexer;
-use crate::parser::{Ast, Expr, Parser};
+use crate::lexer::{Lexer, TokenIdent};
+use crate::parser::{Ast, Binding, Expr, Parser};
 use crate::vm::Vm;
 
 mod error_codes;
@@ -35,6 +35,7 @@ pub use stdlib::{Stdlib, List, Map};
 pub use util::CowVec;
 use std::path::{PathBuf, Path};
 use diagnostic::Emitted;
+use rebo::parser::BindingId;
 use crate::error_codes::ErrorCode;
 
 const EXTERNAL_SOURCE: &str = "defined externally";
@@ -49,7 +50,7 @@ pub struct RunResult {
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum ReturnValue {
-    Ok,
+    Ok(Value),
     ParseError,
     Diagnostics(Vec<Emitted<ErrorCode>>),
     Panic,
@@ -79,6 +80,7 @@ pub type ExternalTypeAdderFunction = for<'a, 'b, 'i> fn(&'a Arena<Expr<'a, 'i>>,
 pub struct ReboConfig {
     stdlib: Stdlib,
     functions: Vec<ExternalFunction>,
+    external_values: Vec<(String, Value)>,
     interrupt_interval: u32,
     interrupt_function: for<'a, 'i> fn(&mut VmContext<'a, '_, '_, 'i>) -> Result<(), ExecError<'a, 'i>>,
     diagnostic_output: Output,
@@ -91,6 +93,7 @@ impl ReboConfig {
         ReboConfig {
             stdlib: Stdlib::all(),
             functions: vec![],
+            external_values: vec![],
             interrupt_interval: 10000,
             interrupt_function: |_| Ok(()),
             diagnostic_output: Output::stderr(),
@@ -105,6 +108,10 @@ impl ReboConfig {
     }
     pub fn add_function(mut self, function: ExternalFunction) -> Self {
         self.functions.push(function);
+        self
+    }
+    pub fn add_external_value<T: IntoValue>(mut self, name: String, value: T) -> Self {
+        self.external_values.push((name, value.into_value()));
         self
     }
     pub fn interrupt_interval(mut self, interval: u32) -> Self {
@@ -145,7 +152,7 @@ pub fn run(filename: String, code: String) -> RunResult {
     run_with_config(filename, code, ReboConfig::new())
 }
 pub fn run_with_config(filename: String, code: String, config: ReboConfig) -> RunResult {
-    let ReboConfig { stdlib, functions, interrupt_interval, interrupt_function, diagnostic_output, include_directory, external_type_adder_functions, required_rebo_functions } = config;
+    let ReboConfig { stdlib, functions, external_values, interrupt_interval, interrupt_function, diagnostic_output, include_directory, external_type_adder_functions, required_rebo_functions } = config;
 
     let diagnostics = Diagnostics::with_output(diagnostic_output);
     // register file for external sources
@@ -164,6 +171,24 @@ pub fn run_with_config(filename: String, code: String, config: ReboConfig) -> Ru
     // add external functions defined by library user
     for function in functions {
         meta_info.add_external_function(&arena, &diagnostics, function);
+    }
+
+    // add externally provided variables
+    for (name, value) in external_values {
+        let (fileid, code) = diagnostics.add_file(
+            format!("__file_for_external_value_{name}"),
+            format!("let {name} = /* defined externally */;")
+        );
+        let binding = Binding {
+            id: BindingId::unique(),
+            mutable: None,
+            ident: TokenIdent {
+                span: Span::new(fileid, 4, 4 + name.len()),
+                ident: &code[4..][..name.len()],
+            },
+            rogue: false,
+        };
+        meta_info.external_values.insert(binding, value);
     }
 
     // add required rebo functions
@@ -237,10 +262,10 @@ pub fn run_with_config(filename: String, code: String, config: ReboConfig) -> Ru
     let vm = Vm::new(include_directory, &diagnostics, &meta_info, interrupt_interval, interrupt_function);
     let result = vm.run(&exprs);
     info!("Execution took {}μs", time.elapsed().as_micros());
-    println!("RESULT: {:?}", result);
+    error!("RESULT: {:?}", result);
     let return_value = match result {
         Ok(_) if !diags.is_empty() => ReturnValue::Diagnostics(diags),
-        Ok(_) => ReturnValue::Ok,
+        Ok(value) => ReturnValue::Ok(value),
         Err(ExecError::Panic) => ReturnValue::Panic,
         Err(ExecError::Continue(_)) => unreachable!("continue returned from Vm::run"),
         Err(ExecError::Break(..)) => unreachable!("break returned from Vm::run"),
