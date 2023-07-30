@@ -10,6 +10,7 @@ use std::rc::Rc;
 use crate::error_codes::ErrorCode;
 use std::sync::atomic::{Ordering, AtomicU64};
 use rt_format::Format;
+use rebo::{Value, FunctionValue};
 use crate::{CowVec, EXTERNAL_SPAN};
 
 static CALL_INDEX: AtomicU64 = AtomicU64::new(0);
@@ -253,6 +254,7 @@ fn convert_expr_type(typ: &ExprType, diagnostics: &Diagnostics<ErrorCode>, meta_
 }
 
 impl<'i> Graph<'i> {
+    /// Add types defined in the rebo code as resolved struct and enum types
     fn add_user_types(diagnostics: &'i Diagnostics<ErrorCode>, meta_info: &mut MetaInfo) {
         for user_type in meta_info.user_types.values() {
             match user_type {
@@ -436,6 +438,82 @@ impl<'i> Graph<'i> {
             }
         }
     }
+    /// Resolve a value to its resolved type after all struct and enum types are available
+    fn resolve_value_type(&mut self, meta_info: &MetaInfo, val: &Value) -> ResolvableSpecificType {
+        match val {
+            Value::Unit => ResolvableSpecificType::Unit,
+            Value::Integer(_) => ResolvableSpecificType::Integer,
+            Value::Float(_) => ResolvableSpecificType::Float,
+            Value::Bool(_) => ResolvableSpecificType::Bool,
+            Value::String(_) => ResolvableSpecificType::String,
+            Value::Struct(s) => {
+                let name = s.s.lock().borrow().name.clone();
+                if !meta_info.struct_types[&*name].generics.is_empty() {
+                    unimplemented!("passing generic structs as external values is unsupported");
+                }
+                ResolvableSpecificType::Struct(name, vec![])
+            },
+            Value::Enum(e) => {
+                let name = e.e.lock().borrow().name.clone();
+                if !meta_info.enum_types[&*name].generics.is_empty() {
+                    unimplemented!("passing generic enums as external values is unsupported");
+                }
+                ResolvableSpecificType::Enum(name, vec![])
+            }
+            Value::Function(FunctionValue::Named(name)) => ResolvableSpecificType::Function(Some(meta_info.function_types[name.as_str()].to_owned())),
+            Value::Function(FunctionValue::Anonymous(..)) => unimplemented!("passing an anonymous function as external value is unsupported"),
+            Value::List(l) => {
+                let name = "List".to_string();
+                let t_span = meta_info.struct_types["List"].generics.first().unwrap();
+                let generics = match l.list.lock().borrow().first() {
+                    Some(inner) => {
+                        let typ = self.resolve_value_type(meta_info, inner);
+                        let node = Node::synthetic(*t_span);
+                        self.add_node(node);
+                        self.add_reduce_constraint(node, node, vec![typ]);
+                        vec![node]
+                    },
+                    None => unimplemented!("passing an empty list as external value is unsupported"),
+                };
+                ResolvableSpecificType::Struct(name, generics)
+            },
+            Value::Map(m) => {
+                let name = "Map".to_string();
+                let k_span = meta_info.struct_types["Map"].generics.get(0).unwrap();
+                let v_span = meta_info.struct_types["Map"].generics.get(1).unwrap();
+                let generics = match m.map.lock().borrow().first_key_value() {
+                    Some((k, v)) => {
+                        let k_typ = self.resolve_value_type(meta_info, k);
+                        let v_typ = self.resolve_value_type(meta_info, v);
+                        let k_node = Node::synthetic(*k_span);
+                        let v_node = Node::synthetic(*v_span);
+                        self.add_node(k_node);
+                        self.add_node(v_node);
+                        self.add_reduce_constraint(k_node, k_node, vec![k_typ]);
+                        self.add_reduce_constraint(v_node, v_node, vec![v_typ]);
+                        vec![k_node, v_node]
+                    },
+                    None => unimplemented!("passing an empty map as external value is unsupported"),
+                };
+                ResolvableSpecificType::Struct(name, generics)
+            },
+            Value::Set(s) => {
+                let name = "Set".to_string();
+                let t_span = meta_info.struct_types["Set"].generics.first().unwrap();
+                let generics = match s.set.lock().borrow().first() {
+                    Some(inner) => {
+                        let typ = self.resolve_value_type(meta_info, inner);
+                        let node = Node::synthetic(*t_span);
+                        self.add_node(node);
+                        self.add_reduce_constraint(node, node, vec![typ]);
+                        vec![node]
+                    },
+                    None => unimplemented!("passing an empty set as external value is unsupported"),
+                };
+                ResolvableSpecificType::Struct(name, generics)
+            },
+        }
+    }
     pub fn create(diagnostics: &'i Diagnostics<ErrorCode>, meta_info: &mut MetaInfo<'_, 'i>, exprs: &[&Expr<'_, 'i>]) -> Graph<'i> {
         Self::add_user_types(diagnostics, meta_info);
         Self::verify_external_types(diagnostics, meta_info);
@@ -453,6 +531,13 @@ impl<'i> Graph<'i> {
                 None => continue,
             };
             graph.add_reduce_constraint(node, node, vec![ResolvableSpecificType::Function(Some(typ.clone()))]);
+        }
+        // add user-provided value types
+        for (binding, val) in &meta_info.external_values {
+            let typ = graph.resolve_value_type(meta_info, val);
+            let node = Node::type_var(binding.ident.span());
+            graph.add_node(node);
+            graph.add_reduce_constraint(node, node, vec![typ]);
         }
 
         // resolve local types
