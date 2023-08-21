@@ -75,7 +75,7 @@ impl<'a, 'b, 'i> Vm<'a, 'b, 'i> {
         let scopes = Scopes::new();
         let root_scope = Scope::new();
         // we don't want to drop the root-scope, it should exist at all times
-        std::mem::forget(scopes.push_scope(root_scope));
+        scopes.push_scope(root_scope).dont_remove();
         Vm {
             instructions_since_last_interrupt: 0,
             interrupt_interval,

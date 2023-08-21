@@ -155,14 +155,14 @@ impl<'a, 'b, 'i> Parser<'a, 'b, 'i> {
             if let Ok(impl_block_sig) = ImplBlockSignature::parse(self, depth.duplicate()) {
                 trace!("entering impl-block {}", impl_block_sig.name.ident);
                 stack.push(StackElement::ImplBlock(impl_block_sig.name.ident.to_string()));
-                std::mem::forget(scope);
+                scope.dont_remove();
                 continue;
             }
             if let Ok(Token::OpenCurly(_)) = self.peek_token(0) {
                 drop(self.next_token().unwrap());
                 trace!("entering block");
                 stack.push(StackElement::Block);
-                std::mem::forget(scope);
+                scope.dont_remove();
                 continue;
             }
             drop(scope);

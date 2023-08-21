@@ -1,6 +1,7 @@
 use std::cell::RefCell;
 use std::collections::HashMap;
-use std::rc::Rc;
+use std::mem;
+use std::rc::{Rc, Weak};
 use crate::common::Value;
 use crate::parser::BindingId;
 
@@ -13,11 +14,22 @@ pub struct Scope {
     variables: HashMap<BindingId, Value>,
 }
 pub struct ScopeGuard {
-    scopes: Rc<RefCell<Vec<Scope>>>,
+    scopes: Weak<RefCell<Vec<Scope>>>,
+}
+impl ScopeGuard {
+    /// Don't remove this scope, it'll exist until all scopes are dropped
+    pub fn dont_remove(mut self) {
+        let weak = mem::replace(&mut self.scopes, Weak::new());
+        // this drop only drops the Weak and doesn't pop the scope from the Scopes
+        drop(weak);
+    }
 }
 impl Drop for ScopeGuard {
     fn drop(&mut self) {
-        self.scopes.borrow_mut().pop().unwrap();
+        // only pop the scope if we want to remove it (i.e. dont_remove hasn't been called)
+        if let Some(scopes) = self.scopes.upgrade(){
+            scopes.borrow_mut().pop().unwrap();
+        }
     }
 }
 
@@ -32,7 +44,7 @@ impl Scopes {
     pub fn push_scope(&self, scope: Scope) -> ScopeGuard {
         self.scopes.borrow_mut().push(scope);
         ScopeGuard {
-            scopes: Rc::clone(&self.scopes),
+            scopes: Rc::downgrade(&self.scopes),
         }
     }
 

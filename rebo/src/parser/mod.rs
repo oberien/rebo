@@ -1,4 +1,4 @@
-use std::fmt;
+use std::{fmt, mem};
 use std::borrow::Cow;
 use std::collections::{HashMap, BTreeMap, btree_map::Entry, HashSet, BTreeSet};
 
@@ -23,7 +23,7 @@ use itertools::Itertools;
 use crate::parser::scope::Scope;
 use std::cell::RefCell;
 use std::ops::Range;
-use std::rc::Rc;
+use std::rc::{Rc, Weak};
 use indexmap::set::IndexSet;
 use intervaltree::Element;
 use crate::IncludeDirectory;
@@ -142,11 +142,22 @@ pub struct Parser<'a, 'b, 'i> {
 }
 
 pub struct ScopeGuard<'i> {
-    scopes: Rc<RefCell<Vec<Scope<'i>>>>,
+    scopes: Weak<RefCell<Vec<Scope<'i>>>>,
+}
+impl<'i> ScopeGuard<'i> {
+    /// Don't remove this scope, it'll exist until all scopes are dropped
+    fn dont_remove(mut self) {
+        let weak = mem::replace(&mut self.scopes, Weak::new());
+        // this drop only drops the Weak and doesn't pop the scope from the Scopes
+        drop(weak);
+    }
 }
 impl<'i> Drop for ScopeGuard<'i> {
     fn drop(&mut self) {
-        self.scopes.borrow_mut().pop().unwrap();
+        // only pop the scope if we want to remove it (i.e. dont_remove hasn't been called)
+        if let Some(scopes) = self.scopes.upgrade(){
+            scopes.borrow_mut().pop().unwrap();
+        }
     }
 }
 
@@ -344,7 +355,7 @@ impl<'a, 'b, 'i> Parser<'a, 'b, 'i> {
     pub fn push_scope(&self, typ: ScopeType<'i>) -> ScopeGuard<'i> {
         self.scopes.borrow_mut().push(Scope { idents: IndexMap::new(), generics: IndexMap::new(), typ });
         ScopeGuard {
-            scopes: Rc::clone(&self.scopes)
+            scopes: Rc::downgrade(&self.scopes),
         }
     }
 
