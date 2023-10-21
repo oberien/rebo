@@ -92,7 +92,7 @@ pub fn run_rebo(buf: Uint32Array, code: CodePayload) {
     STATE.with(|state| {
         let mut state = state.borrow_mut();
         match ret.return_value {
-            ReturnValue::Ok => state.output_buffer.push_str("\n\nExecution successful."),
+            ReturnValue::Ok(val) => state.output_buffer.push_str(&format!("\n\nExecution successful, return value: {}", DisplayValue(&val))),
             ReturnValue::Diagnostics(diags) => state.output_buffer.push_str(&format!("\n\n{} diagnostics.", diags.len())),
             ReturnValue::ParseError => state.output_buffer.push_str("\n\nParse error."),
             ReturnValue::Panic => state.output_buffer.push_str("\n\nPanic occurred during execution."),
