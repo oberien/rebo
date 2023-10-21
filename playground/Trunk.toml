@@ -9,11 +9,11 @@ headers = { "Cross-Origin-Opener-Policy" = "same-origin", "Cross-Origin-Embedder
 [[hooks]]
 stage = "pre_build"
 command = "sh"
-command_arguments = ["-c", "test -f static/viz.js || wget https://github.com/mdaines/viz.js/releases/latest/download/viz.js -P static/"]
+command_arguments = ["-c", "test -f static/viz.js || wget https://github.com/mdaines/viz.js/releases/download/v2.1.2/viz.js -P static/"]
 [[hooks]]
 stage = "pre_build"
 command = "sh"
-command_arguments = ["-c", "test -f static/lite.render.js || wget https://github.com/mdaines/viz.js/releases/latest/download/lite.render.js -P static/"]
+command_arguments = ["-c", "test -f static/lite.render.js || wget https://github.com/mdaines/viz.js/releases/download/v2.1.2/lite.render.js -P static/"]
 [[hooks]]
 stage = "pre_build"
 command = "sh"
