@@ -78,6 +78,7 @@ pub fn add_to_meta_info<'a, 'i>(stdlib: Stdlib, diagnostics: &'i Diagnostics<Err
     meta_info.add_external_function(arena, diagnostics, string_parse_float);
     meta_info.add_external_function(arena, diagnostics, string_split);
     meta_info.add_external_function(arena, diagnostics, string_find_matches);
+    meta_info.add_external_function(arena, diagnostics, string_captures);
     meta_info.add_external_function(arena, diagnostics, string_sorted);
     meta_info.add_external_function(arena, diagnostics, string_contains);
     meta_info.add_external_function(arena, diagnostics, current_time_millis);
@@ -374,6 +375,11 @@ fn string_split(this: String, regex: String) -> List<String> {
 fn string_find_matches(this: String, regex: String) -> List<String> {
     let regex = compile_regex(regex, vm, expr_span)?;
     List::new(regex.find_iter(&this).map(|m| m.as_str().to_string()))
+}
+#[rebo::function(raw("string::captures"))]
+fn string_captures(this: String, regex: String) -> Option<List<Option<String>>> {
+    let regex = compile_regex(regex, vm, expr_span)?;
+    (|| Some(List::new(regex.captures(&this)?.iter().map(|m| m.map(|m| m.as_str().to_string())))))()
 }
 #[rebo::function(raw("string::sorted"))]
 fn string_sorted(this: String) -> String {
