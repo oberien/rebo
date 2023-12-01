@@ -672,7 +672,7 @@ macro_rules! impl_from_into {
             fn from_value(value: Value) -> Self {
                 match value {
                     Value::$name(val) => val,
-                    _ => unreachable!(),
+                    _ => unreachable!("expected {}, got {:?}", stringify!($name), value),
                 }
             }
         }
