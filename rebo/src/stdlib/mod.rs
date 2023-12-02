@@ -12,7 +12,7 @@ use rand::{Rng, SeedableRng, seq::SliceRandom};
 use std::sync::Mutex;
 use regex::Regex;
 use unicode_segmentation::UnicodeSegmentation;
-use rebo::VmContext;
+use rebo::{DebugValue, VmContext};
 use crate::util::{self, ResolveFileError, TryParseNumberResult};
 use crate::RequiredReboFunctionStruct;
 
@@ -31,6 +31,7 @@ bitflags::bitflags! {
         const ASSERT = 0x2;
         const PANIC = 0x4;
         const ASSERT_EQ = 0x8;
+        const DBG = 0x10;
     }
 }
 mod required {
@@ -42,6 +43,7 @@ mod required {
         pub fn assert(condition: bool);
         pub fn panic(message: String) -> !;
         pub fn assert_eq<T: IntoValue>(left: T, right: T);
+        pub fn dbg<T: FromValue + IntoValue>(arg: T) -> T;
     }
  }
 
@@ -54,6 +56,11 @@ pub fn add_to_meta_info<'a, 'i>(stdlib: Stdlib, diagnostics: &'i Diagnostics<Err
         meta_info.add_external_function(arena, diagnostics, print);
     }
     meta_info.add_required_rebo_function(RequiredReboFunctionStruct::from_required_rebo_function::<required::print>(), diagnostics);
+
+    if stdlib.contains(Stdlib::DBG) {
+        meta_info.add_external_function(arena, diagnostics, dbg);
+    }
+    meta_info.add_required_rebo_function(RequiredReboFunctionStruct::from_required_rebo_function::<required::dbg>(), diagnostics);
 
     meta_info.add_external_function(arena, diagnostics, add_one);
 
@@ -125,6 +132,11 @@ pub fn add_to_meta_info<'a, 'i>(stdlib: Stdlib, diagnostics: &'i Diagnostics<Err
 fn print(..: _) {
     let joined = args.as_slice().iter().map(DisplayValue).join(", ");
     println!("{}", joined);
+}
+#[rebo::function("dbg")]
+fn dbg<T>(arg: T) -> T {
+    println!("{:?}", DebugValue(&arg));
+    arg
 }
 
 #[rebo::function("add_one")]
