@@ -40,7 +40,7 @@ pub fn enum_type(e: ItemEnum) -> TokenStream {
         }
     }).collect();
 
-    let generic_idents = util::generic_idents(&generics, "rebo enums");
+    let (generic_idents, _) = util::parse_generics(&generics, "rebo enums");
 
     let code_filename = format!("external-{}.rs", ident);
     // TODO: manually convert syn::Type to string to not have spaces in `Option < T >`
@@ -143,7 +143,7 @@ pub fn struct_type(s: ItemStruct) -> TokenStream {
         Fields::Unit => abort!(fields, "only named fields are allowed for rebo structs"),
     };
 
-    let generic_idents = util::generic_idents(&generics, "rebo structs");
+    let (generic_idents, _) = util::parse_generics(&generics, "rebo structs");
 
     let code_filename = format!("external-{}.rs", ident);
     // TODO: manually convert syn::Type to string to not have spaces in `Option < T >`

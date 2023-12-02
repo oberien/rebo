@@ -1,12 +1,11 @@
 use proc_macro_error::abort;
-use syn::{ItemFn, Signature, FnArg, PatType, Ident, ReturnType, Type, parse_macro_input, Expr, Result, Pat, LitStr};
+use syn::{ItemFn, Ident, ReturnType, Type, parse_macro_input, Expr, Result, LitStr};
 use proc_macro::TokenStream;
 use syn::parse::{Parse, ParseStream};
 use syn::token::Paren;
 use itertools::Itertools;
-use proc_macro2::TokenStream as TokenStream2;
 use syn::spanned::Spanned;
-use crate::util;
+use crate::util::{self, Varargs, VarargsKind};
 
 struct Args {
     is_raw: bool,
@@ -30,141 +29,42 @@ impl Parse for Args {
     }
 }
 
-fn clean_generics(typ: &Type, generic_idents: &[Ident]) -> TokenStream2 {
-    util::transform_path_type(typ, &|ident| if generic_idents.iter().any(|i| i == ident) {
-        Some(quote::quote_spanned!(ident.span() => ::rebo::Value))
-    } else {
-        None
-    })
-}
-
-#[allow(clippy::large_enum_variant)]
-enum Varargs {
-    Typed(Type),
-    Untyped,
-}
-
 pub fn function(args: TokenStream, input: TokenStream) -> TokenStream {
     let macro_args = parse_macro_input!(args as Args);
     let input = parse_macro_input!(input as ItemFn);
-    let ItemFn {
-        attrs: _,
-        vis,
-        sig: Signature {
-            constness,
-            asyncness,
-            unsafety,
-            abi,
-            fn_token: _,
-            ident,
-            generics,
-            paren_token: _,
-            inputs,
-            variadic,
-            output,
-        },
-        block,
-    } = input;
+    let ItemFn { attrs: _, vis, sig, block } = input;
 
-    if let Some(where_clause) = generics.where_clause {
-        abort!(where_clause, "where clauses are not allowed in rebo functions");
-    }
-    if let Some(constness) = constness {
-        abort!(constness, "const rebo functions are not allowed");
-    }
-    if let Some(asyncness) = asyncness {
-        abort!(asyncness, "async rebo functions are not allowed");
-    }
-    if let Some(unsafety) = unsafety {
-        abort!(unsafety, "unsafe rebo functions are not allowed; use an internal unsafe block instead");
-    }
-    if let Some(abi) = abi {
-        abort!(abi, "non-default abi rebo functions are not allowed");
-    }
-    if let Some(variadic) = variadic {
-        abort!(variadic, "if you want to use varargs, use `..: _` or `..: T` instead");
-    }
-
-    let generic_idents = util::generic_idents(&generics, "rebo functions");
+    let util::FunctionSignature {
+        ident, generic_idents, generic_bounds: _, is_method: _, arg_idents, arg_types, varargs, output
+    } = util::parse_function_signature(sig, "rebo functions");
 
     let fn_ident = format!("{}_fn", ident);
     let fn_ident = Ident::new(&fn_ident, ident.span());
-    let mut args = Vec::new();
-    let mut varargs = None;
-    let mut is_first_argument = true;
-
-    let inputs_len = inputs.len();
-    for (i, arg) in inputs.into_iter().enumerate() {
-        let is_last_argument = i+1 == inputs_len;
-        match arg {
-            FnArg::Receiver(recv) => abort!(recv, "self-arguments aren't allowed; if you want a self-argument, use `this` as name of the first argument instead"),
-            FnArg::Typed(PatType { attrs, pat, colon_token: _, ty }) => {
-                if !attrs.is_empty() {
-                    abort!(attrs[0], "argument attributes are not supported for static rebo functions");
-                }
-                match *pat {
-                    Pat::Ident(pat) => {
-                        if pat.ident == "this" && !is_first_argument {
-                            abort!(pat, "this-argument must be the first argument");
-                        }
-                        args.push((pat, ty));
-                    }
-                    Pat::Rest(rest) => {
-                        if !is_last_argument {
-                            abort!(rest, "varargs are only allowed as last argument in a function")
-                        }
-                        match &*ty {
-                            Type::Infer(_) => varargs = Some(Varargs::Untyped),
-                            _ => varargs = Some(Varargs::Typed(*ty)),
-                        }
-                    }
-                    _ => abort!(pat, "arguments must be identifiers or `..` for varargs in rebo functions"),
-                }
-            }
-        }
-        is_first_argument = false;
-    }
 
     let rebo_name = macro_args.name;
     let code_filename = format!("external-{}.rs", rebo_name);
     // TODO: manually convert syn::Type to string to not have spaces in `Option < T >`
-    let generics_string = if generic_idents.is_empty() {
-        "".to_string()
-    } else {
-        format!("<{}>", generic_idents.iter().join(", "))
-    };
-    let args_string = args.iter()
-        .map(|(pat, typ)| format!("{}: {}", pat.ident, util::convert_type_to_rebo(typ)))
-        .chain(match &varargs {
-            Some(Varargs::Typed(typ)) => Some(format!("{}...", util::convert_type_to_rebo(typ))),
-            Some(Varargs::Untyped) => Some("...".to_string()),
-            None => None,
-        }).join(", ");
-    let output_string = match &output {
-        ReturnType::Default => "".to_string(),
-        ReturnType::Type(_, typ) => format!("-> {}", util::convert_type_to_rebo(typ)),
-    };
-    let code_string = format!("fn {}{}({}) {} {{\n    ...\n}}", ident, generics_string, args_string, output_string);
+    let code_string = generate_rebo_function_stub(&ident, &generic_idents, &arg_idents, &arg_types, &varargs, &output);
 
-    let arg_transforms: Vec<_> = args.into_iter()
-        .map(|(pat, typ)| {
-            let clean = clean_generics(&typ, &generic_idents);
-            quote::quote!(let #pat: #clean = ::rebo::FromValue::from_value(args.next().unwrap());)
+    let arg_transforms: Vec<_> = arg_idents.iter().zip(arg_types.iter())
+        .map(|(ident, typ)| {
+            let clean = util::replace_generics_with_value(&typ, &generic_idents);
+            quote::quote!(let #ident: #clean = ::rebo::FromValue::from_value(args.next().unwrap());)
         }).collect();
 
     let (output_type, ret_val) = match &output {
         ReturnType::Default => (
-            quote::quote_spanned!{ output.span() => () },
+            quote::quote_spanned!{ output.span()=> () },
             quote::quote!(Ok(::rebo::IntoValue::into_value(res))),
         ),
         ReturnType::Type(_, typ) => match &**typ {
             Type::Never(_) => (
-                quote::quote_spanned!(output.span() => _),
+                quote::quote_spanned!(output.span()=> _),
                 quote::quote!(res),
             ),
             _ => {
-                let clean = clean_generics(&typ, &generic_idents);
-                (quote::quote_spanned!(output.span() => #clean), quote::quote!(Ok(::rebo::IntoValue::into_value(res))))
+                let clean = util::replace_generics_with_value(&typ, &generic_idents);
+                (quote::quote_spanned!(output.span()=> #clean), quote::quote!(Ok(::rebo::IntoValue::into_value(res))))
             }
         },
     };
@@ -177,9 +77,9 @@ pub fn function(args: TokenStream, input: TokenStream) -> TokenStream {
         }
     };
     let block = if macro_args.is_raw {
-        quote::quote_spanned! { block.span() => #block }
+        quote::quote_spanned! { block.span()=> #block }
     } else {
-        quote::quote_spanned! { block.span() =>  (|| #block)() }
+        quote::quote_spanned! { block.span()=>  (|| #block)() }
     };
 
     (quote::quote! {
@@ -201,4 +101,24 @@ pub fn function(args: TokenStream, input: TokenStream) -> TokenStream {
             imp: #fn_ident,
         };
     }).into()
+}
+
+fn generate_rebo_function_stub(ident: &Ident, generic_idents: &[Ident], arg_idents: &[Ident], arg_types: &[Type], varargs: &Option<Varargs>, output: &ReturnType) -> String {
+    let generics_string = if generic_idents.is_empty() {
+        "".to_string()
+    } else {
+        format!("<{}>", generic_idents.iter().join(", "))
+    };
+    let args_string = arg_idents.iter().zip(arg_types.iter())
+        .map(|(ident, typ)| format!("{}: {}", ident, util::convert_type_to_rebo(typ)))
+        .chain(match &varargs {
+            Some(Varargs { kind: VarargsKind::Typed(typ), .. }) => Some(format!("{}...", util::convert_type_to_rebo(typ))),
+            Some(Varargs { kind: VarargsKind::Untyped, .. }) => Some("...".to_string()),
+            None => None,
+        }).join(", ");
+    let output_string = match &output {
+        ReturnType::Default => "".to_string(),
+        ReturnType::Type(_, typ) => format!("-> {}", util::convert_type_to_rebo(typ)),
+    };
+    format!("fn {}{}({}) {} {{\n    ...\n}}", ident, generics_string, args_string, output_string)
 }

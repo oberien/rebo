@@ -242,10 +242,11 @@ impl<'a, 'i> MetaInfo<'a, 'i> {
         }
         false
     }
-    pub fn add_required_rebo_function(&mut self, required_rebo_function: RequiredReboFunctionStruct) {
+    pub fn add_required_rebo_function(&mut self, required_rebo_function: RequiredReboFunctionStruct, diagnostics: &'i Diagnostics<ErrorCode>) {
         if self.required_rebo_functions.contains(&required_rebo_function) {
             panic!("Required rebo function `{}` already added previously", required_rebo_function.name);
         }
+        diagnostics.add_synthetic_file(required_rebo_function.generics_file_name, required_rebo_function.generics_file_content.to_string());
         self.required_rebo_functions.insert(required_rebo_function);
     }
     pub fn add_external_type<T: ExternalType>(&mut self, arena: &'a Arena<Expr<'a, 'i>>, diagnostics: &'i Diagnostics<ErrorCode>) {

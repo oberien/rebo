@@ -389,7 +389,7 @@ impl<'i> Graph<'i> {
     /// Check that required rebo functions are there and have the correct types
     fn check_required_rebo_functions(diagnostics: &'i Diagnostics<ErrorCode>, meta_info: &mut MetaInfo) {
         for rrf in &meta_info.required_rebo_functions {
-            let RequiredReboFunctionStruct { name, is_method, generics, args, ret } = rrf;
+            let RequiredReboFunctionStruct { name, is_method, generics, generics_file_name: _, generics_file_content: _, args, ret } = rrf;
             let metfun = if *is_method { "method" } else { "function" };
             let typ = match meta_info.function_types.get(*name) {
                 Some(typ) => typ,
@@ -400,15 +400,17 @@ impl<'i> Graph<'i> {
                     continue;
                 }
             };
-            let fun = &meta_info.rebo_functions[*name];
+            let sig = meta_info.rebo_functions.get(*name).map(|fun| &fun.sig)
+                .or_else(|| meta_info.external_function_signatures.get(*name))
+                .unwrap();
             if typ.is_method != *is_method {
                 diagnostics.error(ErrorCode::RequiredReboFunctionDiffers)
-                    .with_error_label(fun.sig.span(), format!("expected this to be a {}", metfun))
+                    .with_error_label(sig.span(), format!("expected this to be a {}", metfun))
                     .emit();
             }
             if typ.generics.len() != generics.len() {
                 diagnostics.error(ErrorCode::RequiredReboFunctionDiffers)
-                    .with_error_label(fun.sig.span(), format!("expected {} generics, got {}", generics.len(), typ.generics.len()))
+                    .with_error_label(sig.span(), format!("expected {} generics, got {}", generics.len(), typ.generics.len()))
                     .emit();
             }
             for ((span, generic), expected) in typ.generics.iter().map(|&span| (span, diagnostics.resolve_span(span))).zip(*generics) {
@@ -420,20 +422,47 @@ impl<'i> Graph<'i> {
             }
             if typ.args.len() != args.len() {
                 diagnostics.error(ErrorCode::RequiredReboFunctionDiffers)
-                    .with_error_label(Span::new(fun.sig.open.span.file, fun.sig.open.span.start, fun.sig.close.span.end), format!("expected {} args, found {}", args.len(), typ.args.len()))
+                    .with_error_label(Span::new(sig.open.span.file, sig.open.span.start, sig.close.span.end), format!("expected {} args, found {}", args.len(), typ.args.len()))
                     .emit();
             }
-            let arg_spans: Vec<_> = fun.sig.self_arg.iter().map(|a| a.span()).chain(fun.sig.args.iter().map(|a| a.span())).collect();
+
+            /// Checks if the two types are equal and returns the actual vs. expected type otherwise.
+            ///
+            /// We can't use direct equality here as generic spans are different but may contain the same name.
+            fn required_rebo_type_equal(actual: &Type, expected: &Type, diagnostics: &Diagnostics<ErrorCode>) -> Result<(), (String, String)> {
+                match (actual, expected) {
+                    (Type::Specific(SpecificType::Generic(span)), Type::Specific(SpecificType::Generic(expected_span))) => {
+                        let actual = diagnostics.resolve_span(*span);
+                        let expected = diagnostics.resolve_span(*expected_span);
+                        if actual == expected {
+                            Ok(())
+                        } else {
+                            Err((actual.to_string(), expected.to_string()))
+                        }
+                    }
+                    _ => if actual == expected {
+                        Ok(())
+                    } else {
+                        Err((actual.to_string(), expected.to_string()))
+                    }
+                }
+            }
+
+            let arg_spans: Vec<_> = sig.self_arg.iter().map(|a| a.span()).chain(sig.args.iter().map(|a| a.span())).collect();
             for (i, (arg, expected)) in typ.args.iter().zip(*args).enumerate() {
-                if arg != expected {
+                if let Err((actual, expected)) = required_rebo_type_equal(arg, expected, diagnostics) {
                     diagnostics.error(ErrorCode::RequiredReboFunctionDiffers)
-                        .with_error_label(arg_spans[i], format!("expected type `{}`, found type `{}`", expected, arg))
+                        .with_error_label(arg_spans[i], format!("expected type `{}`, found type `{}`", expected, actual))
                         .emit();
                 }
             }
-            if *ret != typ.ret {
+            if let Err((actual, expected)) = required_rebo_type_equal(&typ.ret, ret, diagnostics) {
+                let end = match &sig.ret_type {
+                    Some(ret) => ret.1.span().end,
+                    None => sig.close.span.end,
+                };
                 diagnostics.error(ErrorCode::RequiredReboFunctionDiffers)
-                    .with_error_label(Span::new(fun.sig.close.span.file, fun.sig.close.span.end, fun.body.span().start), format!("expected return type `{}`, found `{}`", ret, typ.ret))
+                    .with_error_label(Span::new(sig.close.span.file, sig.close.span.end, end), format!("expected return type `{}`, found `{}`", expected, actual))
                     .emit();
             }
         }

@@ -1,6 +1,10 @@
 use proc_macro_error::abort;
-use syn::{parse_macro_input, Ident, ItemForeignMod, ForeignItem, Signature, GenericParam, FnArg, PatType, Pat, ForeignItemFn, ReturnType, Type};
+use syn::{parse_macro_input, Ident, ItemForeignMod, ForeignItem, ForeignItemFn, ReturnType, parse_quote_spanned, Visibility, spanned::Spanned, Type};
 use proc_macro::TokenStream;
+use std::collections::HashMap;
+use proc_macro2::TokenStream as TokenStream2;
+use crate::util;
+use crate::util::{VarargsKind, FunctionSignature};
 
 pub fn extern_rebo(_args: TokenStream, input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as ItemForeignMod);
@@ -20,118 +24,151 @@ pub fn extern_rebo(_args: TokenStream, input: TokenStream) -> TokenStream {
         if !attrs.is_empty() {
             abort!(attrs[0], "required rebo functions can't have attributes");
         }
-        let Signature {
-            constness,
-            asyncness,
-            unsafety,
-            abi: _,
-            fn_token: _,
-            ident,
-            generics,
-            paren_token: _,
-            inputs,
-            variadic,
-            output,
-        } = sig;
-        if constness.is_some() {
-            abort!(constness, "required rebo functions can't be const");
-        }
-        if asyncness.is_some() {
-            abort!(asyncness, "required rebo functions can't be async");
-        }
-        if unsafety.is_some() {
-            abort!(unsafety, "required rebo functions can't be unsafe");
-        }
-        if variadic.is_some() {
-            abort!(variadic, "rebo functions can't have varargs");
-        }
-        if generics.where_clause.is_some() {
-            abort!(generics.where_clause, "required rebo functions can't have a `where` clause");
+
+        let sig = util::parse_function_signature(sig, "required rebo functions");
+        let fn_ident = format!("{}_fn", sig.ident);
+        let fn_ident = Ident::new(&fn_ident, sig.ident.span());
+
+        if sig.varargs.is_some() && sig.arg_idents.len() > 1 {
+            abort!(sig.arg_idents[1], "required rebo functions don't support varargs as non-only argument (yet)");
         }
 
-        let rebo_function_name = ident.to_string().replace("__", "::");
-        let fn_ident = format!("{}_fn", ident);
-        let fn_ident = Ident::new(&fn_ident, ident.span());
-        let receiver_type_string = rebo_function_name.split("::").next().unwrap();
-        let receiver_type_string = if receiver_type_string == rebo_function_name { None } else { Some(receiver_type_string) };
 
-        let generic_names = generics.params.into_iter().map(|param| match param {
-            GenericParam::Type(typ) => {
-                if !typ.bounds.is_empty() {
-                    abort!(typ.bounds, "generic type bounds not allowed for required rebo functions");
-                }
-                if typ.default.is_some() {
-                    abort!(typ.default, "default generics not allowed for required rebo functions");
-                }
-                typ.ident.to_string()
-            },
-            GenericParam::Lifetime(_) => abort!(param, "lifetimes not allowed for required rebo functions"),
-            GenericParam::Const(_) => abort!(param, "const generics not allowed for required rebo functions"),
-        }).collect::<Vec<_>>();
-
-        let mut is_method = false;
-        let (arg_idents, arg_types) = inputs.into_iter().enumerate().map(|(i, arg)| match arg {
-            FnArg::Receiver(recv) => abort!(recv, "self-arguments aren't allowed; if you want a self-argument, use `this` as name of the first argument instead"),
-            FnArg::Typed(PatType { attrs, pat, colon_token: _, ty }) => {
-                if !attrs.is_empty() {
-                    abort!(attrs[0], "argument attributes are not supported for static rebo functions");
-                }
-                match *pat {
-                    Pat::Ident(pat) => {
-                        if pat.ident == "this" {
-                            if i != 0 {
-                                abort!(pat, "this-argument must be the first argument");
-                            }
-                            if receiver_type_string.is_none() {
-                                abort!(pat, "rebo methods are named `Type::method(...)`, so the extern function name should be `Type__method`");
-                            }
-                            match &*ty {
-                                Type::Path(path) => if path.path.segments.iter().next().unwrap().ident != receiver_type_string.as_ref().unwrap() {
-                                    abort!(pat, "rebo method named `Type::method(...)` take `Type` as first param; the first extern function argument should be `this: {}` or `this: {0}<...>`", receiver_type_string.unwrap());
-                                }
-                                _ => abort!(ty, "this-argument must be {}", receiver_type_string.as_ref().unwrap()),
-                            }
-                            is_method = true;
-                        }
-                        (pat.ident, ty)
-                    }
-                    _ => abort!(pat, "arguments must be identifiers for required rebo functions"),
-                }
-            }
-        }).unzip::<_, _, Vec<_>, Vec<_>>();
-
-        let ret_type = match output {
-            ReturnType::Default => quote::quote!(()),
-            ReturnType::Type(_arrow, typ) => quote::quote!(#typ),
-        };
+        let function = generate_fn(&fn_ident, &sig);
+        let struc = generate_struct(vis, fn_ident, &sig);
+        let imp = generate_impl(&sig);
 
         res = quote::quote! {
             #res
 
-            fn #fn_ident<'a, 'i>(vm: &mut ::rebo::VmContext<'a, '_, '_, 'i>, #(#arg_idents: #arg_types),*) -> Result<#ret_type, ::rebo::ExecError<'a, 'i>> {
-                let values = vec![#(
-                    <#arg_types as ::rebo::IntoValue>::into_value(#arg_idents),
-                )*];
-                let res = vm.call_required_rebo_function::<#ident>(values)?;
-                Ok(<#ret_type as ::rebo::FromValue>::from_value(res))
-            }
-            #[allow(non_camel_case_types)]
-            #vis struct #ident;
-            impl ::std::ops::Deref for #ident {
-                type Target = for<'a, 'i> fn(&mut ::rebo::VmContext<'a, '_, '_, 'i>, #(#arg_types),*) -> Result<#ret_type, ::rebo::ExecError<'a, 'i>>;
-                fn deref(&self) -> &Self::Target {
-                    &(#fn_ident as Self::Target)
-                }
-            }
-            impl ::rebo::RequiredReboFunction for #ident {
-                const NAME: &'static str = #rebo_function_name;
-                const IS_METHOD: bool = #is_method;
-                const GENERICS: &'static [&'static str] = &[#(#generic_names),*];
-                const ARGS: &'static [::rebo::Type] = &[#(::rebo::Type::Specific(<#arg_types as ::rebo::Typed>::TYPE)),*];
-                const RET: ::rebo::Type = ::rebo::Type::Specific(<#ret_type as ::rebo::Typed>::TYPE);
-            }
+            #function
+            #struc
+            #imp
         };
     }
 
     res.into()
+}
+
+
+fn generate_fn(fn_ident: &Ident, sig: &FunctionSignature) -> TokenStream2 {
+    let ident = &sig.ident;
+    let generic_idents = &sig.generic_idents;
+    let generic_bounds = &sig.generic_bounds;
+    let (arg_idents, arg_types, into_value_conversions) = match &sig.varargs {
+        Some(varargs) => (
+            vec![Ident::new("args", varargs.span)],
+            vec![parse_quote_spanned!(varargs.span=> ::std::vec::Vec<::rebo::Value>)],
+            quote::quote_spanned!(varargs.span=> args),
+        ),
+        None => {
+            let arg_types = &sig.arg_types;
+            let arg_idents = &sig.arg_idents;
+            let into_value_code = quote::quote!(vec![#(
+                <#arg_types as ::rebo::IntoValue>::into_value(#arg_idents),
+            )*]);
+            (arg_idents.clone(), sig.arg_types.clone(), into_value_code)
+        },
+    };
+    let ret_type = match &sig.output {
+        ReturnType::Default => quote::quote_spanned!(sig.output.span()=> ()),
+        ReturnType::Type(_arrow, typ) => match &**typ {
+            Type::Never(_) => quote::quote_spanned!(typ.span()=> ::rebo::Never),
+            _ => quote::quote!(#typ),
+        }
+    };
+    quote::quote! {
+        fn #fn_ident<'a, 'i, #(#generic_idents: #generic_bounds),*>(vm: &mut ::rebo::VmContext<'a, '_, '_, 'i>, #(#arg_idents: #arg_types),*) -> Result<#ret_type, ::rebo::ExecError<'a, 'i>> {
+            let values = #into_value_conversions;
+            let res = vm.call_required_rebo_function::<#ident>(values)?;
+            // required if the function returns the never type
+            #[allow(unreachable_code)]
+            Ok(<#ret_type as ::rebo::FromValue>::from_value(res))
+        }
+    }
+}
+
+fn generate_struct(vis: Visibility, fn_ident: Ident, sig: &FunctionSignature) -> TokenStream2 {
+    let ident = &sig.ident;
+    let value_arg_types = sig.arg_types.iter()
+        .map(|typ| util::replace_generics_with_value(typ, &sig.generic_idents))
+        .collect::<Vec<_>>();
+    let value_arg_types = match &sig.varargs {
+        Some(varargs) => vec![quote::quote_spanned!(varargs.span=> ::std::vec::Vec<::rebo::Value>)],
+        None => value_arg_types,
+    };
+    let value_ret_type = match &sig.output {
+        ReturnType::Default => quote::quote!(()),
+        ReturnType::Type(_arrow, typ) => match &**typ {
+            Type::Never(_) => quote::quote_spanned!(typ.span()=> ::rebo::Never),
+            _ => util::replace_generics_with_value(typ, &sig.generic_idents),
+        }
+    };
+    quote::quote! {
+        #[allow(non_camel_case_types)]
+        #vis struct #ident;
+        impl ::std::ops::Deref for #ident {
+            type Target = for<'a, 'i> fn(&mut ::rebo::VmContext<'a, '_, '_, 'i>, #(#value_arg_types),*) -> Result<#value_ret_type, ::rebo::ExecError<'a, 'i>>;
+            fn deref(&self) -> &Self::Target {
+                &(#fn_ident as Self::Target)
+            }
+        }
+    }
+}
+
+fn generate_impl(sig: &FunctionSignature) -> TokenStream2 {
+    let ident = &sig.ident;
+    let is_method = sig.is_method;
+    let rebo_function_name = ident.to_string();
+    // TODO: handle methods via an annotation (?)
+    // let rebo_function_name = ident.to_string().replace("__", "::");
+    // let receiver_type_string = rebo_function_name.split("::").next().unwrap();
+    // let receiver_type_string = if receiver_type_string == rebo_function_name { None } else { Some(receiver_type_string) };
+    // if receiver_type_string.is_none() {
+    //     abort!(pat, "rebo methods are named `Type::method(...)`, so the extern function name should be `Type__method`");
+    // }
+    // match &*ty {
+    //     Type::Path(path) => if path.path.segments.iter().next().unwrap().ident != receiver_type_string.as_ref().unwrap() {
+    //         abort!(pat, "rebo method named `Type::method(...)` take `Type` as first param; the first extern function argument should be `this: {}` or `this: {0}<...>`", receiver_type_string.unwrap());
+    //     }
+    //     _ => abort!(ty, "this-argument must be {}", receiver_type_string.as_ref().unwrap()),
+    // }
+
+    let generic_ident_strings = sig.generic_idents.iter().map(|ident| ident.to_string()).collect::<Vec<_>>();
+    let generics_file_name = format!("external-required-rebo-function-{ident}-generics.re");
+    let mut generics_spans = HashMap::new();
+    let mut generics_file_content = String::new();
+    for generic_ident in &sig.generic_idents {
+        let start = generics_file_content.len();
+        generics_file_content.push_str(&generic_ident.to_string());
+        let end = generics_file_content.len();
+        generics_file_content.push_str("\n\n");
+        generics_spans.insert(generic_ident.clone(), quote::quote_spanned!(generic_ident.span()=> ::rebo::Span::new(::rebo::FileId::synthetic(#generics_file_name), #start, #end)));
+    }
+
+    let reboc_arg_types = sig.arg_types.iter()
+        .map(|typ| util::convert_type_to_reboc_type(typ, &sig.generic_idents, &generics_spans))
+        .collect::<Vec<_>>();
+    let reboc_arg_types = match &sig.varargs {
+        Some(varargs) => match &varargs.kind {
+            VarargsKind::Typed(typ) => quote::quote_spanned!(varargs.span=> &[::rebo::Type::TypedVarargs(::rebo::Type::Specific(<#typ as ::rebo::Typed>::TYPE))]),
+            VarargsKind::Untyped => quote::quote_spanned!(varargs.span=> &[::rebo::Type::UntypedVarargs]),
+        }
+        None => quote::quote!(&[#(#reboc_arg_types),*]),
+    };
+    let reboc_return_type = match &sig.output {
+        ReturnType::Default => quote::quote_spanned!(sig.output.span()=> ::rebo::Type::Specific(<() as ::rebo::Typed>::TYPE)),
+        ReturnType::Type(_, typ) => util::convert_type_to_reboc_type(typ, &sig.generic_idents, &generics_spans),
+    };
+    quote::quote! {
+        impl ::rebo::RequiredReboFunction for #ident {
+            const NAME: &'static str = #rebo_function_name;
+            const IS_METHOD: bool = #is_method;
+            const GENERICS: &'static [&'static str] = &[#(#generic_ident_strings),*];
+            const GENERICS_FILE_NAME: &'static str = #generics_file_name;
+            const GENERICS_FILE_CONTENT: &'static str = #generics_file_content;
+            const ARGS: &'static [::rebo::Type] = #reboc_arg_types;
+            const RET: ::rebo::Type = #reboc_return_type;
+        }
+    }
 }

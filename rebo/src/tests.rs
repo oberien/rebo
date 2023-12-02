@@ -15,7 +15,7 @@ impl<T: Ord + Clone> Sorted for Vec<T> {
 impl Sorted for ReturnValue {
     fn sorted(&self) -> Self {
         match self {
-            ReturnValue::Ok => ReturnValue::Ok,
+            ReturnValue::Ok(_) => ReturnValue::Ok,
             ReturnValue::Diagnostics(diags) => ReturnValue::Diagnostics(diags.sorted()),
             ReturnValue::Panic => ReturnValue::Panic,
             ReturnValue::ParseError => ReturnValue::ParseError,

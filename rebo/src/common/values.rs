@@ -426,6 +426,8 @@ pub trait RequiredReboFunction {
     const NAME: &'static str;
     const IS_METHOD: bool;
     const GENERICS: &'static [&'static str];
+    const GENERICS_FILE_NAME: &'static str;
+    const GENERICS_FILE_CONTENT: &'static str;
     const ARGS: &'static [Type];
     const RET: Type;
 }
@@ -434,6 +436,8 @@ pub struct RequiredReboFunctionStruct {
     pub name: &'static str,
     pub is_method: bool,
     pub generics: &'static [&'static str],
+    pub generics_file_name: &'static str,
+    pub generics_file_content: &'static str,
     pub args: &'static [Type],
     pub ret: Type,
 }
@@ -443,6 +447,8 @@ impl RequiredReboFunctionStruct {
             name: T::NAME,
             is_method: T::IS_METHOD,
             generics: T::GENERICS,
+            generics_file_name: T::GENERICS_FILE_NAME,
+            generics_file_content: T::GENERICS_FILE_CONTENT,
             args: T::ARGS,
             ret: T::RET,
         }
@@ -699,6 +705,35 @@ impl IntoValue for () {
 }
 impl Typed for () {
     const TYPE: SpecificType = SpecificType::Unit;
+}
+
+// For some cursed reason if we impl {From,Into}Value for ::never_say_never::Never, we get an error.
+// error[E0119]: conflicting implementations of trait `IntoValue` for type `list::List<_>`
+//    --> rebo/src/common/values.rs
+//     |
+// 727 | impl IntoValue for ::never_say_never::Never {
+//     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ conflicting implementation for `list::List<_>`
+//     |
+//    ::: rebo/src/stdlib/list.rs
+//     |
+// 44  | impl<T: IntoValue> IntoValue for List<T> {
+//     | ---------------------------------------- first implementation here
+//
+// However, when we vendor the crate here and use it just here, it compiles.
+mod fn_traits {
+    pub trait FnOnce<Args> { type Output; }
+    impl<F, R> FnOnce<()> for F where F : ::core::ops::FnOnce() -> R { type Output = R; }
+}
+pub type Never = <fn() -> ! as fn_traits::FnOnce<()>>::Output;
+impl IntoValue for Never {
+    fn into_value(self) -> Value {
+        unreachable!("IntoValue::into_value called on Never type")
+    }
+}
+impl FromValue for Never {
+    fn from_value(_: Value) -> Self {
+        unreachable!("FromValue::from_value called on Never type")
+    }
 }
 
 impl_from_into!(i64, Integer);

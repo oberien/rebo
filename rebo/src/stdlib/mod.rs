@@ -14,6 +14,7 @@ use regex::Regex;
 use unicode_segmentation::UnicodeSegmentation;
 use rebo::VmContext;
 use crate::util::{self, ResolveFileError, TryParseNumberResult};
+use crate::RequiredReboFunctionStruct;
 
 mod list;
 mod option;
@@ -32,6 +33,17 @@ bitflags::bitflags! {
         const ASSERT_EQ = 0x8;
     }
 }
+mod required {
+    use rebo::{FromValue, IntoValue};
+
+    #[rebo::required_rebo_functions]
+    extern "rebo" {
+        pub fn print(..: _);
+        pub fn assert(condition: bool);
+        pub fn panic(message: String) -> !;
+        pub fn assert_eq<T: IntoValue>(left: T, right: T);
+    }
+ }
 
 pub fn add_to_meta_info<'a, 'i>(stdlib: Stdlib, diagnostics: &'i Diagnostics<ErrorCode>, arena: &'a Arena<Expr<'a, 'i>>, meta_info: &mut MetaInfo<'a, 'i>) {
     meta_info.add_external_function(arena, diagnostics, clone);
@@ -41,6 +53,7 @@ pub fn add_to_meta_info<'a, 'i>(stdlib: Stdlib, diagnostics: &'i Diagnostics<Err
     if stdlib.contains(Stdlib::PRINT) {
         meta_info.add_external_function(arena, diagnostics, print);
     }
+    meta_info.add_required_rebo_function(RequiredReboFunctionStruct::from_required_rebo_function::<required::print>(), diagnostics);
 
     meta_info.add_external_function(arena, diagnostics, add_one);
 
@@ -91,12 +104,15 @@ pub fn add_to_meta_info<'a, 'i>(stdlib: Stdlib, diagnostics: &'i Diagnostics<Err
     if stdlib.contains(Stdlib::ASSERT) {
         meta_info.add_external_function(arena, diagnostics, assert);
     }
+    meta_info.add_required_rebo_function(RequiredReboFunctionStruct::from_required_rebo_function::<required::assert>(), diagnostics);
     if stdlib.contains(Stdlib::ASSERT_EQ) {
         meta_info.add_external_function(arena, diagnostics, assert_eq);
     }
+    meta_info.add_required_rebo_function(RequiredReboFunctionStruct::from_required_rebo_function::<required::assert_eq>(), diagnostics);
     if stdlib.contains(Stdlib::PANIC) {
         meta_info.add_external_function(arena, diagnostics, panic);
     }
+    meta_info.add_required_rebo_function(RequiredReboFunctionStruct::from_required_rebo_function::<required::panic>(), diagnostics);
 
     meta_info.add_external_type::<Option<Value>>(arena, diagnostics);
     meta_info.add_external_type::<Result<Value, Value>>(arena, diagnostics);
@@ -380,7 +396,7 @@ fn string_find_matches(this: String, regex: String) -> List<String> {
 #[rebo::function(raw("string::captures"))]
 fn string_captures(this: String, regex: String) -> Option<List<Option<String>>> {
     let regex = compile_regex(regex, vm, expr_span)?;
-    (|| Some(List::new(regex.captures(&this)?.iter().map(|m| m.map(|m| m.as_str().to_string())))))()
+    regex.captures(&this).map(|c| List::new(c.iter().map(|m| m.map(|m| m.as_str().to_string()))))
 }
 #[rebo::function(raw("string::sorted"))]
 fn string_sorted(this: String) -> String {
