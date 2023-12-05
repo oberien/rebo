@@ -73,6 +73,8 @@ pub fn add_to_meta_info<'a, 'i>(stdlib: Stdlib, diagnostics: &'i Diagnostics<Err
     meta_info.add_external_function(arena, diagnostics, float_round);
     meta_info.add_external_function(arena, diagnostics, float_ceil);
     meta_info.add_external_function(arena, diagnostics, float_sqrt);
+    meta_info.add_external_function(arena, diagnostics, float_powi);
+    meta_info.add_external_function(arena, diagnostics, float_powf);
     meta_info.add_external_function(arena, diagnostics, float_to_bits);
     meta_info.add_external_function(arena, diagnostics, float_from_bits);
     meta_info.add_external_function(arena, diagnostics, int_min);
@@ -80,6 +82,7 @@ pub fn add_to_meta_info<'a, 'i>(stdlib: Stdlib, diagnostics: &'i Diagnostics<Err
     meta_info.add_external_function(arena, diagnostics, int_min_value);
     meta_info.add_external_function(arena, diagnostics, int_max_value);
     meta_info.add_external_function(arena, diagnostics, int_abs);
+    meta_info.add_external_function(arena, diagnostics, int_pow);
     meta_info.add_external_function(arena, diagnostics, string_slice);
     meta_info.add_external_function(arena, diagnostics, string_len_utf8);
     meta_info.add_external_function(arena, diagnostics, string_len_utf16);
@@ -188,6 +191,14 @@ fn float_round(this: f64, decimals: u8) -> f64 {
 fn float_sqrt(this: f64) -> f64 {
     this.sqrt()
 }
+#[rebo::function("float::powi")]
+fn float_powi(this: f64, exp: i32) -> f64 {
+    this.powi(exp)
+}
+#[rebo::function("float::powf")]
+fn float_powf(this: f64, exp: f64) -> f64 {
+    this.powf(exp)
+}
 #[rebo::function("float::to_bits")]
 fn float_to_bits(this: f64) -> i64 {
     this.to_bits() as i64
@@ -219,6 +230,10 @@ fn int_max_value() -> i64 {
 #[rebo::function("int::abs")]
 fn int_abs(this: i64) -> i64 {
     this.abs()
+}
+#[rebo::function("int::pow")]
+fn int_pow(this: i64, exp: u32) -> i64 {
+    this.pow(exp)
 }
 
 #[rebo::function(raw("assert"))]
