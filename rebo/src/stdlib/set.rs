@@ -66,6 +66,7 @@ pub fn add_set<'a, 'i>(diagnostics: &'i Diagnostics<ErrorCode>, arena: &'a Arena
     meta_info.add_external_function(arena, diagnostics, set_remove);
     meta_info.add_external_function(arena, diagnostics, set_values);
     meta_info.add_external_function(arena, diagnostics, set_union);
+    meta_info.add_external_function(arena, diagnostics, set_intersection);
     meta_info.add_external_function(arena, diagnostics, set_len);
     meta_info.add_external_function(arena, diagnostics, set_clear);
     meta_info.add_external_function(arena, diagnostics, set_is_empty);
@@ -108,6 +109,10 @@ fn set_values<T>(this: Set<T>) -> List<T> {
 #[rebo::function("Set::union")]
 fn set_union<T>(this: Set<T>, other: Set<T>) -> Set<T> {
     Set::new(this.arc.set.lock().borrow().union(&*other.arc.set.lock().borrow()).cloned())
+}
+#[rebo::function("Set::intersection")]
+fn set_intersection<T>(this: Set<T>, other: Set<T>) -> Set<T> {
+    Set::new(this.arc.set.lock().borrow().intersection(&*other.arc.set.lock().borrow()).cloned())
 }
 
 #[rebo::function("Set::len")]
