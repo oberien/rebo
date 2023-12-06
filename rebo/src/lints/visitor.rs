@@ -319,6 +319,7 @@ impl<'a, 'b, 'i, 'v> VisitorDriver<'a, 'b, 'i, 'v> {
             Expr::ImplBlock(impl_block) => {
                 visit!(self, visit_impl_block, impl_block);
                 for fd in &impl_block.functions {
+                    let _guard = self.block_stack.push_block(BlockType::Function, ());
                     visit!(self, visit_function_definition, fd);
                     self.visit_exprs(&fd.body.body.exprs);
                 }
