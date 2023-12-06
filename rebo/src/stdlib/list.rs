@@ -85,7 +85,10 @@ pub fn add_list<'a, 'i>(diagnostics: &'i Diagnostics<ErrorCode>, arena: &'a Aren
     meta_info.add_external_function(arena, diagnostics, list_len);
     meta_info.add_external_function(arena, diagnostics, list_is_empty);
     meta_info.add_external_function(arena, diagnostics, list_pop);
+    meta_info.add_external_function(arena, diagnostics, list_first);
     meta_info.add_external_function(arena, diagnostics, list_last);
+    meta_info.add_external_function(arena, diagnostics, list_min);
+    meta_info.add_external_function(arena, diagnostics, list_max);
     meta_info.add_external_function(arena, diagnostics, list_contains);
     meta_info.add_external_function(arena, diagnostics, list_remove);
     meta_info.add_external_function(arena, diagnostics, list_swap_remove);
@@ -133,9 +136,21 @@ fn list_set<T>(this: List<T>, index: i64, value: T) -> Option<T> {
 fn list_pop<T>(this: List<T>) -> Option<T> {
     this.arc.list.lock().borrow_mut().pop()
 }
+#[rebo::function("List::first")]
+fn list_first<T>(this: List<T>) -> Option<T> {
+    this.arc.list.lock().borrow().first().cloned()
+}
 #[rebo::function("List::last")]
 fn list_last<T>(this: List<T>) -> Option<T> {
     this.arc.list.lock().borrow().last().cloned()
+}
+#[rebo::function("List::min")]
+fn list_min<T>(this: List<T>) -> Option<T> {
+    this.arc.list.lock().borrow().iter().min().cloned()
+}
+#[rebo::function("List::max")]
+fn list_max<T>(this: List<T>) -> Option<T> {
+    this.arc.list.lock().borrow().iter().max().cloned()
 }
 #[rebo::function("List::len")]
 fn list_len<T>(this: List<T>) -> usize {
