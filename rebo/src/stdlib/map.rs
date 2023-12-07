@@ -90,6 +90,7 @@ impl_map! { BTreeMap<K, V> where K: Ord }
 
 pub fn add_map<'a, 'i>(diagnostics: &'i Diagnostics<ErrorCode>, arena: &'a Arena<Expr<'a, 'i>>, meta_info: &mut MetaInfo<'a, 'i>) {
     meta_info.add_external_type::<Map<Value, Value>>(arena, diagnostics);
+    meta_info.add_external_type::<MapEntry<Value, Value>>(arena, diagnostics);
 
     meta_info.add_external_function(arena, diagnostics, map_new);
     meta_info.add_external_function(arena, diagnostics, map_insert);
@@ -100,6 +101,9 @@ pub fn add_map<'a, 'i>(diagnostics: &'i Diagnostics<ErrorCode>, arena: &'a Arena
     meta_info.add_external_function(arena, diagnostics, map_values);
     meta_info.add_external_function(arena, diagnostics, map_len);
     meta_info.add_external_function(arena, diagnostics, map_is_empty);
+    meta_info.add_external_function(arena, diagnostics, map_entry);
+
+    meta_info.add_external_function(arena, diagnostics, mapentry_or_insert);
 }
 
 #[rebo::function("Map::new")]
@@ -157,4 +161,22 @@ fn map_len<K, V>(this: Map<K, V>) -> usize {
 #[rebo::function("Map::is_empty")]
 fn map_is_empty<K, V>(this: Map<K, V>) -> bool {
     this.arc.map.lock().borrow().is_empty()
+}
+
+#[rebo::function("Map::entry")]
+fn map_entry<K, V>(this: Map<K, V>, key: K) -> MapEntry<K, V> {
+    MapEntry { map: this, key }
+}
+
+#[derive(rebo::ExternalType)]
+struct MapEntry<K, V> {
+    map: Map<K, V>,
+    key: K,
+}
+
+#[rebo::function("MapEntry::or_insert")]
+fn mapentry_or_insert<K, V>(this: MapEntry<K, V>, value: V) -> V {
+    let map = this.map.arc.map.lock();
+    let mut map = map.borrow_mut();
+    map.entry(this.key).or_insert(value).clone()
 }
