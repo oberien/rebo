@@ -146,6 +146,7 @@ pub fn struct_type(s: ItemStruct) -> TokenStream {
     };
 
     let (generic_idents, _) = util::parse_generics(&generics, "rebo structs");
+    let generic_values = vec![quote::quote!(::rebo::Value); generic_idents.len()];
 
     let code_filename = format!("external-{}.rs", ident);
     // TODO: manually convert syn::Type to string to not have spaces in `Option < T >`
@@ -162,11 +163,11 @@ pub fn struct_type(s: ItemStruct) -> TokenStream {
     let generic_spans = util::generic_spans(&generic_idents, &code_filename, &code);
 
     (quote::quote! {
-        #vis struct #value_ident;
+        #vis struct #value_ident<#(#generic_idents),*>(::std::marker::PhantomData<(#(#generic_idents),*)>);
         #[allow(non_upper_case_globals)]
-        #vis const #ident: #value_ident = #value_ident;
-        impl ::rebo::ExternalTypeType for #value_ident {
-            type Type = #ident;
+        #vis const #ident: #value_ident<#(#generic_values),*> = #value_ident(::std::marker::PhantomData);
+        impl<#(#generic_idents: ::rebo::FromValue + ::rebo::IntoValue),*> ::rebo::ExternalTypeType for #value_ident<#(#generic_idents),*> {
+            type Type = #ident<#(#generic_idents),*>;
         }
         impl<#(#generic_idents: ::rebo::FromValue + ::rebo::IntoValue),*> ::rebo::ExternalType for #ident<#(#generic_idents),*> {
             const CODE: &'static str = #code;

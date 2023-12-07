@@ -37,7 +37,7 @@ pub fn generic_spans(generic_idents: &[Ident], code_filename: &str, code_string:
             .map(str::trim)
             .map(|g| (g.as_ptr() as usize - code_string.as_ptr() as usize, g.len()))
             .map(|(start, len)| (start, start + len))
-            .map(|(start, end)| quote::quote!(::rebo::Span::new(::rebo::SyntheticFileId::new(#code_filename), #start, #end)))
+            .map(|(start, end)| quote::quote!(::rebo::Span::new(::rebo::FileId::synthetic(#code_filename), #start, #end)))
             .collect()
     }
 }
