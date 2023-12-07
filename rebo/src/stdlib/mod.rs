@@ -138,7 +138,7 @@ fn print(..: _) {
 }
 #[rebo::function("dbg")]
 fn dbg<T>(arg: T) -> T {
-    println!("{:?}", DebugValue(&arg));
+    println!("{:#?}", DebugValue(&arg));
     arg
 }
 
