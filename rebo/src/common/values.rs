@@ -572,6 +572,7 @@ impl Eq for EnumArc {}
 #[derive(Debug, Clone, PartialOrd, Ord, PartialEq, Eq)]
 pub struct Enum {
     pub name: String,
+    pub variant_index: usize,
     pub variant: String,
     pub fields: Vec<Value>,
 }

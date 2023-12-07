@@ -455,6 +455,9 @@ impl<'a, 'b, 'i> Vm<'a, 'b, 'i> {
             Expr::EnumInitialization(ExprEnumInitialization { enum_name, variant_name, .. }) => {
                 Ok(Value::Enum(EnumArc { e: Arc::new(ReentrantMutex::new(RefCell::new(Enum {
                     name: enum_name.ident.to_string(),
+                    variant_index: self.meta_info.enum_types[enum_name.ident].variants.iter()
+                        .position(|(name, _)| name == variant_name.ident)
+                        .expect("lints ensured that variant name exists"),
                     variant: variant_name.ident.to_string(),
                     fields: vec![],
                 })))}))
@@ -489,6 +492,9 @@ impl<'a, 'b, 'i> Vm<'a, 'b, 'i> {
                 Function::EnumInitializer(enum_name, variant_name) => {
                     return Ok(Value::Enum(EnumArc { e: Arc::new(ReentrantMutex::new(RefCell::new(Enum {
                         name: enum_name.clone(),
+                        variant_index: self.meta_info.enum_types[enum_name.as_str()].variants.iter()
+                            .position(|(name, _)| name == variant_name)
+                            .expect("lints ensured that variant name exists"),
                         variant: variant_name.clone(),
                         fields: args,
                     })))}));

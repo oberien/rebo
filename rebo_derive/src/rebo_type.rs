@@ -3,7 +3,6 @@ use syn::{Ident, ItemEnum, ItemStruct, Fields};
 use proc_macro::TokenStream;
 use itertools::Itertools;
 use proc_macro2::Span;
-use unzip3::Unzip3;
 use crate::util;
 
 pub fn enum_type(e: ItemEnum) -> TokenStream {
@@ -12,18 +11,20 @@ pub fn enum_type(e: ItemEnum) -> TokenStream {
     let value_ident = format!("_{}UnitStruct", ident);
     let value_ident = Ident::new(&value_ident, ident.span());
 
-    let (variant_names, variant_name_strings, field_types) = variants.iter()
-        .map(|variant| {
+    let (variant_names, variant_indexes, variant_name_strings, field_types) = variants.iter()
+        .enumerate()
+        .map(|(variant_index, variant)| {
             match &variant.fields {
                 Fields::Unnamed(unnamed) => (
                     &variant.ident,
+                    variant_index,
                     variant.ident.to_string(),
                     unnamed.unnamed.iter().map(|f| &f.ty).collect::<Vec<_>>(),
                 ),
                 Fields::Named(_) => abort!(variant.fields, "named fields are not supported for rebo structs"),
-                Fields::Unit => (&variant.ident, variant.ident.to_string(), vec![]),
+                Fields::Unit => (&variant.ident, variant_index, variant.ident.to_string(), vec![]),
             }
-        }).unzip3::<Vec<_>, Vec<_>, Vec<_>>();
+        }).multiunzip::<(Vec<_>, Vec<_>, Vec<_>, Vec<_>)>();
     let idents = vec![&ident; variant_names.len()];
     let ident_strings = vec![&ident_string; variant_names.len()];
     let field_names = field_types.iter()
@@ -104,6 +105,7 @@ pub fn enum_type(e: ItemEnum) -> TokenStream {
                     #(
                         #idents::#variant_names#field_names_concat => ::rebo::Value::Enum(::rebo::EnumArc::new(::rebo::Enum {
                             name: #ident_strings.to_string(),
+                            variant_index: #variant_indexes,
                             variant: #variant_name_strings.to_string(),
                             fields: vec![
                                 #(
@@ -137,7 +139,7 @@ pub fn struct_type(s: ItemStruct) -> TokenStream {
     let (field_names, field_name_strings, field_types) = match &fields {
         Fields::Named(named) => named.named.iter()
             .map(|f| (f.ident.as_ref().unwrap(), f.ident.as_ref().unwrap().to_string(), &f.ty))
-            .unzip3::<Vec<_>, Vec<_>, Vec<_>>(),
+            .multiunzip::<(Vec<_>, Vec<_>, Vec<_>)>(),
 
         Fields::Unnamed(_) => abort!(fields, "only named fields are allowed for rebo structs"),
         Fields::Unit => abort!(fields, "only named fields are allowed for rebo structs"),

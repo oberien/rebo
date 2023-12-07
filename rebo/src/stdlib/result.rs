@@ -56,13 +56,14 @@ impl<T: FromValue, E: FromValue> FromValue for Result<T, E> {
 }
 impl<T: IntoValue, E: IntoValue> IntoValue for Result<T, E> {
     fn into_value(self) -> Value {
-        let (variant, fields) = match self {
-            Ok(t) => ("Ok", vec![t.into_value()]),
-            Err(e) => ("Err", vec![e.into_value()]),
+        let (variant, variant_index, fields) = match self {
+            Ok(t) => ("Ok", 0, vec![t.into_value()]),
+            Err(e) => ("Err", 1, vec![e.into_value()]),
         };
         Value::Enum(EnumArc {
             e: Arc::new(ReentrantMutex::new(RefCell::new(Enum {
                 name: "Result".to_string(),
+                variant_index,
                 variant: variant.to_string(),
                 fields,
             })))

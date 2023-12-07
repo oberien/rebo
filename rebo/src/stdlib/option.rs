@@ -65,13 +65,14 @@ impl<T: FromValue> FromValue for Option<T> {
 }
 impl<T: IntoValue> IntoValue for Option<T> {
     fn into_value(self) -> Value {
-        let (variant, fields) = match self {
-            Some(t) => ("Some", vec![t.into_value()]),
-            None => ("None", vec![]),
+        let (variant, variant_index, fields) = match self {
+            Some(t) => ("Some", 0, vec![t.into_value()]),
+            None => ("None", 1, vec![]),
         };
         Value::Enum(EnumArc {
             e: Arc::new(ReentrantMutex::new(RefCell::new(Enum {
                 name: "Option".to_string(),
+                variant_index,
                 variant: variant.to_string(),
                 fields,
             })))
