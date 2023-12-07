@@ -96,6 +96,7 @@ pub fn add_list<'a, 'i>(diagnostics: &'i Diagnostics<ErrorCode>, arena: &'a Aren
     meta_info.add_external_function(arena, diagnostics, list_slice);
     meta_info.add_external_function(arena, diagnostics, list_clear);
     meta_info.add_external_function(arena, diagnostics, list_sort);
+    meta_info.add_external_function(arena, diagnostics, list_reverse);
     meta_info.add_external_function(arena, diagnostics, list_range);
 }
 
@@ -212,6 +213,10 @@ fn list_clear<T>(this: List<T>) {
 #[rebo::function(raw("List::sort"))]
 fn list_sort<T>(this: List<T>) {
     this.arc.list.lock().borrow_mut().sort()
+}
+#[rebo::function(raw("List::reverse"))]
+fn list_reverse<T>(this: List<T>) {
+    this.arc.list.lock().borrow_mut().reverse()
 }
 #[rebo::function("List::range")]
 fn list_range(from: i64, to: i64) -> List<i64> {
