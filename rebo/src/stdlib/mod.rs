@@ -90,6 +90,7 @@ pub fn add_to_meta_info<'a, 'i>(stdlib: Stdlib, diagnostics: &'i Diagnostics<Err
     meta_info.add_external_function(arena, diagnostics, string_len_grapheme_clusters);
     meta_info.add_external_function(arena, diagnostics, string_len_legacy_grapheme_clusters);
     meta_info.add_external_function(arena, diagnostics, string_from_char);
+    meta_info.add_external_function(arena, diagnostics, string_chars_utf32);
     meta_info.add_external_function(arena, diagnostics, string_trim);
     meta_info.add_external_function(arena, diagnostics, string_trim_start);
     meta_info.add_external_function(arena, diagnostics, string_trim_end);
@@ -347,6 +348,10 @@ fn string_len_legacy_grapheme_clusters(this: String) -> usize {
 #[rebo::function("string::from_char")]
 fn string_from_char(chr: u8) -> String {
     String::from(chr as char)
+}
+#[rebo::function("string::chars_utf32")]
+fn string_chars_utf32(this: String) -> List<String> {
+    List::new(this.chars().map(String::from))
 }
 #[rebo::function("string::trim")]
 fn string_trim(this: String) -> String {
