@@ -4,16 +4,23 @@ use proc_macro_error::abort;
 use quote::ToTokens;
 use syn::{GenericArgument, GenericParam, Generics, Ident, PathArguments, Type, spanned::Spanned, Signature, FnArg, Pat, PatType, ReturnType};
 
-/// Convert the Generics of a type or function to a list of their Idents and types
-pub fn parse_generics(generics: &Generics, context: &str) -> (Vec<Ident>, Vec<TokenStream>) {
+#[derive(PartialEq)]
+pub enum Bounds {
+    Reject,
+    #[allow(unused)]
+    Allow,
+}
+
+/// Convert the Generics of a type or function to a list of their Idents and bounds
+pub fn parse_generics(generics: &Generics, context: &str, bounds: Bounds) -> (Vec<Ident>, Vec<TokenStream>) {
     generics.params.iter().map(|generic| {
         match generic {
             GenericParam::Lifetime(lifetime) => abort!(lifetime, "lifetimes are not allowed in {}", context),
             GenericParam::Const(const_param) => abort!(const_param, "const generics are not allowed in {}", context),
             GenericParam::Type(typ) => {
-                // if !typ.bounds.is_empty() {
-                //     abort!(typ.bounds, "generic bounds are not allowed in {}", context)
-                // }
+                if !typ.bounds.is_empty() && bounds == Bounds::Reject {
+                    abort!(typ.bounds, "generic bounds are not allowed in {}", context)
+                }
                 if typ.default.is_some() {
                     abort!(typ.default, "default generics not allowed in {}", context);
                 }
@@ -120,7 +127,6 @@ pub fn convert_type_to_rebo(typ: &Type) -> TokenStream {
 pub struct FunctionSignature {
     pub ident: Ident,
     pub generic_idents: Vec<Ident>,
-    pub generic_bounds: Vec<TokenStream>,
     pub is_method: bool,
     pub arg_idents: Vec<Ident>,
     pub arg_types: Vec<Type>,
@@ -177,7 +183,7 @@ pub fn parse_function_signature(sig: Signature, context: &str) -> FunctionSignat
         abort!(variadic, "if you want to use varargs for {ctx}, use `..: _` or `..: T` instead");
     }
 
-    let (generic_idents, generic_bounds) = parse_generics(&generics, context);
+    let (generic_idents, _) = parse_generics(&generics, context, Bounds::Reject);
 
     let mut varargs = None;
     let mut is_method = false;
@@ -217,7 +223,6 @@ pub fn parse_function_signature(sig: Signature, context: &str) -> FunctionSignat
     FunctionSignature {
         ident,
         generic_idents,
-        generic_bounds,
         is_method,
         arg_idents,
         arg_types,

@@ -54,7 +54,6 @@ pub fn extern_rebo(_args: TokenStream, input: TokenStream) -> TokenStream {
 fn generate_fn(fn_ident: &Ident, sig: &FunctionSignature) -> TokenStream2 {
     let ident = &sig.ident;
     let generic_idents = &sig.generic_idents;
-    let generic_bounds = &sig.generic_bounds;
     let (arg_idents, arg_types, into_value_conversions) = match &sig.varargs {
         Some(varargs) => (
             vec![Ident::new("args", varargs.span)],
@@ -78,7 +77,7 @@ fn generate_fn(fn_ident: &Ident, sig: &FunctionSignature) -> TokenStream2 {
         }
     };
     quote::quote! {
-        fn #fn_ident<'a, 'i, #(#generic_idents: #generic_bounds),*>(vm: &mut ::rebo::VmContext<'a, '_, '_, 'i>, #(#arg_idents: #arg_types),*) -> Result<#ret_type, ::rebo::ExecError<'a, 'i>> {
+        fn #fn_ident<'a, 'i, #(#generic_idents: ::rebo::FromValue + ::rebo::IntoValue),*>(vm: &mut ::rebo::VmContext<'a, '_, '_, 'i>, #(#arg_idents: #arg_types),*) -> Result<#ret_type, ::rebo::ExecError<'a, 'i>> {
             let values = #into_value_conversions;
             let res = vm.call_required_rebo_function::<#ident>(values)?;
             // required if the function returns the never type

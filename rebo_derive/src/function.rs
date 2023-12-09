@@ -35,7 +35,7 @@ pub fn function(args: TokenStream, input: TokenStream) -> TokenStream {
     let ItemFn { attrs: _, vis, sig, block } = input;
 
     let util::FunctionSignature {
-        ident, generic_idents, generic_bounds: _, is_method: _, arg_idents, arg_types, varargs, output
+        ident, generic_idents, is_method: _, arg_idents, arg_types, varargs, output
     } = util::parse_function_signature(sig, "rebo functions");
 
     let fn_ident = format!("{}_fn", ident);

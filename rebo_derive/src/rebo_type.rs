@@ -4,6 +4,7 @@ use proc_macro::TokenStream;
 use itertools::Itertools;
 use proc_macro2::Span;
 use crate::util;
+use crate::util::Bounds;
 
 pub fn enum_type(e: ItemEnum) -> TokenStream {
     let ItemEnum { attrs: _, vis, enum_token: _, ident, generics, brace_token: _, variants } = e;
@@ -41,7 +42,7 @@ pub fn enum_type(e: ItemEnum) -> TokenStream {
         }
     }).collect();
 
-    let (generic_idents, _) = util::parse_generics(&generics, "rebo enums");
+    let (generic_idents, _) = util::parse_generics(&generics, "rebo enums", Bounds::Reject);
 
     let code_filename = format!("external-{}.rs", ident);
     // TODO: manually convert syn::Type to string to not have spaces in `Option < T >`
@@ -145,7 +146,7 @@ pub fn struct_type(s: ItemStruct) -> TokenStream {
         Fields::Unit => abort!(fields, "only named fields are allowed for rebo structs"),
     };
 
-    let (generic_idents, _) = util::parse_generics(&generics, "rebo structs");
+    let (generic_idents, _) = util::parse_generics(&generics, "rebo structs", Bounds::Reject);
     let generic_values = vec![quote::quote!(::rebo::Value); generic_idents.len()];
 
     let code_filename = format!("external-{}.rs", ident);

@@ -35,15 +35,13 @@ bitflags::bitflags! {
     }
 }
 mod required {
-    use rebo::{FromValue, IntoValue};
-
     #[rebo::required_rebo_functions]
     extern "rebo" {
         pub fn print(..: _);
         pub fn assert(condition: bool);
         pub fn panic(message: String) -> !;
-        pub fn assert_eq<T: IntoValue>(left: T, right: T);
-        pub fn dbg<T: FromValue + IntoValue>(arg: T) -> T;
+        pub fn assert_eq<T>(left: T, right: T);
+        pub fn dbg<T>(arg: T) -> T;
     }
  }
 
