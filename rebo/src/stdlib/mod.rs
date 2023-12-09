@@ -83,6 +83,8 @@ pub fn add_to_meta_info<'a, 'i>(stdlib: Stdlib, diagnostics: &'i Diagnostics<Err
     meta_info.add_external_function(arena, diagnostics, int_max_value);
     meta_info.add_external_function(arena, diagnostics, int_abs);
     meta_info.add_external_function(arena, diagnostics, int_pow);
+    meta_info.add_external_function(arena, diagnostics, int_gcd);
+    meta_info.add_external_function(arena, diagnostics, int_lcm);
     meta_info.add_external_function(arena, diagnostics, string_slice);
     meta_info.add_external_function(arena, diagnostics, string_len_utf8);
     meta_info.add_external_function(arena, diagnostics, string_len_utf16);
@@ -235,6 +237,14 @@ fn int_abs(this: i64) -> i64 {
 #[rebo::function("int::pow")]
 fn int_pow(this: i64, exp: u32) -> i64 {
     this.pow(exp)
+}
+#[rebo::function(raw("int::gcd"))]
+fn int_gcd(this: i64, other: i64) -> i64 {
+    num::integer::gcd(this, other)
+}
+#[rebo::function(raw("int::lcm"))]
+fn int_lcm(this: i64, other: i64) -> i64 {
+    num::integer::lcm(this, other)
 }
 
 #[rebo::function(raw("assert"))]
