@@ -10,6 +10,7 @@ use crate::ExecError;
 use rand_chacha::ChaCha12Rng;
 use rand::{Rng, SeedableRng, seq::SliceRandom};
 use std::sync::Mutex;
+use std::time::Duration;
 use regex::Regex;
 use unicode_segmentation::UnicodeSegmentation;
 use rebo::{DebugValue, VmContext};
@@ -32,6 +33,7 @@ bitflags::bitflags! {
         const PANIC = 0x4;
         const ASSERT_EQ = 0x8;
         const DBG = 0x10;
+        const SLEEP = 0x20;
     }
 }
 mod required {
@@ -59,6 +61,10 @@ pub fn add_to_meta_info<'a, 'i>(stdlib: Stdlib, diagnostics: &'i Diagnostics<Err
         meta_info.add_external_function(arena, diagnostics, dbg);
     }
     meta_info.add_required_rebo_function(RequiredReboFunctionStruct::from_required_rebo_function::<required::dbg>(), diagnostics);
+
+    if stdlib.contains(Stdlib::SLEEP) {
+        meta_info.add_external_function(arena, diagnostics, sleep);
+    }
 
     meta_info.add_external_function(arena, diagnostics, add_one);
 
@@ -141,6 +147,10 @@ fn print(..: _) {
 fn dbg<T>(arg: T) -> T {
     println!("{:#?}", DebugValue(&arg));
     arg
+}
+#[rebo::function("sleep")]
+fn sleep(millis: u64) {
+    ::std::thread::sleep(Duration::from_millis(millis));
 }
 
 #[rebo::function("add_one")]
