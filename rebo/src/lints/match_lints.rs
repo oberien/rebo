@@ -110,7 +110,20 @@ impl Visitor for MatchLints {
                 }
             }
             Type::Specific(SpecificType::Enum(name, _)) => {
-                let variants: Vec<_> = meta_info.enum_types[name.as_ref()].variants.iter()
+                let e = match meta_info.enum_types.get(name.as_ref()) {
+                    Some(e) => e,
+                    None => {
+                        let similar = crate::util::similar_name(name, meta_info.enum_types.keys());
+                        let mut diag = diagnostics.error(ErrorCode::UnknownEnum)
+                            .with_error_label(expr.span(), format!("unknown enum `{name}` in match"));
+                        if let Some(similar) = similar {
+                            diag = diag.with_info_label(expr.span(), format!("did you mean `{}`", similar));
+                        }
+                        diag.emit();
+                        return
+                    }
+                };
+                let variants: Vec<_> = e.variants.iter()
                     .map(|(name, _)| RequiredEnumVariant(name.as_str()))
                     .collect();
                 let mut checker = VariantChecker::new(diagnostics, match_span, Some(&variants));
