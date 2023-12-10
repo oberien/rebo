@@ -1,0 +1,10 @@
+[book]
+authors = ["oberien"]
+language = "en"
+multilingual = false
+src = "src"
+title = "rebo"
+
+[preprocessor.run-rebo]
+renderers = ["html"]
+command = "./run-rebo"
