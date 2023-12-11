@@ -182,7 +182,13 @@ impl Component for MainComponent {
         let on_keyboard_handler_change = ctx.link().callback(|keyboard_handler: KeyboardHandler| Msg::KeyboardHandlerChanged(keyboard_handler));
         html! {
             <>
-            <h1>{ "Rebo Playground" }</h1>
+            <h1>
+                { "Rebo Playground " }
+                <span style="font-size: .75em">
+                    <a href="https://rebo.oberien.de/book/" style="margin-left:1em" target="_blank">{ "documentation" }</a>
+                    <a href="https://github.com/oberien/rebo" style="margin-left:1em" target="_blank">{ "github" }</a>
+                </span>
+            </h1>
             <div class="outer">
                 <div class="left">
                     <ConfigComponent config={self.config.clone()} {on_editor_change} {on_keyboard_handler_change} />
@@ -195,11 +201,11 @@ impl Component for MainComponent {
                     </div>
                     <div class="right-bottom">
                         <div class="graph">
-                            <h3>{ "Graph Before typeck:" }</h3>
+                            <h3>{ "Type-Graph Before typeck:" }</h3>
                             <VizGraph content={self.type_graph_before.clone()} />
                         </div>
                         <div class="graph">
-                            <h3>{ "Graph After typeck:" }</h3>
+                            <h3>{ "Type-Graph After typeck:" }</h3>
                             <VizGraph content={self.type_graph_after.clone()} />
                         </div>
                     </div>
