@@ -1,9 +1,17 @@
-# Types
+# Primitives
 
 ```rust
 // unit - rebo's void type
 let unit = ();
 assert(unit == ());
+
+// int
+assert_eq(1 + 2, 3);
+
+// float 
+let sum = 0.1 + 0.2;
+assert(sum, 0.3)
+
 
 // strings
 // string lengths

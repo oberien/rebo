@@ -68,6 +68,26 @@ impl DeepCopy for String {
         self.clone()
     }
 }
+impl<T: DeepCopy> DeepCopy for Vec<T> {
+    fn deep_copy(&self) -> Self {
+        self.iter().map(DeepCopy::deep_copy).collect()
+    }
+}
+impl<K: DeepCopy + Ord, V: DeepCopy> DeepCopy for BTreeMap<K, V> {
+    fn deep_copy(&self) -> Self {
+        self.iter().map(|(k, v)| (k.deep_copy(), v.deep_copy())).collect()
+    }
+}
+impl<T: DeepCopy + Ord> DeepCopy for BTreeSet<T> {
+    fn deep_copy(&self) -> Self {
+        self.iter().map(DeepCopy::deep_copy).collect()
+    }
+}
+impl<A: DeepCopy, B: DeepCopy> DeepCopy for (A, B) {
+    fn deep_copy(&self) -> Self {
+        (self.0.deep_copy(), self.1.deep_copy())
+    }
+}
 impl DeepCopy for Value {
     fn deep_copy(&self) -> Self {
        match self {
@@ -514,7 +534,7 @@ impl StructArc {
 }
 impl DeepCopy for StructArc {
     fn deep_copy(&self) -> Self {
-        StructArc::new(self.s.lock().borrow().clone())
+        StructArc::new(self.s.lock().borrow().deep_copy())
     }
 }
 impl PartialOrd for StructArc {
@@ -538,6 +558,14 @@ pub struct Struct {
     pub name: String,
     pub fields: Vec<(String, Value)>,
 }
+impl DeepCopy for Struct {
+    fn deep_copy(&self) -> Self {
+        Struct {
+            name: self.name.deep_copy(),
+            fields: self.fields.deep_copy(),
+        }
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct EnumArc {
@@ -550,7 +578,7 @@ impl EnumArc {
 }
 impl DeepCopy for EnumArc {
     fn deep_copy(&self) -> Self {
-        EnumArc::new(self.e.lock().borrow().clone())
+        EnumArc::new(self.e.lock().borrow().deep_copy())
     }
 }
 impl PartialOrd for EnumArc {
@@ -576,6 +604,16 @@ pub struct Enum {
     pub variant: String,
     pub fields: Vec<Value>,
 }
+impl DeepCopy for Enum {
+    fn deep_copy(&self) -> Self {
+        Enum {
+            name: self.name.deep_copy(),
+            variant_index: self.variant_index,
+            variant: self.variant.deep_copy(),
+            fields: self.fields.deep_copy(),
+        }
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct ListArc {
@@ -588,7 +626,7 @@ impl ListArc {
 }
 impl DeepCopy for ListArc {
     fn deep_copy(&self) -> Self {
-        ListArc::new(self.list.lock().borrow().clone())
+        ListArc::new(self.list.lock().borrow().deep_copy())
     }
 }
 impl PartialOrd for ListArc {
@@ -619,7 +657,7 @@ impl MapArc {
 }
 impl DeepCopy for MapArc {
     fn deep_copy(&self) -> Self {
-        MapArc::new(self.map.lock().borrow().clone())
+        MapArc::new(self.map.lock().borrow().deep_copy())
     }
 }
 impl PartialOrd for MapArc {
@@ -650,7 +688,7 @@ impl SetArc {
 }
 impl DeepCopy for SetArc {
     fn deep_copy(&self) -> Self {
-        SetArc::new(self.set.lock().borrow().clone())
+        SetArc::new(self.set.lock().borrow().deep_copy())
     }
 }
 impl PartialOrd for SetArc {
