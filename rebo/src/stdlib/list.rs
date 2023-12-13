@@ -90,6 +90,8 @@ pub fn add_list<'a, 'i>(diagnostics: &'i Diagnostics<ErrorCode>, arena: &'a Aren
     meta_info.add_external_function(arena, diagnostics, list_min);
     meta_info.add_external_function(arena, diagnostics, list_max);
     meta_info.add_external_function(arena, diagnostics, list_contains);
+    meta_info.add_external_function(arena, diagnostics, list_extend);
+    meta_info.add_external_function(arena, diagnostics, list_repeat);
     meta_info.add_external_function(arena, diagnostics, list_remove);
     meta_info.add_external_function(arena, diagnostics, list_swap_remove);
     meta_info.add_external_function(arena, diagnostics, list_join);
@@ -164,6 +166,18 @@ fn list_is_empty<T>(this: List<T>) -> bool {
 #[rebo::function("List::contains")]
 fn list_contains<T>(this: List<T>, item: T) -> bool {
     this.arc.list.lock().borrow().contains(&item)
+}
+#[rebo::function("List::extend")]
+fn list_extend<T>(this: List<T>, other: List<T>) {
+    let this = this.arc.list.lock();
+    let mut this = this.borrow_mut();
+    this.extend(other.arc.list.lock().borrow().iter().cloned());
+}
+#[rebo::function("List::repeat")]
+fn list_repeat<T>(this: List<T>, n: usize) -> List<T> {
+    let this = this.arc.list.lock();
+    let this = this.borrow();
+    List::new(this.iter().cycle().take(this.len() * n).cloned())
 }
 #[rebo::function("List::remove")]
 fn list_remove<T>(this: List<T>, index: i64) -> Option<T> {
