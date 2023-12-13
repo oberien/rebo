@@ -10,7 +10,8 @@ assert_eq(val, "loop");
 // loop labels
 let val = 'outer: loop {
     loop {
-        break 'outer "outer loop"
+        // break with value
+        break 'outer "outer loop";
     }
 };
 assert_eq(val, "outer loop");

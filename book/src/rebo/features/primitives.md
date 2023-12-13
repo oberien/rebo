@@ -8,10 +8,13 @@ assert(unit == ());
 // int
 assert_eq(1 + 2, 3);
 
-// float 
+// float use similarity equality
 let sum = 0.1 + 0.2;
-assert(sum, 0.3)
+let expected = 0.3;
+assert(sum == expected);
+assert(sum.to_bits() != expected.to_bits());
 
+// bool
 
 // strings
 // string lengths

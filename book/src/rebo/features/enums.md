@@ -1,13 +1,50 @@
 # Enums
 
 ```rust
-// enums
+// enum declaration
+enum MathOp {
+    Add,
+    Negate,
+}
+
+// enum matching
+fn perform_math(op: MathOp, a: int, b: Option<int>) -> int {
+    match op {
+        MathOp::Add => a + b.unwrap(),
+        MathOp::Negate => -a,
+    }
+}
+let res = perform_math(MathOp::Add, 1, Option::Some(2));
+assert(res == 3);
+let res = perform_math(MathOp::Negate, 5, Option::None);
+assert(res == -5);
+
+// enum variants can also have values
+enum MathOpImproved {
+    Add(int, int),
+    Negate(int),
+}
+// functions and methods can be implemented on enums
+impl MathOpImproved {
+    // enum matching with fields
+    fn perform_math(self) -> int {
+        match self {
+            MathOpImproved::Add(a, b) => a + b,
+            MathOpImproved::Negate(a) => -a,
+        }
+    }
+}
+let op = MathOpImproved::Add(1, 2);
+let res = op.perform_math();
+assert_eq(res, 3);
+
+// while we're at it, define a Value enum
 enum Value {
     Unit,
     Integer(int),
     Float(float),
 }
-// enum matching
+
 fn value_to_string(value: Value) -> string {
     match value {
         Value::Unit => "unit",
