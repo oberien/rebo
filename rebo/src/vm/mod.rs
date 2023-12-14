@@ -420,6 +420,7 @@ impl<'a, 'b, 'i> Vm<'a, 'b, 'i> {
                 };
                 Err(ExecError::Return(val))
             }
+            Expr::Yield(_) => unreachable!("encountered a yield expression in the VM"),
             Expr::FunctionCall(ExprFunctionCall { name, args, .. }) => {
                 let fun = self.load_binding(&name.binding, name.span(), depth.next()).expect_function("called a function on a binding that's not a function");
                 let args = args.iter().map(|expr| self.eval_expr(expr, depth.next())).collect::<Result<_, _>>()?;

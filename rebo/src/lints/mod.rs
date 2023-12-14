@@ -17,6 +17,7 @@ mod unknown_access;
 mod break_continue_return;
 mod variable_without_function;
 mod closure_capture_primitives;
+mod no_yield;
 
 use crate::parser::Expr;
 use crate::common::MetaInfo;

@@ -104,7 +104,7 @@ impl<'a, 'i> fmt::Display for Ast<'a, 'i> {
     }
 }
 
-pub struct Parser<'a, 'b, 'i> {
+pub struct Parser<'a, 'm, 'i> {
     /// directory to search in when including files
     include_directory: IncludeDirectory,
     /// arena to allocate expressions into
@@ -115,7 +115,7 @@ pub struct Parser<'a, 'b, 'i> {
     /// finished bindings that aren't live anymore
     bindings: Vec<Binding<'i>>,
     /// pre-info to add first-pass definitions to
-    meta_info: &'b mut MetaInfo<'a, 'i>,
+    meta_info: &'m mut MetaInfo<'a, 'i>,
     /// already parsed expressions in the first-pass, to be consumed by the second pass
     pre_parsed: HashMap<(FileId, usize), &'a Expr<'a, 'i>>,
     /// stack of scopes with bindings that are still live
@@ -162,8 +162,8 @@ impl<'i> Drop for ScopeGuard<'i> {
 }
 
 /// All expression parsing function consume whitespace and comments before tokens, but not after.
-impl<'a, 'b, 'i> Parser<'a, 'b, 'i> {
-    pub fn new(include_directory: IncludeDirectory, arena: &'a Arena<Expr<'a, 'i>>, lexer: Lexer<'i>, diagnostics: &'i Diagnostics<ErrorCode>, meta_info: &'b mut MetaInfo<'a, 'i>, add_clone: bool) -> Self {
+impl<'a, 'm, 'i> Parser<'a, 'm, 'i> {
+    pub fn new(include_directory: IncludeDirectory, arena: &'a Arena<Expr<'a, 'i>>, lexer: Lexer<'i>, diagnostics: &'i Diagnostics<ErrorCode>, meta_info: &'m mut MetaInfo<'a, 'i>, add_clone: bool) -> Self {
         Parser {
             include_directory,
             arena,

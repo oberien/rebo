@@ -1,5 +1,5 @@
 use crate::typeck::graph::{Graph, Node, PossibleTypes, Constraint};
-use crate::parser::{Expr, Spanned, ExprFormatString, ExprFormatStringPart, ExprBind, ExprPattern, ExprPatternTyped, ExprPatternUntyped, ExprAssign, ExprAssignLhs, ExprVariable, ExprFieldAccess, ExprBoolNot, ExprAdd, ExprSub, ExprMul, ExprDiv, ExprMod, ExprXor, ExprBoolAnd, ExprBoolOr, ExprLessThan, ExprLessEquals, ExprEquals, ExprNotEquals, ExprGreaterEquals, ExprGreaterThan, ExprBlock, BlockBody, ExprParenthesized, ExprMatch, ExprMatchPattern, ExprWhile, ExprFunctionCall, ExprFunctionDefinition, ExprStructInitialization, ExprImplBlock, ExprType, ExprGenerics, ExprAccess, FieldOrMethod, ExprFor, ExprStatic, ExprFunctionType, ExprFunctionSignature, ExprNeg, ExprStaticSignature, ExprAddAssign, ExprSubAssign, ExprMulAssign, ExprDivAssign, ExprModAssign, ExprXorAssign, ExprBoolAndAssign, ExprBoolOrAssign, ExprLoop, ExprBreak, ExprContinue, ExprReturn};
+use crate::parser::{Expr, Spanned, ExprFormatString, ExprFormatStringPart, ExprBind, ExprPattern, ExprPatternTyped, ExprPatternUntyped, ExprAssign, ExprAssignLhs, ExprVariable, ExprFieldAccess, ExprBoolNot, ExprAdd, ExprSub, ExprMul, ExprDiv, ExprMod, ExprXor, ExprBoolAnd, ExprBoolOr, ExprLessThan, ExprLessEquals, ExprEquals, ExprNotEquals, ExprGreaterEquals, ExprGreaterThan, ExprBlock, BlockBody, ExprParenthesized, ExprMatch, ExprMatchPattern, ExprWhile, ExprFunctionCall, ExprFunctionDefinition, ExprStructInitialization, ExprImplBlock, ExprType, ExprGenerics, ExprAccess, FieldOrMethod, ExprFor, ExprStatic, ExprFunctionType, ExprFunctionSignature, ExprNeg, ExprStaticSignature, ExprAddAssign, ExprSubAssign, ExprMulAssign, ExprDivAssign, ExprModAssign, ExprXorAssign, ExprBoolAndAssign, ExprBoolOrAssign, ExprLoop, ExprBreak, ExprContinue, ExprReturn, ExprYield};
 use crate::common::{MetaInfo, UserType, Function, RequiredReboFunctionStruct, BlockStack, BlockType};
 use itertools::Either;
 use crate::typeck::types::{StructType, EnumType, EnumTypeVariant, SpecificType, FunctionType, Type, ResolvableSpecificType};
@@ -246,6 +246,7 @@ fn convert_expr_type(typ: &ExprType, diagnostics: &Diagnostics<ErrorCode>, meta_
                 ret,
             })))
         }
+        ExprType::Generator(_) => todo!(),
         ExprType::Generic(g) => {
             Type::Specific(SpecificType::Generic(g.def_ident.span))
         },
@@ -971,6 +972,15 @@ impl<'i> Graph<'i> {
                     (_, _) => (),
                 }
                 // return returns bottom, which is top during type resolution, which is the default
+            }
+            Expr::Yield(ExprYield { expr, .. }) => {
+                // yield shouldn't exist here as it's already transformed in the parser.
+                // However, if it isn't inside a generator function, the linter will error.
+                // Which means we can encounter it here.
+                // As the code is definitely wrong, just leave the default top type node.
+                if let Some(expr) = expr {
+                    self.visit_expr(ctx, expr);
+                }
             }
             Expr::FunctionCall(ExprFunctionCall { name, args, .. }) => {
                 let binding_node = Node::type_var(name.binding.ident.span);

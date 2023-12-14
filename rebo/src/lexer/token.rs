@@ -103,6 +103,8 @@ gen_tokens! {
     Let, TokenLet, "let", {}, (fmt = "let "), (Copy, Eq, Hash);
     Mut, TokenMut, "mut", {}, (fmt = "mut "), (Copy, Eq, Hash);
     Fn, TokenFn, "fn", {}, (fmt = "fn "), (Copy, Eq, Hash);
+    Gen, TokenGen, "gen", {}, (fmt = "gen "), (Copy, Eq, Hash);
+    Yield, TokenYield, "yield", {}, (fmt = "yield "), (Copy, Eq, Hash);
     Struct, TokenStruct, "struct", {}, (fmt = "struct "), (Copy, Eq, Hash);
     Enum, TokenEnum, "enum", {}, (fmt = "enum "), (Copy, Eq, Hash);
     Impl, TokenImpl, "impl", {}, (fmt = "impl "), (Copy, Eq, Hash);

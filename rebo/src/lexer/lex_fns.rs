@@ -107,6 +107,8 @@ pub fn try_lex_token<'i>(diagnostics: &Diagnostics<ErrorCode>, file: FileId, s: 
         "let" => Let, TokenLet;
         "mut" => Mut, TokenMut;
         "fn" => Fn, TokenFn;
+        "gen" => Gen, TokenGen;
+        "yield" => Yield, TokenYield;
         "struct" => Struct, TokenStruct;
         "enum" => Enum, TokenEnum;
         "impl" => Impl, TokenImpl;

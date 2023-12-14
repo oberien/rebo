@@ -265,6 +265,7 @@ impl_for_tokens! {
     Enum, TokenEnum;
     Impl, TokenImpl;
     Fn, TokenFn;
+    Gen, TokenGen;
     Match, TokenMatch;
     If, TokenIf;
     Else, TokenElse;
@@ -274,6 +275,7 @@ impl_for_tokens! {
     Break, TokenBreak;
     Continue, TokenContinue;
     Return, TokenReturn;
+    Yield, TokenYield;
     In, TokenIn;
     Static, TokenStatic;
     Include, TokenInclude;

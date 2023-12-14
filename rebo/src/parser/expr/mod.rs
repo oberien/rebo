@@ -1,12 +1,13 @@
 mod pattern;
 mod helper;
+mod generator;
 pub use pattern::{ExprPattern, ExprPatternTyped, ExprPatternUntyped, ExprMatchPattern, ExprMatchPatternVariant};
 
 use std::fmt::{self, Write, Display, Formatter, Debug};
 use derive_more::Display;
 use crate::parser::scope::{BindingId, ScopeType};
 use crate::util::PadFmt;
-use crate::lexer::{TokenOpenParen, TokenCloseParen, TokenIdent, TokenInteger, TokenFloat, TokenBool, TokenDqString, TokenType, TokenStringType, TokenIntType, TokenFloatType, TokenBoolType, Token, TokenLet, TokenColon, TokenMut, TokenAssign, TokenOpenCurly, TokenCloseCurly, TokenComma, TokenArrow, TokenFn, TokenBang, TokenPlus, TokenMinus, TokenStar, TokenSlash, TokenPercent, TokenCircumflex, TokenDoubleAmp, TokenDoublePipe, TokenLessThan, TokenLessEquals, TokenEquals, TokenNotEquals, TokenGreaterEquals, TokenGreaterThan, TokenStruct, TokenDot, TokenIf, TokenElse, TokenWhile, TokenFormatString, TokenFormatStringPart, Lexer, TokenMatch, TokenFatArrow, TokenEnum, TokenDoubleColon, TokenImpl, TokenFor, TokenIn, TokenStatic, TokenInclude, TokenDotDotDot, TokenPipe, TokenAmp, TokenApostrophe, TokenLoop, TokenBreak, TokenContinue, TokenReturn, LexerMode};
+use crate::lexer::{TokenOpenParen, TokenCloseParen, TokenIdent, TokenInteger, TokenFloat, TokenBool, TokenDqString, TokenType, TokenStringType, TokenIntType, TokenFloatType, TokenBoolType, Token, TokenLet, TokenColon, TokenMut, TokenAssign, TokenOpenCurly, TokenCloseCurly, TokenComma, TokenArrow, TokenFn, TokenGen, TokenBang, TokenPlus, TokenMinus, TokenStar, TokenSlash, TokenPercent, TokenCircumflex, TokenDoubleAmp, TokenDoublePipe, TokenLessThan, TokenLessEquals, TokenEquals, TokenNotEquals, TokenGreaterEquals, TokenGreaterThan, TokenStruct, TokenDot, TokenIf, TokenElse, TokenWhile, TokenFormatString, TokenFormatStringPart, Lexer, TokenMatch, TokenFatArrow, TokenEnum, TokenDoubleColon, TokenImpl, TokenFor, TokenIn, TokenStatic, TokenInclude, TokenDotDotDot, TokenPipe, TokenAmp, TokenApostrophe, TokenLoop, TokenBreak, TokenContinue, TokenReturn, TokenYield, LexerMode};
 use crate::parser::{Parse, InternalError, Parser, Expected, Backtrack};
 use crate::error_codes::ErrorCode;
 use std::borrow::Cow;
@@ -357,9 +358,11 @@ pub enum Expr<'a, 'i> {
     Continue(ExprContinue<'i>),
     /// return expr
     Return(ExprReturn<'a, 'i>),
+    /// yield expr
+    Yield(ExprYield<'a, 'i>),
     /// (ident::)?ident(expr, expr, ...)
     FunctionCall(ExprFunctionCall<'a, 'i>),
-    /// fn ident(pat: typ, pat: typ, ...) -> typ { expr... }
+    /// gen? fn ident(pat: typ, pat: typ, ...) -> typ { expr... }
     FunctionDefinition(ExprFunctionDefinition<'a, 'i>),
     /// struct ident { ident: typ, ident: typ, ... }
     StructDefinition(ExprStructDefinition<'a, 'i>),
@@ -492,6 +495,7 @@ impl<'a, 'i> Expr<'a, 'i> {
             |parser: &mut Parser<'a, '_, 'i>, depth| Ok(parser.arena.alloc(Expr::Break(ExprBreak::parse(parser, depth)?))),
             |parser: &mut Parser<'a, '_, 'i>, depth| Ok(parser.arena.alloc(Expr::Continue(ExprContinue::parse(parser, depth)?))),
             |parser: &mut Parser<'a, '_, 'i>, depth| Ok(parser.arena.alloc(Expr::Return(ExprReturn::parse(parser, depth)?))),
+            |parser: &mut Parser<'a, '_, 'i>, depth| Ok(parser.arena.alloc(Expr::Yield(ExprYield::parse(parser, depth)?))),
             |parser: &mut Parser<'a, '_, 'i>, depth| Ok(parser.arena.alloc(Expr::IfElse(ExprIfElse::parse(parser, depth)?))),
             |parser: &mut Parser<'a, '_, 'i>, depth| Ok(parser.arena.alloc(Expr::Match(ExprMatch::parse(parser, depth)?))),
             |parser: &mut Parser<'a, '_, 'i>, depth| Ok(parser.arena.alloc(Expr::While(ExprWhile::parse(parser, depth)?))),
@@ -619,6 +623,8 @@ pub enum ExprType<'a, 'i> {
     UserType(TokenIdent<'i>, Option<TypeGenerics<'a, 'i>>),
     Generic(Generic<'i>),
     Function(Box<ExprFunctionType<'a, 'i>>),
+    /// yield-type
+    Generator(Box<ExprType<'a, 'i>>),
     Never(TokenBang),
 }
 impl<'a, 'i> Parse<'a, 'i> for ExprType<'a, 'i> {
@@ -703,6 +709,7 @@ impl<'a, 'i> Spanned for ExprType<'a, 'i> {
             }
             ExprType::Generic(g) => g.span(),
             ExprType::Function(f) => f.span(),
+            ExprType::Generator(g) => g.span(),
             ExprType::Never(b) => b.span(),
         }
     }
@@ -724,6 +731,7 @@ impl<'a, 'i> Display for ExprType<'a, 'i> {
             },
             ExprType::Generic(g) => write!(f, "{}<{},{},{}; {},{},{}>", g.ident.ident, g.def_ident.span.file, g.def_ident.span.start, g.def_ident.span.end, g.ident.span.file, g.ident.span.start, g.ident.span.end),
             ExprType::Function(fun) => Display::fmt(fun, f),
+            ExprType::Generator(yield_type) => write!(f, "gen fn -> {yield_type}"),
             ExprType::Never(_) => write!(f, "!"),
         }
     }
@@ -1899,6 +1907,39 @@ impl<'a, 'i> Display for ExprReturn<'a, 'i> {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct ExprYield<'a, 'i> {
+    pub yield_token: TokenYield,
+    pub expr: Option<&'a Expr<'a, 'i>>,
+}
+impl<'a, 'i> Parse<'a, 'i> for ExprYield<'a, 'i> {
+    fn parse_marked(parser: &mut Parser<'a, '_, 'i>, depth: Depth) -> Result<Self, InternalError> {
+        Ok(ExprYield {
+            yield_token: parser.parse(depth.next())?,
+            expr: parser.parse(depth.last())?,
+        })
+    }
+}
+impl<'a, 'i> Spanned for ExprYield<'a, 'i> {
+    fn span(&self) -> Span {
+        let end = if let Some(expr) = &self.expr {
+            expr.span().end
+        } else {
+            self.yield_token.span.end
+        };
+        Span::new(self.yield_token.span.file, self.yield_token.span.start, end)
+    }
+}
+impl<'a, 'i> Display for ExprYield<'a, 'i> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "yield")?;
+        if let Some(expr) = &self.expr {
+            write!(f, " {}", expr)?;
+        }
+        Ok(())
+    }
+}
+
 pub type ExprFunctionCall<'a, 'i> = ExprFunctionOrMethodCall<'a, 'i, ExprVariable<'i>>;
 pub type ExprMethodCall<'a, 'i> = ExprFunctionOrMethodCall<'a, 'i, TokenIdent<'i>>;
 #[derive(Debug, Clone)]
@@ -2091,13 +2132,24 @@ impl<'a, 'i> ExprFunctionDefinition<'a, 'i> {
     fn parse_internal(parser: &mut Parser<'a, '_, 'i>, depth: Depth) -> Result<Self, InternalError> {
         trace!("{} ExprFunctionDefinition::parse_internal        ({:?})", depth, parser.peek_token(0));
         let mark = parser.lexer.mark();
+        let gen_token = match parser.lexer.peek(0)? {
+            Token::Gen(gen_token) => {
+                drop(parser.lexer.next().unwrap());
+                Some(gen_token)
+            },
+            _ => None,
+        };
         let sig = parser.parse(depth.next())?;
         let old_captures = parser.captures.replace(IndexSet::new());
         let body = parser.parse(depth.last());
         let captures = std::mem::replace(&mut parser.captures, old_captures).unwrap();
         let body = body?;
         mark.apply();
-        Ok(ExprFunctionDefinition { sig, captures, body })
+        let fun = ExprFunctionDefinition { sig, captures, body };
+        match gen_token {
+            Some(gen_token) => Ok(generator::transform_generator(parser, gen_token, fun)),
+            None => Ok(fun)
+        }
     }
 }
 impl<'a, 'i> Parse<'a, 'i> for ExprFunctionDefinition<'a, 'i> {

@@ -1,4 +1,4 @@
-use crate::parser::{ExprLiteral, ExprFormatString, ExprBind, ExprAssign, ExprBoolNot, ExprAdd, ExprSub, ExprMul, ExprDiv, ExprMod, ExprXor, ExprBoolAnd, ExprBoolOr, ExprLessThan, ExprLessEquals, ExprEquals, ExprNotEquals, ExprGreaterEquals, ExprGreaterThan, ExprBlock, ExprVariable, ExprParenthesized, ExprIfElse, ExprMatch, ExprWhile, ExprFunctionCall, ExprFunctionDefinition, ExprStructDefinition, ExprStructInitialization, ExprImplBlock, Expr, ExprFormatStringPart, ExprEnumDefinition, ExprEnumInitialization, ExprAccess, FieldOrMethod, ExprFor, ExprStatic, ExprNeg, ExprAddAssign, ExprSubAssign, ExprMulAssign, ExprDivAssign, ExprModAssign, ExprXorAssign, ExprBoolAndAssign, ExprBoolOrAssign, ExprLoop, ExprContinue, ExprBreak, ExprReturn};
+use crate::parser::{ExprLiteral, ExprFormatString, ExprBind, ExprAssign, ExprBoolNot, ExprAdd, ExprSub, ExprMul, ExprDiv, ExprMod, ExprXor, ExprBoolAnd, ExprBoolOr, ExprLessThan, ExprLessEquals, ExprEquals, ExprNotEquals, ExprGreaterEquals, ExprGreaterThan, ExprBlock, ExprVariable, ExprParenthesized, ExprIfElse, ExprMatch, ExprWhile, ExprFunctionCall, ExprFunctionDefinition, ExprStructDefinition, ExprStructInitialization, ExprImplBlock, Expr, ExprFormatStringPart, ExprEnumDefinition, ExprEnumInitialization, ExprAccess, FieldOrMethod, ExprFor, ExprStatic, ExprNeg, ExprAddAssign, ExprSubAssign, ExprMulAssign, ExprDivAssign, ExprModAssign, ExprXorAssign, ExprBoolAndAssign, ExprBoolOrAssign, ExprLoop, ExprContinue, ExprBreak, ExprReturn, ExprYield};
 use diagnostic::Diagnostics;
 use crate::common::{MetaInfo, BlockStack, BlockType};
 use crate::ErrorCode;
@@ -52,6 +52,7 @@ pub trait Visitor {
     fn visit_break(&self, _: &Diagnostics<ErrorCode>, _: &MetaInfo, _: &BlockStack<'_, '_, ()>, _: &ExprBreak) {}
     fn visit_continue(&self, _: &Diagnostics<ErrorCode>, _: &MetaInfo, _: &BlockStack<'_, '_, ()>, _: &ExprContinue) {}
     fn visit_return(&self, _: &Diagnostics<ErrorCode>, _: &MetaInfo, _: &BlockStack<'_, '_, ()>, _: &ExprReturn) {}
+    fn visit_yield(&self, _: &Diagnostics<ErrorCode>, _: &MetaInfo, _: &BlockStack<'_, '_, ()>, _: &ExprYield) {}
     fn visit_function_call(&self, _: &Diagnostics<ErrorCode>, _: &MetaInfo, _: &BlockStack<'_, '_, ()>, _: &ExprFunctionCall) {}
     fn visit_function_definition(&self, _: &Diagnostics<ErrorCode>, _: &MetaInfo, _: &BlockStack<'_, '_, ()>, _: &ExprFunctionDefinition) {}
     fn visit_struct_definition(&self, _: &Diagnostics<ErrorCode>, _: &MetaInfo, _: &BlockStack<'_, '_, ()>, _: &ExprStructDefinition) {}
@@ -293,6 +294,12 @@ impl<'a, 'b, 'i, 'v> VisitorDriver<'a, 'b, 'i, 'v> {
             Expr::Return(ret) => {
                 visit!(self, visit_return, ret);
                 if let Some(expr) = ret.expr {
+                    self.visit_expr(expr);
+                }
+            }
+            Expr::Yield(yield_) => {
+                visit!(self, visit_yield, yield_);
+                if let Some(expr) = yield_.expr {
                     self.visit_expr(expr);
                 }
             }

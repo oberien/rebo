@@ -78,6 +78,7 @@ pub enum ErrorCode {
     NonVariableAssign,
     NamedFunctionCapture,
     ClosureCapturesMutablePrimitive,
+    YieldOutsideOfGenerator,
 
     Panic,
     AssertionFailed,
@@ -168,6 +169,7 @@ impl diagnostic::ErrorCode for ErrorCode {
             NonVariableAssign => "0077",
             NamedFunctionCapture => "0078",
             ClosureCapturesMutablePrimitive => "0079",
+            YieldOutsideOfGenerator => "0080",
 
             Panic => "9999",
             AssertionFailed => "9998",
@@ -257,6 +259,7 @@ impl diagnostic::ErrorCode for ErrorCode {
             NonVariableAssign => "tried to assign to something other than a variable",
             NamedFunctionCapture => "named function cannot capture binding",
             ClosureCapturesMutablePrimitive => "closure captures mutable primitive",
+            YieldOutsideOfGenerator => "yield used outside of generator",
 
             Panic => "explicit panic",
             AssertionFailed => "assertion failed",
