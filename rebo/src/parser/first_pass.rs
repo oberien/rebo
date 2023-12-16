@@ -22,27 +22,25 @@ impl<'a, 'b, 'i> Parser<'a, 'b, 'i> {
         let functions: &[DoPassFunction<'a, 'b, 'i>] = &[
             // struct definitions
             |parser: &mut Parser<'a, '_, 'i>, _, depth| {
-                let struct_def = &*parser.arena.alloc(Expr::StructDefinition(ExprStructDefinition::parse_reset(parser, depth)?));
-                match struct_def {
-                    Expr::StructDefinition(struct_def) => {
-                        trace!("found struct {}", struct_def.name.ident);
-                        parser.meta_info.add_struct(parser.diagnostics, struct_def);
-                    },
+                let expr = &*parser.arena.alloc(Expr::StructDefinition(ExprStructDefinition::parse_reset(parser, depth)?));
+                let struct_def = match expr {
+                    Expr::StructDefinition(struct_def) => struct_def,
                     _ => unreachable!("we just created you"),
-                }
-                Ok(Some(struct_def))
+                };
+                trace!("found struct {}", struct_def.name.ident);
+                parser.add_struct_to_meta_info(struct_def);
+                Ok(Some(expr))
             },
             // enum definitions
             |parser: &mut Parser<'a, '_, 'i>, _, depth| {
-                let enum_def = &*parser.arena.alloc(Expr::EnumDefinition(ExprEnumDefinition::parse_reset(parser, depth)?));
-                match enum_def {
-                    Expr::EnumDefinition(enum_def) => {
-                        trace!("found enum {}", enum_def.name.ident);
-                        parser.meta_info.add_enum(parser.diagnostics, enum_def);
-                    },
+                let expr = &*parser.arena.alloc(Expr::EnumDefinition(ExprEnumDefinition::parse_reset(parser, depth)?));
+                let enum_def = match expr {
+                    Expr::EnumDefinition(enum_def) => enum_def,
                     _ => unreachable!("we just created you"),
-                }
-                Ok(Some(enum_def))
+                };
+                trace!("found enum {}", enum_def.name.ident);
+                parser.add_enum_to_meta_info(enum_def);
+                Ok(Some(expr))
             },
             // function signatures
             |parser: &mut Parser<'a, '_, 'i>, stack: &Vec<StackElement>, depth| {

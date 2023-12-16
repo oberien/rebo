@@ -246,11 +246,11 @@ fn convert_expr_type(typ: &ExprType, diagnostics: &Diagnostics<ErrorCode>, meta_
                 ret,
             })))
         }
-        ExprType::Generator(_) => todo!(),
         ExprType::Generic(g) => {
             Type::Specific(SpecificType::Generic(g.def_ident.span))
         },
         ExprType::Never(_) => Type::Bottom,
+        ExprType::Any => Type::Top,
     }
 }
 

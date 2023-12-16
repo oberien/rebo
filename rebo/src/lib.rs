@@ -204,7 +204,7 @@ pub fn run_with_config(filename: String, code: String, config: ReboConfig) -> Ru
     let time = Instant::now();
     let lexer = Lexer::new(&diagnostics, file);
     info!("Lexing took {}μs", time.elapsed().as_micros());
-    info!("TOKENS:\n{}\n", lexer.iter().map(|token| token.to_string()).join(""));
+    debug!("TOKENS:\n{}\n", lexer.iter().map(|token| token.to_string()).join(""));
 
     // parse
     let include_directory = match include_directory {
@@ -234,7 +234,7 @@ pub fn run_with_config(filename: String, code: String, config: ReboConfig) -> Ru
         },
     };
     info!("Parsing took {}μs", time.elapsed().as_micros());
-    info!("AST:\n{}\n", ast);
+    debug!("AST:\n{}\n", ast);
     let Ast { exprs, bindings: _ } = ast;
 
     // typeck

@@ -18,12 +18,6 @@ impl Visitor for MatchLints {
         let match_span = expr.span();
         let ExprMatch { expr, arms, .. } = expr;
 
-        if arms.is_empty() {
-            diagnostics.warning(ErrorCode::EmptyMatch)
-                .with_error_label(expr.span(), "this match has an empty body")
-                .emit();
-        }
-
         let typ = &meta_info.types[&expr.span()];
         match typ {
             Type::Top => (),

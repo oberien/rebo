@@ -319,6 +319,15 @@ impl<'a, 'm, 'i> Parser<'a, 'm, 'i> {
         }
         None
     }
+    /// THIS DOES NOT PERFORM CLOSURE CAPTURE ANALYSIS - USE AT OWN RISK
+    fn get_binding_unsafe_unsafe_unsafe(&self, ident: &str) -> Option<Binding<'i>> {
+        for scope in self.scopes.borrow().iter().rev() {
+            if let Some(binding) = scope.idents.get(ident) {
+                return Some(binding.clone())
+            }
+        }
+        None
+    }
     fn add_generic(&mut self, generic: Generic<'i>) {
         if self.get_generic(generic.def_ident.ident).is_some() && self.generic_memoization.contains(&generic.def_ident.span) {
             return;
@@ -418,6 +427,37 @@ impl<'a, 'm, 'i> Parser<'a, 'm, 'i> {
             d = d.with_error_label(span, format!("expected one of {}", joined));
         }
         d.emit()
+    }
+
+    fn add_free_function_to_meta_info(&mut self, fun: &'a ExprFunctionDefinition<'a, 'i>) {
+        if let Some(self_arg) = &fun.sig.self_arg {
+            self.diagnostics.error(ErrorCode::SelfBinding)
+                .with_error_label(self_arg.span(), "self-argument not allowed here")
+                .with_info_label(self_arg.span(), "self-argument is only allowed in methods")
+                .emit();
+        }
+
+        let name = fun.sig.name.map(|name| Cow::Borrowed(name.ident));
+        self.meta_info.add_function(self.diagnostics, name, fun);
+    }
+    fn add_impl_block_functions_to_meta_info(&mut self, impl_block: &'a ExprImplBlock<'a, 'i>) {
+        for fun in &impl_block.functions {
+            match fun.sig.name {
+                Some(name) => {
+                    let path = format!("{}::{}", impl_block.name.ident, name.ident);
+                    self.meta_info.add_function(self.diagnostics, Some(Cow::Owned(path)), fun);
+                }
+                None => self.diagnostics.error(ErrorCode::MissingFunctionName)
+                    .with_error_label(fun.sig.span(), "functions in impl-blocks must have names")
+                    .emit(),
+            }
+        }
+    }
+    fn add_struct_to_meta_info(&mut self, struct_def: &'a ExprStructDefinition<'a, 'i>) {
+        self.meta_info.add_struct(self.diagnostics, struct_def);
+    }
+    fn add_enum_to_meta_info(&mut self, enum_def: &'a ExprEnumDefinition<'a, 'i>) {
+        self.meta_info.add_enum(self.diagnostics, enum_def);
     }
 
     fn consume_comments(&mut self) {

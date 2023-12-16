@@ -18,6 +18,7 @@ use itertools::{Itertools, Either};
 use crate::common::{Depth, UserType};
 use indexmap::set::IndexSet;
 use rt_format::{Format, Specifier};
+use rebo::EXTERNAL_SPAN;
 use crate::util;
 
 // make trace! here log as if this still was the parser module
@@ -413,52 +414,31 @@ impl<'a, 'i> Expr<'a, 'i> {
         let others: &[ParseFn<'a, '_, 'i>] = &[
             |parser: &mut Parser<'a, '_, 'i>, depth| {
                 let expr = ExprFunctionDefinition::parse(parser, depth)?;
-
-                if let Some(self_arg) = &expr.sig.self_arg {
-                    parser.diagnostics.error(ErrorCode::SelfBinding)
-                        .with_error_label(self_arg.span(), "self-argument not allowed here")
-                        .with_info_label(self_arg.span(), "self-argument is only allowed in methods")
-                        .emit();
-                }
-
-                let fun = &*parser.arena.alloc(Expr::FunctionDefinition(expr));
-                match fun {
-                    Expr::FunctionDefinition(fun) => {
-                        let name = fun.sig.name.map(|name| Cow::Borrowed(name.ident));
-                        parser.meta_info.add_function(parser.diagnostics, name, fun);
-                    },
+                let expr = &*parser.arena.alloc(Expr::FunctionDefinition(expr));
+                let fun = match expr {
+                    Expr::FunctionDefinition(fun) => fun,
                     _ => unreachable!("we just created you"),
-                }
-                Ok(fun)
+                };
+                parser.add_free_function_to_meta_info(fun);
+                Ok(expr)
             },
             |parser: &mut Parser<'a, '_, 'i>, depth| {
-                let impl_block = &*parser.arena.alloc(Expr::ImplBlock(ExprImplBlock::parse(parser, depth)?));
-                match impl_block {
-                    Expr::ImplBlock(impl_block) => {
-                        for fun in &impl_block.functions {
-                            match fun.sig.name {
-                                Some(name) => {
-                                    let path = format!("{}::{}", impl_block.name.ident, name.ident);
-                                    parser.meta_info.add_function(parser.diagnostics, Some(Cow::Owned(path)), fun);
-                                }
-                                None => parser.diagnostics.error(ErrorCode::MissingFunctionName)
-                                    .with_error_label(fun.sig.span(), "functions in impl-blocks must have names")
-                                    .emit(),
-                            }
-                        }
-                    }
+                let expr = &*parser.arena.alloc(Expr::ImplBlock(ExprImplBlock::parse(parser, depth)?));
+                let impl_block = match expr {
+                    Expr::ImplBlock(impl_block) => impl_block,
                     _ => unreachable!("we just created you"),
-                }
-                Ok(impl_block)
+                };
+                parser.add_impl_block_functions_to_meta_info(impl_block);
+                Ok(expr)
             },
             |parser: &mut Parser<'a, '_, 'i>, depth| {
                 let static_expr = &*parser.arena.alloc(Expr::Static(ExprStatic::parse(parser, depth)?));
-                let stati = match static_expr {
+                let static_ = match static_expr {
                     Expr::Static(stati) => stati,
                     _ => unreachable!("we just created you"),
                 };
                 // add static to globals if it isn't there already (needed for included statics)
-                parser.meta_info.add_static(parser.diagnostics, stati);
+                parser.meta_info.add_static(parser.diagnostics, static_);
                 Ok(static_expr)
             },
             |parser: &mut Parser<'a, '_, 'i>, depth| {
@@ -623,9 +603,9 @@ pub enum ExprType<'a, 'i> {
     UserType(TokenIdent<'i>, Option<TypeGenerics<'a, 'i>>),
     Generic(Generic<'i>),
     Function(Box<ExprFunctionType<'a, 'i>>),
-    /// yield-type
-    Generator(Box<ExprType<'a, 'i>>),
     Never(TokenBang),
+    // only used from rust in transformations (e.g. Generator-struct fields)
+    Any,
 }
 impl<'a, 'i> Parse<'a, 'i> for ExprType<'a, 'i> {
     fn parse_marked(parser: &mut Parser<'a, '_, 'i>, depth: Depth) -> Result<Self, InternalError> {
@@ -709,8 +689,8 @@ impl<'a, 'i> Spanned for ExprType<'a, 'i> {
             }
             ExprType::Generic(g) => g.span(),
             ExprType::Function(f) => f.span(),
-            ExprType::Generator(g) => g.span(),
             ExprType::Never(b) => b.span(),
+            ExprType::Any => EXTERNAL_SPAN,
         }
     }
 }
@@ -731,8 +711,8 @@ impl<'a, 'i> Display for ExprType<'a, 'i> {
             },
             ExprType::Generic(g) => write!(f, "{}<{},{},{}; {},{},{}>", g.ident.ident, g.def_ident.span.file, g.def_ident.span.start, g.def_ident.span.end, g.ident.span.file, g.ident.span.start, g.ident.span.end),
             ExprType::Function(fun) => Display::fmt(fun, f),
-            ExprType::Generator(yield_type) => write!(f, "gen fn -> {yield_type}"),
             ExprType::Never(_) => write!(f, "!"),
+            ExprType::Any => write!(f, "[any]"),
         }
     }
 }
@@ -2007,7 +1987,7 @@ impl<'a, 'i> Parse<'a, 'i> for ExprFunctionType<'a, 'i> {
                 let comma = TokenComma {
                     span: Span::new(existing.span().file, existing.span().end, existing.span().end),
                 };
-                generics_separated.prepend(existing, Some(comma));
+                generics_separated.push_front(existing, Some(comma));
             }
         }
         Ok(ExprFunctionType {
@@ -2041,6 +2021,7 @@ impl<'a, 'i> Display for ExprFunctionType<'a, 'i> {
 }
 #[derive(Debug, Clone)]
 pub struct ExprFunctionSignature<'a, 'i> {
+    pub gen_token: Option<TokenGen>,
     pub fn_token: TokenFn,
     pub name: Option<TokenIdent<'i>>,
     pub generics: Option<ExprGenerics<'a, 'i>>,
@@ -2054,6 +2035,7 @@ pub struct ExprFunctionSignature<'a, 'i> {
 }
 impl<'a, 'i> Parse<'a, 'i> for ExprFunctionSignature<'a, 'i> {
     fn parse_marked(parser: &mut Parser<'a, '_, 'i>, depth: Depth) -> Result<Self, InternalError> {
+        let gen_token = parser.parse(depth.next())?;
         let fn_token = parser.parse(depth.next())?;
         let name = parser.parse(depth.next())?;
         let generics = parser.parse(depth.next())?;
@@ -2071,6 +2053,7 @@ impl<'a, 'i> Parse<'a, 'i> for ExprFunctionSignature<'a, 'i> {
         let close = parser.parse(depth.next())?;
         let ret_type = parser.parse(depth.last())?;
         Ok(ExprFunctionSignature {
+            gen_token,
             fn_token,
             name,
             generics,
@@ -2086,8 +2069,9 @@ impl<'a, 'i> Parse<'a, 'i> for ExprFunctionSignature<'a, 'i> {
 }
 impl<'a, 'i> Spanned for ExprFunctionSignature<'a, 'i> {
     fn span(&self) -> Span {
+        let start = self.gen_token.map(|g| g.span.start).unwrap_or(self.fn_token.span.start);
         let end = self.ret_type.as_ref().map(|(_, typ)| typ.span().end).unwrap_or(self.close.span.end);
-        Span::new(self.fn_token.span.file, self.fn_token.span.start, end)
+        Span::new(self.fn_token.span.file, start, end)
     }
 }
 impl<'a, 'i> Display for ExprFunctionSignature<'a, 'i> {
@@ -2099,6 +2083,7 @@ impl<'a, 'i> Display for ExprFunctionSignature<'a, 'i> {
         if let Some(generics) = &self.generics {
             write!(f, "{}", generics)?;
         }
+        // self-arg is duplicated into the args - no need to use self.self_arg here
         write!(f, "({})", self.args)?;
         if let Some((_arrow, ret_type)) = &self.ret_type {
             write!(f, " -> {}", ret_type)?;
@@ -2132,19 +2117,13 @@ impl<'a, 'i> ExprFunctionDefinition<'a, 'i> {
     fn parse_internal(parser: &mut Parser<'a, '_, 'i>, depth: Depth) -> Result<Self, InternalError> {
         trace!("{} ExprFunctionDefinition::parse_internal        ({:?})", depth, parser.peek_token(0));
         let mark = parser.lexer.mark();
-        let gen_token = match parser.lexer.peek(0)? {
-            Token::Gen(gen_token) => {
-                drop(parser.lexer.next().unwrap());
-                Some(gen_token)
-            },
-            _ => None,
-        };
-        let sig = parser.parse(depth.next())?;
+        let sig: ExprFunctionSignature = parser.parse(depth.next())?;
         let old_captures = parser.captures.replace(IndexSet::new());
         let body = parser.parse(depth.last());
         let captures = std::mem::replace(&mut parser.captures, old_captures).unwrap();
         let body = body?;
         mark.apply();
+        let gen_token = sig.gen_token;
         let fun = ExprFunctionDefinition { sig, captures, body };
         match gen_token {
             Some(gen_token) => Ok(generator::transform_generator(parser, gen_token, fun)),
@@ -2443,7 +2422,7 @@ impl<'a, 'i> Parse<'a, 'i> for ExprImplBlock<'a, 'i> {
                             let comma = delim.copied().unwrap_or(TokenComma {
                                 span: Span::new(generic.span().file, generic.span().end, generic.span().end),
                             });
-                            g.prepend(generic, Some(comma))
+                            g.push_front(generic, Some(comma))
                         }
                     }
                 }
@@ -2469,7 +2448,7 @@ impl<'a, 'i> Parse<'a, 'i> for ExprImplBlock<'a, 'i> {
                     ),
 
                 };
-                fun.sig.args.prepend(typed, fun.sig.self_arg_comma);
+                fun.sig.args.push_front(typed, fun.sig.self_arg_comma);
             }
         }
 

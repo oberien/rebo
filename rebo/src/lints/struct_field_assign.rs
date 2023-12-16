@@ -31,6 +31,12 @@ fn check_non_struct_field_access(diagnostics: &Diagnostics<ErrorCode>, meta_info
                 return
             }
         };
+        if struct_name == "struct" {
+            diagnostics.error(ErrorCode::UnknownStruct)
+                .with_error_label(span, "can't infer this struct type")
+                .emit();
+            return;
+        }
         let struct_type = &meta_info.struct_types[struct_name.as_ref()];
         let field_type = struct_type.get_field(field.ident);
         match field_type {

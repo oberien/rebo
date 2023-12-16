@@ -148,7 +148,7 @@ impl<'b, 'a: 'b, 'i: 'b, T: 'a, D: 'a> Separated<'a, 'i, T, D> {
     }
     /// Prepend an element to the separated list. If it's the only element in the list, the delimiter
     /// can be None, otherwise it panics if delimiter is None.
-    pub fn prepend(&mut self, element: T, delimiter: Option<D>) {
+    pub fn push_front(&mut self, element: T, delimiter: Option<D>) {
         match delimiter {
             Some(delimiter) => self.inner.insert(0, (element, delimiter)),
             None => {
@@ -156,6 +156,19 @@ impl<'b, 'a: 'b, 'i: 'b, T: 'a, D: 'a> Separated<'a, 'i, T, D> {
                 self.last = Some(element);
             }
         }
+    }
+    /// Append an element to the separated list. If it's the only element in the list, the delimiter
+    /// can be None, otherwise it panics if delimiter is None.
+    pub fn push_back(&mut self, delimiter: Option<D>, element: T) {
+        if let Some(last) = self.last.take() {
+            self.inner.push((last, delimiter.unwrap()));
+        }
+        self.last = Some(element);
+    }
+    /// Builder pattern for push_back
+    pub fn append(mut self, delimiter: Option<D>, element: T) -> Self {
+        self.push_back(delimiter, element);
+        self
     }
 }
 impl<'a, 'i, T: Spanned + 'a, D: 'a> Separated<'a, 'i, T, D> {

@@ -50,6 +50,12 @@ impl<'a, 'i> UserType<'a, 'i> {
             UserType::Enum(e) => e.name.span,
         }
     }
+    pub fn ident(&self) -> TokenIdent<'i> {
+        match self {
+            UserType::Struct(s) => s.name,
+            UserType::Enum(e) => e.name,
+        }
+    }
     pub fn generics(&self) -> Option<&'a ExprGenerics<'a, 'i>> {
         match self {
             UserType::Struct(s) => s.generics.as_ref(),

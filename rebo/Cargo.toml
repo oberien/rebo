@@ -35,3 +35,4 @@ unicode-segmentation = "1.8.0"
 intervaltree = "0.2.7"
 never-say-never = "6.6.666"
 num = "0.4.1"
+uuid = { version = "1.5.0", features = ["v4"] }
