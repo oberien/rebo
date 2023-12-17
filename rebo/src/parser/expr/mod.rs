@@ -19,6 +19,7 @@ use crate::common::{Depth, UserType};
 use indexmap::set::IndexSet;
 use rt_format::{Format, Specifier};
 use rebo::EXTERNAL_SPAN;
+use rebo::util::{TryParseDqstringResult, TryParseNumberResult};
 use crate::util;
 
 // make trace! here log as if this still was the parser module
@@ -232,6 +233,38 @@ pub enum ExprLiteral {
     Bool(ExprBool),
     /// "foo"
     String(ExprString),
+}
+impl ExprLiteral {
+    /// Parses a literal from a str, using the passed span its span.
+    ///
+    /// The passed str must be well-formed, i.e., the full string must be parsed start through end without unnecessary spaces.
+    pub fn from_str_and_span(s: &str, span: Span) -> Option<ExprLiteral> {
+        match s {
+            "()" => return Some(ExprLiteral::Unit(ExprUnit {
+                open: TokenOpenParen { span: Span::new(span.file, span.start, span.start+1) },
+                close: TokenCloseParen { span: Span::new(span.file, span.end-1, span.end) },
+            })),
+            "true" => return Some(ExprLiteral::Bool(ExprBool { b: TokenBool { span, value: true } })),
+            "false" => return Some(ExprLiteral::Bool(ExprBool { b: TokenBool { span, value: false } })),
+            _ => (),
+        }
+        match util::try_parse_number(s) {
+            TryParseNumberResult::Int(value, radix, end) if end == s.len() => return Some(ExprLiteral::Integer(ExprInteger {
+                int: TokenInteger { span, value, radix },
+            })),
+            TryParseNumberResult::Float(value, radix, end) if end == s.len() => return Some(ExprLiteral::Float(ExprFloat {
+                float: TokenFloat { span, value, radix },
+            })),
+            _ => (),
+        }
+        match util::try_parse_dqstring(s) {
+            TryParseDqstringResult::String(string, end) if end == s.len() => return Some(ExprLiteral::String(ExprString {
+                string: TokenDqString { span, string }
+            })),
+            _ => (),
+        }
+        None
+    }
 }
 impl<'a, 'i> Parse<'a, 'i> for ExprLiteral {
     fn parse_marked(parser: &mut Parser<'a, '_, 'i>, depth: Depth) -> Result<Self, InternalError> {

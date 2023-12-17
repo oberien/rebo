@@ -1,5 +1,6 @@
 use crate::lexer::{Error, Token, TokenEof, LexerMode};
 use diagnostic::{FileId, Diagnostics, Span};
+use rebo::util::{EscapedResult, TryParseDqstringResult};
 use crate::error_codes::ErrorCode;
 use super::token::*;
 use crate::util::{self, TryParseNumberResult};
@@ -30,8 +31,9 @@ pub fn lex_next<'i>(diagnostics: &Diagnostics<ErrorCode>, file: FileId, s: &'i s
         }
 
         let functions = [
-            try_lex_token,
+            // first numbers, then tokens, so that -1 becomes a num and not neg(num)
             try_lex_number,
+            try_lex_token,
             try_lex_bool,
             try_lex_ident,
         ];
@@ -327,59 +329,24 @@ pub fn lex_block_comment<'i>(diagnostics: &Diagnostics<ErrorCode>, file: FileId,
     }
 }
 
-pub fn lex_double_quoted_string<'i>(diagnostics: &Diagnostics<ErrorCode>, file: FileId, s: &'i str, mut index: usize) -> Result<Token<'i>, Error> {
+pub fn lex_double_quoted_string<'i>(diagnostics: &Diagnostics<ErrorCode>, file: FileId, s: &'i str, index: usize) -> Result<Token<'i>, Error> {
     trace!("lex_double_quoted_string: {}", index);
-    assert_eq!(s[index..].chars().next(), Some('"'));
-    let mut res = String::new();
-    let start = index;
-    index += 1;
-    let post_index = loop {
-        if let Some('"') = s[index..].chars().next() {
-            break 1;
-        }
-        match lex_string_char(s, index, false) {
-            None => {
-                diagnostics.error(ErrorCode::UnterminatedString)
-                    .with_error_label(Span::new(file, start, index), "this string is unterminated")
-                    .with_info_label(Span::new(file, index, index), "try adding a closing `\"`")
-                    .emit();
-                break 0;
-            },
-            Some((c, idx)) => {
-                res.push(c);
-                index = idx;
-            }
-        }
+    let (string, end) = match util::try_parse_dqstring(&s[index..]) {
+        TryParseDqstringResult::String(string, end) => (string, index + end),
+        TryParseDqstringResult::DoesntStartWithDq => unreachable!("already checked before this function was called"),
+        TryParseDqstringResult::Unterminated(end) => {
+            let end = index + end;
+            diagnostics.error(ErrorCode::UnterminatedString)
+                .with_error_label(Span::new(file, index, end), "this string is unterminated")
+                .with_info_label(Span::new(file, end, end), "try adding a closing `\"`")
+                .emit();
+            (String::new(), end)
+        },
     };
     Ok(Token::DqString(TokenDqString {
-        span: Span::new(file, start, index + post_index),
-        string: res,
+        span: Span::new(file, index, end),
+        string,
     }))
-}
-pub fn lex_string_char(s: &str, index: usize, escaped: bool) -> Option<(char, usize)> {
-    let next = s[index..].chars().next()?;
-
-    let c = match next {
-        '\\' if !escaped => return lex_string_char(s, index + 1, true),
-        c if escaped => match lex_escaped_char(c) {
-            EscapedResult::ControlChar(c, _) | EscapedResult::Escaped(c) => c,
-        },
-        c => c,
-    };
-    Some((c, index + c.len_utf8()))
-}
-
-enum EscapedResult {
-    ControlChar(char, &'static str),
-    Escaped(char),
-}
-fn lex_escaped_char(c: char) -> EscapedResult {
-    match c {
-        'n' => EscapedResult::ControlChar('\n', "\n"),
-        'r' => EscapedResult::ControlChar('\r', "\r"),
-        't' => EscapedResult::ControlChar('\t', "\t"),
-        c => EscapedResult::Escaped(c),
-    }
 }
 
 pub fn lex_format_string<'i>(diagnostics: &Diagnostics<ErrorCode>, file: FileId, s: &'i str, mut index: usize) -> Token<'i> {
@@ -439,7 +406,7 @@ pub fn lex_format_string<'i>(diagnostics: &Diagnostics<ErrorCode>, file: FileId,
                     },
                     Some(c) => c,
                 };
-                match lex_escaped_char(next) {
+                match util::lex_escaped_char(next) {
                     EscapedResult::ControlChar(_, char_str) => {
                         match current {
                             CurrentPart::Str | CurrentPart::Escaped => {

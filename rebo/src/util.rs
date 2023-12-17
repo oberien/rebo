@@ -170,3 +170,57 @@ pub fn try_parse_number(s: &str) -> TryParseNumberResult {
         (_, Err(e)) => TryParseNumberResult::Error(e, radix, number_end),
     }
 }
+
+pub enum TryParseDqstringResult {
+    /// dqstring content, end (index after closeing dq)
+    String(String, usize),
+    DoesntStartWithDq,
+    /// end of passed string
+    Unterminated(usize),
+}
+pub fn try_parse_dqstring(s: &str) -> TryParseDqstringResult {
+    if s.chars().next() != Some('"') {
+        return TryParseDqstringResult::DoesntStartWithDq;
+    }
+    let mut res = String::new();
+    let mut index = 1;
+    loop {
+        if let Some('"') = s[index..].chars().next() {
+            index += 1;
+            break;
+        }
+        match lex_string_char(s, index, false) {
+            None => return TryParseDqstringResult::Unterminated(index),
+            Some((c, idx)) => {
+                res.push(c);
+                index = idx;
+            }
+        }
+    };
+    TryParseDqstringResult::String(res, index)
+}
+fn lex_string_char(s: &str, index: usize, escaped: bool) -> Option<(char, usize)> {
+    let next = s[index..].chars().next()?;
+
+    let c = match next {
+        '\\' if !escaped => return lex_string_char(s, index + 1, true),
+        c if escaped => match lex_escaped_char(c) {
+            EscapedResult::ControlChar(c, _) | EscapedResult::Escaped(c) => c,
+        },
+        c => c,
+    };
+    Some((c, index + c.len_utf8()))
+}
+
+pub enum EscapedResult {
+    ControlChar(char, &'static str),
+    Escaped(char),
+}
+pub fn lex_escaped_char(c: char) -> EscapedResult {
+    match c {
+        'n' => EscapedResult::ControlChar('\n', "\n"),
+        'r' => EscapedResult::ControlChar('\r', "\r"),
+        't' => EscapedResult::ControlChar('\t', "\t"),
+        c => EscapedResult::Escaped(c),
+    }
+}
