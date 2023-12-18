@@ -36,6 +36,7 @@ pub use never_say_never::Never;
 pub use typeck::types::{Type, FunctionType, SpecificType};
 pub use stdlib::{Stdlib, List, Map};
 pub use util::CowVec;
+pub use common::expr_gen::*;
 use std::path::{PathBuf, Path};
 use diagnostic::Emitted;
 use rebo::parser::BindingId;

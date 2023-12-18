@@ -82,7 +82,7 @@ pub fn skip_whitespace(s: &str, mut index: usize) -> Option<usize> {
     loop {
         match s[index..].chars().next() {
             None => return None,
-            Some(c) if c.is_whitespace() => index += 1,
+            Some(c) if c.is_whitespace() => index += c.len_utf8(),
             Some(_) => break Some(index),
         }
     }

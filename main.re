@@ -1,3 +1,28 @@
+gen fn gen0() {
+    yield yield ();
+}
+gen fn gen1() -> int {
+    yield { yield 42; 1337 }
+}
+gen fn gen2() -> bool {
+    yield !!!!!!!!!!!
+    {
+        yield !true;
+        !false
+    }
+}
+let bar = gen0();
+print(bar.next());
+print(bar.next());
+print(bar.next());
+print(bar.next());
+
+// yield (1330 + {yield 42; 7})
+
+// fn make_1337(x: ()) -> int { 1337 }
+// yield make_1337(yield 42);
+
+/*
 gen fn range(mut start: int, end: int) -> int {
     while start < end {
         let foo: () = yield start;
@@ -5,70 +30,6 @@ gen fn range(mut start: int, end: int) -> int {
     }
 }
 
-CODE:
-if cond() {
-    a();
-    yield "uiae";
-} else if cond2() {
-    b();
-} else {
-    c();
-}
-d();
-
-GRAPH:
-node_0:
-    cond()
-    -> node_1 [true]
-    -> node_2 [false]
-node_1a:
-    a();
-    -> node_1b [()]
-node_1b: YIELD "uiae"
-    -> node_5 [()]
-node_2:
-    cond2()
-    -> node_3 [true]
-    -> node_4 [false]
-node_3:
-    b();
-    -> node_5 [()]
-node_4:
-    c();
-    -> node_5 [()]
-node_5:
-    d();
-
-GENERATED:
-loop {
-    self.state = match self.state {
-        0 => match { cond() } {
-            true => 1,
-            false => 2,
-        },
-        1a => match { a(); } {
-            () => 1b,
-        },
-        1b => {
-            self.state = 5;
-            return Option::Some("uiae");
-        },
-        2 => match { cond2() } {
-            true => 3,
-            false => 4,
-        },
-        3 => match { b(); } {
-            () => 5,
-        },
-        4 => match { c(); } {
-            () => 5,
-        },
-        5 => {
-            d();
-            () => return Option::None,
-        }
-    }
-}
 
 
 CODE:
@@ -107,7 +68,7 @@ loop {
             },
             Value::Float(f) => {
                 state.f = f;
-                2
+
             },
             _ => 3
         }
@@ -115,3 +76,4 @@ loop {
 }
 
 let foo = struct Bar { a: int };
+*/

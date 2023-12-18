@@ -29,6 +29,7 @@ to be documented:
 # TODOs:
 
 ### Current Limitations
+* BoolNot has lower precedence than comparison operations
 * intermediate method calls in assignments not allowed: `foo.get().bar = 5` doesn't work, `let bar = foo.get(); bar.bar = 5` does
 * no expression-field/method-access - methods / fields can only be called / accessed on variables (not expressions)
     * for example, you can't write `1.to_float()` but instead need to write `let i = 1; i.to_float()`

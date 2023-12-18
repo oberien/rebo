@@ -162,6 +162,7 @@ struct Context<'ctx, 'a, 'i> {
 
 fn convert_expr_type(typ: &ExprType, diagnostics: &Diagnostics<ErrorCode>, meta_info: &MetaInfo) -> Type {
     match typ {
+        ExprType::Parenthesized(_, t, _) => convert_expr_type(t, diagnostics, meta_info),
         ExprType::String(_) => Type::Specific(SpecificType::String),
         ExprType::Int(_) => Type::Specific(SpecificType::Integer),
         ExprType::Float(_) => Type::Specific(SpecificType::Float),

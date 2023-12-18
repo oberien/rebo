@@ -22,6 +22,7 @@ use intervaltree::{Element, IntervalTree};
 use rebo::parser::ScopeType;
 
 mod values;
+pub mod expr_gen;
 
 #[derive(Debug)]
 pub enum UserType<'a, 'i> {

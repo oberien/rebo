@@ -1,5 +1,6 @@
 use crate::parser::{InternalError, Parser, Expr};
 use std::fmt::{self, Display, Formatter};
+use std::iter::FromIterator;
 use crate::lexer::*;
 use diagnostic::Span;
 use std::marker::PhantomData;
@@ -205,6 +206,20 @@ impl<'b, 'a: 'b, 'i: 'b, T: 'a, D: 'a> IntoIterator for &'b mut Separated<'a, 'i
 
     fn into_iter(self) -> Self::IntoIter {
         Box::new(self.inner.iter_mut().map(|(t, _)| t).chain(&mut self.last))
+    }
+}
+impl<'a, 'i, T: 'a, D: 'a> Extend<(D, T)> for Separated<'a, 'i, T, D> {
+    fn extend<I: IntoIterator<Item=(D, T)>>(&mut self, iter: I) {
+        for (delim, element) in iter {
+            self.push_back(Some(delim), element)
+        }
+    }
+}
+impl<'a, 'i, T: 'a, D: 'a> FromIterator<(D, T)> for Separated<'a, 'i, T, D> {
+    fn from_iter<I: IntoIterator<Item=(D, T)>>(iter: I) -> Self {
+        let mut sep = Separated::default();
+        sep.extend(iter);
+        sep
     }
 }
 impl<'a, 'i, T: Display, D: Display> Display for Separated<'a, 'i, T, D> {
