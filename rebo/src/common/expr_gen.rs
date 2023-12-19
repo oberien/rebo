@@ -76,6 +76,13 @@ impl<'a, 'i> ExprBuilder<'a, 'i> {
             close: TokenCloseParen { span: gen.next_fake_span(") ") },
         })
     }
+    pub fn from_block_with_new_spans(block_body: BlockBody<'a, 'i>) -> Self {
+        Self::make(move |gen| ExprBlock {
+            open: TokenOpenCurly { span: gen.next_fake_span_indent("{\n") },
+            body: block_body,
+            close: TokenCloseCurly { span: gen.next_fake_span_unindent("\n}") },
+        })
+    }
     pub fn unit() -> Self {
         Self::make(|gen| ExprLiteral::Unit(ExprUnit {
             open: TokenOpenParen { span: gen.next_fake_span("(") },

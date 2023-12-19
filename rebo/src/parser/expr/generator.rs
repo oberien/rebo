@@ -4,7 +4,6 @@ use petgraph::graph::{DiGraph, NodeIndex};
 use uuid::Uuid;
 use super::*;
 use std::mem;
-use diagnostic::FileId;
 use log::Level;
 use petgraph::{Direction, visit::EdgeRef};
 use rebo::common::expr_gen::{ExprBlockBuilder, ExprBuilder, ExprImplBlockBuilder, ExprMatchPatternBuilder, ExprStructDefinitionBuilder};
@@ -73,7 +72,11 @@ impl<'a, 'i, 'p, 'm> GeneratorTransformator<'a, 'i, 'p, 'm> {
 
         let (start, end) = match trafo_result {
             TrafoResult::Expr(expr) => {
-                let node = self.graph.add_node(Some(ExprBuilder::from_expr(expr)));
+                let block = match expr {
+                    Expr::Block(block) => block,
+                    _ => unreachable!("GeneratorTransformator::transform_block returned TrafoResult::Expr which is not a block: {:?}", expr),
+                };
+                let node = self.graph.add_node(Some(ExprBuilder::from_block_with_new_spans(block.body.clone())));
                 (node, node)
             },
             TrafoResult::Yielded(start, end) => (start, end),
