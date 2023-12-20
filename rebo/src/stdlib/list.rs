@@ -93,6 +93,7 @@ pub fn add_list<'a, 'i>(diagnostics: &'i Diagnostics<ErrorCode>, arena: &'a Aren
     meta_info.add_external_function(arena, diagnostics, list_extend);
     meta_info.add_external_function(arena, diagnostics, list_repeat);
     meta_info.add_external_function(arena, diagnostics, list_remove);
+    meta_info.add_external_function(arena, diagnostics, list_remove_element);
     meta_info.add_external_function(arena, diagnostics, list_swap_remove);
     meta_info.add_external_function(arena, diagnostics, list_join);
     meta_info.add_external_function(arena, diagnostics, list_slice);
@@ -185,6 +186,16 @@ fn list_remove<T>(this: List<T>, index: i64) -> Option<T> {
     let mut this = this.borrow_mut();
     if this.get(index as usize).is_some() {
         Some(this.remove(index as usize))
+    } else {
+        None
+    }
+}
+#[rebo::function("List::remove_element")]
+fn list_remove_element<T>(this: List<T>, e: T) -> Option<T> {
+    let this = this.arc.list.lock();
+    let mut this = this.borrow_mut();
+    if let Some(pos) = this.iter().position(|v| *v == e) {
+        Some(this.remove(pos))
     } else {
         None
     }
