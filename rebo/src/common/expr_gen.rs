@@ -5,8 +5,8 @@ use diagnostic::{Diagnostics, ErrorCode, FileId, Span};
 use indexmap::IndexSet;
 use typed_arena::Arena;
 use rebo::lexer::{TokenBoolType, TokenCloseCurly, TokenCloseParen, TokenColon, TokenComma, TokenDot, TokenFatArrow, TokenFloatType, TokenGreaterThan, TokenIdent, TokenIntType, TokenLessThan, TokenLoop, TokenMatch, TokenMut, TokenOpenCurly, TokenStringType, TokenUnderscore};
-use rebo::parser::{Binding, BindingId, ExprAccess, ExprBlock, ExprFunctionDefinition, ExprImplBlock, ExprLabelDef, ExprLoop, ExprMatch, ExprMatchPattern, ExprMethodCall, ExprPatternTyped, ExprReturn, ExprStructDefinition, ExprStructInitialization, ExprType, FieldOrMethod, Generic};
-use crate::lexer::{Radix, TokenApostrophe, TokenArrow, TokenAssign, TokenBang, TokenBool, TokenDoubleColon, TokenDqString, TokenFloat, TokenFn, TokenImpl, TokenInteger, TokenMinus, TokenOpenParen, TokenReturn, TokenStruct};
+use rebo::parser::{Binding, BindingId, ExprAccess, ExprAdd, ExprBlock, ExprFunctionDefinition, ExprImplBlock, ExprLabelDef, ExprLoop, ExprMatch, ExprMatchPattern, ExprMethodCall, ExprPatternTyped, ExprReturn, ExprStructDefinition, ExprStructInitialization, ExprType, FieldOrMethod, Generic};
+use crate::lexer::{Radix, TokenApostrophe, TokenArrow, TokenAssign, TokenBang, TokenBool, TokenDoubleColon, TokenDqString, TokenFloat, TokenFn, TokenImpl, TokenInteger, TokenMinus, TokenOpenParen, TokenPlus, TokenReturn, TokenStruct};
 use crate::parser::{BlockBody, Expr, ExprAssign, ExprAssignLhs, ExprBool, ExprBoolNot, ExprEnumInitialization, ExprFieldAccess, ExprFloat, ExprFunctionCall, ExprFunctionSignature, ExprGenerics, ExprInteger, ExprLabel, ExprLiteral, ExprNeg, ExprParenthesized, ExprPatternUntyped, ExprString, ExprUnit, ExprVariable};
 
 pub trait BuildExpr<'a, 'i> {
@@ -129,7 +129,13 @@ impl<'a, 'i> ExprBuilder<'a, 'i> {
         })
     }
     // // binops
-    // Add(ExprAdd<'a, 'i>),
+    pub fn add(a: ExprBuilder<'a, 'i>, b: ExprBuilder<'a, 'i>) -> Self {
+        Self::make(move |gen| ExprAdd {
+            a: a.build_expr(gen),
+            op: TokenPlus { span: gen.next_fake_span(" + ") },
+            b: b.build_expr(gen),
+        })
+    }
     // Sub(ExprSub<'a, 'i>),
     // Mul(ExprMul<'a, 'i>),
     // Div(ExprDiv<'a, 'i>),

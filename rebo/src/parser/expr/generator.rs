@@ -25,7 +25,9 @@ pub fn transform_generator<'a, 'i>(parser: &mut Parser<'a, '_, 'i>, gen_token: T
         gen_token,
         self_binding: ExprBuilder::binding_new("self", true),
         match_bindings: RefCell::new(HashMap::new()),
-        fields: RefCell::new(HashMap::new()),
+        next_tmp: 0,
+        binding_fields: RefCell::new(HashMap::new()),
+        temp_fields: Vec::new(),
     };
 
     trafo.transform(fun)
@@ -51,8 +53,12 @@ struct GeneratorTransformator<'a, 'i, 'p, 'm> {
     self_binding: ExprBuilderBinding<'i>,
     /// each node needs its own match-binding as the types can be different
     match_bindings: RefCell<HashMap<NodeId, ExprBuilderBinding<'i>>>,
-    /// List of all fields this generator needs to store temporaries
-    fields: RefCell<HashMap<BindingId, TokenIdent<'i>>>,
+    /// List of bindings this generator needs to store temporaries
+    binding_fields: RefCell<HashMap<BindingId, TokenIdent<'i>>>,
+    /// Number of the next field that is needed to store temporary assignment
+    next_tmp: u32,
+    /// List of all temprary bindings that are part of this generator's struct
+    temp_fields: Vec<TokenIdent<'i>>,
 }
 
 impl<'a, 'i, 'p, 'm> GeneratorTransformator<'a, 'i, 'p, 'm> {
@@ -185,7 +191,53 @@ impl<'a, 'i, 'p, 'm> GeneratorTransformator<'a, 'i, 'p, 'm> {
             // },
 
             // binops
-            Expr::Add(ExprAdd { a, op, b }) => todo!(),
+            &Expr::Add(ExprAdd { a, op, b }) => {
+                let a = self.transform_expr(a);
+                let b = self.transform_expr(b);
+                match (a, b) {
+                    (TrafoResult::Expr(a), TrafoResult::Expr(b)) => {
+                        TrafoResult::Expr(self.parser.arena.alloc(Expr::Add(ExprAdd { a, op, b })))
+                    },
+                    (TrafoResult::Expr(a), TrafoResult::Yielded(bstart, bend)) => {
+                        let temp_ident = self.next_tmp();
+                        let anode = self.graph.add_node(Some(
+                            ExprBuilder::assign(&self.self_binding)
+                                .access_field(temp_ident.ident)
+                                .assign(self.gen_option_some_call(ExprBuilder::from_expr(a)))
+                        ));
+                        self.graph.add_edge(anode, bstart, Edge::Pattern(ExprBuilder::match_pattern_literal(())));
+                        let add_node = self.empty_node();
+                        let add_node_expr = Some(ExprBuilder::add(
+                            ExprBuilder::access(&self.self_binding).field(temp_ident.ident).call_method("unwrap", Vec::new()).build(),
+                            self.gen_access_self_field_for_binding(self.get_match_binding_into_node(add_node).id()),
+                        ));
+                        self.graph[add_node] = add_node_expr;
+                        self.graph.add_edge(bend, add_node, Edge::Pattern(self.get_match_pattern_into_node(add_node)));
+                        TrafoResult::Yielded(anode, add_node)
+                    }
+                    (TrafoResult::Yielded(astart, aend), TrafoResult::Expr(b)) => {
+                        let add_node = self.empty_node();
+                        let add_node_expr = Some(ExprBuilder::add(
+                            self.gen_access_self_field_for_binding(self.get_match_binding_into_node(add_node).id()),
+                            ExprBuilder::from_expr(b),
+                        ));
+                        self.graph[add_node] = add_node_expr;
+                        self.graph.add_edge(aend, add_node, Edge::Pattern(self.get_match_pattern_into_node(add_node)));
+                        TrafoResult::Yielded(astart, add_node)
+                    }
+                    (TrafoResult::Yielded(astart, aend), TrafoResult::Yielded(bstart, bend)) => {
+                        let add_node = self.empty_node();
+                        let add_node_expr = Some(ExprBuilder::add(
+                            self.gen_access_self_field_for_binding(self.get_match_binding_into_node(bstart).id()),
+                            self.gen_access_self_field_for_binding(self.get_match_binding_into_node(add_node).id()),
+                        ));
+                        self.graph[add_node] = add_node_expr;
+                        self.graph.add_edge(aend, bstart, Edge::Pattern(self.get_match_pattern_into_node(bstart)));
+                        self.graph.add_edge(bend, add_node, Edge::Pattern(self.get_match_pattern_into_node(add_node)));
+                        TrafoResult::Yielded(astart, add_node)
+                    }
+                }
+            }
             Expr::Sub(_) => todo!(),
             Expr::Mul(_) => todo!(),
             Expr::Div(_) => todo!(),
@@ -325,6 +377,13 @@ impl<'a, 'i, 'p, 'm> GeneratorTransformator<'a, 'i, 'p, 'm> {
             ident,
         }
     }
+    fn next_tmp(&mut self) -> TokenIdent<'i> {
+        let cur = self.next_tmp;
+        self.next_tmp += 1;
+        let temp_ident = self.create_ident(format!("tmp_{cur}"));
+        self.temp_fields.push(temp_ident);
+        temp_ident
+    }
     fn get_match_pattern_into_node(&self, node: NodeId) -> ExprMatchPatternBuilder<'a, 'i> {
         ExprBuilder::match_pattern_binding(self.get_match_binding_into_node(node))
     }
@@ -369,7 +428,7 @@ impl<'a, 'i, 'p, 'm> GeneratorTransformator<'a, 'i, 'p, 'm> {
     fn generate_generator_struct(&mut self, struct_ident: TokenIdent<'i>) -> ExprStructDefinitionBuilder<'a, 'i> {
         let mut struct_builder = ExprBuilder::struct_definition(struct_ident.ident);
         struct_builder.push_field("state", ExprBuilder::int_type());
-        for field in self.fields.borrow().values() {
+        for field in self.binding_fields.borrow().values().chain(&self.temp_fields) {
             struct_builder.push_field(
                 field.ident,
                 ExprBuilder::user_type("Option").generic(ExprBuilder::any_type()).build(),
@@ -384,7 +443,7 @@ impl<'a, 'i, 'p, 'm> GeneratorTransformator<'a, 'i, 'p, 'm> {
 
         let mut struct_init = ExprBuilder::struct_initialization(struct_ident.ident)
             .field("state", ExprBuilder::literal(start.index() as i64));
-        for field in self.fields.borrow().values() {
+        for field in self.binding_fields.borrow().values().chain(&self.temp_fields) {
             struct_init.push_field(field.ident, ExprBuilder::enum_initialization("Option", "None"));
         }
         ExprBuilder::block()
