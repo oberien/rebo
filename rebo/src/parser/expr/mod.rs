@@ -1,6 +1,8 @@
 mod pattern;
 mod helper;
 mod generator;
+#[cfg(test)]
+mod generator_tests;
 pub use pattern::{ExprPattern, ExprPatternTyped, ExprPatternUntyped, ExprMatchPattern, ExprMatchPatternVariant};
 
 use std::fmt::{self, Write, Display, Formatter, Debug};

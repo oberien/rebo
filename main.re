@@ -1,36 +1,23 @@
-//gen fn gen0() {
-//    yield yield ();
-//}
-//gen fn gen1() -> int {
-//    yield { yield 42; 1337 }
-//}
-//gen fn gen2() -> bool {
-//    yield !!!!!!!!!!!
-//    {
-//        yield !true;
-//        !false
-//    }
-//}
-gen fn gen3() -> int {
-    // expr expr
-    yield 1 + 3;
-    // expr yield
-    yield 10 + { yield 50; 30 };
-    // yield expr
-    yield { yield 200; 100 } + 300;
-    // yield yield
-    yield { yield 2000; 1000 } + { yield 5000; 3000 };
-}
-let bar = gen3();
-print(bar.next());
-print(bar.next());
-print(bar.next());
-print(bar.next());
-print(bar.next());
-print(bar.next());
-print(bar.next());
-print(bar.next());
-print(bar.next());
+        gen fn foo() -> int {
+            // expr expr
+            yield 1 + 3;
+            // expr yield
+            yield 10 + { yield 50; 30 };
+            // yield expr
+            yield { yield 200; 100 } + 300;
+            // yield yield
+            yield { yield 2000; 1000 } + { yield 5000; 3000 };
+        }
+        let bar = foo();
+        assert_eq(bar.next(), Option::Some(4));
+        assert_eq(bar.next(), Option::Some(50));
+        assert_eq(bar.next(), Option::Some(40));
+        assert_eq(bar.next(), Option::Some(200));
+        assert_eq(bar.next(), Option::Some(400));
+        assert_eq(bar.next(), Option::Some(2000));
+        assert_eq(bar.next(), Option::Some(5000));
+        assert_eq(bar.next(), Option::Some(4000));
+        assert_eq(bar.next(), Option::None);
 
 // yield (1330 + {yield 42; 7})
 
