@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
 use std::io::Write;
 use std::process::{Command, Stdio};
@@ -155,6 +156,7 @@ pub struct Graph<'i> {
     graph_indices: IndexMap<Node, NodeIndex<u32>>,
     possible_types: IndexMap<Node, PossibleTypes>,
     method_function_generics: IndexMap<u64, FunctionGenerics>,
+    any_nodes: HashMap<Span, Node>,
 }
 
 impl<'i> Graph<'i> {
@@ -165,6 +167,7 @@ impl<'i> Graph<'i> {
             graph_indices: IndexMap::new(),
             possible_types: IndexMap::new(),
             method_function_generics: IndexMap::new(),
+            any_nodes: HashMap::new(),
         }
     }
 

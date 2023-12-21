@@ -18,7 +18,6 @@ use itertools::{Itertools, Either};
 use crate::common::{Depth, UserType};
 use indexmap::set::IndexSet;
 use rt_format::{Format, Specifier};
-use rebo::EXTERNAL_SPAN;
 use crate::util;
 
 // make trace! here log as if this still was the parser module
@@ -607,7 +606,8 @@ pub enum ExprType<'a, 'i> {
     Function(Box<ExprFunctionType<'a, 'i>>),
     Never(TokenBang),
     // only used from rust in transformations (e.g. Generator-struct fields)
-    Any,
+    /// def-span for the typechecker to convert it to a generic
+    Any(Span),
 }
 impl<'a, 'i> ExprType<'a, 'i> {
     pub fn name(&self) -> &'i str {
@@ -622,7 +622,7 @@ impl<'a, 'i> ExprType<'a, 'i> {
             ExprType::Generic(g) => g.ident.ident,
             ExprType::Function(_) => "fn",
             ExprType::Never(_) => "!",
-            ExprType::Any => "any",
+            ExprType::Any(_) => "any",
         }
     }
 }
@@ -662,7 +662,7 @@ impl<'a, 'i> Parse<'a, 'i> for ExprType<'a, 'i> {
                 }
             }
             // defer struct type resolution until the typechecker
-            // otherwise using struct B as field struct A won't work if B is defined after A
+            // otherwise using struct B as field in struct A won't work if B is defined after A
             Token::Ident(i) => {
                 trace!("{} TokenIdent::parse ({:?})        ({:?})", depth.next(), parser.generic_names(), parser.peek_token(0));
                 if let Some(generic) = parser.get_generic(i.ident) {
@@ -674,6 +674,10 @@ impl<'a, 'i> Parse<'a, 'i> for ExprType<'a, 'i> {
                     let generics = parser.parse(depth.last())?;
                     return Ok(ExprType::UserType(i, generics))
                 }
+            },
+            Token::DqString(dq) if dq.string == "any" => {
+                trace!("{} TokenDqString::parse        ({:?})", depth.next(), parser.peek_token(0));
+                ExprType::Any(dq.span())
             },
             Token::Bang(b) => {
                 trace!("{} TokenBang::parse        ({:?})", depth.next(), parser.peek_token(0));
@@ -709,7 +713,7 @@ impl<'a, 'i> Spanned for ExprType<'a, 'i> {
             ExprType::Generic(g) => g.span(),
             ExprType::Function(f) => f.span(),
             ExprType::Never(b) => b.span(),
-            ExprType::Any => EXTERNAL_SPAN,
+            &ExprType::Any(span) => span,
         }
     }
 }
@@ -732,7 +736,7 @@ impl<'a, 'i> Display for ExprType<'a, 'i> {
             ExprType::Generic(g) => write!(f, "{}<{},{},{}; {},{},{}>", g.ident.ident, g.def_ident.span.file, g.def_ident.span.start, g.def_ident.span.end, g.ident.span.file, g.ident.span.start, g.ident.span.end),
             ExprType::Function(fun) => Display::fmt(fun, f),
             ExprType::Never(_) => write!(f, "!"),
-            ExprType::Any => write!(f, "[any]"),
+            ExprType::Any(_) => write!(f, "\"any\""),
         }
     }
 }

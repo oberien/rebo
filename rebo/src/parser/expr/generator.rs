@@ -41,14 +41,7 @@ enum Edge<'a, 'i> {
     // marker edge for visualization and debugging
     Yield,
 }
-// impl<'a, 'i> Display for Edge<'a, 'i> {
-//     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-//         match self {
-//             Edge::Pattern(p) => Display::fmt(p, f),
-//             Edge::Yield => write!(f, "yield"),
-//         }
-//     }
-// }
+
 type NodeId = NodeIndex<u32>;
 
 struct GeneratorTransformator<'a, 'i, 'p, 'm> {
@@ -88,10 +81,6 @@ impl<'a, 'i, 'p, 'm> GeneratorTransformator<'a, 'i, 'p, 'm> {
 
         // graph is finished
 
-        if log_enabled!(Level::Trace) {
-            // self.xdot();
-        }
-
         // generate state machine
         let yield_type = match fun.sig.ret_type {
             Some((_, typ)) => typ,
@@ -103,6 +92,11 @@ impl<'a, 'i, 'p, 'm> GeneratorTransformator<'a, 'i, 'p, 'm> {
         let struct_ident = self.create_ident(format!("Generator_{}_{}_{}_{}", fun.sig.name.map(|i| i.ident).unwrap_or(""), fun_span.file, fun_span.start, fun_span.end));
         let impl_block_builder = self.generate_state_machine_impl_block(struct_ident, yield_type);
         let struct_builder = self.generate_generator_struct(struct_ident);
+
+        if log_enabled!(Level::Trace) {
+            // self.xdot();
+        }
+
 
         // generate replacement function body for original gen fn
         let mut function_body = self.generate_generator_function_block(start, struct_ident);
@@ -171,7 +165,7 @@ impl<'a, 'i, 'p, 'm> GeneratorTransformator<'a, 'i, 'p, 'm> {
                 TrafoResult::Expr(expr) => TrafoResult::Expr(self.parser.arena.alloc(Expr::BoolNot(ExprBoolNot { bang, expr }))),
                 TrafoResult::Yielded(start, end) => {
                     let node = self.empty_node();
-                    let inner_expr = self.gen_access_self_field_for_binding(self.get_match_binding_for_node(node).id());
+                    let inner_expr = self.gen_access_self_field_for_binding(self.get_match_binding_into_node(node).id());
                     let expr = ExprBuilder::bool_not(inner_expr);
                     self.graph[node] = Some(expr);
                     self.graph.add_edge(end, node, Edge::Pattern(self.get_match_pattern_into_node(node)));
@@ -233,7 +227,7 @@ impl<'a, 'i, 'p, 'm> GeneratorTransformator<'a, 'i, 'p, 'm> {
                     Some(expr) => match self.transform_expr(expr) {
                         TrafoResult::Expr(e) => (ExprBuilder::from_expr(e), None),
                         TrafoResult::Yielded(start, end) => (
-                            self.gen_access_self_field_for_binding(self.get_match_binding_for_node(node).id()),
+                            self.gen_access_self_field_for_binding(self.get_match_binding_into_node(node).id()),
                             Some((start, end))
                         ),
                     },
@@ -318,9 +312,9 @@ impl<'a, 'i, 'p, 'm> GeneratorTransformator<'a, 'i, 'p, 'm> {
         }
     }
     fn get_match_pattern_into_node(&self, node: NodeId) -> ExprMatchPatternBuilder<'a, 'i> {
-        ExprBuilder::match_pattern_binding(self.get_match_binding_for_node(node))
+        ExprBuilder::match_pattern_binding(self.get_match_binding_into_node(node))
     }
-    fn get_match_binding_for_node(&self, node: NodeId) -> ExprBuilderBinding<'i> {
+    fn get_match_binding_into_node(&self, node: NodeId) -> ExprBuilderBinding<'i> {
         self.match_bindings.borrow_mut().entry(node)
             .or_insert_with(|| ExprBuilder::binding_new("_match_binding", false))
             .clone()

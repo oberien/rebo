@@ -836,7 +836,7 @@ impl<'a, 'i> ExprTypeBuilder<'a, 'i> {
                 ))
             ),
             ExprTypeBuilderInner::Never => ExprType::Never(TokenBang { span: gen.next_fake_span("!") }),
-            ExprTypeBuilderInner::Any => ExprType::Any,
+            ExprTypeBuilderInner::Any => ExprType::Any(gen.next_fake_span("\"any\"")),
         }
     }
 }

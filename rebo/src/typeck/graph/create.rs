@@ -118,7 +118,24 @@ impl FunctionGenerics {
                 eprintln!("tried to convert unknown generic {}", typ);
                 graph.xdot();
                 unreachable!("tried to convert unknown generic {}", typ);
+            },
+            &SpecificType::Any(span) => {
+                let any_node = match graph.any_nodes.contains_key(&span) {
+                    true => graph.any_nodes[&span],
+                    false => {
+                        let node = Node::type_var(span);
+                        graph.add_node(node);
+                        graph.any_nodes.insert(span, node);
+                        node
+                    },
+                };
+                graph.add_generic_constraint(from, any_node);
+                graph.add_generic_eq_source_constraint(source, from);
+                graph.add_generic_eq_source_constraint(source, to);
+                graph.add_eq_constraint(to, any_node);
+                return
             }
+
         };
         let mut resolvable_generics = Vec::new();
         for (span, generic) in generics {
@@ -251,7 +268,7 @@ fn convert_expr_type(typ: &ExprType, diagnostics: &Diagnostics<ErrorCode>, meta_
             Type::Specific(SpecificType::Generic(g.def_ident.span))
         },
         ExprType::Never(_) => Type::Bottom,
-        ExprType::Any => Type::Top,
+        &ExprType::Any(span) => Type::Specific(SpecificType::Any(span)),
     }
 }
 

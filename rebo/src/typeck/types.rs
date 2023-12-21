@@ -34,6 +34,8 @@ pub enum SpecificType {
     Function(Box<FunctionType>),
     /// def_ident-span
     Generic(Span),
+    /// def-span
+    Any(Span),
 }
 #[derive(Debug, Clone, PartialOrd, Ord, PartialEq, Eq, Hash, EnumDiscriminants)]
 #[strum_discriminants(derive(EnumIter))]
@@ -128,6 +130,7 @@ impl SpecificType {
             SpecificType::Enum(name, _) => name.clone().into_owned(),
             SpecificType::Function(_) => "function".to_string(),
             SpecificType::Generic(Span { file, start, end }) => format!("<{}:{}:{}>", file, start, end),
+            SpecificType::Any(Span { file, start, end }) => format!("any<{}:{}:{}>", file, start, end),
         }
     }
 
@@ -141,7 +144,8 @@ impl SpecificType {
             SpecificType::Struct(..)
             | SpecificType::Enum(..)
             | SpecificType::Function(_)
-            | SpecificType::Generic(..) => false,
+            | SpecificType::Generic(..)
+            | SpecificType::Any(_) => false,
         }
     }
 }
@@ -195,6 +199,7 @@ impl fmt::Display for SpecificType {
                 write!(f, "fn<{}>({}) -> {}", generics, fun.args.iter().join(", "), fun.ret)
             }
             SpecificType::Generic(Span { file, start, end }) => write!(f, "<{}:{}:{}>", file, start, end),
+            SpecificType::Any(Span { file, start, end }) => write!(f, "any<{}:{}:{}>", file, start, end),
         }
     }
 }

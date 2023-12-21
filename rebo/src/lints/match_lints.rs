@@ -24,6 +24,7 @@ impl Visitor for MatchLints {
             Type::Bottom => unreachable!("Type::Bottom after typeck"),
             Type::UntypedVarargs => unreachable!("Type::UntypedVarargs as match-expr"),
             Type::TypedVarargs(_) => unreachable!("Type::TypedVarargs as match-expr"),
+            Type::Specific(SpecificType::Any(Span { file, start, end })) => unreachable!("Any after typeck: any<{}:{}:{}>", file, start, end),
             Type::Specific(SpecificType::Float) => {
                 diagnostics.error(ErrorCode::FloatMatch)
                     .with_error_label(expr.span(), "")
