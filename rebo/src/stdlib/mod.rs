@@ -538,7 +538,7 @@ fn clone<T>(t: T) -> T {
 }
 #[cfg(test)]
 mod test {
-    use crate::ReturnValue;
+    use crate::{ReturnValue, Value};
     use crate::tests::test;
 
     #[test]
@@ -565,6 +565,6 @@ mod test {
             assert(float::round(1.0, 1) == 1.0);
             assert(float::round(0.0, 0) == 0.);
             assert(float::round(0.0, 1) == 0.0);
-        "#, ReturnValue::Ok)
+        "#, ReturnValue::Ok(Value::Unit))
     }
 }

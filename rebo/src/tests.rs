@@ -1,6 +1,6 @@
 use diagnostic::Emitted;
 use rebo::ErrorCode;
-use crate::ReturnValue;
+use crate::{ReturnValue, Value};
 
 trait Sorted {
     fn sorted(&self) -> Self;
@@ -15,7 +15,7 @@ impl<T: Ord + Clone> Sorted for Vec<T> {
 impl Sorted for ReturnValue {
     fn sorted(&self) -> Self {
         match self {
-            ReturnValue::Ok(_) => ReturnValue::Ok,
+            ReturnValue::Ok(val) => ReturnValue::Ok(val.clone()),
             ReturnValue::Diagnostics(diags) => ReturnValue::Diagnostics(diags.sorted()),
             ReturnValue::Panic => ReturnValue::Panic,
             ReturnValue::ParseError => ReturnValue::ParseError,
@@ -34,7 +34,7 @@ fn other_stuff() {
     test(r#"
         // "integer" should not be parsed as Keyword("int"),Ident("eger") but as Ident("integer")
         let integer = 1337;
-    "#, ReturnValue::Ok);
+    "#, ReturnValue::Ok(Value::Unit));
 }
 #[test]
 fn other_stuff_diagnostics() {
@@ -61,7 +61,7 @@ fn boolean_short_circuiting() {
 
         assert(!(false && panic("")));
         assert(true || panic(""));
-    "#, ReturnValue::Ok);
+    "#, ReturnValue::Ok(Value::Unit));
 }
 
 #[test]
@@ -74,7 +74,7 @@ fn test_math_precedence() {
         assert((1 * 2) + 3 == 5);
         assert(1 * (2 + 3) == 5);
         assert(1 + 2 * 3 * 4 == 25);
-    "#, ReturnValue::Ok);
+    "#, ReturnValue::Ok(Value::Unit));
 }
 
 #[test]
@@ -107,7 +107,7 @@ fn test_comparison() {
         assert(foo == 1337);
         let bar = 1337;
         assert(foo == bar);
-    "#, ReturnValue::Ok);
+    "#, ReturnValue::Ok(Value::Unit));
 }
 
 #[test]
@@ -127,7 +127,7 @@ fn assert_false() {
 fn assert_true() {
     test(r#"
         assert(true);
-    "#, ReturnValue::Ok);
+    "#, ReturnValue::Ok(Value::Unit));
 }
 
 #[test]
@@ -201,7 +201,7 @@ fn functions() {
         assert_eq({ let f = fns.get(0).unwrap(); f() }, 0);
         assert_eq({ let f = fns.get(1).unwrap(); f() }, 1);
         assert_eq({ let f = fns.get(2).unwrap(); f() }, 2);
-    "#, ReturnValue::Ok);
+    "#, ReturnValue::Ok(Value::Unit));
 }
 #[test]
 fn free_function_diagnostics() {
@@ -293,7 +293,7 @@ fn if_else_usage() {
         if false { panic(""); } else if false { panic(""); } else {}
         assert(if true { true } else { false });
         assert(1342 == if true { 1337 } else { panic("") } + 5);
-    "#, ReturnValue::Ok);
+    "#, ReturnValue::Ok(Value::Unit));
 }
 #[test]
 fn if_else_diagnostics() {
@@ -342,12 +342,11 @@ fn match_usage() {
                 _ => 1337,
             },
         } == 42);
-    "#, ReturnValue::Ok);
+    "#, ReturnValue::Ok(Value::Unit));
 }
 #[test]
 fn match_diagnostics() {
     test(r#"
-        // empty body
         // non-exhaustive
         match true {}
         // unreachable
@@ -362,7 +361,6 @@ fn match_diagnostics() {
         // non-exhaustive
         match true { true => (), }
     "#, ReturnValue::Diagnostics(vec![
-        Emitted::Warning(ErrorCode::EmptyMatch),
         Emitted::Error(ErrorCode::NonExhaustiveMatch),
         Emitted::Warning(ErrorCode::UnreachableMatchArm),
         Emitted::Error(ErrorCode::FloatMatch),
@@ -379,7 +377,7 @@ fn while_usage() {
             i = i + 1;
         }
         assert(i == 3);
-    "#, ReturnValue::Ok);
+    "#, ReturnValue::Ok(Value::Unit));
 }
 #[test]
 fn while_diagnostics() {
@@ -402,7 +400,7 @@ fn format_strings() {
         assert(f"{4 * 10 + 2}" == "42");
         assert(f"\{\}" == "{}");
         assert(f"{f"42"}" == "42");
-    "#, ReturnValue::Ok);
+    "#, ReturnValue::Ok(Value::Unit));
 }
 #[test]
 fn format_string_diagnostics1() {
@@ -474,7 +472,7 @@ fn struct_definitions() {
         assert(foo.bar() == 42);
         assert(Foo::foo(foo) == 42);
         assert(Foo::bar(foo) == 42);
-    "#, ReturnValue::Ok);
+    "#, ReturnValue::Ok(Value::Unit));
 }
 
 #[test]
@@ -599,7 +597,7 @@ fn enum_definitions() {
         assert(bar.unwrap_bar());
         assert(Bar::unwrap_foo(foo) == 42);
         assert(Bar::unwrap_bar(bar));
-    "#, ReturnValue::Ok);
+    "#, ReturnValue::Ok(Value::Unit));
 }
 
 #[test]
@@ -667,7 +665,7 @@ fn associated_functions() {
         }
         assert(Foo::new(42, "uiae") == Foo { a: 42, b: "uiae", });
         assert(Foo::foo(42) == 52);
-    "#, ReturnValue::Ok);
+    "#, ReturnValue::Ok(Value::Unit));
 }
 #[test]
 fn associated_function_diagnostics() {
@@ -759,7 +757,7 @@ fn generics() {
 
         fn foo<U, V>(u: U, v: V) -> V { v }
         fn bar<T>(t: T) -> T { foo(42, t) }
-    "#, ReturnValue::Ok);
+    "#, ReturnValue::Ok(Value::Unit));
 }
 #[test]
 fn generic_diagnostics() {
@@ -790,7 +788,7 @@ fn idents_starting_with_underscore() {
         match true {
             _val => (),
         }
-    "#, ReturnValue::Ok);
+    "#, ReturnValue::Ok(Value::Unit));
 }
 
 #[test]
@@ -820,5 +818,5 @@ fn test_clone() {
         assert_eq(2, b.x);
         assert_eq(3, c.x);
         assert_eq(3, d.x);
-    "#, ReturnValue::Ok);
+    "#, ReturnValue::Ok(Value::Unit));
 }

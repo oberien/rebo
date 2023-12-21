@@ -88,7 +88,7 @@ impl<T> Typed for Option<T> {
 
 #[cfg(test)]
 mod test {
-    use crate::ReturnValue;
+    use crate::{ReturnValue, Value};
     use crate::tests::test;
 
     #[test]
@@ -101,6 +101,6 @@ mod test {
             assert(some0.or(none) == some0);
             assert(some1.or(some0) == some1);
             assert(none.or(some0) == some0);
-        "#, ReturnValue::Ok)
+        "#, ReturnValue::Ok(Value::Unit))
     }
 }
