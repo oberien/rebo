@@ -191,60 +191,46 @@ impl<'a, 'i, 'p, 'm> GeneratorTransformator<'a, 'i, 'p, 'm> {
             // },
 
             // binops
-            &Expr::Add(ExprAdd { a, op, b }) => {
-                let a = self.transform_expr(a);
-                let b = self.transform_expr(b);
-                match (a, b) {
-                    (TrafoResult::Expr(a), TrafoResult::Expr(b)) => {
-                        TrafoResult::Expr(self.parser.arena.alloc(Expr::Add(ExprAdd { a, op, b })))
-                    },
-                    (TrafoResult::Expr(a), TrafoResult::Yielded(bstart, bend)) => {
-                        let temp_ident = self.next_tmp();
-                        let anode = self.graph.add_node(Some(
-                            ExprBuilder::assign(&self.self_binding)
-                                .access_field(temp_ident.ident)
-                                .assign(self.gen_option_some_call(ExprBuilder::from_expr(a)))
-                        ));
-                        self.graph.add_edge(anode, bstart, Edge::Pattern(ExprBuilder::match_pattern_literal(())));
-                        let add_node = self.empty_node();
-                        let add_node_expr = Some(ExprBuilder::add(
-                            ExprBuilder::access(&self.self_binding).field(temp_ident.ident).call_method("unwrap", Vec::new()).build(),
-                            self.gen_access_self_field_for_binding(self.get_match_binding_into_node(add_node).id()),
-                        ));
-                        self.graph[add_node] = add_node_expr;
-                        self.graph.add_edge(bend, add_node, Edge::Pattern(self.get_match_pattern_into_node(add_node)));
-                        TrafoResult::Yielded(anode, add_node)
-                    }
-                    (TrafoResult::Yielded(astart, aend), TrafoResult::Expr(b)) => {
-                        let add_node = self.empty_node();
-                        let add_node_expr = Some(ExprBuilder::add(
-                            self.gen_access_self_field_for_binding(self.get_match_binding_into_node(add_node).id()),
-                            ExprBuilder::from_expr(b),
-                        ));
-                        self.graph[add_node] = add_node_expr;
-                        self.graph.add_edge(aend, add_node, Edge::Pattern(self.get_match_pattern_into_node(add_node)));
-                        TrafoResult::Yielded(astart, add_node)
-                    }
-                    (TrafoResult::Yielded(astart, aend), TrafoResult::Yielded(bstart, bend)) => {
-                        let add_node = self.empty_node();
-                        let add_node_expr = Some(ExprBuilder::add(
-                            self.gen_access_self_field_for_binding(self.get_match_binding_into_node(bstart).id()),
-                            self.gen_access_self_field_for_binding(self.get_match_binding_into_node(add_node).id()),
-                        ));
-                        self.graph[add_node] = add_node_expr;
-                        self.graph.add_edge(aend, bstart, Edge::Pattern(self.get_match_pattern_into_node(bstart)));
-                        self.graph.add_edge(bend, add_node, Edge::Pattern(self.get_match_pattern_into_node(add_node)));
-                        TrafoResult::Yielded(astart, add_node)
-                    }
-                }
-            }
-            Expr::Sub(_) => todo!(),
-            Expr::Mul(_) => todo!(),
-            Expr::Div(_) => todo!(),
-            Expr::Mod(_) => todo!(),
-            Expr::Xor(_) => todo!(),
-            Expr::BoolAnd(_) => todo!(),
-            Expr::BoolOr(_) => todo!(),
+            &Expr::Add(ExprAdd { a, op, b }) => self.transform_binop(
+                a, b,
+                |a, b| Expr::Add(ExprAdd { a, op, b }),
+                ExprBuilder::add,
+            ),
+            &Expr::Sub(ExprSub { a, op, b }) => self.transform_binop(
+                a, b,
+                |a, b| Expr::Sub(ExprSub { a, op, b }),
+                ExprBuilder::sub,
+            ),
+            &Expr::Mul(ExprMul { a, op, b }) => self.transform_binop(
+                a, b,
+                |a, b| Expr::Mul(ExprMul { a, op, b }),
+                ExprBuilder::mul,
+            ),
+            &Expr::Div(ExprDiv { a, op, b }) => self.transform_binop(
+                a, b,
+                |a, b| Expr::Div(ExprDiv { a, op, b }),
+                ExprBuilder::div,
+            ),
+            &Expr::Mod(ExprMod { a, op, b }) => self.transform_binop(
+                a, b,
+                |a, b| Expr::Mod(ExprMod { a, op, b }),
+                ExprBuilder::mod_,
+            ),
+            &Expr::Xor(ExprXor { a, op, b }) => self.transform_binop(
+                a, b,
+                |a, b| Expr::Xor(ExprXor { a, op, b }),
+                ExprBuilder::xor,
+            ),
+            &Expr::BoolAnd(ExprBoolAnd { a, op, b }) => self.transform_binop(
+                a, b,
+                |a, b| Expr::BoolAnd(ExprBoolAnd { a, op, b }),
+                ExprBuilder::bool_and,
+            ),
+            &Expr::BoolOr(ExprBoolOr { a, op, b }) => self.transform_binop(
+                a, b,
+                |a, b| Expr::BoolOr(ExprBoolOr { a, op, b }),
+                ExprBuilder::bool_or,
+            ),
             // binop-assign
             Expr::AddAssign(_) => todo!(),
             Expr::SubAssign(_) => todo!(),
@@ -308,6 +294,59 @@ impl<'a, 'i, 'p, 'm> GeneratorTransformator<'a, 'i, 'p, 'm> {
             Expr::EnumDefinition(_) => todo!(),
             Expr::EnumInitialization(_) => todo!(),
             Expr::ImplBlock(_) => todo!(),
+        }
+    }
+    fn transform_binop(
+        &mut self,
+        a: &'a Expr<'a, 'i>,
+        b: &'a Expr<'a, 'i>,
+        make_expr: impl FnOnce(&'a Expr<'a, 'i>, &'a Expr<'a, 'i>) -> Expr<'a, 'i>,
+        make_builder: impl FnOnce(ExprBuilder<'a, 'i>, ExprBuilder<'a, 'i>) -> ExprBuilder<'a, 'i>,
+    ) -> TrafoResult<'a, 'i> {
+        let a = self.transform_expr(a);
+        let b = self.transform_expr(b);
+        match (a, b) {
+            (TrafoResult::Expr(a), TrafoResult::Expr(b)) => {
+                TrafoResult::Expr(self.parser.arena.alloc(make_expr(a, b)))
+            },
+            (TrafoResult::Expr(a), TrafoResult::Yielded(bstart, bend)) => {
+                let temp_ident = self.next_tmp();
+                let anode = self.graph.add_node(Some(
+                    ExprBuilder::assign(&self.self_binding)
+                        .access_field(temp_ident.ident)
+                        .assign(self.gen_option_some_call(ExprBuilder::from_expr(a)))
+                ));
+                self.graph.add_edge(anode, bstart, Edge::Pattern(ExprBuilder::match_pattern_literal(())));
+                let binop_node = self.empty_node();
+                let binop_node_expr = Some(make_builder(
+                    ExprBuilder::access(&self.self_binding).field(temp_ident.ident).call_method("unwrap", Vec::new()).build(),
+                    self.gen_access_self_field_for_binding(self.get_match_binding_into_node(binop_node).id()),
+                ));
+                self.graph[binop_node] = binop_node_expr;
+                self.graph.add_edge(bend, binop_node, Edge::Pattern(self.get_match_pattern_into_node(binop_node)));
+                TrafoResult::Yielded(anode, binop_node)
+            }
+            (TrafoResult::Yielded(astart, aend), TrafoResult::Expr(b)) => {
+                let binop_node = self.empty_node();
+                let binop_node_expr = Some(make_builder(
+                    self.gen_access_self_field_for_binding(self.get_match_binding_into_node(binop_node).id()),
+                    ExprBuilder::from_expr(b),
+                ));
+                self.graph[binop_node] = binop_node_expr;
+                self.graph.add_edge(aend, binop_node, Edge::Pattern(self.get_match_pattern_into_node(binop_node)));
+                TrafoResult::Yielded(astart, binop_node)
+            }
+            (TrafoResult::Yielded(astart, aend), TrafoResult::Yielded(bstart, bend)) => {
+                let binop_node = self.empty_node();
+                let binop_node_expr = Some(make_builder(
+                    self.gen_access_self_field_for_binding(self.get_match_binding_into_node(bstart).id()),
+                    self.gen_access_self_field_for_binding(self.get_match_binding_into_node(binop_node).id()),
+                ));
+                self.graph[binop_node] = binop_node_expr;
+                self.graph.add_edge(aend, bstart, Edge::Pattern(self.get_match_pattern_into_node(bstart)));
+                self.graph.add_edge(bend, binop_node, Edge::Pattern(self.get_match_pattern_into_node(binop_node)));
+                TrafoResult::Yielded(astart, binop_node)
+            }
         }
     }
     fn transform_block(&mut self, block: &ExprBlock<'a, 'i>) -> TrafoResult<'a, 'i> {

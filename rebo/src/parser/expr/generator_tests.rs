@@ -43,28 +43,89 @@ fn generator_bool_not() {
     "#, ReturnValue::Ok(Value::Unit));
 }
 
-#[test]
-fn generator_add() {
-    test(r#"
-        gen fn foo() -> int {
+fn test_binop(sym: char, f: impl Fn(i64, i64) -> i64) {
+    let a = f(1, 3);
+    let b = f(10, 30);
+    let c = f(100, 300);
+    let d = f(1000, 3000);
+    test(&format!(r#"
+        gen fn foo() -> int {{
             // expr expr
-            yield 1 + 3;
+            yield 1 {sym} 3;
             // expr yield
-            yield 10 + { yield 50; 30 };
+            yield 10 {sym} {{ yield 50; 30 }};
             // yield expr
-            yield { yield 200; 100 } + 300;
+            yield {{ yield 200; 100 }} {sym} 300;
             // yield yield
-            yield { yield 2000; 1000 } + { yield 5000; 3000 };
-        }
+            yield {{ yield 2000; 1000 }} {sym} {{ yield 5000; 3000 }};
+        }}
         let bar = foo();
-        assert_eq(bar.next(), Option::Some(4));
+        assert_eq(bar.next(), Option::Some({a}));
         assert_eq(bar.next(), Option::Some(50));
-        assert_eq(bar.next(), Option::Some(40));
+        assert_eq(bar.next(), Option::Some({b}));
         assert_eq(bar.next(), Option::Some(200));
-        assert_eq(bar.next(), Option::Some(400));
+        assert_eq(bar.next(), Option::Some({c}));
         assert_eq(bar.next(), Option::Some(2000));
         assert_eq(bar.next(), Option::Some(5000));
-        assert_eq(bar.next(), Option::Some(4000));
+        assert_eq(bar.next(), Option::Some({d}));
         assert_eq(bar.next(), Option::None);
-    "#, ReturnValue::Ok(Value::Unit));
+    "#), ReturnValue::Ok(Value::Unit));
 }
+#[test]
+fn generator_add() {
+    test_binop('+', |a, b| a + b);
+}
+#[test]
+fn generator_sub() {
+    test_binop('-', |a, b| a - b);
+}
+#[test]
+fn generator_mul() {
+    test_binop('*', |a, b| a * b);
+}
+#[test]
+fn generator_div() {
+    test_binop('/', |a, b| a / b);
+}
+#[test]
+fn generator_mod() {
+    test_binop('%', |a, b| a % b);
+}
+#[test]
+fn generator_xor() {
+    test_binop('^', |a, b| a ^ b);
+}
+fn test_bool_binop(sym: &str, f: impl Fn(bool, bool) -> bool) {
+    let a = f(true, false);
+    test(&format!(r#"
+        gen fn foo() -> bool {{
+            // expr expr
+            yield true {sym} false;
+            // expr yield
+            yield true {sym} {{ yield true; false }};
+            // yield expr
+            yield {{ yield false; true }} {sym} false;
+            // yield yield
+            yield {{ yield true; true }} {sym} {{ yield false; false }};
+        }}
+        let bar = foo();
+        assert_eq(bar.next(), Option::Some({a}));
+        assert_eq(bar.next(), Option::Some(true));
+        assert_eq(bar.next(), Option::Some({a}));
+        assert_eq(bar.next(), Option::Some(false));
+        assert_eq(bar.next(), Option::Some({a}));
+        assert_eq(bar.next(), Option::Some(true));
+        assert_eq(bar.next(), Option::Some(false));
+        assert_eq(bar.next(), Option::Some({a}));
+        assert_eq(bar.next(), Option::None);
+    "#), ReturnValue::Ok(Value::Unit));
+}
+#[test]
+fn generator_bool_and() {
+    test_bool_binop("&&", |a, b| a && b);
+}
+#[test]
+fn generator_bool_or() {
+    test_bool_binop("||", |a, b| a || b);
+}
+

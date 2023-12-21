@@ -4,10 +4,10 @@ use std::rc::Rc;
 use diagnostic::{Diagnostics, ErrorCode, FileId, Span};
 use indexmap::IndexSet;
 use typed_arena::Arena;
-use rebo::lexer::{TokenBoolType, TokenCloseCurly, TokenCloseParen, TokenColon, TokenComma, TokenDot, TokenFatArrow, TokenFloatType, TokenGreaterThan, TokenIdent, TokenIntType, TokenLessThan, TokenLoop, TokenMatch, TokenMut, TokenOpenCurly, TokenStringType, TokenUnderscore};
-use rebo::parser::{Binding, BindingId, ExprAccess, ExprAdd, ExprBlock, ExprFunctionDefinition, ExprImplBlock, ExprLabelDef, ExprLoop, ExprMatch, ExprMatchPattern, ExprMethodCall, ExprPatternTyped, ExprReturn, ExprStructDefinition, ExprStructInitialization, ExprType, FieldOrMethod, Generic};
-use crate::lexer::{Radix, TokenApostrophe, TokenArrow, TokenAssign, TokenBang, TokenBool, TokenDoubleColon, TokenDqString, TokenFloat, TokenFn, TokenImpl, TokenInteger, TokenMinus, TokenOpenParen, TokenPlus, TokenReturn, TokenStruct};
-use crate::parser::{BlockBody, Expr, ExprAssign, ExprAssignLhs, ExprBool, ExprBoolNot, ExprEnumInitialization, ExprFieldAccess, ExprFloat, ExprFunctionCall, ExprFunctionSignature, ExprGenerics, ExprInteger, ExprLabel, ExprLiteral, ExprNeg, ExprParenthesized, ExprPatternUntyped, ExprString, ExprUnit, ExprVariable};
+use rebo::lexer::{TokenBoolType, TokenCircumflex, TokenCloseCurly, TokenCloseParen, TokenColon, TokenComma, TokenDot, TokenDoubleAmp, TokenDoublePipe, TokenFatArrow, TokenFloatType, TokenGreaterThan, TokenIdent, TokenIntType, TokenLessThan, TokenLoop, TokenMatch, TokenMut, TokenOpenCurly, TokenPercent, TokenSlash, TokenStringType, TokenUnderscore};
+use rebo::parser::{Binding, BindingId, ExprAccess, ExprAdd, ExprBlock, ExprBoolAnd, ExprDiv, ExprFunctionDefinition, ExprImplBlock, ExprLabelDef, ExprLoop, ExprMatch, ExprMatchPattern, ExprMethodCall, ExprMod, ExprMul, ExprPatternTyped, ExprReturn, ExprStructDefinition, ExprStructInitialization, ExprSub, ExprType, ExprXor, FieldOrMethod, Generic};
+use crate::lexer::{Radix, TokenApostrophe, TokenArrow, TokenAssign, TokenBang, TokenBool, TokenDoubleColon, TokenDqString, TokenFloat, TokenFn, TokenImpl, TokenInteger, TokenMinus, TokenOpenParen, TokenPlus, TokenReturn, TokenStar, TokenStruct};
+use crate::parser::{BlockBody, Expr, ExprAssign, ExprAssignLhs, ExprBool, ExprBoolNot, ExprBoolOr, ExprEnumInitialization, ExprFieldAccess, ExprFloat, ExprFunctionCall, ExprFunctionSignature, ExprGenerics, ExprInteger, ExprLabel, ExprLiteral, ExprNeg, ExprParenthesized, ExprPatternUntyped, ExprString, ExprUnit, ExprVariable};
 
 pub trait BuildExpr<'a, 'i> {
     type Expr;
@@ -136,13 +136,55 @@ impl<'a, 'i> ExprBuilder<'a, 'i> {
             b: b.build_expr(gen),
         })
     }
-    // Sub(ExprSub<'a, 'i>),
-    // Mul(ExprMul<'a, 'i>),
-    // Div(ExprDiv<'a, 'i>),
-    // Mod(ExprMod<'a, 'i>),
-    // Xor(ExprXor<'a, 'i>),
-    // BoolAnd(ExprBoolAnd<'a, 'i>),
-    // BoolOr(ExprBoolOr<'a, 'i>),
+    pub fn sub(a: ExprBuilder<'a, 'i>, b: ExprBuilder<'a, 'i>) -> Self {
+        Self::make(move |gen| ExprSub {
+            a: a.build_expr(gen),
+            op: TokenMinus { span: gen.next_fake_span(" - ") },
+            b: b.build_expr(gen),
+        })
+    }
+    pub fn mul(a: ExprBuilder<'a, 'i>, b: ExprBuilder<'a, 'i>) -> Self {
+        Self::make(move |gen| ExprMul {
+            a: a.build_expr(gen),
+            op: TokenStar { span: gen.next_fake_span(" * ") },
+            b: b.build_expr(gen),
+        })
+    }
+    pub fn div(a: ExprBuilder<'a, 'i>, b: ExprBuilder<'a, 'i>) -> Self {
+        Self::make(move |gen| ExprDiv {
+            a: a.build_expr(gen),
+            op: TokenSlash { span: gen.next_fake_span(" / ") },
+            b: b.build_expr(gen),
+        })
+    }
+    pub fn mod_(a: ExprBuilder<'a, 'i>, b: ExprBuilder<'a, 'i>) -> Self {
+        Self::make(move |gen| ExprMod {
+            a: a.build_expr(gen),
+            op: TokenPercent { span: gen.next_fake_span(" % ") },
+            b: b.build_expr(gen),
+        })
+    }
+    pub fn xor(a: ExprBuilder<'a, 'i>, b: ExprBuilder<'a, 'i>) -> Self {
+        Self::make(move |gen| ExprXor {
+            a: a.build_expr(gen),
+            op: TokenCircumflex { span: gen.next_fake_span(" ^ ") },
+            b: b.build_expr(gen),
+        })
+    }
+    pub fn bool_and(a: ExprBuilder<'a, 'i>, b: ExprBuilder<'a, 'i>) -> Self {
+        Self::make(move |gen| ExprBoolAnd {
+            a: a.build_expr(gen),
+            op: TokenDoubleAmp { span: gen.next_fake_span(" && ") },
+            b: b.build_expr(gen),
+        })
+    }
+    pub fn bool_or(a: ExprBuilder<'a, 'i>, b: ExprBuilder<'a, 'i>) -> Self {
+        Self::make(move |gen| ExprBoolOr {
+            a: a.build_expr(gen),
+            op: TokenDoublePipe { span: gen.next_fake_span(" || ") },
+            b: b.build_expr(gen),
+        })
+    }
     // // binop-assign
     // AddAssign(ExprAddAssign<'a, 'i>),
     // SubAssign(ExprSubAssign<'a, 'i>),
