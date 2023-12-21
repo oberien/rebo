@@ -270,17 +270,24 @@ impl<'a, 'i, 'p, 'm> GeneratorTransformator<'a, 'i, 'p, 'm> {
                 },
                 TrafoResult::Yielded(start, end) => (start, end),
             };
-            let block = mem::replace(&mut mapped_block, ExprBuilder::block())
-                .with_terminating_semicolon()
-                .build();
-            let node = self.graph.add_node(Some(block));
-            self.graph.add_edge(node, start, Edge::Pattern(self.get_match_pattern_into_node(start)));
+            let new_start = match mapped_block.is_empty() {
+                // don't add a state for an empty block
+                true => start,
+                false => {
+                    let block = mem::replace(&mut mapped_block, ExprBuilder::block())
+                        .with_terminating_semicolon()
+                        .build();
+                    let node = self.graph.add_node(Some(block));
+                    self.graph.add_edge(node, start, Edge::Pattern(self.get_match_pattern_into_node(start)));
+                    node
+                }
+            };
             match &mut current_start_end {
                 Some((_, current_end)) => {
-                    self.graph.add_edge(*current_end, node, Edge::Pattern(self.get_match_pattern_into_node(node)));
+                    self.graph.add_edge(*current_end, new_start, Edge::Pattern(self.get_match_pattern_into_node(new_start)));
                     *current_end = end;
                 }
-                None => current_start_end = Some((node, end)),
+                None => current_start_end = Some((new_start, end)),
             }
         }
 
@@ -290,17 +297,24 @@ impl<'a, 'i, 'p, 'm> GeneratorTransformator<'a, 'i, 'p, 'm> {
             } else {
                 mapped_block.terminate_without_semicolon();
             }
-            let block = mapped_block.build();
-            let node = self.graph.add_node(Some(block));
-            self.graph.add_edge(end, node, Edge::Pattern(self.get_match_pattern_into_node(node)));
-            TrafoResult::Yielded(start, node)
+            let new_end = match mapped_block.is_empty() {
+                // don't add new state for empty block
+                true => end,
+                false => {
+                    let block = mapped_block.build();
+                    let node = self.graph.add_node(Some(block));
+                    self.graph.add_edge(end, node, Edge::Pattern(self.get_match_pattern_into_node(node)));
+                    node
+                }
+            };
+            TrafoResult::Yielded(start, new_end)
         } else {
             TrafoResult::Expr(self.parser.arena.alloc(Expr::Block(block.clone())))
         }
     }
 
     fn field_ident(&self, binding_id: BindingId) -> TokenIdent<'i> {
-        *self.fields.borrow_mut().entry(binding_id)
+        *self.binding_fields.borrow_mut().entry(binding_id)
             .or_insert_with(|| self.create_ident(format!("binding_{}", binding_id)))
     }
     fn create_ident(&self, name: String) -> TokenIdent<'i> {

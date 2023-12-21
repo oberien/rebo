@@ -405,6 +405,9 @@ pub struct ExprBlockBuilder<'a, 'i> {
     terminated_with_semicolon: bool,
 }
 impl<'a, 'i> ExprBlockBuilder<'a, 'i> {
+    pub fn is_empty(&self) -> bool {
+        self.exprs.is_empty()
+    }
     pub fn insert_expr(&mut self, index: usize, expr: ExprBuilder<'a, 'i>) -> &mut Self {
         self.exprs.insert(index, expr);
         self
