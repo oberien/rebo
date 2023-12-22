@@ -4,10 +4,10 @@ use std::rc::Rc;
 use diagnostic::{Diagnostics, ErrorCode, FileId, Span};
 use indexmap::IndexSet;
 use typed_arena::Arena;
-use rebo::lexer::{TokenBoolType, TokenCircumflex, TokenCloseCurly, TokenCloseParen, TokenColon, TokenComma, TokenDot, TokenDoubleAmp, TokenDoublePipe, TokenFatArrow, TokenFloatType, TokenGreaterThan, TokenIdent, TokenIntType, TokenLessThan, TokenLoop, TokenMatch, TokenMut, TokenOpenCurly, TokenPercent, TokenSlash, TokenStringType, TokenUnderscore};
-use rebo::parser::{Binding, BindingId, ExprAccess, ExprAdd, ExprBlock, ExprBoolAnd, ExprDiv, ExprFunctionDefinition, ExprImplBlock, ExprLabelDef, ExprLoop, ExprMatch, ExprMatchPattern, ExprMethodCall, ExprMod, ExprMul, ExprPatternTyped, ExprReturn, ExprStructDefinition, ExprStructInitialization, ExprSub, ExprType, ExprXor, FieldOrMethod, Generic};
-use crate::lexer::{Radix, TokenApostrophe, TokenArrow, TokenAssign, TokenBang, TokenBool, TokenDoubleColon, TokenDqString, TokenFloat, TokenFn, TokenImpl, TokenInteger, TokenMinus, TokenOpenParen, TokenPlus, TokenReturn, TokenStar, TokenStruct};
-use crate::parser::{BlockBody, Expr, ExprAssign, ExprAssignLhs, ExprBool, ExprBoolNot, ExprBoolOr, ExprEnumInitialization, ExprFieldAccess, ExprFloat, ExprFunctionCall, ExprFunctionSignature, ExprGenerics, ExprInteger, ExprLabel, ExprLiteral, ExprNeg, ExprParenthesized, ExprPatternUntyped, ExprString, ExprUnit, ExprVariable};
+use rebo::lexer::{TokenBoolType, TokenCircumflex, TokenCloseCurly, TokenCloseParen, TokenColon, TokenComma, TokenDot, TokenDoubleAmp, TokenDoublePipe, TokenEquals, TokenFatArrow, TokenFloatType, TokenGreaterEquals, TokenGreaterThan, TokenIdent, TokenIntType, TokenLessThan, TokenLoop, TokenMatch, TokenMut, TokenOpenCurly, TokenPercent, TokenSlash, TokenStringType, TokenUnderscore};
+use rebo::parser::{Binding, BindingId, ExprAccess, ExprAdd, ExprBlock, ExprBoolAnd, ExprDiv, ExprEquals, ExprFunctionDefinition, ExprGreaterEquals, ExprImplBlock, ExprLabelDef, ExprLessEquals, ExprLessThan, ExprLoop, ExprMatch, ExprMatchPattern, ExprMethodCall, ExprMod, ExprMul, ExprPatternTyped, ExprReturn, ExprStructDefinition, ExprStructInitialization, ExprSub, ExprType, ExprXor, FieldOrMethod, Generic};
+use crate::lexer::{Radix, TokenApostrophe, TokenArrow, TokenAssign, TokenBang, TokenBool, TokenDoubleColon, TokenDqString, TokenFloat, TokenFn, TokenImpl, TokenInteger, TokenLessEquals, TokenMinus, TokenNotEquals, TokenOpenParen, TokenPlus, TokenReturn, TokenStar, TokenStruct};
+use crate::parser::{BlockBody, Expr, ExprAssign, ExprAssignLhs, ExprBool, ExprBoolNot, ExprBoolOr, ExprEnumInitialization, ExprFieldAccess, ExprFloat, ExprFunctionCall, ExprFunctionSignature, ExprGenerics, ExprGreaterThan, ExprInteger, ExprLabel, ExprLiteral, ExprNeg, ExprNotEquals, ExprParenthesized, ExprPatternUntyped, ExprString, ExprUnit, ExprVariable};
 
 pub trait BuildExpr<'a, 'i> {
     type Expr;
@@ -128,7 +128,7 @@ impl<'a, 'i> ExprBuilder<'a, 'i> {
             expr: inner.build_expr(gen),
         })
     }
-    // // binops
+    // binops
     pub fn add(a: ExprBuilder<'a, 'i>, b: ExprBuilder<'a, 'i>) -> Self {
         Self::make(move |gen| ExprAdd {
             a: a.build_expr(gen),
@@ -185,7 +185,7 @@ impl<'a, 'i> ExprBuilder<'a, 'i> {
             b: b.build_expr(gen),
         })
     }
-    // // binop-assign
+    // binop-assign
     // AddAssign(ExprAddAssign<'a, 'i>),
     // SubAssign(ExprSubAssign<'a, 'i>),
     // MulAssign(ExprMulAssign<'a, 'i>),
@@ -194,14 +194,49 @@ impl<'a, 'i> ExprBuilder<'a, 'i> {
     // XorAssign(ExprXorAssign<'a, 'i>),
     // BoolAndAssign(ExprBoolAndAssign<'a, 'i>),
     // BoolOrAssign(ExprBoolOrAssign<'a, 'i>),
-    // // comparison ops
-    // LessThan(ExprLessThan<'a, 'i>),
-    // LessEquals(ExprLessEquals<'a, 'i>),
-    // Equals(ExprEquals<'a, 'i>),
-    // NotEquals(ExprNotEquals<'a, 'i>),
-    // GreaterEquals(ExprGreaterEquals<'a, 'i>),
-    // GreaterThan(ExprGreaterThan<'a, 'i>),
-    // Block(ExprBlock<'a, 'i>),
+    // comparison ops
+    pub fn less_than(a: ExprBuilder<'a, 'i>, b: ExprBuilder<'a, 'i>) -> Self {
+        Self::make(move |gen| ExprLessThan {
+            a: a.build_expr(gen),
+            op: TokenLessThan { span: gen.next_fake_span(" < ") },
+            b: b.build_expr(gen),
+        })
+    }
+    pub fn less_equals(a: ExprBuilder<'a, 'i>, b: ExprBuilder<'a, 'i>) -> Self {
+        Self::make(move |gen| ExprLessEquals {
+            a: a.build_expr(gen),
+            op: TokenLessEquals { span: gen.next_fake_span(" <= ") },
+            b: b.build_expr(gen),
+        })
+    }
+    pub fn equals(a: ExprBuilder<'a, 'i>, b: ExprBuilder<'a, 'i>) -> Self {
+        Self::make(move |gen| ExprEquals {
+            a: a.build_expr(gen),
+            op: TokenEquals { span: gen.next_fake_span(" == ") },
+            b: b.build_expr(gen),
+        })
+    }
+    pub fn not_equals(a: ExprBuilder<'a, 'i>, b: ExprBuilder<'a, 'i>) -> Self {
+        Self::make(move |gen| ExprNotEquals {
+            a: a.build_expr(gen),
+            op: TokenNotEquals { span: gen.next_fake_span(" != ") },
+            b: b.build_expr(gen),
+        })
+    }
+    pub fn greater_equals(a: ExprBuilder<'a, 'i>, b: ExprBuilder<'a, 'i>) -> Self {
+        Self::make(move |gen| ExprGreaterEquals {
+            a: a.build_expr(gen),
+            op: TokenGreaterEquals { span: gen.next_fake_span(" >> ") },
+            b: b.build_expr(gen),
+        })
+    }
+    pub fn greater_than(a: ExprBuilder<'a, 'i>, b: ExprBuilder<'a, 'i>) -> Self {
+        Self::make(move |gen| ExprGreaterThan {
+            a: a.build_expr(gen),
+            op: TokenGreaterThan { span: gen.next_fake_span(" > ") },
+            b: b.build_expr(gen),
+        })
+    }
     /// Create a new BlockBuilder, default with terminating semicolon
     pub fn block() -> ExprBlockBuilder<'a, 'i> {
         ExprBlockBuilder { exprs: Vec::new(), terminated_with_semicolon: true }

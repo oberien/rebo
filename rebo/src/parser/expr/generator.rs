@@ -241,12 +241,36 @@ impl<'a, 'i, 'p, 'm> GeneratorTransformator<'a, 'i, 'p, 'm> {
             Expr::BoolAndAssign(_) => todo!(),
             Expr::BoolOrAssign(_) => todo!(),
             // comparison ops
-            Expr::LessThan(_) => todo!(),
-            Expr::LessEquals(_) => todo!(),
-            Expr::Equals(_) => todo!(),
-            Expr::NotEquals(_) => todo!(),
-            Expr::GreaterEquals(_) => todo!(),
-            Expr::GreaterThan(_) => todo!(),
+            &Expr::LessThan(ExprLessThan { a, op, b }) => self.transform_binop(
+                a, b,
+                |a, b| Expr::LessThan(ExprLessThan { a, op, b }),
+                ExprBuilder::less_than,
+            ),
+            &Expr::LessEquals(ExprLessEquals { a, op, b }) => self.transform_binop(
+                a, b,
+                |a, b| Expr::LessEquals(ExprLessEquals { a, op, b }),
+                ExprBuilder::less_equals,
+            ),
+            &Expr::Equals(ExprEquals { a, op, b }) => self.transform_binop(
+                a, b,
+                |a, b| Expr::Equals(ExprEquals { a, op, b }),
+                ExprBuilder::equals,
+            ),
+            &Expr::NotEquals(ExprNotEquals { a, op, b }) => self.transform_binop(
+                a, b,
+                |a, b| Expr::NotEquals(ExprNotEquals { a, op, b }),
+                ExprBuilder::not_equals,
+            ),
+            &Expr::GreaterEquals(ExprGreaterEquals { a, op, b }) => self.transform_binop(
+                a, b,
+                |a, b| Expr::GreaterEquals(ExprGreaterEquals { a, op, b }),
+                ExprBuilder::greater_equals,
+            ),
+            &Expr::GreaterThan(ExprGreaterThan { a, op, b }) => self.transform_binop(
+                a, b,
+                |a, b| Expr::GreaterThan(ExprGreaterThan { a, op, b }),
+                ExprBuilder::greater_than,
+            ),
             Expr::Block(block) => self.transform_block(block),
             Expr::Variable(_) => todo!(),
             Expr::Access(_) => todo!(),
