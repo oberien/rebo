@@ -142,7 +142,7 @@ fn generate_impl(sig: &FunctionSignature) -> TokenStream2 {
         generics_file_content.push_str(&generic_ident.to_string());
         let end = generics_file_content.len();
         generics_file_content.push_str("\n\n");
-        generics_spans.insert(generic_ident.clone(), quote::quote_spanned!(generic_ident.span()=> ::rebo::Span::new(::rebo::FileId::synthetic(#generics_file_name), #start, #end)));
+        generics_spans.insert(generic_ident.clone(), quote::quote_spanned!(generic_ident.span()=> ::rebo::Span::new(::rebo::FileId::synthetic_named(#generics_file_name), #start, #end)));
     }
 
     let reboc_arg_types = sig.arg_types.iter()

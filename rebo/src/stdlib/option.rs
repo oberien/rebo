@@ -6,7 +6,7 @@ use parking_lot::lock_api::ReentrantMutex;
 use crate::{CowVec, Enum, EnumArc, ExternalType, FileId, FromValue, IntoValue, SpecificType, Type, Typed, Value};
 
 const FILE_NAME: &str = "external-Option.re";
-const OPTION_T: Span = Span::new(FileId::synthetic(FILE_NAME), 12, 13);
+const OPTION_T: Span = Span::new(FileId::synthetic_named(FILE_NAME), 12, 13);
 
 impl<T: FromValue + IntoValue> ExternalType for Option<T> {
     const CODE: &'static str = r#"enum Option<T> {

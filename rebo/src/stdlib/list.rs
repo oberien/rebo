@@ -27,7 +27,7 @@ impl<T: IntoValue> List<T> {
 }
 
 const FILE_NAME: &str = "external-List.re";
-const LIST_T: Span = Span::new(FileId::synthetic(FILE_NAME), 12, 13);
+const LIST_T: Span = Span::new(FileId::synthetic_named(FILE_NAME), 12, 13);
 
 impl<T: FromValue + IntoValue> ExternalType for List<T> {
     const CODE: &'static str = "struct List<T> {\n    /* ... */\n}";

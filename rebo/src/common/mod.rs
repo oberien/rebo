@@ -201,8 +201,8 @@ impl<'a, 'i> MetaInfo<'a, 'i> {
         }
     }
     pub fn add_external_function(&mut self, arena: &'a Arena<Expr<'a, 'i>>, diagnostics: &'i Diagnostics<ErrorCode>, fun: ExternalFunction) {
-        let (file, _) = diagnostics.add_synthetic_file(fun.file_name, fun.code.to_string());
-        if self.check_existing_function(diagnostics, fun.name, Span::new(FileId::synthetic(fun.file_name), 0, fun.code.len())) {
+        let (file, _) = diagnostics.add_synthetic_named_file(fun.file_name, fun.code.to_string());
+        if self.check_existing_function(diagnostics, fun.name, Span::new(FileId::synthetic_named(fun.file_name), 0, fun.code.len())) {
             return;
         }
         self.external_functions.insert(fun.name, fun.clone());
@@ -253,11 +253,11 @@ impl<'a, 'i> MetaInfo<'a, 'i> {
         if self.required_rebo_functions.contains(&required_rebo_function) {
             panic!("Required rebo function `{}` already added previously", required_rebo_function.name);
         }
-        diagnostics.add_synthetic_file(required_rebo_function.generics_file_name, required_rebo_function.generics_file_content.to_string());
+        diagnostics.add_synthetic_named_file(required_rebo_function.generics_file_name, required_rebo_function.generics_file_content.to_string());
         self.required_rebo_functions.insert(required_rebo_function);
     }
     pub fn add_external_type<T: ExternalType>(&mut self, arena: &'a Arena<Expr<'a, 'i>>, diagnostics: &'i Diagnostics<ErrorCode>) {
-        let (file, _) = diagnostics.add_synthetic_file(T::FILE_NAME, T::CODE.to_string());
+        let (file, _) = diagnostics.add_synthetic_named_file(T::FILE_NAME, T::CODE.to_string());
         self.external_types.insert(T::TYPE.type_name(), T::TYPE);
 
         let lexer = Lexer::new(diagnostics, file);

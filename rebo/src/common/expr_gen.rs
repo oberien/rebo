@@ -17,7 +17,8 @@ pub trait BuildExpr<'a, 'i> {
 pub struct ExprGen<'a, 'i> {
     indent: Cell<usize>,
     arena: &'a Arena<Expr<'a, 'i>>,
-    file_name: &'static str,
+    file_id: FileId,
+    file_name: String,
     code: RefCell<String>,
 }
 
@@ -57,7 +58,7 @@ impl<'a, 'i> ExprGen<'a, 'i> {
             }
         }
         let end = code.len();
-        Span::new(FileId::synthetic(self.file_name), start, end)
+        Span::new(self.file_id, start, end)
     }
 }
 
@@ -367,16 +368,18 @@ impl<'a, 'i> ExprBuilder<'a, 'i> {
         builder: B,
         arena: &'a Arena<Expr<'a, 'i>>,
         diagnostics: &Diagnostics<impl ErrorCode>,
-        file_name: &'static str
+        file_id: FileId,
+        file_name: String,
     ) -> B::Expr {
         let gen = ExprGen {
             indent: Cell::new(0),
             arena,
+            file_id,
             file_name,
             code: RefCell::new(String::new()),
         };
         let expr = builder.build_expr(&gen);
-        diagnostics.add_synthetic_file(gen.file_name, gen.code.into_inner());
+        diagnostics.add_synthetic_numbered_file(gen.file_id, gen.file_name, gen.code.into_inner());
         expr
     }
 }

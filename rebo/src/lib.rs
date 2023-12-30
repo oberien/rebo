@@ -41,7 +41,7 @@ use rebo::parser::BindingId;
 use crate::error_codes::ErrorCode;
 
 const EXTERNAL_SOURCE: &str = "defined externally";
-const EXTERNAL_SPAN: Span = Span::new(FileId::synthetic("external.re"), 0, EXTERNAL_SOURCE.len());
+const EXTERNAL_SPAN: Span = Span::new(FileId::synthetic_named("external.re"), 0, EXTERNAL_SOURCE.len());
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct RunResult {
@@ -158,7 +158,7 @@ pub fn run_with_config(filename: String, code: String, config: ReboConfig) -> Ru
 
     let diagnostics = Diagnostics::with_output(diagnostic_output);
     // register file for external sources
-    diagnostics.add_synthetic_file("external.re", EXTERNAL_SOURCE.to_string());
+    diagnostics.add_synthetic_named_file("external.re", EXTERNAL_SOURCE.to_string());
 
     // stdlib
     let arena = Arena::new();

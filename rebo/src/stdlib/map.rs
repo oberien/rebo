@@ -30,8 +30,8 @@ impl<K: IntoValue, V: IntoValue> Map<K, V> {
 }
 
 const FILE_NAME: &str = "external-Map.re";
-const MAP_K: Span = Span::new(FileId::synthetic(FILE_NAME), 11, 12);
-const MAP_V: Span = Span::new(FileId::synthetic(FILE_NAME), 14, 15);
+const MAP_K: Span = Span::new(FileId::synthetic_named(FILE_NAME), 11, 12);
+const MAP_V: Span = Span::new(FileId::synthetic_named(FILE_NAME), 14, 15);
 
 impl<K: FromValue + IntoValue, V: FromValue + IntoValue> ExternalType for Map<K, V> {
     const CODE: &'static str = "struct Map<K, V> {\n    /* ... */\n}";

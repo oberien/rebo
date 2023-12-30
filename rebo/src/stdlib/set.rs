@@ -23,7 +23,7 @@ impl<T: IntoValue> Set<T> {
 }
 
 const FILE_NAME: &str = "external-Set.re";
-const SET_T: Span = Span::new(FileId::synthetic(FILE_NAME), 11, 12);
+const SET_T: Span = Span::new(FileId::synthetic_named(FILE_NAME), 11, 12);
 
 impl<T: FromValue + IntoValue> ExternalType for Set<T> {
     const CODE: &'static str = "struct Set<T> {\n    /* ... */\n}";

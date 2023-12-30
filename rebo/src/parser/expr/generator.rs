@@ -4,6 +4,7 @@ use petgraph::graph::{DiGraph, NodeIndex};
 use uuid::Uuid;
 use super::*;
 use std::mem;
+use diagnostic::FileId;
 use log::Level;
 use petgraph::{Direction, visit::EdgeRef};
 use rebo::common::expr_gen::{ExprBlockBuilder, ExprBuilder, ExprImplBlockBuilder, ExprMatchPatternBuilder, ExprStructDefinitionBuilder};
@@ -110,8 +111,9 @@ impl<'a, 'i, 'p, 'm> GeneratorTransformator<'a, 'i, 'p, 'm> {
         function_body.insert_expr(1, impl_block_builder.build());
 
         // actually build everything
-        let generator_file_name = String::leak(format!("Generator_{}_{}_{}_{}.re", fun.sig.name.map(|i| i.ident).unwrap_or(""), fun_span.file, fun_span.start, fun_span.end));
-        let mut function_body = ExprBuilder::generate(function_body, self.parser.arena, self.parser.diagnostics, generator_file_name);
+        let generator_file_name = format!("Generator_{}_{}_{}_{}.re", fun.sig.name.map(|i| i.ident).unwrap_or(""), fun_span.file, fun_span.start, fun_span.end);
+        let generator_file_id = FileId::new_synthetic_numbered();
+        let mut function_body = ExprBuilder::generate(function_body, self.parser.arena, self.parser.diagnostics, generator_file_id, generator_file_name);
 
         // add stuff to meta_info
         let struct_def = match function_body.body.exprs[0] {
