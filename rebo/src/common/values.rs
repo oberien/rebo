@@ -13,7 +13,7 @@ use crate::Type;
 use itertools::Itertools;
 use crate::typeck::types::SpecificType;
 use std::collections::{BTreeMap, BTreeSet};
-use std::convert::TryInto;
+use std::convert::{Infallible, TryInto};
 use rt_format::{FormatArgument, Specifier};
 use rebo::common::FunctionValue::{Anonymous, Named};
 use rebo::vm::Scope;
@@ -746,30 +746,34 @@ impl Typed for () {
     const TYPE: SpecificType = SpecificType::Unit;
 }
 
-// For some cursed reason if we impl {From,Into}Value for ::never_say_never::Never, we get an error.
-// error[E0119]: conflicting implementations of trait `IntoValue` for type `list::List<_>`
-//    --> rebo/src/common/values.rs
-//     |
-// 727 | impl IntoValue for ::never_say_never::Never {
-//     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ conflicting implementation for `list::List<_>`
-//     |
-//    ::: rebo/src/stdlib/list.rs
-//     |
-// 44  | impl<T: IntoValue> IntoValue for List<T> {
-//     | ---------------------------------------- first implementation here
+// Never type represented by ::std::convert::Infallible.
 //
-// However, when we vendor the crate here and use it just here, it compiles.
-mod fn_traits {
-    pub trait FnOnce<Args> { type Output; }
-    impl<F, R> FnOnce<()> for F where F : ::core::ops::FnOnce() -> R { type Output = R; }
-}
-pub type Never = <fn() -> ! as fn_traits::FnOnce<()>>::Output;
-impl IntoValue for Never {
+// We can't use the never type `!` as it's feature gated behind `never_type` and we are using stable.
+// We can't use the never-say-never hack as that only allows for crate-local normalization, i.e.,
+// it is only a different type within a crate and acts as all types outside of the crate.
+// What that means is that you can't impl the trait `Foo` for both `never_say_never::Never` and `crate::Bar`.
+// You could vendor the never-say-never crate's code into your crate, which allows implementing
+// `Foo` for `crate::Never` and `crate::Bar`.
+// However, it doesn't allow anyone from a different crate to implement `Foo` for any of their types:
+// ```
+// error[E0119]: conflicting implementations of trait `Foo` for type `MyStruct`
+//  --> src/main.rs:2:1
+//   |
+// 2 | impl foo::Foo for MyStruct {}
+//   | ^^^^^^^^^^^^^^^^^^^^^^^^^^
+//   |
+//   = note: conflicting implementation in crate `foo`:
+//           - impl Foo for <fn() -> ! as foo::fn_traits::FnOnce<()>>::Output;
+//
+// For more information about this error, try `rustc --explain E0119`.
+// error: could not compile `bar` (bin "bar") due to 1 previous error
+// ```
+impl IntoValue for Infallible {
     fn into_value(self) -> Value {
         unreachable!("IntoValue::into_value called on Never type")
     }
 }
-impl FromValue for Never {
+impl FromValue for Infallible {
     fn from_value(_: Value) -> Self {
         unreachable!("FromValue::from_value called on Never type")
     }

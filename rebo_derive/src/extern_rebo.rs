@@ -72,7 +72,7 @@ fn generate_fn(fn_ident: &Ident, sig: &FunctionSignature) -> TokenStream2 {
     let ret_type = match &sig.output {
         ReturnType::Default => quote::quote_spanned!(sig.output.span()=> ()),
         ReturnType::Type(_arrow, typ) => match &**typ {
-            Type::Never(_) => quote::quote_spanned!(typ.span()=> ::rebo::Never),
+            Type::Never(_) => quote::quote_spanned!(typ.span()=> ::std::convert::Infallible),
             _ => quote::quote!(#typ),
         }
     };
@@ -99,7 +99,7 @@ fn generate_struct(vis: Visibility, fn_ident: Ident, sig: &FunctionSignature) ->
     let value_ret_type = match &sig.output {
         ReturnType::Default => quote::quote!(()),
         ReturnType::Type(_arrow, typ) => match &**typ {
-            Type::Never(_) => quote::quote_spanned!(typ.span()=> ::rebo::Never),
+            Type::Never(_) => quote::quote_spanned!(typ.span()=> ::std::convert::Infallible),
             _ => util::replace_generics_with_value(typ, &sig.generic_idents),
         }
     };

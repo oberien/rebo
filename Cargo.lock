@@ -345,12 +345,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "never-say-never"
-version = "6.6.666"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cf5a574dadd7941adeaa71823ecba5e28331b8313fb2e1c6a5c7e5981ea53ad6"
-
-[[package]]
 name = "num"
 version = "0.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -575,7 +569,6 @@ dependencies = [
  "lexical",
  "lexical-sort",
  "log",
- "never-say-never",
  "num",
  "parking_lot",
  "paste",
