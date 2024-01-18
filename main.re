@@ -1,23 +1,15 @@
-        gen fn foo() -> int {
-            // expr expr
-            yield 1 + 3;
-            // expr yield
-            yield 10 + { yield 50; 30 };
-            // yield expr
-            yield { yield 200; 100 } + 300;
-            // yield yield
-            yield { yield 2000; 1000 } + { yield 5000; 3000 };
-        }
-        let bar = foo();
-        assert_eq(bar.next(), Option::Some(4));
-        assert_eq(bar.next(), Option::Some(50));
-        assert_eq(bar.next(), Option::Some(40));
-        assert_eq(bar.next(), Option::Some(200));
-        assert_eq(bar.next(), Option::Some(400));
-        assert_eq(bar.next(), Option::Some(2000));
-        assert_eq(bar.next(), Option::Some(5000));
-        assert_eq(bar.next(), Option::Some(4000));
-        assert_eq(bar.next(), Option::None);
+gen fn foo() -> bool {
+    // return within generators must not have an expression
+    yield true;
+    return;
+    yield false;
+}
+let foo = foo();
+print(foo.next());
+print(foo.next());
+print(foo.next());
+print(foo.next());
+print(foo.next());
 
 // yield (1330 + {yield 42; 7})
 

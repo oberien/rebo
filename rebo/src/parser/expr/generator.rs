@@ -68,6 +68,12 @@ impl<'a, 'i, 'p, 'm> GeneratorTransformator<'a, 'i, 'p, 'm> {
         let body_open = fun.body.open.span;
         let body_close = fun.body.close.span;
 
+
+        let option_none = ExprBuilder::enum_initialization("Option", "None");
+        let return_none = ExprBuilder::return_(Some(option_none));
+        let fused_node = self.graph.add_node(Some(return_none));
+        assert_eq!(fused_node.index(), 0);
+
         let trafo_result = self.transform_block(&fun.body);
 
         let (start, end) = match trafo_result {
@@ -81,10 +87,7 @@ impl<'a, 'i, 'p, 'm> GeneratorTransformator<'a, 'i, 'p, 'm> {
             },
             TrafoResult::Yielded(start, end) => (start, end),
         };
-        let option_none = ExprBuilder::enum_initialization("Option", "None");
-        let return_none = ExprBuilder::return_(Some(option_none));
-        let node = self.graph.add_node(Some(return_none));
-        self.graph.add_edge(end, node, Edge::Pattern(self.get_match_pattern_into_node(node)));
+        self.graph.add_edge(end, fused_node, Edge::Pattern(self.get_match_pattern_into_node(fused_node)));
 
         // graph is finished
 
@@ -161,9 +164,9 @@ impl<'a, 'i, 'p, 'm> GeneratorTransformator<'a, 'i, 'p, 'm> {
 
     // actual transformation functions
 
-    fn transform_expr(&mut self, expr: &'a Expr<'a, 'i>) -> TrafoResult<'a, 'i> {
-        match expr {
-            lit @ Expr::Literal(_) => TrafoResult::Expr(lit),
+    fn transform_expr(&mut self, expr_outer: &'a Expr<'a, 'i>) -> TrafoResult<'a, 'i> {
+        match expr_outer {
+            Expr::Literal(_) => TrafoResult::Expr(expr_outer),
             Expr::FormatString(_) => todo!(),
             Expr::Bind(_) => todo!(),
             Expr::Static(_) => todo!(),
@@ -284,7 +287,24 @@ impl<'a, 'i, 'p, 'm> GeneratorTransformator<'a, 'i, 'p, 'm> {
             Expr::Loop(_) => todo!(),
             Expr::Break(_) => todo!(),
             Expr::Continue(_) => todo!(),
-            Expr::Return(_) => todo!(),
+            &Expr::Return(ExprReturn { return_token, ref expr }) => {
+                if let Some(expr) = expr {
+                    self.parser.diagnostics.error(ErrorCode::GeneratorReturnExpression)
+                        .with_error_label(expr.span(), "returns within generators must not have an expression")
+                        .emit();
+                    // don't transform the expression as it'll result in hard to understand type error
+                }
+                // will still be a fused generator as the state is never changed -> we always get
+                // back to this `return Option::None` state
+                TrafoResult::Expr(self.parser.arena.alloc(Expr::Return(ExprReturn {
+                    return_token: TokenReturn { span: return_token.span },
+                    expr: Some(self.parser.arena.alloc(Expr::EnumInitialization(ExprEnumInitialization {
+                        enum_name: TokenIdent { span: return_token.span, ident: "Option" },
+                        double_colon: TokenDoubleColon { span: return_token.span },
+                        variant_name: TokenIdent { span: return_token.span, ident: "None" },
+                    }))),
+                })))
+            },
             Expr::Yield(ExprYield { expr, .. }) => {
                 let node = self.empty_node();
                 let (return_value_expr, inner_start_end) = match expr {
@@ -377,11 +397,14 @@ impl<'a, 'i, 'p, 'm> GeneratorTransformator<'a, 'i, 'p, 'm> {
     }
     fn transform_block(&mut self, block: &ExprBlock<'a, 'i>) -> TrafoResult<'a, 'i> {
         let mut mapped_block = ExprBuilder::block();
+        // used if no yield was encountered as body of the returned block
+        let mut transformed_exprs = Vec::new();
         let mut orig_exprs = block.body.exprs.iter().peekable();
         let mut current_start_end = None;
         while let Some(next) = orig_exprs.next() {
             let (start, end) = match self.transform_expr(next) {
                 TrafoResult::Expr(e) => {
+                    transformed_exprs.push(e);
                     mapped_block.push_expr(ExprBuilder::from_expr(e));
                     continue
                 },
@@ -426,7 +449,11 @@ impl<'a, 'i, 'p, 'm> GeneratorTransformator<'a, 'i, 'p, 'm> {
             };
             TrafoResult::Yielded(start, new_end)
         } else {
-            TrafoResult::Expr(self.parser.arena.alloc(Expr::Block(block.clone())))
+            TrafoResult::Expr(self.parser.arena.alloc(Expr::Block(ExprBlock {
+                open: block.open,
+                body: BlockBody { exprs: transformed_exprs, terminated_with_semicolon: block.body.terminated_with_semicolon },
+                close: block.close,
+            })))
         }
     }
 

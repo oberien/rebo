@@ -431,6 +431,9 @@ impl<'i> ExprBuilderBinding<'i> {
     pub fn name(&self) -> &'i str {
         self.inner.borrow().name
     }
+    pub fn mutable(&self) -> bool {
+        self.inner.borrow().mutable
+    }
     fn build<'a>(&self, gen: &ExprGen<'a, 'i>) -> Binding<'i> {
         let (needs_def_span, needs_mut_span) = {
             let inner = self.inner.borrow();

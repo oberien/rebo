@@ -79,6 +79,7 @@ pub enum ErrorCode {
     NamedFunctionCapture,
     ClosureCapturesMutablePrimitive,
     YieldOutsideOfGenerator,
+    GeneratorReturnExpression,
 
     Panic,
     AssertionFailed,
@@ -170,6 +171,7 @@ impl diagnostic::ErrorCode for ErrorCode {
             NamedFunctionCapture => "0078",
             ClosureCapturesMutablePrimitive => "0079",
             YieldOutsideOfGenerator => "0080",
+            GeneratorReturnExpression => "0081",
 
             Panic => "9999",
             AssertionFailed => "9998",
@@ -260,6 +262,7 @@ impl diagnostic::ErrorCode for ErrorCode {
             NamedFunctionCapture => "named function cannot capture binding",
             ClosureCapturesMutablePrimitive => "closure captures mutable primitive",
             YieldOutsideOfGenerator => "yield used outside of generator",
+            GeneratorReturnExpression => "return inside generators must not have an expression",
 
             Panic => "explicit panic",
             AssertionFailed => "assertion failed",

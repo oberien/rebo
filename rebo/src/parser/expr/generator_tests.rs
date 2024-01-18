@@ -1,3 +1,5 @@
+use diagnostic::Emitted;
+use rebo::error_codes::ErrorCode;
 use crate::{ReturnValue, Value};
 pub use crate::tests::test;
 
@@ -180,4 +182,45 @@ fn generator_greater_equals() {
 #[test]
 fn generator_greater_than() {
     test_compare_binop(">", |a, b| a > b);
+}
+
+#[test]
+fn generator_return() {
+    test(r#"
+        gen fn foo() -> int {
+            yield 42;
+            yield 1337;
+            return;
+            yield 69;
+        }
+        let bar = foo();
+        assert_eq(bar.next(), Option::Some(42));
+        assert_eq(bar.next(), Option::Some(1337));
+        assert_eq(bar.next(), Option::None);
+        assert_eq(bar.next(), Option::None);
+        assert_eq(bar.next(), Option::None);
+    "#, ReturnValue::Ok(Value::Unit));
+}
+#[test]
+fn generator_return_expr() {
+    test(r#"
+        gen fn foo() -> bool {
+            // return within generators must not have an expression
+            return 5;
+        }
+    "#, ReturnValue::Diagnostics(vec![Emitted::Error(ErrorCode::GeneratorReturnExpression)]));
+
+    test(r#"
+        gen fn foo() -> bool {
+            // return within generators must not have an expression
+            yield true;
+            return;
+            yield false;
+        }
+        let bar = foo();
+        assert_eq(bar.next(), Option::Some(true));
+        assert_eq(bar.next(), Option::None);
+        assert_eq(bar.next(), Option::None);
+        assert_eq(bar.next(), Option::None);
+    "#, ReturnValue::Ok(Value::Unit));
 }
