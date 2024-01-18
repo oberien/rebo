@@ -172,28 +172,16 @@ impl<'a, 'i, 'p, 'm> GeneratorTransformator<'a, 'i, 'p, 'm> {
             Expr::Static(_) => todo!(),
             Expr::Assign(_) => todo!(),
             // unops
-            &Expr::BoolNot(ExprBoolNot { bang, expr }) => match self.transform_expr(expr) {
-                TrafoResult::Expr(expr) => TrafoResult::Expr(self.parser.arena.alloc(Expr::BoolNot(ExprBoolNot { bang, expr }))),
-                TrafoResult::Yielded(start, end) => {
-                    let node = self.empty_node();
-                    let inner_expr = self.gen_access_self_field_for_binding(self.get_match_binding_into_node(node).id());
-                    let expr = ExprBuilder::bool_not(inner_expr);
-                    self.graph[node] = Some(expr);
-                    self.graph.add_edge(end, node, Edge::Pattern(self.get_match_pattern_into_node(node)));
-                    TrafoResult::Yielded(start, node)
-                }
-            },
-            Expr::Neg(_) => todo!(),
-            // &Expr::Neg(ExprNeg { minus, expr }) => match self.transform_expr(expr) {
-            //     TrafoResult::Expr(expr) => TrafoResult::Expr(self.parser.arena.alloc(Expr::Neg(ExprNeg { minus, expr }))),
-            //     TrafoResult::Yielded(start, end) => {
-            //         let node = self.empty_node();
-            //         let expr = &*self.parser.arena.alloc(Expr::Neg(ExprNeg {
-            //             minus: TokenMinus { span: self.next_fake_span("-") },
-            //             expr:
-            //         }))
-            //     }
-            // },
+            &Expr::BoolNot(ExprBoolNot { bang, expr }) => self.transform_unop(
+                expr,
+                |expr| Expr::BoolNot(ExprBoolNot { bang, expr }),
+                ExprBuilder::bool_not,
+            ),
+            &Expr::Neg(ExprNeg { minus, expr }) => self.transform_unop(
+                expr,
+                |expr| Expr::Neg(ExprNeg { minus, expr }),
+                ExprBuilder::neg,
+            ),
 
             // binops
             &Expr::Add(ExprAdd { a, op, b }) => self.transform_binop(
@@ -334,12 +322,30 @@ impl<'a, 'i, 'p, 'm> GeneratorTransformator<'a, 'i, 'p, 'm> {
                 TrafoResult::Yielded(start, dummy_node)
             },
             Expr::FunctionCall(_) => todo!(),
-            Expr::FunctionDefinition(_) => todo!(),
-            Expr::StructDefinition(_) => todo!(),
+            Expr::FunctionDefinition(_) => TrafoResult::Expr(expr_outer),
+            Expr::StructDefinition(_) => TrafoResult::Expr(expr_outer),
             Expr::StructInitialization(_) => todo!(),
-            Expr::EnumDefinition(_) => todo!(),
-            Expr::EnumInitialization(_) => todo!(),
-            Expr::ImplBlock(_) => todo!(),
+            Expr::EnumDefinition(_) => TrafoResult::Expr(expr_outer),
+            Expr::EnumInitialization(_) => TrafoResult::Expr(expr_outer),
+            Expr::ImplBlock(_) => TrafoResult::Expr(expr_outer),
+        }
+    }
+    fn transform_unop(
+        &mut self,
+        expr: &'a Expr<'a, 'i>,
+        make_expr: impl FnOnce(&'a Expr<'a, 'i>) -> Expr<'a, 'i>,
+        make_builder: impl FnOnce(ExprBuilder<'a, 'i>) -> ExprBuilder<'a, 'i>,
+    ) -> TrafoResult<'a, 'i> {
+        match self.transform_expr(expr) {
+            TrafoResult::Expr(expr) => TrafoResult::Expr(self.parser.arena.alloc(make_expr(expr))),
+            TrafoResult::Yielded(start, end) => {
+                let node = self.empty_node();
+                let inner_expr = self.gen_access_self_field_for_binding(self.get_match_binding_into_node(node).id());
+                let expr = make_builder(inner_expr);
+                self.graph[node] = Some(expr);
+                self.graph.add_edge(end, node, Edge::Pattern(self.get_match_pattern_into_node(node)));
+                TrafoResult::Yielded(start, node)
+            }
         }
     }
     fn transform_binop(

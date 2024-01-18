@@ -44,6 +44,21 @@ fn generator_bool_not() {
         assert_eq(foo.next(), Option::None);
     "#, ReturnValue::Ok(Value::Unit));
 }
+#[test]
+fn generator_neg() {
+    test(r#"
+        gen fn foo() -> int {
+           yield --{
+               yield -5;
+               10
+           }
+        }
+        let mut foo = foo();
+        assert_eq(foo.next(), Option::Some(-5));
+        assert_eq(foo.next(), Option::Some(10));
+        assert_eq(foo.next(), Option::None);
+    "#, ReturnValue::Ok(Value::Unit));
+}
 
 fn test_binop(sym: char, f: impl Fn(i64, i64) -> i64) {
     let a = f(1, 3);
