@@ -224,18 +224,18 @@ fn generator_return_expr() {
             return 5;
         }
     "#, ReturnValue::Diagnostics(vec![Emitted::Error(ErrorCode::GeneratorReturnExpression)]));
-
+}
+#[test]
+fn generator_parenthesized() {
     test(r#"
-        gen fn foo() -> bool {
-            // return within generators must not have an expression
-            yield true;
-            return;
-            yield false;
+        gen fn foo() -> int {
+            yield 42;
+            yield (1336 + { yield 21; 1 }) * 1;
         }
         let bar = foo();
-        assert_eq(bar.next(), Option::Some(true));
-        assert_eq(bar.next(), Option::None);
-        assert_eq(bar.next(), Option::None);
+        assert_eq(bar.next(), Option::Some(42));
+        assert_eq(bar.next(), Option::Some(21));
+        assert_eq(bar.next(), Option::Some(1337));
         assert_eq(bar.next(), Option::None);
     "#, ReturnValue::Ok(Value::Unit));
 }

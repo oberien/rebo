@@ -169,7 +169,7 @@ impl<'a, 'i, 'p, 'm> GeneratorTransformator<'a, 'i, 'p, 'm> {
             Expr::Literal(_) => TrafoResult::Expr(expr_outer),
             Expr::FormatString(_) => todo!(),
             Expr::Bind(_) => todo!(),
-            Expr::Static(_) => todo!(),
+            Expr::Static(_) => TrafoResult::Expr(expr_outer),
             Expr::Assign(_) => todo!(),
             // unops
             &Expr::BoolNot(ExprBoolNot { bang, expr }) => self.transform_unop(
@@ -267,7 +267,11 @@ impl<'a, 'i, 'p, 'm> GeneratorTransformator<'a, 'i, 'p, 'm> {
             Expr::Block(block) => self.transform_block(block),
             Expr::Variable(_) => todo!(),
             Expr::Access(_) => todo!(),
-            Expr::Parenthesized(_) => todo!(),
+            &Expr::Parenthesized(ExprParenthesized { open, expr, close }) => self.transform_unop(
+                expr,
+                |expr| Expr::Parenthesized(ExprParenthesized { open, expr, close }),
+                |expr| ExprBuilder::parenthesized(expr),
+            ),
             Expr::IfElse(_) => todo!(),
             Expr::Match(_) => todo!(),
             Expr::While(_) => todo!(),
@@ -575,7 +579,8 @@ impl<'a, 'i, 'p, 'm> GeneratorTransformator<'a, 'i, 'p, 'm> {
             // }
             // ```
             let node = self.graph[node_id].take().unwrap();
-            let mut inner_match = ExprBuilder::match_(node);
+            let scrutinee = ExprBuilder::block().expr(node).without_terminating_semicolon().build();
+            let mut inner_match = ExprBuilder::match_(scrutinee);
             for edge in self.graph.edges_directed(node_id, Direction::Outgoing) {
                 let pattern = match edge.weight() {
                     Edge::Pattern(pattern) => pattern,

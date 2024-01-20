@@ -256,7 +256,13 @@ impl<'a, 'i> ExprBuilder<'a, 'i> {
     pub fn access(binding: impl Into<ExprBuilderBinding<'i>>) -> ExprAccessBuilder<'a, 'i> {
         ExprAccessBuilder { binding: binding.into(), accesses: Vec::new() }
     }
-    // Parenthesized(ExprParenthesized<'a, 'i>),
+    pub fn parenthesized(expr: ExprBuilder<'a, 'i>) -> ExprBuilder<'a, 'i> {
+        Self::make(move |gen| ExprParenthesized {
+            open: TokenOpenParen { span: gen.next_fake_span("(") },
+            expr: expr.build_expr(gen),
+            close: TokenCloseParen { span: gen.next_fake_span(") ") },
+        })
+    }
     // IfElse(ExprIfElse<'a, 'i>),
     pub fn match_(expr: ExprBuilder<'a, 'i>) -> ExprMatchBuilder<'a, 'i> {
         ExprMatchBuilder { expr, arms: Vec::new() }
