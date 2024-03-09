@@ -172,56 +172,56 @@ impl<'a, 'i, 'p, 'm> GeneratorTransformator<'a, 'i, 'p, 'm> {
             Expr::Static(_) => TrafoResult::Expr(expr_outer),
             Expr::Assign(_) => todo!(),
             // unops
-            &Expr::BoolNot(ExprBoolNot { bang, expr }) => self.transform_unop(
+            &Expr::BoolNot(ExprBoolNot { bang, expr, span }) => self.transform_unop(
                 expr,
-                |expr| Expr::BoolNot(ExprBoolNot { bang, expr }),
+                |expr| Expr::BoolNot(ExprBoolNot { bang, expr, span }),
                 ExprBuilder::bool_not,
             ),
-            &Expr::Neg(ExprNeg { minus, expr }) => self.transform_unop(
+            &Expr::Neg(ExprNeg { minus, expr, span }) => self.transform_unop(
                 expr,
-                |expr| Expr::Neg(ExprNeg { minus, expr }),
+                |expr| Expr::Neg(ExprNeg { minus, expr, span }),
                 ExprBuilder::neg,
             ),
 
             // binops
-            &Expr::Add(ExprAdd { a, op, b }) => self.transform_binop(
+            &Expr::Add(ExprAdd { a, op, b, span }) => self.transform_binop(
                 a, b,
-                |a, b| Expr::Add(ExprAdd { a, op, b }),
+                |a, b| Expr::Add(ExprAdd { a, op, b, span }),
                 ExprBuilder::add,
             ),
-            &Expr::Sub(ExprSub { a, op, b }) => self.transform_binop(
+            &Expr::Sub(ExprSub { a, op, b, span }) => self.transform_binop(
                 a, b,
-                |a, b| Expr::Sub(ExprSub { a, op, b }),
+                |a, b| Expr::Sub(ExprSub { a, op, b, span }),
                 ExprBuilder::sub,
             ),
-            &Expr::Mul(ExprMul { a, op, b }) => self.transform_binop(
+            &Expr::Mul(ExprMul { a, op, b, span }) => self.transform_binop(
                 a, b,
-                |a, b| Expr::Mul(ExprMul { a, op, b }),
+                |a, b| Expr::Mul(ExprMul { a, op, b, span }),
                 ExprBuilder::mul,
             ),
-            &Expr::Div(ExprDiv { a, op, b }) => self.transform_binop(
+            &Expr::Div(ExprDiv { a, op, b, span }) => self.transform_binop(
                 a, b,
-                |a, b| Expr::Div(ExprDiv { a, op, b }),
+                |a, b| Expr::Div(ExprDiv { a, op, b, span }),
                 ExprBuilder::div,
             ),
-            &Expr::Mod(ExprMod { a, op, b }) => self.transform_binop(
+            &Expr::Mod(ExprMod { a, op, b, span }) => self.transform_binop(
                 a, b,
-                |a, b| Expr::Mod(ExprMod { a, op, b }),
+                |a, b| Expr::Mod(ExprMod { a, op, b, span }),
                 ExprBuilder::mod_,
             ),
-            &Expr::Xor(ExprXor { a, op, b }) => self.transform_binop(
+            &Expr::Xor(ExprXor { a, op, b, span }) => self.transform_binop(
                 a, b,
-                |a, b| Expr::Xor(ExprXor { a, op, b }),
+                |a, b| Expr::Xor(ExprXor { a, op, b, span }),
                 ExprBuilder::xor,
             ),
-            &Expr::BoolAnd(ExprBoolAnd { a, op, b }) => self.transform_binop(
+            &Expr::BoolAnd(ExprBoolAnd { a, op, b, span }) => self.transform_binop(
                 a, b,
-                |a, b| Expr::BoolAnd(ExprBoolAnd { a, op, b }),
+                |a, b| Expr::BoolAnd(ExprBoolAnd { a, op, b, span }),
                 ExprBuilder::bool_and,
             ),
-            &Expr::BoolOr(ExprBoolOr { a, op, b }) => self.transform_binop(
+            &Expr::BoolOr(ExprBoolOr { a, op, b, span }) => self.transform_binop(
                 a, b,
-                |a, b| Expr::BoolOr(ExprBoolOr { a, op, b }),
+                |a, b| Expr::BoolOr(ExprBoolOr { a, op, b, span }),
                 ExprBuilder::bool_or,
             ),
             // binop-assign
@@ -234,34 +234,34 @@ impl<'a, 'i, 'p, 'm> GeneratorTransformator<'a, 'i, 'p, 'm> {
             Expr::BoolAndAssign(_) => todo!(),
             Expr::BoolOrAssign(_) => todo!(),
             // comparison ops
-            &Expr::LessThan(ExprLessThan { a, op, b }) => self.transform_binop(
+            &Expr::LessThan(ExprLessThan { a, op, b, span }) => self.transform_binop(
                 a, b,
-                |a, b| Expr::LessThan(ExprLessThan { a, op, b }),
+                |a, b| Expr::LessThan(ExprLessThan { a, op, b, span }),
                 ExprBuilder::less_than,
             ),
-            &Expr::LessEquals(ExprLessEquals { a, op, b }) => self.transform_binop(
+            &Expr::LessEquals(ExprLessEquals { a, op, b, span }) => self.transform_binop(
                 a, b,
-                |a, b| Expr::LessEquals(ExprLessEquals { a, op, b }),
+                |a, b| Expr::LessEquals(ExprLessEquals { a, op, b, span }),
                 ExprBuilder::less_equals,
             ),
-            &Expr::Equals(ExprEquals { a, op, b }) => self.transform_binop(
+            &Expr::Equals(ExprEquals { a, op, b, span }) => self.transform_binop(
                 a, b,
-                |a, b| Expr::Equals(ExprEquals { a, op, b }),
+                |a, b| Expr::Equals(ExprEquals { a, op, b, span }),
                 ExprBuilder::equals,
             ),
-            &Expr::NotEquals(ExprNotEquals { a, op, b }) => self.transform_binop(
+            &Expr::NotEquals(ExprNotEquals { a, op, b, span }) => self.transform_binop(
                 a, b,
-                |a, b| Expr::NotEquals(ExprNotEquals { a, op, b }),
+                |a, b| Expr::NotEquals(ExprNotEquals { a, op, b, span }),
                 ExprBuilder::not_equals,
             ),
-            &Expr::GreaterEquals(ExprGreaterEquals { a, op, b }) => self.transform_binop(
+            &Expr::GreaterEquals(ExprGreaterEquals { a, op, b, span }) => self.transform_binop(
                 a, b,
-                |a, b| Expr::GreaterEquals(ExprGreaterEquals { a, op, b }),
+                |a, b| Expr::GreaterEquals(ExprGreaterEquals { a, op, b, span }),
                 ExprBuilder::greater_equals,
             ),
-            &Expr::GreaterThan(ExprGreaterThan { a, op, b }) => self.transform_binop(
+            &Expr::GreaterThan(ExprGreaterThan { a, op, b, span }) => self.transform_binop(
                 a, b,
-                |a, b| Expr::GreaterThan(ExprGreaterThan { a, op, b }),
+                |a, b| Expr::GreaterThan(ExprGreaterThan { a, op, b, span }),
                 ExprBuilder::greater_than,
             ),
             Expr::Block(block) => self.transform_block(block),

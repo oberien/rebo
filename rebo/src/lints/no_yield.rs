@@ -1,7 +1,8 @@
 use crate::lints::visitor::Visitor;
-use crate::parser::{ExprYield, Spanned};
+use crate::parser::ExprYield;
 use diagnostic::Diagnostics;
-use crate::common::{MetaInfo, BlockStack};
+use crate::common::{BlockStack, MetaInfo};
+use crate::common::Spanned;
 use crate::error_codes::ErrorCode;
 
 pub struct ImplBlockLints;
@@ -13,7 +14,7 @@ impl Visitor for ImplBlockLints {
         // Any ExprYield we encounter here is outside of a generator and thus wrong.
 
         diagnostics.error(ErrorCode::YieldOutsideOfGenerator)
-            .with_error_label(expr.span(), "yield may only be used within a generator")
+            .with_error_label(expr.span_(), "yield may only be used within a generator")
             .emit();
     }
 }

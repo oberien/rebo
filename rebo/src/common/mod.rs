@@ -1,18 +1,18 @@
-use std::borrow::Cow;
+use std::borrow::{Borrow, Cow};
 use std::fmt::{self, Display, Formatter};
 use std::path::PathBuf;
 
 use diagnostic::{Diagnostics, Span};
-use indexmap::map::{IndexMap, Entry};
+use indexmap::map::{Entry, IndexMap};
 use indexmap::set::IndexSet;
 use typed_arena::Arena;
 
-pub use values::{Typed, FromValue, Function, ExternalFunction, RequiredReboFunction, RequiredReboFunctionStruct, ExternalType, ExternalTypeType, FuzzyFloat, IntoValue, Struct, StructArc, Enum, EnumArc, Value, FunctionValue, ListArc, MapArc, DisplayValue, DebugValue, OctalValue, LowerHexValue, UpperHexValue, BinaryValue, LowerExpValue, UpperExpValue, SetArc, DeepCopy};
+pub use values::{BinaryValue, DebugValue, DeepCopy, DisplayValue, Enum, EnumArc, ExternalFunction, ExternalType, ExternalTypeType, FromValue, Function, FunctionValue, FuzzyFloat, IntoValue, ListArc, LowerExpValue, LowerHexValue, MapArc, OctalValue, RequiredReboFunction, RequiredReboFunctionStruct, SetArc, Struct, StructArc, Typed, UpperExpValue, UpperHexValue, Value};
 
 use crate::error_codes::ErrorCode;
-use crate::{FileId, SpecificType, IncludeDirectory};
+use crate::{FileId, IncludeDirectory, SpecificType};
 use crate::lexer::{Lexer, TokenIdent};
-use crate::parser::{ExprEnumDefinition, ExprFunctionDefinition, ExprPatternTyped, ExprPatternUntyped, ExprStructDefinition, Spanned, ExprGenerics, ExprStatic, ExprPattern, Expr, Parser, Binding, ExprFunctionSignature, Parse, BindingId, ExprLabel};
+use crate::parser::{Binding, BindingId, Expr, ExprEnumDefinition, ExprFunctionDefinition, ExprFunctionSignature, ExprGenerics, ExprLabel, ExprPattern, ExprPatternTyped, ExprPatternUntyped, ExprStatic, ExprStructDefinition, Parse, Parser};
 use crate::typeck::types::{EnumType, FunctionType, StructType, Type};
 use crate::typeck::TypeVar;
 use std::rc::Rc;
@@ -23,6 +23,8 @@ use rebo::parser::ScopeType;
 
 mod values;
 pub mod expr_gen;
+mod spanned;
+pub use spanned::*;
 
 #[derive(Debug)]
 pub enum UserType<'a, 'i> {
@@ -32,20 +34,26 @@ pub enum UserType<'a, 'i> {
 impl<'a, 'i> UserType<'a, 'i> {
     pub fn span(&self) -> Span {
         match self {
-            UserType::Struct(s) => s.span(),
-            UserType::Enum(e) => e.span(),
+            UserType::Struct(s) => s.span_(),
+            UserType::Enum(e) => e.span_(),
+        }
+    }
+    pub fn span_id(&self) -> SpanId {
+        match self {
+            UserType::Struct(s) => s.span_id(),
+            UserType::Enum(e) => e.span_id(),
         }
     }
     pub fn variant_initializer_span(&self, variant_name: &str) -> Option<Span> {
         match self {
             UserType::Enum(enum_def) => enum_def.variants.iter()
                 .filter(|variant| variant.name.ident == variant_name)
-                .map(|variant| variant.name.span())
+                .map(|variant| variant.name.span_())
                 .next(),
             _ => None,
         }
     }
-    pub fn name_span(&self) -> Span {
+    pub fn name_span(&self) -> SpanWithId {
         match self {
             UserType::Struct(s) => s.name.span,
             UserType::Enum(e) => e.name.span,
@@ -189,14 +197,14 @@ impl<'a, 'i> MetaInfo<'a, 'i> {
         match name {
             Some(name) => {
                 let function = Function::Rebo(name.to_string(), arg_binding_ids);
-                if self.check_existing_function(diagnostics, &name, fun.sig.name.as_ref().unwrap().span) {
+                if self.check_existing_function(diagnostics, &name, fun.sig.name.as_ref().unwrap().span_()) {
                     return;
                 }
                 self.functions.insert(name.clone(), function);
                 self.rebo_functions.insert(name, fun);
             }
             None => {
-                self.anonymous_rebo_functions.insert(fun.span(), (arg_binding_ids, fun));
+                self.anonymous_rebo_functions.insert(fun.span_(), (arg_binding_ids, fun));
             }
         }
     }

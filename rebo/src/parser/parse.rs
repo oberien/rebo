@@ -1,4 +1,4 @@
-use crate::parser::{InternalError, Parser, Expr};
+use crate::parser::{Expr, InternalError, Parser};
 use std::fmt::{self, Display, Formatter};
 use std::iter::FromIterator;
 use crate::lexer::*;
@@ -6,6 +6,7 @@ use diagnostic::Span;
 use std::marker::PhantomData;
 use crate::common::Depth;
 use regex::Regex;
+use crate::common::Spanned;
 use crate::parser::scope::ScopeType;
 
 // make trace! here log as if this still was the parser module
@@ -63,15 +64,6 @@ impl<'a, 'i, T: Parse<'a, 'i>> Parse<'a, 'i> for Vec<T> {
 impl<'a, 'i, T: Parse<'a, 'i>> Parse<'a, 'i> for Box<T> {
     fn parse_marked(parser: &mut Parser<'a, '_, 'i>, depth: Depth) -> Result<Self, InternalError> {
         Ok(Box::new(parser.parse(depth)?))
-    }
-}
-
-pub trait Spanned {
-    fn span(&self) -> Span;
-}
-impl<'a, T: Spanned> Spanned for &'a T {
-    fn span(&self) -> Span {
-        <T as Spanned>::span(self)
     }
 }
 
@@ -177,9 +169,9 @@ impl<'a, 'i, T: Spanned + 'a, D: 'a> Separated<'a, 'i, T, D> {
         let first = self.iter().next();
         let last = self.last.as_ref().or_else(|| self.inner.iter().last().map(|(t, _d)| t));
         match (first, last) {
-            (Some(first), None) => Some(first.span()),
-            (None, Some(last)) => Some(last.span()),
-            (Some(first), Some(last)) => Some(Span::new(first.span().file, first.span().start, last.span().end)),
+            (Some(first), None) => Some(first.span_()),
+            (None, Some(last)) => Some(last.span_()),
+            (Some(first), Some(last)) => Some(Span::new(first.span_().file, first.span_().start, last.span_().end)),
             (None, None) => None,
         }
     }
@@ -235,7 +227,7 @@ impl<'a, 'i, T: Display, D: Display> Display for Separated<'a, 'i, T, D> {
     }
 }
 
-macro_rules! impl_for_tuples {
+macro_rules! impl_parse_for_tuples {
     ($last:ident $(,$name:ident)*) => {
         impl<'a, 'i, $($name: Parse<'a, 'i>,)* $last: Parse<'a, 'i>> Parse<'a, 'i> for ($($name,)* $last,) {
             fn parse_marked(parser: &mut Parser<'a, '_, 'i>, depth: Depth) -> Result<Self, InternalError> {
@@ -244,15 +236,15 @@ macro_rules! impl_for_tuples {
         }
     }
 }
-impl_for_tuples!(A);
-impl_for_tuples!(A, B);
-impl_for_tuples!(A, B, C);
-impl_for_tuples!(A, B, C, D);
-impl_for_tuples!(A, B, C, D, E);
-impl_for_tuples!(A, B, C, D, E, F);
+impl_parse_for_tuples!(A);
+impl_parse_for_tuples!(A, B);
+impl_parse_for_tuples!(A, B, C);
+impl_parse_for_tuples!(A, B, C, D);
+impl_parse_for_tuples!(A, B, C, D, E);
+impl_parse_for_tuples!(A, B, C, D, E, F);
 
 
-macro_rules! impl_for_tokens {
+macro_rules! impl_parse_for_tokens {
     ($($name:ident$(<$lt:lifetime>)?, $tokenname:ident;)+) => {
         $(
             impl<'a, 'i> crate::parser::Parse<'a, 'i> for $tokenname $(<$lt>)? {
@@ -269,16 +261,11 @@ macro_rules! impl_for_tokens {
                     }
                 }
             }
-            impl $(<$lt>)? Spanned for $tokenname $(<$lt>)? {
-                fn span(&self) -> Span {
-                    self.span
-                }
-            }
         )+
     }
 }
 
-impl_for_tokens! {
+impl_parse_for_tokens! {
     // primitives
     Ident<'i>, TokenIdent;
     DqString, TokenDqString;

@@ -1,7 +1,8 @@
 use crate::lints::visitor::Visitor;
 use diagnostic::Diagnostics;
-use crate::common::{MetaInfo, BlockStack};
-use crate::parser::{ExprStructDefinition, ExprType, Spanned};
+use crate::common::{BlockStack, MetaInfo};
+use crate::common::Spanned;
+use crate::parser::{ExprStructDefinition, ExprType, ExprTypeUserType};
 use crate::error_codes::ErrorCode;
 
 pub struct UnknownStructFieldType;
@@ -11,12 +12,12 @@ impl Visitor for UnknownStructFieldType {
         let ExprStructDefinition { fields, .. } = def;
 
         for (field, _colon, typ) in fields {
-            if let ExprType::UserType(s, _generics) = typ {
-                if meta_info.user_types.get(s.ident).is_none() {
+            if let ExprType::UserType(ExprTypeUserType { name, .. }) = typ {
+                if meta_info.user_types.get(name.ident).is_none() {
                     let mut diag = diagnostics.error(ErrorCode::UnknownStructFieldType)
-                        .with_error_label(typ.span(), format!("unknown type `{}` of field `{}`", s.ident, field.ident));
-                    if let Some(similar) = crate::util::similar_name(s.ident, meta_info.user_types.keys().copied()) {
-                        diag = diag.with_info_label(typ.span(), format!("did you mean `{}`", similar));
+                        .with_error_label(typ.span_(), format!("unknown type `{}` of field `{}`", name.ident, field.ident));
+                    if let Some(similar) = crate::util::similar_name(name.ident, meta_info.user_types.keys().copied()) {
+                        diag = diag.with_info_label(typ.span_(), format!("did you mean `{}`", similar));
                     }
                     diag.emit();
                 }

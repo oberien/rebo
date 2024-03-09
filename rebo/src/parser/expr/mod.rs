@@ -3,21 +3,21 @@ mod helper;
 mod generator;
 #[cfg(test)]
 mod generator_tests;
-pub use pattern::{ExprPattern, ExprPatternTyped, ExprPatternUntyped, ExprMatchPattern, ExprMatchPatternVariant};
+pub use pattern::{ExprMatchPattern, ExprMatchPatternVariant, ExprPattern, ExprPatternTyped, ExprPatternUntyped};
 
-use std::fmt::{self, Write, Display, Formatter, Debug};
+use std::fmt::{self, Debug, Display, Formatter, Write};
 use derive_more::Display;
 use crate::parser::scope::{BindingId, ScopeType};
 use crate::util::PadFmt;
-use crate::lexer::{TokenOpenParen, TokenCloseParen, TokenIdent, TokenInteger, TokenFloat, TokenBool, TokenDqString, TokenType, TokenStringType, TokenIntType, TokenFloatType, TokenBoolType, Token, TokenLet, TokenColon, TokenMut, TokenAssign, TokenOpenCurly, TokenCloseCurly, TokenComma, TokenArrow, TokenFn, TokenGen, TokenBang, TokenPlus, TokenMinus, TokenStar, TokenSlash, TokenPercent, TokenCircumflex, TokenDoubleAmp, TokenDoublePipe, TokenLessThan, TokenLessEquals, TokenEquals, TokenNotEquals, TokenGreaterEquals, TokenGreaterThan, TokenStruct, TokenDot, TokenIf, TokenElse, TokenWhile, TokenFormatString, TokenFormatStringPart, Lexer, TokenMatch, TokenFatArrow, TokenEnum, TokenDoubleColon, TokenImpl, TokenFor, TokenIn, TokenStatic, TokenInclude, TokenDotDotDot, TokenPipe, TokenAmp, TokenApostrophe, TokenLoop, TokenBreak, TokenContinue, TokenReturn, TokenYield, LexerMode};
-use crate::parser::{Parse, InternalError, Parser, Expected, Backtrack};
+use crate::lexer::{Lexer, LexerMode, Token, TokenAmp, TokenApostrophe, TokenArrow, TokenAssign, TokenBang, TokenBool, TokenBoolType, TokenBreak, TokenCircumflex, TokenCloseCurly, TokenCloseParen, TokenColon, TokenComma, TokenContinue, TokenDot, TokenDotDotDot, TokenDoubleAmp, TokenDoubleColon, TokenDoublePipe, TokenDqString, TokenElse, TokenEnum, TokenEquals, TokenFatArrow, TokenFloat, TokenFloatType, TokenFn, TokenFor, TokenFormatString, TokenFormatStringPart, TokenGen, TokenGreaterEquals, TokenGreaterThan, TokenIdent, TokenIf, TokenImpl, TokenIn, TokenInclude, TokenInteger, TokenIntType, TokenLessEquals, TokenLessThan, TokenLet, TokenLoop, TokenMatch, TokenMinus, TokenMut, TokenNotEquals, TokenOpenCurly, TokenOpenParen, TokenPercent, TokenPipe, TokenPlus, TokenReturn, TokenSlash, TokenStar, TokenStatic, TokenStringType, TokenStruct, TokenType, TokenWhile, TokenYield};
+use crate::parser::{Backtrack, Expected, InternalError, Parse, Parser};
 use crate::error_codes::ErrorCode;
 use std::borrow::Cow;
-use crate::parser::parse::{Separated, Spanned, Scoped};
+use crate::parser::parse::{Scoped, Separated};
 use crate::parser::precedence::{BooleanExpr, Math};
 use diagnostic::Span;
-use itertools::{Itertools, Either};
-use crate::common::{Depth, UserType};
+use itertools::{Either, Itertools};
+use crate::common::{Depth, Spanned, SpanWithId, UserType};
 use indexmap::set::IndexSet;
 use rt_format::{Format, Specifier};
 use crate::util;
@@ -39,6 +39,7 @@ pub struct Binding<'i> {
     /// If this is a rogue binding that was created by the parser when an error occurred.
     /// If there is a further error involving this binding, it shouldn't be emitted.
     pub rogue: bool,
+    pub span: SpanWithId,
 }
 impl<'i> Binding<'i> {
     /// Return the newly created binding
@@ -57,13 +58,13 @@ impl<'i> Binding<'i> {
         let ident: TokenIdent = parser.parse(depth.last())?;
         if !require_self && ident.ident == "self" {
             parser.diagnostics.error(ErrorCode::SelfBinding)
-                .with_error_label(ident.span, "using `self` as variable is not allowed here")
+                .with_error_label(ident.span.span(), "using `self` as variable is not allowed here")
                 .with_note("note: `self` is only allowed as first parameter of methods")
                 .emit();
         }
         if require_self && ident.ident != "self" {
             return Err(InternalError::Backtrack(Backtrack {
-                span: ident.span,
+                span: ident.span.span(),
                 expected: Cow::Borrowed( & [Expected::Token(TokenType::Ident)]),
             }));
         }
@@ -73,7 +74,7 @@ impl<'i> Binding<'i> {
         Ok(binding)
     }
     /// Return the existing binding and the usage-span
-    fn parse_existing<'a>(parser: &mut Parser<'a, '_, 'i>, depth: Depth) -> Result<(Binding<'i>, Span), InternalError> {
+    fn parse_existing<'a>(parser: &mut Parser<'a, '_, 'i>, depth: Depth) -> Result<(Binding<'i>, SpanWithId), InternalError> {
         trace!("{} Binding::parse_existing        ({:?})", depth, parser.peek_token(0));
         let ident = match (parser.peek_token(0)?, parser.peek_token(1), parser.peek_token(2)) {
             (
@@ -84,7 +85,7 @@ impl<'i> Binding<'i> {
                 drop(parser.next_token().unwrap());
                 TokenIdent {
                     ident: t.typ().as_str(),
-                    span: t.span(),
+                    span: t.span_with_id(),
                 }
             },
             _ => parser.parse(depth.last())?,
@@ -94,26 +95,25 @@ impl<'i> Binding<'i> {
         let ident = match rest {
             None => ident,
             Some((_colon, rest)) => {
-                let span = Span::new(ident.span.file, ident.span.start, rest.span.end);
+                let span = ident.span | rest.span;
                 TokenIdent {
                     span,
-                    ident: parser.diagnostics.resolve_span(span),
+                    ident: parser.diagnostics.resolve_span(span.span()),
                 }
             }
         };
         let binding = match parser.get_binding(ident.ident) {
             Some(binding) => binding,
-            None if ident.ident.contains("::") => parser.add_rogue_binding(ident, Some(TokenMut { span: ident.span })),
-            None => parser.diagnostic_unknown_identifier(ident, |d| d.with_info_label(ident.span, format!("use `let {} = ...` to create a new binding", ident))),
+            None if ident.ident.contains("::") => parser.add_rogue_binding(ident, Some(TokenMut { span: SpanWithId::from(ident.span.span()) })),
+            None => parser.diagnostic_unknown_identifier(ident, |d| d.with_info_label(ident.span.span(), format!("use `let {} = ...` to create a new binding", ident))),
         };
         trace!("{} got binding {}", depth, binding);
         Ok((binding, ident.span))
     }
 }
 impl<'i> Spanned for Binding<'i> {
-    fn span(&self) -> Span {
-        let start = self.mutable.map(|m| m.span).unwrap_or(self.ident.span);
-        Span::new(start.file, start.start, self.ident.span.end)
+    fn span_with_id(&self) -> SpanWithId {
+        self.span
     }
 }
 impl<'i> Display for Binding<'i> {
@@ -135,8 +135,8 @@ impl<'a, 'i> Parse<'a, 'i> for NewBinding<'i> {
     }
 }
 impl<'i> Spanned for NewBinding<'i> {
-    fn span(&self) -> Span {
-        self.b.span()
+    fn span_with_id(&self) -> SpanWithId {
+        self.b.span_with_id()
     }
 }
 impl<'i> Display for NewBinding<'i> {
@@ -158,8 +158,8 @@ impl<'a, 'i> Parse<'a, 'i> for SelfBinding<'i> {
     }
 }
 impl<'i> Spanned for SelfBinding<'i> {
-    fn span(&self) -> Span {
-        self.b.span()
+    fn span_with_id(&self) -> SpanWithId {
+        self.b.span_with_id()
     }
 }
 impl<'i> Display for SelfBinding<'i> {
@@ -193,8 +193,8 @@ impl<'i> Display for Generic<'i> {
     }
 }
 impl<'i> Spanned for Generic<'i> {
-    fn span(&self) -> Span {
-        self.ident.span()
+    fn span_with_id(&self) -> SpanWithId {
+        self.ident.span_with_id()
     }
 }
 struct NewGeneric<'i> {
@@ -211,8 +211,8 @@ impl<'a, 'i> Parse<'a, 'i> for NewGeneric<'i> {
     }
 }
 impl<'i> Spanned for NewGeneric<'i> {
-    fn span(&self) -> Span {
-        self.g.span()
+    fn span_with_id(&self) -> SpanWithId {
+        self.g.span_with_id()
     }
 }
 impl<'i> Display for NewGeneric<'i> {
@@ -260,19 +260,19 @@ impl<'a, 'i> Parse<'a, 'i> for ExprLiteral {
     }
 }
 impl Spanned for ExprLiteral {
-    fn span(&self) -> Span {
+    fn span_with_id(&self) -> SpanWithId {
         match self {
-            ExprLiteral::Unit(e) => e.span(),
-            ExprLiteral::Integer(e) => e.span(),
-            ExprLiteral::Float(e) => e.span(),
-            ExprLiteral::Bool(e) => e.span(),
-            ExprLiteral::String(e) => e.span(),
+            ExprLiteral::Unit(e) => e.span_with_id(),
+            ExprLiteral::Integer(e) => e.span_with_id(),
+            ExprLiteral::Float(e) => e.span_with_id(),
+            ExprLiteral::Bool(e) => e.span_with_id(),
+            ExprLiteral::String(e) => e.span_with_id(),
         }
     }
 }
 
 #[derive(Debug, Display, rebo_derive::Functions, derive_more::From)]
-#[function(fn span(&self) -> Span = expr => expr.span())]
+#[function(fn span_with_id(&self) -> SpanWithId = expr => expr.span_with_id())]
 #[allow(clippy::large_enum_variant)]
 pub enum Expr<'a, 'i> {
     Literal(ExprLiteral),
@@ -379,8 +379,8 @@ pub enum Expr<'a, 'i> {
     ImplBlock(ExprImplBlock<'a, 'i>),
 }
 impl<'a, 'i> Spanned for Expr<'a, 'i> {
-    fn span(&self) -> Span {
-        Expr::span(self)
+    fn span_with_id(&self) -> SpanWithId {
+        Expr::span_with_id(self)
     }
 }
 #[derive(Debug, Clone, Copy, PartialOrd, PartialEq)]
@@ -448,11 +448,12 @@ impl<'a, 'i> Expr<'a, 'i> {
                 // is called several more times when other expressions try to parse expressions.
                 // Instead, we return Unit to consume the tokens, as we did in fact parse the include correctly.
                 let err = Ok(&*parser.arena.alloc(Expr::Literal(ExprLiteral::Unit(ExprUnit {
-                    open: TokenOpenParen { span: Span::new(include.include_token.span.file, include.include_token.span.start, include.file.span.end) },
-                    close: TokenCloseParen { span: Span::new(include.file.span.file, include.file.span.end, include.file.span.end) },
+                    open: TokenOpenParen { span: include.include_token.span | include.file.span },
+                    close: TokenCloseParen { span: include.file.span.end_span() },
+                    span: include.include_token.span | include.file.span,
                 }))));
 
-                let file = match parser.meta_info.included_files.get(&include.span()) {
+                let file = match parser.meta_info.included_files.get(&include.span_()) {
                     Some(&file) => file,
                     None => return err,
                 };
@@ -465,9 +466,10 @@ impl<'a, 'i> Expr<'a, 'i> {
                     Err(_) => return err,
                 };
                 let block = &*parser.arena.alloc(Expr::Block(ExprBlock {
-                    open: TokenOpenCurly { span: Span::new(include.include_token.span.file, include.include_token.span.start, include.include_token.span.start) },
+                    open: TokenOpenCurly { span: include.include_token.span.start_span() },
                     body,
-                    close: TokenCloseCurly { span: Span::new(include.file.span.file, include.file.span.end, include.file.span.end) },
+                    close: TokenCloseCurly { span: include.file.span.end_span() },
+                    span: include.include_token.span | include.file.span,
                 }));
 
                 Ok(block)
@@ -507,9 +509,9 @@ impl<'a, 'i> Expr<'a, 'i> {
         for (i, f) in fns.iter().enumerate() {
             // check if we have memoization already
             let token = parser.peek_token(0)?;
-            let memoized = if let Some(expr) = parser.pre_parsed.remove(&(token.span().file, token.span().start)) {
+            let memoized = if let Some(expr) = parser.pre_parsed.remove(&(token.span_().file, token.span_().start)) {
                 Some(expr)
-            } else if let Some(&(expr, memuntil)) = parser.memoization.get(&(token.span().file, token.span().start)) {
+            } else if let Some(&(expr, memuntil)) = parser.memoization.get(&(token.span_().file, token.span_().start)) {
                 if cmp(&until, &memuntil) {
                     Some(expr)
                 } else {
@@ -522,10 +524,10 @@ impl<'a, 'i> Expr<'a, 'i> {
                 None => (),
                 Some(expr) => {
                     // consume tokens of known expression
-                    while parser.peek_token(0).unwrap().span().start < expr.span().end {
+                    while parser.peek_token(0).unwrap().span_().start < expr.span_().end {
                         drop(parser.next_token());
                     }
-                    trace!("{}    reusing {:?}: {}", depth, expr.span(), expr);
+                    trace!("{}    reusing {:?}: {}", depth, expr.span_(), expr);
                     return Ok(expr);
                 }
             }
@@ -534,9 +536,8 @@ impl<'a, 'i> Expr<'a, 'i> {
             let next_depth = if i == fns.len() - 1 { depth.last() } else { depth.next() };
             match f(parser, next_depth) {
                 Ok(expr) => {
-                    // trace!("{}    memoize {:?}: {} ({})", depth, expr.span(), expr, parser.memoization.iter().map(|(k, (v, _))| format!("{:?}: {}", k, v)).join("; "));
-                    trace!("{}    memoize {:?}: {}", depth, expr.span(), expr);
-                    parser.memoization.entry((expr.span().file, expr.span().start))
+                    trace!("{}    memoize {:?}: {}", depth, expr.span_(), expr);
+                    parser.memoization.entry((expr.span_().file, expr.span_().start))
                         .and_modify(|mem| if until >= mem.1 {
                             *mem = (expr, until);
                         }).or_insert((expr, until));
@@ -573,7 +574,7 @@ impl<'a, 'i> Expr<'a, 'i> {
             op @ Token::GreaterEquals(_) => (ExprGreaterEquals::new_as_expr, op),
             op @ Token::GreaterThan(_) => (ExprGreaterThan::new_as_expr, op),
             token => return Err(InternalError::Backtrack(Backtrack {
-                span: token.span(),
+                span: token.span_(),
                 expected: Cow::Borrowed(Expected::COMPARE_OP),
             })),
         };
@@ -595,32 +596,84 @@ pub type TypeGenerics<'a, 'i> = (TokenLessThan, Box<Separated<'a, 'i, ExprType<'
 #[derive(Debug, Clone)]
 pub enum ExprType<'a, 'i> {
     // can't be parsed, only generated
-    Parenthesized(TokenOpenParen, Box<ExprType<'a, 'i>>, TokenCloseParen),
+    Parenthesized(ExprTypeParenthesized<'a, 'i>),
     String(TokenStringType),
     Int(TokenIntType),
     Float(TokenFloatType),
     Bool(TokenBoolType),
-    Unit(TokenOpenParen, TokenCloseParen),
+    Unit(ExprTypeUnit),
     // struct, enum, typedef, ...
-    /// name, generics
-    UserType(TokenIdent<'i>, Option<TypeGenerics<'a, 'i>>),
+    UserType(ExprTypeUserType<'a, 'i>),
     Generic(Generic<'i>),
     Function(Box<ExprFunctionType<'a, 'i>>),
     Never(TokenBang),
     // only used from rust in transformations (e.g. Generator-struct fields)
     /// def-span for the typechecker to convert it to a generic
-    Any(Span),
+    Any(SpanWithId),
+}
+#[derive(Debug, Clone)]
+pub struct ExprTypeParenthesized<'a, 'i> {
+    pub open: TokenOpenParen,
+    pub typ: Box<ExprType<'a, 'i>>,
+    pub close: TokenCloseParen,
+    pub span: SpanWithId,
+}
+impl<'a, 'i> ExprTypeParenthesized<'a, 'i> {
+    pub fn new(open: TokenOpenParen, typ: Box<ExprType<'a, 'i>>, close: TokenCloseParen) -> Self {
+        ExprTypeParenthesized { open, typ, close, span: open.span | close.span }
+    }
+}
+impl<'a, 'i> Spanned for ExprTypeParenthesized<'a, 'i> {
+    fn span_with_id(&self) -> SpanWithId {
+        self.span
+    }
+}
+#[derive(Debug, Clone)]
+pub struct ExprTypeUnit {
+    pub open: TokenOpenParen,
+    pub close: TokenCloseParen,
+    pub span: SpanWithId,
+}
+impl ExprTypeUnit {
+    pub fn new(open: TokenOpenParen, close: TokenCloseParen) -> Self {
+        ExprTypeUnit { open, close, span: open.span | close.span }
+    }
+}
+impl Spanned for ExprTypeUnit {
+    fn span_with_id(&self) -> SpanWithId {
+        self.span
+    }
+}
+#[derive(Debug, Clone)]
+pub struct ExprTypeUserType<'a, 'i> {
+    name: TokenIdent<'i>,
+    generics: Option<TypeGenerics<'a, 'i>>,
+    span: SpanWithId,
+}
+impl<'a, 'i> ExprTypeUserType<'a, 'i> {
+    pub fn new(name: TokenIdent<'i>, generics: Option<TypeGenerics<'a, 'i>>) -> Self {
+        let span = match &generics {
+            Some((_open, _generics, close)) => name.span | close.span,
+            None => name.span,
+        };
+        ExprTypeUserType { name, generics, span }
+    }
+}
+impl<'a, 'i> Spanned for ExprTypeUserType<'a, 'i> {
+    fn span_with_id(&self) -> SpanWithId {
+        self.span
+    }
 }
 impl<'a, 'i> ExprType<'a, 'i> {
     pub fn name(&self) -> &'i str {
         match self {
-            ExprType::Parenthesized(_, t, _) => t.name(),
+            ExprType::Parenthesized(ExprTypeParenthesized { typ, .. }) => typ.name(),
             ExprType::String(_) => "string",
             ExprType::Int(_) => "int",
             ExprType::Float(_) => "float",
             ExprType::Bool(_) => "bool",
-            ExprType::Unit(_, _) => "()",
-            ExprType::UserType(name, _) => name.ident,
+            ExprType::Unit(_) => "()",
+            ExprType::UserType(ExprTypeUserType { name, .. }) => name.ident,
             ExprType::Generic(g) => g.ident.ident,
             ExprType::Function(_) => "fn",
             ExprType::Never(_) => "!",
@@ -650,12 +703,12 @@ impl<'a, 'i> Parse<'a, 'i> for ExprType<'a, 'i> {
                 trace!("{} TokenBoolType::parse        ({:?})", depth.next(), parser.peek_token(0));
                 ExprType::Bool(t)
             },
-            Token::OpenParen(o) => {
+            Token::OpenParen(open) => {
                 trace!("{} Unit::parse        ({:?})", depth.next(), parser.peek_token(0));
                 match parser.peek_token(1)? {
-                    Token::CloseParen(c) => {
+                    Token::CloseParen(close) => {
                         drop(parser.next_token());
-                        ExprType::Unit(o, c)
+                        ExprType::Unit(ExprTypeUnit::new(open, close))
                     }
                     _ => return Err(InternalError::Backtrack(Backtrack {
                         span: parser.lexer.next_span_from(1),
@@ -665,21 +718,21 @@ impl<'a, 'i> Parse<'a, 'i> for ExprType<'a, 'i> {
             }
             // defer struct type resolution until the typechecker
             // otherwise using struct B as field in struct A won't work if B is defined after A
-            Token::Ident(i) => {
+            Token::Ident(name) => {
                 trace!("{} TokenIdent::parse ({:?})        ({:?})", depth.next(), parser.generic_names(), parser.peek_token(0));
-                if let Some(generic) = parser.get_generic(i.ident) {
+                if let Some(generic) = parser.get_generic(name.ident) {
                     trace!("{} Generic::parse        ({:?})", depth.next().next(), parser.peek_token(0));
                     ExprType::Generic(generic)
                 } else {
                     trace!("{} UserType::parse        ({:?})", depth.next().next(), parser.peek_token(0));
                     drop(parser.next_token());
                     let generics = parser.parse(depth.last())?;
-                    return Ok(ExprType::UserType(i, generics))
+                    return Ok(ExprType::UserType(ExprTypeUserType::new(name, generics)))
                 }
             },
             Token::DqString(dq) if dq.string == "any" => {
                 trace!("{} TokenDqString::parse        ({:?})", depth.next(), parser.peek_token(0));
-                ExprType::Any(dq.span())
+                ExprType::Any(dq.span_with_id())
             },
             Token::Bang(b) => {
                 trace!("{} TokenBang::parse        ({:?})", depth.next(), parser.peek_token(0));
@@ -700,21 +753,18 @@ impl<'a, 'i> From<Generic<'i>> for ExprType<'a, 'i> {
     }
 }
 impl<'a, 'i> Spanned for ExprType<'a, 'i> {
-    fn span(&self) -> Span {
+    fn span_with_id(&self) -> SpanWithId {
         match self {
-            ExprType::Parenthesized(o, _t, c) => Span::new(o.span.file, o.span.start, c.span.end),
-            ExprType::String(t) => t.span(),
-            ExprType::Int(t) => t.span(),
-            ExprType::Float(t) => t.span(),
-            ExprType::Bool(t) => t.span(),
-            ExprType::Unit(o, c) => Span::new(o.span.file, o.span.start, c.span.end),
-            ExprType::UserType(ut, g) => match g {
-                Some((_open, _g, close)) => Span::new(ut.span().file, ut.span().start, close.span.end),
-                None => ut.span()
-            }
-            ExprType::Generic(g) => g.span(),
-            ExprType::Function(f) => f.span(),
-            ExprType::Never(b) => b.span(),
+            ExprType::Parenthesized(t) => t.span,
+            ExprType::String(t) => t.span_with_id(),
+            ExprType::Int(t) => t.span_with_id(),
+            ExprType::Float(t) => t.span_with_id(),
+            ExprType::Bool(t) => t.span_with_id(),
+            ExprType::Unit(t) => t.span_with_id(),
+            ExprType::UserType(t) => t.span_with_id(),
+            ExprType::Generic(t) => t.span_with_id(),
+            ExprType::Function(t) => t.span_with_id(),
+            ExprType::Never(t) => t.span_with_id(),
             &ExprType::Any(span) => span,
         }
     }
@@ -722,20 +772,20 @@ impl<'a, 'i> Spanned for ExprType<'a, 'i> {
 impl<'a, 'i> Display for ExprType<'a, 'i> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            ExprType::Parenthesized(_, t, _) => write!(f, "({t})"),
+            ExprType::Parenthesized(ExprTypeParenthesized { typ, .. }) => write!(f, "({typ})"),
             ExprType::String(_) => write!(f, "string"),
             ExprType::Int(_) => write!(f, "int"),
             ExprType::Float(_) => write!(f, "float"),
             ExprType::Bool(_) => write!(f, "bool"),
-            ExprType::Unit(_, _) => write!(f, "()"),
-            ExprType::UserType(ut, g) => {
-                write!(f, "{}", ut.ident)?;
-                if let Some((_open, g, _close)) = g {
-                    write!(f, "<{}>", g)?;
+            ExprType::Unit(_) => write!(f, "()"),
+            ExprType::UserType(ExprTypeUserType { name, generics, .. }) => {
+                write!(f, "{}", name.ident)?;
+                if let Some((_open, generics, _close)) = generics {
+                    write!(f, "<{}>", generics)?;
                 }
                 Ok(())
             },
-            ExprType::Generic(g) => write!(f, "{}<{},{},{}; {},{},{}>", g.ident.ident, g.def_ident.span.file, g.def_ident.span.start, g.def_ident.span.end, g.ident.span.file, g.ident.span.start, g.ident.span.end),
+            ExprType::Generic(g) => write!(f, "{}<{},{},{}; {},{},{}>", g.ident.ident, g.def_ident.span_().file, g.def_ident.span_().start, g.def_ident.span_().end, g.ident.span_().file, g.ident.span_().start, g.ident.span_().end),
             ExprType::Function(fun) => Display::fmt(fun, f),
             ExprType::Never(_) => write!(f, "!"),
             ExprType::Any(_) => write!(f, "\"any\""),
@@ -748,17 +798,20 @@ pub struct ExprGenerics<'a, 'i> {
     pub open: TokenLessThan,
     pub generics: Option<Separated<'a, 'i, Generic<'i>, TokenComma>>,
     pub close: TokenGreaterThan,
+    pub span: SpanWithId,
+}
+impl<'a, 'i> ExprGenerics<'a, 'i> {
+    pub fn new(open: TokenLessThan, generics: Option<Separated<'a, 'i, Generic<'i>, TokenComma>>, close: TokenGreaterThan) -> Self {
+        ExprGenerics { open, generics, close, span: open.span | close.span }
+    }
 }
 impl<'a, 'i> Parse<'a, 'i> for ExprGenerics<'a, 'i> {
     fn parse_marked(parser: &mut Parser<'a, '_, 'i>, depth: Depth) -> Result<Self, InternalError> {
-        let open = parser.parse(depth.next())?;
-        let generics: Option<Separated<NewGeneric, _>> = parser.parse(depth.next())?;
-        let close = parser.parse(depth.last())?;
-        Ok(ExprGenerics {
-            open,
-            generics: generics.map(Separated::from),
-            close,
-        })
+        Ok(ExprGenerics::new(
+            parser.parse(depth.next())?,
+            parser.parse::<Option<Separated<NewGeneric, _>>>(depth.next())?.map(Separated::from),
+            parser.parse(depth.last())?,
+        ))
     }
 }
 impl<'a, 'i> Display for ExprGenerics<'a, 'i> {
@@ -767,8 +820,8 @@ impl<'a, 'i> Display for ExprGenerics<'a, 'i> {
     }
 }
 impl<'a, 'i> Spanned for ExprGenerics<'a, 'i> {
-    fn span(&self) -> Span {
-        Span::new(self.open.span.file, self.open.span.start, self.close.span.end)
+    fn span_with_id(&self) -> SpanWithId {
+        self.span
     }
 }
 
@@ -776,18 +829,24 @@ impl<'a, 'i> Spanned for ExprGenerics<'a, 'i> {
 pub struct ExprLabel<'i> {
     pub apostrophe: TokenApostrophe,
     pub ident: TokenIdent<'i>,
+    pub span: SpanWithId,
+}
+impl<'i> ExprLabel<'i> {
+    pub fn new(apostrophe: TokenApostrophe, ident: TokenIdent<'i>) -> Self {
+        ExprLabel { apostrophe, ident, span: apostrophe.span | ident.span }
+    }
 }
 impl<'a, 'i> Parse<'a, 'i> for ExprLabel<'i> {
     fn parse_marked(parser: &mut Parser<'a, '_, 'i>, depth: Depth) -> Result<Self, InternalError> {
-        Ok(ExprLabel {
-            apostrophe: parser.parse(depth.next())?,
-            ident: parser.parse(depth.next())?,
-        })
+        Ok(ExprLabel::new(
+            parser.parse(depth.next())?,
+            parser.parse(depth.next())?,
+        ))
     }
 }
 impl<'i> Spanned for ExprLabel<'i> {
-    fn span(&self) -> Span {
-        Span::new(self.ident.span.file, self.apostrophe.span.start, self.ident.span.end)
+    fn span_with_id(&self) -> SpanWithId {
+        self.span
     }
 }
 impl<'i> Display for ExprLabel<'i> {
@@ -804,18 +863,24 @@ impl<'i> PartialEq<ExprLabel<'i>> for ExprLabel<'i> {
 pub struct ExprLabelDef<'i> {
     pub label: ExprLabel<'i>,
     pub colon: TokenColon,
+    pub span: SpanWithId,
+}
+impl<'i> ExprLabelDef<'i> {
+    pub fn new(label: ExprLabel<'i>, colon: TokenColon) -> Self {
+        ExprLabelDef { label, colon, span: label.span | colon.span }
+    }
 }
 impl<'a, 'i> Parse<'a, 'i> for ExprLabelDef<'i> {
     fn parse_marked(parser: &mut Parser<'a, '_, 'i>, depth: Depth) -> Result<Self, InternalError> {
-        Ok(ExprLabelDef {
-            label: parser.parse(depth.next())?,
-            colon: parser.parse(depth.last())?,
-        })
+        Ok(ExprLabelDef::new(
+            parser.parse(depth.next())?,
+            parser.parse(depth.last())?,
+        ))
     }
 }
 impl<'i> Spanned for ExprLabelDef<'i> {
-    fn span(&self) -> Span {
-        Span::new(self.label.span().file, self.label.span().start, self.colon.span.end)
+    fn span_with_id(&self) -> SpanWithId {
+        self.span
     }
 }
 impl<'i> Display for ExprLabelDef<'i> {
@@ -829,18 +894,24 @@ impl<'i> Display for ExprLabelDef<'i> {
 pub struct ExprUnit {
     pub open: TokenOpenParen,
     pub close: TokenCloseParen,
+    pub span: SpanWithId,
+}
+impl ExprUnit {
+    pub fn new(open: TokenOpenParen, close: TokenCloseParen) -> ExprUnit {
+        ExprUnit { open, close, span: open.span | close.span }
+    }
 }
 impl<'a, 'i> Parse<'a, 'i> for ExprUnit {
     fn parse_marked(parser: &mut Parser<'a, '_, 'i>, depth: Depth) -> Result<Self, InternalError> {
-        Ok(ExprUnit {
-            open: parser.parse(depth.next())?,
-            close: parser.parse(depth.last())?,
-        })
+        Ok(ExprUnit::new(
+            parser.parse(depth.next())?,
+            parser.parse(depth.last())?,
+        ))
     }
 }
 impl Spanned for ExprUnit {
-    fn span(&self) -> Span {
-        Span::new(self.open.span.file, self.open.span.start, self.close.span.end)
+    fn span_with_id(&self) -> SpanWithId {
+        self.span
     }
 }
 
@@ -849,7 +920,7 @@ pub struct ExprVariable<'i> {
     pub binding: Binding<'i>,
     // The binding's span is from the definition site.
     // Variables are used for usage sites, where we need to store the span as well.
-    pub span: Span,
+    pub span: SpanWithId,
 }
 impl<'a, 'i> Parse<'a, 'i> for ExprVariable<'i> {
     fn parse_marked(parser: &mut Parser<'a, '_, 'i>, depth: Depth) -> Result<Self, InternalError> {
@@ -858,7 +929,7 @@ impl<'a, 'i> Parse<'a, 'i> for ExprVariable<'i> {
     }
 }
 impl<'i> Spanned for ExprVariable<'i> {
-    fn span(&self) -> Span {
+    fn span_with_id(&self) -> SpanWithId {
         self.span
     }
 }
@@ -881,7 +952,7 @@ impl<'a, 'i> Parse<'a, 'i> for ExprInteger {
     }
 }
 impl Spanned for ExprInteger {
-    fn span(&self) -> Span {
+    fn span_with_id(&self) -> SpanWithId {
         self.int.span
     }
 }
@@ -899,7 +970,7 @@ impl<'a, 'i> Parse<'a, 'i> for ExprFloat {
     }
 }
 impl Spanned for ExprFloat {
-    fn span(&self) -> Span {
+    fn span_with_id(&self) -> SpanWithId {
         self.float.span
     }
 }
@@ -917,7 +988,7 @@ impl<'a, 'i> Parse<'a, 'i> for ExprBool {
     }
 }
 impl Spanned for ExprBool {
-    fn span(&self) -> Span {
+    fn span_with_id(&self) -> SpanWithId {
         self.b.span
     }
 }
@@ -935,7 +1006,7 @@ impl<'a, 'i> Parse<'a, 'i> for ExprString {
     }
 }
 impl Spanned for ExprString {
-    fn span(&self) -> Span {
+    fn span_with_id(&self) -> SpanWithId {
         self.string.span
     }
 }
@@ -950,7 +1021,7 @@ pub enum ExprFormatStringPart<'a, 'i> {
 #[derive(Debug, Clone)]
 pub struct ExprFormatString<'a, 'i> {
     pub parts: Vec<ExprFormatStringPart<'a, 'i>>,
-    pub span: Span,
+    pub span: SpanWithId,
 }
 impl<'a, 'i> Parse<'a, 'i> for ExprFormatString<'a, 'i> {
     fn parse_marked(parser: &mut Parser<'a, '_, 'i>, depth: Depth) -> Result<Self, InternalError> {
@@ -967,7 +1038,7 @@ impl<'a, 'i> Parse<'a, 'i> for ExprFormatString<'a, 'i> {
                 TokenFormatStringPart::Escaped(s) => parts.push(ExprFormatStringPart::Escaped(s)),
                 TokenFormatStringPart::FormatArg(s, part_start) => {
                     let part_end = part_start + s.len();
-                    let part_lexer = Lexer::new_in(parser.diagnostics, fmtstr.span.file, part_start, part_end, LexerMode::UnexpectedCharacterEof);
+                    let part_lexer = Lexer::new_in(parser.diagnostics, fmtstr.span_().file, part_start, part_end, LexerMode::UnexpectedCharacterEof);
                     let old_lexer = std::mem::replace(&mut parser.lexer, part_lexer);
 
                     let expr = parser.parse_scoped(depth.next())?;
@@ -977,13 +1048,13 @@ impl<'a, 'i> Parse<'a, 'i> for ExprFormatString<'a, 'i> {
                     let spec = match next {
                         Ok(Token::Eof(_)) => None,
                         Ok(Token::Colon(colon)) => {
-                            let spec_str = &s[colon.span.end - part_start..];
-                            let spec_span = Span::new(colon.span.file, colon.span.end, colon.span.end + spec_str.len());
+                            let spec_str = &s[colon.span_().end - part_start..];
+                            let spec_span = Span::new(colon.span_().file, colon.span_().end, colon.span_().end + spec_str.len());
                             let spec = match rt_format::parser::parse_specifier(spec_str, &mut util::NoValues) {
                                 Ok(spec) => spec,
                                 Err(()) => {
                                     parser.diagnostics.error(ErrorCode::InvalidFormatStringSpecifier)
-                                        .with_error_label(Span::new(colon.span.file, part_start, part_end), "this is not a valid format specifier")
+                                        .with_error_label(Span::new(colon.span_().file, part_start, part_end), "this is not a valid format specifier")
                                         .emit();
                                     Specifier {
                                         format: Format::Display,
@@ -994,9 +1065,9 @@ impl<'a, 'i> Parse<'a, 'i> for ExprFormatString<'a, 'i> {
                             Some((colon, spec, spec_span))
                         }
                         _ => {
-                            let arg_span = Span::new(fmtstr.span.file, part_start, part_end);
+                            let arg_span = Span::new(fmtstr.span_().file, part_start, part_end);
                             let mut diag = parser.diagnostics.error(ErrorCode::InvalidFormatString)
-                                .with_error_label(fmtstr.span, "in this format string")
+                                .with_error_label(fmtstr.span_(), "in this format string")
                                 .with_error_label(arg_span, "in this format argument");
                             match next {
                                 Ok(token) => diag = diag.with_info_label(arg_span, format!("expected end of format string, got `{}`", token)),
@@ -1013,12 +1084,12 @@ impl<'a, 'i> Parse<'a, 'i> for ExprFormatString<'a, 'i> {
 
         Ok(ExprFormatString {
             parts,
-            span: fmtstr.span,
+            span: SpanWithId::from(fmtstr.span),
         })
     }
 }
 impl<'a, 'i> Spanned for ExprFormatString<'a, 'i> {
-    fn span(&self) -> Span {
+    fn span_with_id(&self) -> SpanWithId {
         self.span
     }
 }
@@ -1048,33 +1119,30 @@ pub struct ExprBind<'a, 'i> {
     pub pattern: ExprPattern<'a, 'i>,
     pub assign: TokenAssign,
     pub expr: &'a Expr<'a, 'i>,
+    pub span: SpanWithId,
 }
 impl<'a, 'i> Parse<'a, 'i> for ExprBind<'a, 'i> {
     fn parse_marked(parser: &mut Parser<'a, '_, 'i>, depth: Depth) -> Result<Self, InternalError> {
-        let let_token = parser.parse(depth.next())?;
+        let let_token: TokenLet = parser.parse(depth.next())?;
         // hack to not have the pattern-binding in scope during the expression
         let guard = parser.push_scope(ScopeType::Synthetic);
         let pattern = parser.parse(depth.next())?;
         drop(guard);
         let assign = parser.parse(depth.next())?;
-        let expr = parser.parse(depth.last())?;
+        let expr: &Expr = parser.parse(depth.last())?;
         // add pattern-binding as available from here on
         let binding = match &pattern {
             ExprPattern::Typed(typed) => typed.pattern.binding,
             ExprPattern::Untyped(untyped) => untyped.binding,
         };
         parser.add_binding(binding.ident, binding.mutable);
-        Ok(ExprBind {
-            let_token,
-            pattern,
-            assign,
-            expr,
-        })
+        let span = let_token.span | expr.span_with_id();
+        Ok(ExprBind { let_token, pattern, assign, expr, span })
     }
 }
 impl<'a, 'i> Spanned for ExprBind<'a, 'i> {
-    fn span(&self) -> Span {
-        Span::new(self.let_token.span.file, self.let_token.span.start, self.expr.span().end)
+    fn span_with_id(&self) -> SpanWithId {
+        self.span
     }
 }
 impl<'a, 'i> Display for ExprBind<'a, 'i> {
@@ -1088,19 +1156,20 @@ pub struct ExprStaticSignature<'a, 'i> {
     pub static_token: TokenStatic,
     pub pattern: ExprPattern<'a, 'i>,
     pub assign: TokenAssign,
+    pub span: SpanWithId,
 }
 impl<'a, 'i> Parse<'a, 'i> for ExprStaticSignature<'a, 'i> {
     fn parse_marked(parser: &mut Parser<'a, '_, 'i>, depth: Depth) -> Result<Self, InternalError> {
-        Ok(ExprStaticSignature {
-            static_token: parser.parse(depth.next())?,
-            pattern: parser.parse(depth.next())?,
-            assign: parser.parse(depth.next())?,
-        })
+        let static_token: TokenStatic = parser.parse(depth.next())?;
+        let pattern = parser.parse(depth.next())?;
+        let assign: TokenAssign = parser.parse(depth.next())?;
+        let span = static_token.span | assign.span;
+        Ok(ExprStaticSignature { static_token, pattern, assign, span })
     }
 }
 impl<'a, 'i> Spanned for ExprStaticSignature<'a, 'i> {
-    fn span(&self) -> Span {
-        Span::new(self.static_token.span.file, self.static_token.span.start, self.assign.span.end)
+    fn span_with_id(&self) -> SpanWithId {
+        self.span
     }
 }
 impl<'a, 'i> Display for ExprStaticSignature<'a, 'i> {
@@ -1112,22 +1181,22 @@ impl<'a, 'i> Display for ExprStaticSignature<'a, 'i> {
 pub struct ExprStatic<'a, 'i> {
     pub sig: ExprStaticSignature<'a, 'i>,
     pub expr: &'a Expr<'a, 'i>,
+    pub span: SpanWithId,
 }
 impl<'a, 'i> Parse<'a, 'i> for ExprStatic<'a, 'i> {
     fn parse_marked(parser: &mut Parser<'a, '_, 'i>, depth: Depth) -> Result<Self, InternalError> {
         // add the static binding to the global scope instead of the inner scope
         let guard = parser.push_scope(ScopeType::Synthetic);
-        let signature: ExprStaticSignature = parser.parse(depth.next())?;
+        let sig: ExprStaticSignature = parser.parse(depth.next())?;
         drop(guard);
-        Ok(ExprStatic {
-            sig: signature,
-            expr: parser.parse(depth.last())?,
-        })
+        let expr: &Expr = parser.parse(depth.last())?;
+        let span = sig.span | expr.span_with_id();
+        Ok(ExprStatic { sig, expr, span })
     }
 }
 impl<'a, 'i> Spanned for ExprStatic<'a, 'i> {
-    fn span(&self) -> Span {
-        Span::new(self.sig.span().file, self.sig.span().start, self.expr.span().end)
+    fn span_with_id(&self) -> SpanWithId {
+        self.span
     }
 }
 impl<'a, 'i> Display for ExprStatic<'a, 'i> {
@@ -1141,18 +1210,25 @@ pub struct ExprAssign<'a, 'i> {
     pub lhs: ExprAssignLhs<'a, 'i>,
     pub assign: TokenAssign,
     pub expr: &'a Expr<'a, 'i>,
+    pub span: SpanWithId,
+}
+impl<'a, 'i> ExprAssign<'a, 'i> {
+    pub fn new(lhs: ExprAssignLhs<'a, 'i>, assign: TokenAssign, expr: &'a Expr<'a, 'i>) -> Self {
+        ExprAssign { lhs, assign, expr, span: lhs.span_with_id() | expr.span_with_id() }
+    }
 }
 impl<'a, 'i> Parse<'a, 'i> for ExprAssign<'a, 'i> {
     fn parse_marked(parser: &mut Parser<'a, '_, 'i>, depth: Depth) -> Result<Self, InternalError> {
-        let lhs: ExprAssignLhs = parser.parse(depth.next())?;
-        let assign = parser.parse(depth.next())?;
-        let expr = parser.parse(depth.last())?;
-        Ok(ExprAssign { lhs, assign, expr })
+        Ok(ExprAssign::new(
+            parser.parse(depth.next())?,
+            parser.parse(depth.next())?,
+            parser.parse(depth.last())?,
+        ))
     }
 }
 impl<'a, 'i> Spanned for ExprAssign<'a, 'i> {
-    fn span(&self) -> Span {
-        Span::new(self.lhs.span().file, self.lhs.span().start, self.expr.span().end)
+    fn span_with_id(&self) -> SpanWithId {
+        self.span
     }
 }
 impl<'a, 'i> Display for ExprAssign<'a, 'i> {
@@ -1179,10 +1255,10 @@ impl<'a, 'i> Parse<'a, 'i> for ExprAssignLhs<'a, 'i> {
     }
 }
 impl<'a, 'i> Spanned for ExprAssignLhs<'a, 'i> {
-    fn span(&self) -> Span {
+    fn span_with_id(&self) -> SpanWithId {
         match self {
-            ExprAssignLhs::Variable(v) => v.span(),
-            ExprAssignLhs::FieldAccess(fa) => fa.span(),
+            ExprAssignLhs::Variable(v) => v.span_with_id(),
+            ExprAssignLhs::FieldAccess(fa) => fa.span_with_id(),
         }
     }
 }
@@ -1191,6 +1267,14 @@ pub struct ExprFieldAccess<'a, 'i> {
     pub variable: ExprVariable<'i>,
     pub dot: TokenDot,
     pub fields: Separated<'a, 'i, TokenIdent<'i>, TokenDot>,
+    pub span: SpanWithId,
+}
+impl<'a, 'i> ExprFieldAccess<'a, 'i> {
+    pub fn new(variable: ExprVariable<'i>, dot: TokenDot, fields: Separated<'a, 'i, TokenIdent<'i>, TokenDot>) -> Self {
+        assert!(!fields.is_empty());
+        assert!(!fields.is_terminated());
+        ExprFieldAccess { variable, dot, fields, span: variable.span | fields.span().unwrap() }
+    }
 }
 impl<'a, 'i> Parse<'a, 'i> for ExprFieldAccess<'a, 'i> {
     fn parse_marked(parser: &mut Parser<'a, '_, 'i>, depth: Depth) -> Result<Self, InternalError> {
@@ -1210,12 +1294,12 @@ impl<'a, 'i> Parse<'a, 'i> for ExprFieldAccess<'a, 'i> {
                 .with_error_label(fields.span().unwrap(), "trailing dot")
                 .emit();
         }
-        Ok(ExprFieldAccess { variable, dot, fields })
+        Ok(ExprFieldAccess::new(variable, dot, fields))
     }
 }
 impl<'a, 'i> Spanned for ExprFieldAccess<'a, 'i> {
-    fn span(&self) -> Span {
-        Span::new(self.variable.span.file, self.variable.span.start, self.fields.span().unwrap().end)
+    fn span_with_id(&self) -> SpanWithId {
+        self.span
     }
 }
 impl<'a, 'i> Display for ExprFieldAccess<'a, 'i> {
@@ -1230,6 +1314,14 @@ pub struct ExprAccess<'a, 'i> {
     pub variable: ExprVariable<'i>,
     pub dot: TokenDot,
     pub accesses: Separated<'a, 'i, FieldOrMethod<'a, 'i>, TokenDot>,
+    pub span: SpanWithId,
+}
+impl<'a, 'i> ExprAccess<'a, 'i> {
+    pub fn new(variable: ExprVariable<'i>, dot: TokenDot, accesses: Separated<'a, 'i, FieldOrMethod<'a, 'i>, TokenDot>) -> Self {
+        assert!(!accesses.is_empty());
+        assert!(!accesses.is_terminated());
+        ExprAccess { variable, dot, accesses, span: variable.span | accesses.span().unwrap() }
+    }
 }
 impl<'a, 'i> Parse<'a, 'i> for ExprAccess<'a, 'i> {
     fn parse_marked(parser: &mut Parser<'a, '_, 'i>, depth: Depth) -> Result<Self, InternalError> {
@@ -1249,12 +1341,12 @@ impl<'a, 'i> Parse<'a, 'i> for ExprAccess<'a, 'i> {
                 .with_error_label(accesses.span().unwrap(), "trailing dot")
                 .emit();
         }
-        Ok(ExprAccess { variable, dot, accesses })
+        Ok(ExprAccess::new(variable, dot, accesses))
     }
 }
 impl<'a, 'i> Spanned for ExprAccess<'a, 'i> {
-    fn span(&self) -> Span {
-        Span::new(self.variable.span.file, self.variable.span.start, self.accesses.span().unwrap().end)
+    fn span_with_id(&self) -> SpanWithId {
+        self.span
     }
 }
 impl<'a, 'i> Display for ExprAccess<'a, 'i> {
@@ -1288,10 +1380,10 @@ impl<'a, 'i> Parse<'a, 'i> for FieldOrMethod<'a, 'i> {
     }
 }
 impl<'a, 'i> Spanned for FieldOrMethod<'a, 'i> {
-    fn span(&self) -> Span {
+    fn span_with_id(&self) -> SpanWithId {
         match self {
-            FieldOrMethod::Method(function_call) => function_call.span(),
-            FieldOrMethod::Field(field) => field.span(),
+            FieldOrMethod::Method(function_call) => function_call.span_with_id(),
+            FieldOrMethod::Field(field) => field.span_with_id(),
         }
     }
 }
@@ -1309,18 +1401,24 @@ impl<'a, 'i> Display for FieldOrMethod<'a, 'i> {
 pub struct ExprBoolNot<'a, 'i> {
     pub bang: TokenBang,
     pub expr: &'a Expr<'a, 'i>,
+    pub span: SpanWithId,
+}
+impl<'a, 'i> ExprBoolNot<'a, 'i> {
+    pub fn new(bang: TokenBang, expr: &'a Expr<'a, 'i>) -> Self {
+        ExprBoolNot { bang, expr, span: bang.span | expr.span_with_id() }
+    }
 }
 impl<'a, 'i> Parse<'a, 'i> for ExprBoolNot<'a, 'i> {
     fn parse_marked(parser: &mut Parser<'a, '_, 'i>, depth: Depth) -> Result<Self, InternalError> {
-        Ok(ExprBoolNot {
-            bang: parser.parse(depth.next())?,
-            expr: Expr::try_parse_until_excluding(parser, ParseUntil::BooleanExpr, depth.last())?,
-        })
+        Ok(ExprBoolNot::new(
+            parser.parse(depth.next())?,
+            Expr::try_parse_until_excluding(parser, ParseUntil::BooleanExpr, depth.last())?,
+        ))
     }
 }
 impl<'a, 'i> Spanned for ExprBoolNot<'a, 'i> {
-    fn span(&self) -> Span {
-        Span::new(self.bang.span.file, self.bang.span.start, self.expr.span().end)
+    fn span_with_id(&self) -> SpanWithId {
+        self.span
     }
 }
 impl<'a, 'i> Display for ExprBoolNot<'a, 'i> {
@@ -1333,18 +1431,24 @@ impl<'a, 'i> Display for ExprBoolNot<'a, 'i> {
 pub struct ExprNeg<'a, 'i> {
     pub minus: TokenMinus,
     pub expr: &'a Expr<'a, 'i>,
+    pub span: SpanWithId,
+}
+impl<'a, 'i> ExprNeg<'a, 'i> {
+    pub fn new(minus: TokenMinus, expr: &'a Expr<'a, 'i>) -> Self {
+        ExprNeg { minus, expr, span: minus.span | expr.span_with_id() }
+    }
 }
 impl<'a, 'i> Parse<'a, 'i> for ExprNeg<'a, 'i> {
     fn parse_marked(parser: &mut Parser<'a, '_, 'i>, depth: Depth) -> Result<Self, InternalError> {
-        Ok(ExprNeg {
-            minus: parser.parse(depth.next())?,
-            expr: Expr::try_parse_until_excluding(parser, ParseUntil::Math, depth.last())?,
-        })
+        Ok(ExprNeg::new(
+            parser.parse(depth.next())?,
+            Expr::try_parse_until_excluding(parser, ParseUntil::Math, depth.last())?,
+        ))
     }
 }
 impl<'a, 'i> Spanned for ExprNeg<'a, 'i> {
-    fn span(&self) -> Span {
-        Span::new(self.minus.span.file, self.minus.span.start, self.expr.span().end)
+    fn span_with_id(&self) -> SpanWithId {
+        self.span
     }
 }
 impl<'a, 'i> Display for ExprNeg<'a, 'i> {
@@ -1361,28 +1465,32 @@ macro_rules! binop {
                 pub a: &'a Expr<'a, 'i>,
                 pub op: $token,
                 pub b: &'a Expr<'a, 'i>,
+                pub span: SpanWithId,
             }
             impl<'a, 'i> $exprname<'a, 'i> {
+                pub fn new(a: &'a Expr<'a, 'i>, op: $token, b: &'a Expr<'a, 'i>) -> $exprname<'a, 'i> {
+                    Self { a, op, b, span: a.span_with_id() | b.span_with_id() }
+                }
                 pub(in crate::parser) fn new_as_expr(a: &'a Expr<'a, 'i>, op: Token<'i>, b: &'a Expr<'a, 'i>) -> Expr<'a, 'i> {
                     let op = match op {
                         Token::$tokenvariant(token @ $token { .. }) => token,
                         _ => unreachable!(),
                     };
-                    Expr::$name(Self { a, op, b })
+                    Expr::$name(Self::new(a, op, b))
                 }
             }
             impl<'a, 'i> Parse<'a, 'i> for $exprname<'a, 'i> {
                 fn parse_marked(parser: &mut Parser<'a, '_, 'i>, depth: Depth) -> Result<Self, InternalError> {
-                    Ok($exprname {
-                        a: parser.parse(depth.next())?,
-                        op: parser.parse(depth.next())?,
-                        b: parser.parse(depth.last())?,
-                    })
+                    Ok($exprname::new(
+                        parser.parse(depth.next())?,
+                        parser.parse(depth.next())?,
+                        parser.parse(depth.next())?,
+                    ))
                 }
             }
             impl<'a, 'i> Spanned for $exprname<'a, 'i> {
-                fn span(&self) -> Span {
-                    Span::new(self.a.span().file, self.a.span().start, self.b.span().end)
+                fn span_with_id(&self) -> SpanWithId {
+                    self.span
                 }
             }
             impl<'a, 'i> Display for $exprname<'a, 'i> {
@@ -1397,20 +1505,21 @@ macro_rules! binop {
                     pub op: $assign_token,
                     pub assign: TokenAssign,
                     pub expr: &'a Expr<'a, 'i>,
+                    pub span: SpanWithId,
                 }
                 impl<'a, 'i> Parse<'a, 'i> for $assign_exprname<'a, 'i> {
                     fn parse_marked(parser: &mut Parser<'a, '_, 'i>, depth: Depth) -> Result<Self, InternalError> {
-                        Ok($assign_exprname {
-                            lhs: parser.parse(depth.next())?,
-                            op: parser.parse(depth.next())?,
-                            assign: parser.parse(depth.next())?,
-                            expr: parser.parse(depth.next())?,
-                        })
+                        let lhs: ExprAssignLhs = parser.parse(depth.next())?;
+                        let op = parser.parse(depth.next())?;
+                        let assign = parser.parse(depth.next())?;
+                        let expr: &Expr = parser.parse(depth.next())?;
+                        let span = lhs.span_with_id() | expr.span_with_id();
+                        Ok($assign_exprname { lhs, op, assign, expr, span })
                     }
                 }
                 impl<'a, 'i> Spanned for $assign_exprname<'a, 'i> {
-                    fn span(&self) -> Span {
-                        Span::new(self.lhs.span().file, self.lhs.span().start, self.expr.span().end)
+                    fn span_with_id(&self) -> SpanWithId {
+                        self.span
                     }
                 }
                 impl<'a, 'i> Display for $assign_exprname<'a, 'i> {
@@ -1444,6 +1553,12 @@ pub struct ExprBlock<'a, 'i> {
     pub open: TokenOpenCurly,
     pub body: BlockBody<'a, 'i>,
     pub close: TokenCloseCurly,
+    pub span: SpanWithId,
+}
+impl<'a, 'i> ExprBlock<'a, 'i> {
+    pub fn new(open: TokenOpenCurly, body: BlockBody<'a, 'i>, close: TokenCloseCurly) -> Self {
+        ExprBlock { open, body, close, span: open.span | close.span }
+    }
 }
 impl<'a, 'i> Parse<'a, 'i> for ExprBlock<'a, 'i> {
     fn parse_marked(parser: &mut Parser<'a, '_, 'i>, depth: Depth) -> Result<Self, InternalError> {
@@ -1459,15 +1574,16 @@ impl<'a, 'i> Parse<'a, 'i> for ExprBlock<'a, 'i> {
         // self.diagnostics.error(ErrorCode::UnclosedBlock)
         //     .with_error_label(span, "unclosed block")
         //     .emit();
-        let open = parser.parse(depth.next())?;
+        let open: TokenOpenCurly = parser.parse(depth.next())?;
         let body = parser.parse_scoped(depth.next())?;
-        let close = parser.parse(depth.last())?;
-        Ok(ExprBlock { open, body, close })
+        let close: TokenCloseCurly = parser.parse(depth.last())?;
+        let span = open.span | close.span;
+        Ok(ExprBlock { open, body, close, span })
     }
 }
 impl<'a, 'i> Spanned for ExprBlock<'a, 'i> {
-    fn span(&self) -> Span {
-        Span::new(self.open.span.file, self.open.span.start, self.close.span.end)
+    fn span_with_id(&self) -> SpanWithId {
+        self.span
     }
 }
 impl<'a, 'i> Display for ExprBlock<'a, 'i> {
@@ -1534,7 +1650,7 @@ impl<'a, 'i> Parse<'a, 'i> for BlockBody<'a, 'i> {
                     | Expr::While(_)
                     | Expr::For(_)
                     | Expr::Block(_) => Last::Terminated,
-                    _ => Last::Unterminated(expr.span()),
+                    _ => Last::Unterminated(expr.span_()),
                 };
             }
 
@@ -1552,6 +1668,12 @@ pub struct ExprParenthesized<'a, 'i> {
     pub open: TokenOpenParen,
     pub expr: &'a Expr<'a, 'i>,
     pub close: TokenCloseParen,
+    pub span: SpanWithId,
+}
+impl<'a, 'i> ExprParenthesized<'a, 'i> {
+    pub fn new(open: TokenOpenParen, expr: &'a Expr<'a, 'i>, close: TokenCloseParen) -> Self {
+        ExprParenthesized { open, expr, close, span: open.span | close.span }
+    }
 }
 impl<'a, 'i> Parse<'a, 'i> for ExprParenthesized<'a, 'i> {
     fn parse_marked(parser: &mut Parser<'a, '_, 'i>, depth: Depth) -> Result<Self, InternalError> {
@@ -1560,16 +1682,16 @@ impl<'a, 'i> Parse<'a, 'i> for ExprParenthesized<'a, 'i> {
         //     .with_error_label(span, "unclosed parenthesis")
         //     .with_info_label(Span::new(expr.span.file, expr.span.end, expr.span.end), "try inserting a `)` here")
         //     .emit();
-        Ok(ExprParenthesized {
-            open: parser.parse(depth.next())?,
-            expr: parser.parse(depth.next())?,
-            close: parser.parse(depth.last())?,
-        })
+        Ok(ExprParenthesized::new(
+            parser.parse(depth.next())?,
+            parser.parse(depth.next())?,
+            parser.parse(depth.last())?,
+        ))
     }
 }
 impl<'a, 'i> Spanned for ExprParenthesized<'a, 'i> {
-    fn span(&self) -> Span {
-        Span::new(self.open.span.file, self.open.span.start, self.close.span.end)
+    fn span_with_id(&self) -> SpanWithId {
+        self.span
     }
 }
 impl<'a, 'i> Display for ExprParenthesized<'a, 'i> {
@@ -1585,6 +1707,7 @@ pub struct ExprIfElse<'a, 'i> {
     pub then: ExprBlock<'a, 'i>,
     pub else_ifs: Vec<(TokenElse, TokenIf, &'a Expr<'a, 'i>, ExprBlock<'a, 'i>)>,
     pub els: Option<(TokenElse, ExprBlock<'a, 'i>)>,
+    pub span: SpanWithId,
 }
 impl<'a, 'i> ExprIfElse<'a, 'i> {
     pub fn iter_branches(&self) -> impl Iterator<Item = (Option<&'a Expr<'a, 'i>>, &ExprBlock<'a, 'i>)> {
@@ -1595,23 +1718,22 @@ impl<'a, 'i> ExprIfElse<'a, 'i> {
 }
 impl<'a, 'i> Parse<'a, 'i> for ExprIfElse<'a, 'i> {
     fn parse_marked(parser: &mut Parser<'a, '_, 'i>, depth: Depth) -> Result<Self, InternalError> {
-        let if_token = parser.parse(depth.next())?;
+        let if_token: TokenIf = parser.parse(depth.next())?;
         let condition = Expr::try_parse_until_including(parser, ParseUntil::All, depth.next())?;
-        Ok(ExprIfElse {
-            if_token,
-            condition,
-            then: parser.parse(depth.next())?,
-            else_ifs: parser.parse(depth.next())?,
-            els: parser.parse(depth.last())?,
-        })
+        let then: ExprBlock = parser.parse(depth.next())?;
+        let else_ifs: Vec<(_, _, _, ExprBlock)> = parser.parse(depth.next())?;
+        let els: Option<(TokenElse, ExprBlock)> = parser.parse(depth.last())?;
+
+        let span = if_token.span
+            | then.span
+            | else_ifs.last().map(|(_, _, _, block)| block.span_())
+            | els.as_ref().map(|(_, block)| block.span_());
+        Ok(ExprIfElse { if_token, condition, then, else_ifs, els, span })
     }
 }
 impl<'a, 'i> Spanned for ExprIfElse<'a, 'i> {
-    fn span(&self) -> Span {
-        let end = self.els.as_ref().map(|(_, block)| block.span().end)
-            .or_else(|| self.else_ifs.last().map(|(_, _, _, block)| block.span().end))
-            .unwrap_or(self.then.span().end);
-        Span::new(self.if_token.span.file, self.if_token.span.start, end)
+    fn span_with_id(&self) -> SpanWithId {
+        self.span
     }
 }
 impl<'a, 'i> Display for ExprIfElse<'a, 'i> {
@@ -1634,27 +1756,28 @@ pub struct ExprMatch<'a, 'i> {
     pub open: TokenOpenCurly,
     pub arms: Vec<(ExprMatchPattern<'a, 'i>, TokenFatArrow, &'a Expr<'a, 'i>)>,
     pub close: TokenCloseCurly,
+    pub span: SpanWithId,
+}
+impl<'a, 'i> ExprMatch<'a, 'i> {
+    pub fn new(match_token: TokenMatch, expr: &'a Expr<'a, 'i>, open: TokenOpenCurly, arms: Vec<(ExprMatchPattern<'a, 'i>, TokenFatArrow, &'a Expr<'a, 'i>)>, close: TokenCloseCurly) -> Self {
+        ExprMatch { match_token, expr, open, arms, close, span: match_token.span | close.span }
+    }
 }
 impl<'a, 'i> Parse<'a, 'i> for ExprMatch<'a, 'i> {
     fn parse_marked(parser: &mut Parser<'a, '_, 'i>, depth: Depth) -> Result<Self, InternalError> {
-        let match_token: TokenMatch = parser.parse(depth.next())?;
-        let expr = parser.parse(depth.next())?;
-        let open = parser.parse(depth.next())?;
-        let arms: Separated<'a, 'i, Scoped<(ExprMatchPattern<'a, 'i>, TokenFatArrow, &'a Expr<'a, 'i>)>, TokenComma> = parser.parse(depth.next())?;
-        let close: TokenCloseCurly = parser.parse(depth.last())?;
-
-        Ok(ExprMatch {
-            match_token,
-            expr,
-            open,
-            arms: arms.into_iter().map(|Scoped((pattern, arrow, expr))| (pattern, arrow, expr)).collect(),
-            close,
-        })
+        Ok(ExprMatch::new(
+            parser.parse(depth.next())?,
+            parser.parse(depth.next())?,
+            parser.parse(depth.next())?,
+            parser.parse::<Separated<'a, 'i, Scoped<(ExprMatchPattern<'a, 'i>, TokenFatArrow, &'a Expr<'a, 'i>)>, TokenComma>>(depth.next())?
+                .into_iter().map(|Scoped((pattern, arrow, expr))| (pattern, arrow, expr)).collect(),
+            parser.parse(depth.last())?,
+        ))
     }
 }
 impl<'a, 'i> Spanned for ExprMatch<'a, 'i> {
-    fn span(&self) -> Span {
-        Span::new(self.match_token.span.file, self.match_token.span.start, self.close.span.end)
+    fn span_with_id(&self) -> SpanWithId {
+        self.span
     }
 }
 impl<'a, 'i> Display for ExprMatch<'a, 'i> {
@@ -1675,30 +1798,22 @@ pub struct ExprWhile<'a, 'i> {
     pub while_token: TokenWhile,
     pub condition: &'a Expr<'a, 'i>,
     pub block: ExprBlock<'a, 'i>,
+    pub span: SpanWithId,
 }
 impl<'a, 'i> Parse<'a, 'i> for ExprWhile<'a, 'i> {
     fn parse_marked(parser: &mut Parser<'a, '_, 'i>, depth: Depth) -> Result<Self, InternalError> {
         let label: Option<ExprLabelDef<'i>> = parser.parse(depth.next())?;
-        let while_token = parser.parse(depth.next())?;
+        let while_token: TokenWhile = parser.parse(depth.next())?;
         let condition = Expr::try_parse_until_including(parser, ParseUntil::All, depth.next())?;
         let _guard = parser.push_scope(ScopeType::While(label.clone()));
-        let block = parser.parse(depth.next())?;
-        Ok(ExprWhile {
-            label,
-            while_token,
-            condition,
-            block,
-        })
+        let block: ExprBlock = parser.parse(depth.next())?;
+        let span = label.as_ref().map(Spanned::span_) | while_token.span | block.span;
+        Ok(ExprWhile { label, while_token, condition, block, span })
     }
 }
 impl<'a, 'i> Spanned for ExprWhile<'a, 'i> {
-    fn span(&self) -> Span {
-        let start = if let Some(label) = &self.label {
-            label.span().start
-        } else {
-            self.while_token.span.start
-        };
-        Span::new(self.while_token.span.file, start, self.block.span().end)
+    fn span_with_id(&self) -> SpanWithId {
+        self.span
     }
 }
 impl<'a, 'i> Display for ExprWhile<'a, 'i> {
@@ -1718,11 +1833,12 @@ pub struct ExprFor<'a, 'i> {
     pub in_token: TokenIn,
     pub expr: &'a Expr<'a, 'i>,
     pub block: ExprBlock<'a, 'i>,
+    pub span: SpanWithId,
 }
 impl<'a, 'i> Parse<'a, 'i> for ExprFor<'a, 'i> {
     fn parse_marked(parser: &mut Parser<'a, '_, 'i>, depth: Depth) -> Result<Self, InternalError> {
         let label: Option<ExprLabelDef<'i>> = parser.parse(depth.next())?;
-        let for_token = parser.parse(depth.next())?;
+        let for_token: TokenFor = parser.parse(depth.next())?;
         // don't have the binding in the current scope in the expr
         let guard = parser.push_scope(ScopeType::Synthetic);
         let binding = Binding::parse_new(parser, depth.next())?;
@@ -1732,25 +1848,14 @@ impl<'a, 'i> Parse<'a, 'i> for ExprFor<'a, 'i> {
         let _guard = parser.push_scope(ScopeType::For(label.clone()));
         let added_binding = parser.add_binding(binding.ident, binding.mutable);
         assert_eq!(added_binding, binding);
-        let block = parser.parse(depth.next())?;
-        Ok(ExprFor {
-            label,
-            for_token,
-            binding,
-            in_token,
-            expr,
-            block,
-        })
+        let block: ExprBlock = parser.parse(depth.next())?;
+        let span = label.as_ref().map(Spanned::span_) | for_token.span | block.span;
+        Ok(ExprFor { label, for_token, binding, in_token, expr, block, span })
     }
 }
 impl<'a, 'i> Spanned for ExprFor<'a, 'i> {
-    fn span(&self) -> Span {
-        let start = if let Some(label) = &self.label {
-            label.span().start
-        } else {
-            self.for_token.span.start
-        };
-        Span::new(self.for_token.span.file, start, self.block.span().end)
+    fn span_with_id(&self) -> SpanWithId {
+        self.span
     }
 }
 impl<'a, 'i> Display for ExprFor<'a, 'i> {
@@ -1767,6 +1872,12 @@ pub struct ExprLoop<'a, 'i> {
     pub label: Option<ExprLabelDef<'i>>,
     pub loop_token: TokenLoop,
     pub block: ExprBlock<'a, 'i>,
+    pub span: SpanWithId,
+}
+impl<'a, 'i> ExprLoop<'a, 'i> {
+    pub fn new(label: Option<ExprLabelDef<'i>>, loop_token: TokenLoop, block: ExprBlock<'a, 'i>) -> Self {
+        ExprLoop { label, loop_token, block, span: label.as_ref().map(Spanned::span_) | loop_token.span | block.span }
+    }
 }
 impl<'a, 'i> Parse<'a, 'i> for ExprLoop<'a, 'i> {
     fn parse_marked(parser: &mut Parser<'a, '_, 'i>, depth: Depth) -> Result<Self, InternalError> {
@@ -1774,21 +1885,12 @@ impl<'a, 'i> Parse<'a, 'i> for ExprLoop<'a, 'i> {
         let loop_token = parser.parse(depth.next())?;
         let _guard = parser.push_scope(ScopeType::Loop(label.clone()));
         let block = parser.parse(depth.next())?;
-        Ok(ExprLoop {
-            label,
-            loop_token,
-            block,
-        })
+        Ok(ExprLoop::new(label, loop_token, block))
     }
 }
 impl<'a, 'i> Spanned for ExprLoop<'a, 'i> {
-    fn span(&self) -> Span {
-        let start = if let Some(label) = &self.label {
-            label.span().start
-        } else {
-            self.loop_token.span.start
-        };
-        Span::new(self.loop_token.span.file, start, self.block.span().end)
+    fn span_with_id(&self) -> SpanWithId {
+        self.span
     }
 }
 impl<'a, 'i> Display for ExprLoop<'a, 'i> {
@@ -1805,29 +1907,20 @@ pub struct ExprBreak<'a, 'i> {
     pub break_token: TokenBreak,
     pub label: Option<ExprLabel<'i>>,
     pub expr: Option<&'a Expr<'a, 'i>>,
+    pub span: SpanWithId,
 }
 impl<'a, 'i> Parse<'a, 'i> for ExprBreak<'a, 'i> {
     fn parse_marked(parser: &mut Parser<'a, '_, 'i>, depth: Depth) -> Result<Self, InternalError> {
-        let break_token = parser.parse(depth.next())?;
-        let label = parser.parse(depth.next())?;
-        let expr = parser.parse(depth.last())?;
-        Ok(ExprBreak {
-            break_token,
-            label,
-            expr,
-        })
+        let break_token: TokenBreak = parser.parse(depth.next())?;
+        let label: Option<ExprLabel> = parser.parse(depth.next())?;
+        let expr: Option<&Expr> = parser.parse(depth.last())?;
+        let span = break_token.span | label.as_ref().map(Spanned::span_) | expr.map(Spanned::span_);
+        Ok(ExprBreak { break_token, label, expr, span })
     }
 }
 impl<'a, 'i> Spanned for ExprBreak<'a, 'i> {
-    fn span(&self) -> Span {
-        let end = if let Some(expr) = &self.expr {
-            expr.span().end
-        } else if let Some(label) = &self.label {
-            label.span().end
-        } else {
-            self.break_token.span.end
-        };
-        Span::new(self.break_token.span.file, self.break_token.span.start, end)
+    fn span_with_id(&self) -> SpanWithId {
+        self.span
     }
 }
 impl<'a, 'i> Display for ExprBreak<'a, 'i> {
@@ -1847,25 +1940,19 @@ impl<'a, 'i> Display for ExprBreak<'a, 'i> {
 pub struct ExprContinue<'i> {
     pub continue_token: TokenContinue,
     pub label: Option<ExprLabel<'i>>,
+    pub span: SpanWithId,
 }
 impl<'a, 'i> Parse<'a, 'i> for ExprContinue<'i> {
     fn parse_marked(parser: &mut Parser<'a, '_, 'i>, depth: Depth) -> Result<Self, InternalError> {
-        let continue_token = parser.parse(depth.next())?;
-        let label = parser.parse(depth.next())?;
-        Ok(ExprContinue {
-            continue_token,
-            label,
-        })
+        let continue_token: TokenContinue = parser.parse(depth.next())?;
+        let label: Option<ExprLabel> = parser.parse(depth.next())?;
+        let span = continue_token.span | label.as_ref().map(Spanned::span_);
+        Ok(ExprContinue { continue_token, label, span })
     }
 }
 impl<'i> Spanned for ExprContinue<'i> {
-    fn span(&self) -> Span {
-        let end = if let Some(label) = &self.label {
-            label.span().end
-        } else {
-            self.continue_token.span.end
-        };
-        Span::new(self.continue_token.span.file, self.continue_token.span.start, end)
+    fn span_with_id(&self) -> SpanWithId {
+        self.span
     }
 }
 impl<'i> Display for ExprContinue<'i> {
@@ -1882,25 +1969,24 @@ impl<'i> Display for ExprContinue<'i> {
 pub struct ExprReturn<'a, 'i> {
     pub return_token: TokenReturn,
     pub expr: Option<&'a Expr<'a, 'i>>,
+    pub span: SpanWithId,
+}
+impl<'a, 'i> ExprReturn<'a, 'i> {
+    pub fn new(return_token: TokenReturn, expr: Option<&'a Expr<'a, 'i>>) -> Self {
+        ExprReturn { return_token, expr, span: return_token.span | expr.map(Spanned::span_) }
+    }
 }
 impl<'a, 'i> Parse<'a, 'i> for ExprReturn<'a, 'i> {
     fn parse_marked(parser: &mut Parser<'a, '_, 'i>, depth: Depth) -> Result<Self, InternalError> {
-        let return_token = parser.parse(depth.next())?;
-        let expr = parser.parse(depth.last())?;
-        Ok(ExprReturn {
-            return_token,
-            expr,
-        })
+        Ok(ExprReturn::new(
+            parser.parse(depth.next())?,
+            parser.parse(depth.last())?,
+        ))
     }
 }
 impl<'a, 'i> Spanned for ExprReturn<'a, 'i> {
-    fn span(&self) -> Span {
-        let end = if let Some(expr) = &self.expr {
-            expr.span().end
-        } else {
-            self.return_token.span.end
-        };
-        Span::new(self.return_token.span.file, self.return_token.span.start, end)
+    fn span_with_id(&self) -> SpanWithId {
+        self.span
     }
 }
 impl<'a, 'i> Display for ExprReturn<'a, 'i> {
@@ -1917,23 +2003,24 @@ impl<'a, 'i> Display for ExprReturn<'a, 'i> {
 pub struct ExprYield<'a, 'i> {
     pub yield_token: TokenYield,
     pub expr: Option<&'a Expr<'a, 'i>>,
+    pub span: SpanWithId,
+}
+impl<'a, 'i> ExprYield<'a, 'i> {
+    pub fn new(yield_token: TokenYield, expr: Option<&'a Expr<'a, 'i>>) -> Self {
+        ExprYield { yield_token, expr, span: yield_token.span | expr.map(|e| e.span_with_id()) }
+    }
 }
 impl<'a, 'i> Parse<'a, 'i> for ExprYield<'a, 'i> {
     fn parse_marked(parser: &mut Parser<'a, '_, 'i>, depth: Depth) -> Result<Self, InternalError> {
-        Ok(ExprYield {
-            yield_token: parser.parse(depth.next())?,
-            expr: parser.parse(depth.last())?,
-        })
+        Ok(ExprYield::new(
+            parser.parse(depth.next())?,
+            parser.parse(depth.last())?,
+        ))
     }
 }
 impl<'a, 'i> Spanned for ExprYield<'a, 'i> {
-    fn span(&self) -> Span {
-        let end = if let Some(expr) = &self.expr {
-            expr.span().end
-        } else {
-            self.yield_token.span.end
-        };
-        Span::new(self.yield_token.span.file, self.yield_token.span.start, end)
+    fn span_with_id(&self) -> SpanWithId {
+        self.span
     }
 }
 impl<'a, 'i> Display for ExprYield<'a, 'i> {
@@ -1954,20 +2041,26 @@ pub struct ExprFunctionOrMethodCall<'a, 'i, T> {
     pub open: TokenOpenParen,
     pub args: Separated<'a, 'i, &'a Expr<'a, 'i>, TokenComma>,
     pub close: TokenCloseParen,
+    pub span: SpanWithId,
 }
-impl<'a, 'i, T: Parse<'a, 'i>> Parse<'a, 'i> for ExprFunctionOrMethodCall<'a, 'i, T> {
-    fn parse_marked(parser: &mut Parser<'a, '_, 'i>, depth: Depth) -> Result<Self, InternalError> {
-        Ok(ExprFunctionOrMethodCall {
-            name: parser.parse(depth.next())?,
-            open: parser.parse(depth.next())?,
-            args: parser.parse(depth.next())?,
-            close: parser.parse(depth.last())?,
-        })
+impl<'a, 'i, T: Spanned> ExprFunctionOrMethodCall<'a, 'i, T> {
+    pub fn new(name: T, open: TokenOpenParen, args: Separated<'a, 'i, &'a Expr<'a, 'i>, TokenComma>, close: TokenCloseParen) -> Self {
+        ExprFunctionOrMethodCall { name, open, args, close, span: name.span_() | close.span }
     }
 }
-impl<'a, 'i, T: Spanned> Spanned for ExprFunctionOrMethodCall<'a, 'i, T> {
-    fn span(&self) -> Span {
-        Span::new(self.name.span().file, self.name.span().start, self.close.span.end)
+impl<'a, 'i, T: Parse<'a, 'i> + Spanned> Parse<'a, 'i> for ExprFunctionOrMethodCall<'a, 'i, T> {
+    fn parse_marked(parser: &mut Parser<'a, '_, 'i>, depth: Depth) -> Result<Self, InternalError> {
+        Ok(ExprFunctionOrMethodCall::new(
+            parser.parse(depth.next())?,
+            parser.parse(depth.next())?,
+            parser.parse(depth.next())?,
+            parser.parse(depth.last())?,
+        ))
+    }
+}
+impl<'a, 'i, T> Spanned for ExprFunctionOrMethodCall<'a, 'i, T> {
+    fn span_with_id(&self) -> SpanWithId {
+        self.span
     }
 }
 impl<'a, 'i, T: Display> Display for ExprFunctionOrMethodCall<'a, 'i, T> {
@@ -1984,6 +2077,7 @@ pub struct ExprFunctionType<'a, 'i> {
     pub args: Separated<'a, 'i, ExprType<'a, 'i>, TokenComma>,
     pub close: TokenCloseParen,
     pub ret_type: Option<(TokenArrow, ExprType<'a, 'i>)>,
+    pub span: SpanWithId,
 }
 impl<'a, 'i> Parse<'a, 'i> for ExprFunctionType<'a, 'i> {
     fn parse_marked(parser: &mut Parser<'a, '_, 'i>, depth: Depth) -> Result<Self, InternalError> {
@@ -1999,9 +2093,10 @@ impl<'a, 'i> Parse<'a, 'i> for ExprFunctionType<'a, 'i> {
             let generics_separated = match &mut generics {
                 None => {
                     generics = Some(ExprGenerics {
-                        open: TokenLessThan { span: Span::new(fn_token.span.file, fn_token.span.end, fn_token.span.end)},
+                        open: TokenLessThan { span: fn_token.span.end_span() },
                         generics: Some(Separated::default()),
-                        close: TokenGreaterThan { span: Span::new(fn_token.span.file, fn_token.span.end, fn_token.span.end)},
+                        close: TokenGreaterThan { span: fn_token.span.end_span() },
+                        span: fn_token.span.end_span(),
                     });
                     generics.as_mut().unwrap().generics.as_mut().unwrap()
                 },
@@ -2011,25 +2106,22 @@ impl<'a, 'i> Parse<'a, 'i> for ExprFunctionType<'a, 'i> {
             // prepend existing generics
             for existing in existing_generics {
                 let comma = TokenComma {
-                    span: Span::new(existing.span().file, existing.span().end, existing.span().end),
+                    span: existing.span_with_id().end_span(),
                 };
                 generics_separated.push_front(existing, Some(comma));
             }
         }
-        Ok(ExprFunctionType {
-            fn_token,
-            generics,
-            open: parser.parse(depth.next())?,
-            args: parser.parse(depth.next())?,
-            close: parser.parse(depth.next())?,
-            ret_type: parser.parse(depth.next())?,
-        })
+        let open = parser.parse(depth.next())?;
+        let args = parser.parse(depth.next())?;
+        let close: TokenCloseParen = parser.parse(depth.next())?;
+        let ret_type: Option<(TokenArrow, ExprType)> = parser.parse(depth.next())?;
+        let span = fn_token.span | close.span | ret_type.as_ref().map(|(_, t)| t.span_());
+        Ok(ExprFunctionType { fn_token, generics, open, args, close, ret_type, span })
     }
 }
 impl<'a, 'i> Spanned for ExprFunctionType<'a, 'i> {
-    fn span(&self) -> Span {
-        let end = self.ret_type.as_ref().map(|(_, t)| t.span().end).unwrap_or(self.close.span.end);
-        Span::new(self.fn_token.span.file, self.fn_token.span.start, end)
+    fn span_with_id(&self) -> SpanWithId {
+        self.span
     }
 }
 impl<'a, 'i> Display for ExprFunctionType<'a, 'i> {
@@ -2058,6 +2150,13 @@ pub struct ExprFunctionSignature<'a, 'i> {
     pub varargs: Option<(Option<ExprType<'a, 'i>>, TokenDotDotDot)>,
     pub close: TokenCloseParen,
     pub ret_type: Option<(TokenArrow, ExprType<'a, 'i>)>,
+    pub span: SpanWithId,
+}
+impl<'a, 'i> ExprFunctionSignature<'a, 'i> {
+    pub fn new(gen_token: Option<TokenGen>, fn_token: TokenFn, name: Option<TokenIdent<'i>>, generics: Option<ExprGenerics<'a, 'i>>, open: TokenOpenParen, self_arg: Option<Binding<'i>>, self_arg_comma: Option<TokenComma>, args: Separated<'a, 'i, ExprPatternTyped<'a, 'i>, TokenComma>, varargs: Option<(Option<ExprType<'a, 'i>>, TokenDotDotDot)>, close: TokenCloseParen, ret_type: Option<(TokenArrow, ExprType<'a, 'i>)>) -> Self {
+        let span = gen_token.as_ref().map(Spanned::span_) | fn_token.span | close.span | ret_type.as_ref().map(|(_, typ)| typ.span_());
+        ExprFunctionSignature { gen_token, fn_token, name, generics, open, self_arg, self_arg_comma, args, varargs, close, ret_type, span }
+    }
 }
 impl<'a, 'i> Parse<'a, 'i> for ExprFunctionSignature<'a, 'i> {
     fn parse_marked(parser: &mut Parser<'a, '_, 'i>, depth: Depth) -> Result<Self, InternalError> {
@@ -2078,26 +2177,12 @@ impl<'a, 'i> Parse<'a, 'i> for ExprFunctionSignature<'a, 'i> {
         let varargs = parser.parse(depth.next())?;
         let close = parser.parse(depth.next())?;
         let ret_type = parser.parse(depth.last())?;
-        Ok(ExprFunctionSignature {
-            gen_token,
-            fn_token,
-            name,
-            generics,
-            open,
-            self_arg,
-            self_arg_comma,
-            args,
-            varargs,
-            close,
-            ret_type,
-        })
+        Ok(ExprFunctionSignature::new(gen_token, fn_token, name, generics, open, self_arg, self_arg_comma, args, varargs, close, ret_type))
     }
 }
 impl<'a, 'i> Spanned for ExprFunctionSignature<'a, 'i> {
-    fn span(&self) -> Span {
-        let start = self.gen_token.map(|g| g.span.start).unwrap_or(self.fn_token.span.start);
-        let end = self.ret_type.as_ref().map(|(_, typ)| typ.span().end).unwrap_or(self.close.span.end);
-        Span::new(self.fn_token.span.file, start, end)
+    fn span_with_id(&self) -> SpanWithId {
+        self.span
     }
 }
 impl<'a, 'i> Display for ExprFunctionSignature<'a, 'i> {
@@ -2123,10 +2208,16 @@ pub struct ExprFunctionDefinition<'a, 'i> {
     pub sig: ExprFunctionSignature<'a, 'i>,
     pub captures: IndexSet<Binding<'i>>,
     pub body: ExprBlock<'a, 'i>,
+    pub span: SpanWithId,
 }
 impl<'a, 'i> ExprFunctionDefinition<'a, 'i> {
+    /// WARNING: Doesn't handle generator transformation
+    pub fn new(sig: ExprFunctionSignature<'a, 'i>, captures: IndexSet<Binding<'i>>, body: ExprBlock<'a, 'i>) -> Self {
+        let span = sig.span | body.span;
+        ExprFunctionDefinition { sig, captures, body, span }
+    }
     pub fn arg_span(&self) -> Span {
-        Span::new(self.sig.open.span.file, self.sig.open.span.start, self.sig.close.span.end)
+        Span::new(self.sig.open.span_().file, self.sig.open.span_().start, self.sig.close.span_().end)
     }
     fn parse_with_generics(parser: &mut Parser<'a, '_, 'i>, depth: Depth, generics: &[Generic<'i>]) -> Result<Self, InternalError> {
         // scope for generics and argument-bindings
@@ -2149,12 +2240,11 @@ impl<'a, 'i> ExprFunctionDefinition<'a, 'i> {
         let captures = std::mem::replace(&mut parser.captures, old_captures).unwrap();
         let body = body?;
         mark.apply();
-        let gen_token = sig.gen_token;
-        let fun = ExprFunctionDefinition { sig, captures, body };
-        match gen_token {
-            Some(gen_token) => Ok(generator::transform_generator(parser, gen_token, fun)),
-            None => Ok(fun)
-        }
+        let fun = ExprFunctionDefinition::new(sig, captures, body);
+        Ok(match fun.sig.gen_token {
+            Some(gen_token) => generator::transform_generator(parser, gen_token, fun),
+            None => fun
+        })
     }
 }
 impl<'a, 'i> Parse<'a, 'i> for ExprFunctionDefinition<'a, 'i> {
@@ -2163,8 +2253,8 @@ impl<'a, 'i> Parse<'a, 'i> for ExprFunctionDefinition<'a, 'i> {
     }
 }
 impl<'a, 'i> Spanned for ExprFunctionDefinition<'a, 'i> {
-    fn span(&self) -> Span {
-        Span::new(self.sig.span().file, self.sig.span().start, self.body.span().end)
+    fn span_with_id(&self) -> SpanWithId {
+        self.span
     }
 }
 impl<'a, 'i> Display for ExprFunctionDefinition<'a, 'i> {
@@ -2182,24 +2272,30 @@ pub struct ExprStructDefinition<'a, 'i> {
     pub open: TokenOpenCurly,
     pub fields: ExprStructDefFields<'a, 'i>,
     pub close: TokenCloseCurly,
+    pub span: SpanWithId,
+}
+impl<'a, 'i> ExprStructDefinition<'a, 'i> {
+    pub fn new(struct_token: TokenStruct, name: TokenIdent<'i>, generics: Option<ExprGenerics<'a, 'i>>, open: TokenOpenCurly, fields: ExprStructDefFields<'a, 'i>, close: TokenCloseCurly) -> Self {
+        ExprStructDefinition { struct_token, name, generics, open, fields, close, span: struct_token.span | close.span }
+    }
 }
 impl<'a, 'i> Parse<'a, 'i> for ExprStructDefinition<'a, 'i> {
     fn parse_marked(parser: &mut Parser<'a, '_, 'i>, depth: Depth) -> Result<Self, InternalError> {
         // scope for generics
         let _scope_guard = parser.push_scope(ScopeType::Synthetic);
-        Ok(ExprStructDefinition {
-            struct_token: parser.parse(depth.next())?,
-            name: parser.parse(depth.next())?,
-            generics: parser.parse(depth.next())?,
-            open: parser.parse(depth.next())?,
-            fields: parser.parse(depth.next())?,
-            close: parser.parse(depth.last())?,
-        })
+        Ok(ExprStructDefinition::new(
+            parser.parse(depth.next())?,
+            parser.parse(depth.next())?,
+            parser.parse(depth.next())?,
+            parser.parse(depth.next())?,
+            parser.parse(depth.next())?,
+            parser.parse(depth.last())?,
+        ))
     }
 }
 impl<'a, 'i> Spanned for ExprStructDefinition<'a, 'i> {
-    fn span(&self) -> Span {
-        Span::new(self.struct_token.span.file, self.struct_token.span.start, self.close.span.end)
+    fn span_with_id(&self) -> SpanWithId {
+        self.span
     }
 }
 impl<'a, 'i> Display for ExprStructDefinition<'a, 'i> {
@@ -2223,30 +2319,31 @@ pub struct ExprStructInitialization<'a, 'i> {
     pub open: TokenOpenCurly,
     pub fields: ExprStructInitFields<'a, 'i>,
     pub close: TokenCloseCurly,
+    pub span: SpanWithId,
+}
+impl<'a, 'i> ExprStructInitialization<'a, 'i> {
+    pub fn new(name: TokenIdent<'i>, open: TokenOpenCurly, fields: ExprStructInitFields<'a, 'i>, close: TokenCloseCurly) -> Self {
+        ExprStructInitialization { name, open, fields, close, span: name.span | close.span }
+    }
 }
 impl<'a, 'i> Parse<'a, 'i> for ExprStructInitialization<'a, 'i> {
     fn parse_marked(parser: &mut Parser<'a, '_, 'i>, depth: Depth) -> Result<Self, InternalError> {
         let name: TokenIdent = parser.parse(depth.next())?;
         if parser.meta_info.user_types.get(name.ident).is_none() {
             return Err(InternalError::Backtrack(Backtrack {
-                span: name.span,
+                span: name.span_(),
                 expected: Cow::Borrowed(&[Expected::Token(TokenType::Ident)]),
             }));
         }
         let open = parser.parse(depth.next())?;
         let fields: ExprStructInitFields = parser.parse(depth.next())?;
         let close: TokenCloseCurly = parser.parse(depth.next())?;
-        Ok(ExprStructInitialization {
-            name,
-            open,
-            fields,
-            close,
-        })
+        Ok(ExprStructInitialization::new(name, open, fields, close))
     }
 }
 impl<'a, 'i> Spanned for ExprStructInitialization<'a, 'i> {
-    fn span(&self) -> Span {
-        Span::new(self.name.span.file, self.name.span.start, self.close.span.end)
+    fn span_with_id(&self) -> SpanWithId {
+        self.span
     }
 }
 impl<'a, 'i> Display for ExprStructInitialization<'a, 'i> {
@@ -2267,24 +2364,25 @@ pub struct ExprEnumDefinition<'a, 'i> {
     pub open: TokenOpenCurly,
     pub variants: Separated<'a, 'i, ExprEnumVariant<'a, 'i>, TokenComma>,
     pub close: TokenCloseCurly,
+    pub span: SpanWithId,
 }
 impl<'a, 'i> Parse<'a, 'i> for ExprEnumDefinition<'a, 'i> {
     fn parse_marked(parser: &mut Parser<'a, '_, 'i>, depth: Depth) -> Result<Self, InternalError> {
         // scope for generics
         let _scope_guard = parser.push_scope(ScopeType::Synthetic);
-        Ok(ExprEnumDefinition {
-            enum_token: parser.parse(depth.next())?,
-            name: parser.parse(depth.next())?,
-            generics: parser.parse(depth.next())?,
-            open: parser.parse(depth.next())?,
-            variants: parser.parse(depth.next())?,
-            close: parser.parse(depth.last())?,
-        })
+        let enum_token: TokenEnum = parser.parse(depth.next())?;
+        let name = parser.parse(depth.next())?;
+        let generics = parser.parse(depth.next())?;
+        let open = parser.parse(depth.next())?;
+        let variants = parser.parse(depth.next())?;
+        let close: TokenCloseCurly = parser.parse(depth.last())?;
+        let span = enum_token.span | close.span;
+        Ok(ExprEnumDefinition { enum_token, name, generics, open, variants, close, span })
     }
 }
 impl<'a, 'i> Spanned for ExprEnumDefinition<'a, 'i> {
-    fn span(&self) -> Span {
-        Span::new(self.enum_token.span.file, self.enum_token.span.start, self.close.span.end)
+    fn span_with_id(&self) -> SpanWithId {
+        self.span
     }
 }
 impl<'a, 'i> Display for ExprEnumDefinition<'a, 'i> {
@@ -2330,6 +2428,12 @@ pub struct ExprEnumInitialization<'i> {
     pub enum_name: TokenIdent<'i>,
     pub double_colon: TokenDoubleColon,
     pub variant_name: TokenIdent<'i>,
+    pub span: SpanWithId,
+}
+impl<'i> ExprEnumInitialization<'i> {
+    pub fn new(enum_name: TokenIdent<'i>, double_colon: TokenDoubleColon, variant_name: TokenIdent<'i>) -> Self {
+        ExprEnumInitialization { enum_name, double_colon, variant_name, span: enum_name.span | variant_name.span }
+    }
 }
 impl<'a, 'i> Parse<'a, 'i> for ExprEnumInitialization<'i> {
     fn parse_marked(parser: &mut Parser<'a, '_, 'i>, depth: Depth) -> Result<Self, InternalError> {
@@ -2338,22 +2442,18 @@ impl<'a, 'i> Parse<'a, 'i> for ExprEnumInitialization<'i> {
         let variant_name: TokenIdent = parser.parse(depth.last())?;
         match parser.meta_info.user_types.get(enum_name.ident) {
             Some(UserType::Enum(e)) if e.variants.iter().any(|v| v.name.ident == variant_name.ident && v.fields.is_none()) => {
-                Ok(ExprEnumInitialization {
-                    enum_name,
-                    double_colon,
-                    variant_name,
-                })
+                Ok(ExprEnumInitialization::new(enum_name, double_colon, variant_name))
             }
             _ => Err(InternalError::Backtrack(Backtrack {
-                span: enum_name.span,
+                span: enum_name.span_(),
                 expected: Cow::Borrowed(&[Expected::Token(TokenType::Ident)]),
             })),
         }
     }
 }
 impl<'i> Spanned for ExprEnumInitialization<'i> {
-    fn span(&self) -> Span {
-        Span::new(self.enum_name.span.file, self.enum_name.span.start, self.variant_name.span.end)
+    fn span_with_id(&self) -> SpanWithId {
+        self.span
     }
 }
 impl<'i> Display for ExprEnumInitialization<'i> {
@@ -2370,6 +2470,12 @@ pub struct ExprImplBlock<'a, 'i> {
     pub open: TokenOpenCurly,
     pub functions: Vec<ExprFunctionDefinition<'a, 'i>>,
     pub close: TokenCloseCurly,
+    pub span: SpanWithId,
+}
+impl<'a, 'i> ExprImplBlock<'a, 'i> {
+    pub fn new(impl_token: TokenImpl, name: TokenIdent<'i>, generics: Option<ExprGenerics<'a, 'i>>, open: TokenOpenCurly, functions: Vec<ExprFunctionDefinition<'a, 'i>>, close: TokenCloseCurly) -> Self {
+        ExprImplBlock { impl_token, name, generics, open, functions, close, span: impl_token.span | close.span }
+    }
 }
 impl<'a, 'i> Parse<'a, 'i> for ExprImplBlock<'a, 'i> {
     fn parse_marked(parser: &mut Parser<'a, '_, 'i>, depth: Depth) -> Result<Self, InternalError> {
@@ -2387,13 +2493,13 @@ impl<'a, 'i> Parse<'a, 'i> for ExprImplBlock<'a, 'i> {
                 None => return,
             };
             let expected_generics = user_type.generics();
-            let expected_generic_span = expected_generics.map(|g| g.span()).unwrap_or_else(|| Span::new(user_type.name_span().file, user_type.name_span().end, user_type.name_span().end));
+            let expected_generic_span = expected_generics.map(|g| g.span_with_id()).unwrap_or_else(|| user_type.name_span().end_span());
             let expected_generics = expected_generics.and_then(|g| g.generics.as_ref());
             let expected_generic_iter = match expected_generics {
                 Some(generics) => Either::Left(generics.iter().map(Some).chain(std::iter::repeat(None))),
                 None => Either::Right(std::iter::repeat(None)),
             };
-            let generic_span = generics.as_ref().map(|g| g.span()).unwrap_or_else(|| Span::new(name.span.file, name.span.end, name.span.end));
+            let generic_span = generics.as_ref().map(|g| g.span_with_id()).unwrap_or_else(|| name.span.end_span());
             let generics = generics.as_mut().and_then(|g| g.generics.as_mut());
             let generics_iter = match generics {
                 Some(generics) => Either::Left(generics.iter_mut().map(Some).chain(std::iter::repeat_with(|| None))),
@@ -2405,18 +2511,18 @@ impl<'a, 'i> Parse<'a, 'i> for ExprImplBlock<'a, 'i> {
                     Some((Some(expected), Some(generic))) => {
                         if expected.def_ident.ident != generic.def_ident.ident {
                             parser.diagnostics.error(ErrorCode::MismatchedGeneric)
-                                .with_error_label(generic.def_ident.span, format!("expected generic name `{}`, found `{}`", expected.def_ident.ident, generic.def_ident.ident))
+                                .with_error_label(generic.def_ident.span_(), format!("expected generic name `{}`, found `{}`", expected.def_ident.ident, generic.def_ident.ident))
                                 .with_note("generics of a type must have the same name in the type def and impl-block")
                                 .emit();
                         }
                     },
                     Some((Some(expected), None)) => parser.diagnostics.error(ErrorCode::MissingGeneric)
-                        .with_error_label(generic_span, format!("missing generic `{}`", expected.def_ident.ident))
-                        .with_info_label(expected.def_ident.span, "defined here")
+                        .with_error_label(generic_span.span(), format!("missing generic `{}`", expected.def_ident.ident))
+                        .with_info_label(expected.def_ident.span_(), "defined here")
                         .emit(),
                     Some((None, Some(generic))) => parser.diagnostics.error(ErrorCode::TooManyGenerics)
-                        .with_error_label(generic.span(), format!("too many generics, unknown generic `{}`", generic.def_ident.ident))
-                        .with_info_label(expected_generic_span, "expected generics defined here")
+                        .with_error_label(generic.span_(), format!("too many generics, unknown generic `{}`", generic.def_ident.ident))
+                        .with_info_label(expected_generic_span.span(), "expected generics defined here")
                         .emit(),
                     Some((None, None)) => break,
                     None => unreachable!(),
@@ -2446,7 +2552,7 @@ impl<'a, 'i> Parse<'a, 'i> for ExprImplBlock<'a, 'i> {
                         let g = g.generics.get_or_insert_with(Separated::default);
                         for (&generic, delim) in generics.as_ref().unwrap().generics.as_ref().unwrap().iter_with_delimiters() {
                             let comma = delim.copied().unwrap_or(TokenComma {
-                                span: Span::new(generic.span().file, generic.span().end, generic.span().end),
+                                span: generic.span_with_id().end_span(),
                             });
                             g.push_front(generic, Some(comma))
                         }
@@ -2456,34 +2562,33 @@ impl<'a, 'i> Parse<'a, 'i> for ExprImplBlock<'a, 'i> {
 
             // self-args
             if let Some(self_arg) = fun.sig.self_arg {
-                let typed = ExprPatternTyped {
-                    pattern: ExprPatternUntyped {
+                let typed = ExprPatternTyped::new(
+                    ExprPatternUntyped {
                         binding: self_arg,
                     },
-                    colon_token: TokenColon {
-                        span: Span::new(self_arg.ident.span.file, self_arg.ident.span.end, self_arg.ident.span.end),
+                    TokenColon {
+                        span: self_arg.ident.span.end_span(),
                     },
-                    typ: ExprType::UserType(
+                    ExprType::UserType(ExprTypeUserType::new(
                         name,
                         match generics.clone() {
-                            Some(ExprGenerics { open, generics: Some(generics), close }) => {
+                            Some(ExprGenerics { open, generics: Some(generics), close, .. }) => {
                                 Some((open, Box::new(Separated::from(generics)), close))
                             }
                             _ => None,
-                        }
-                    ),
-
-                };
+                        },
+                    )),
+                );
                 fun.sig.args.push_front(typed, fun.sig.self_arg_comma);
             }
         }
 
-        Ok(ExprImplBlock { impl_token, name, generics, open, functions, close })
+        Ok(ExprImplBlock::new(impl_token, name, generics, open, functions, close))
     }
 }
 impl<'a, 'i> Spanned for ExprImplBlock<'a, 'i> {
-    fn span(&self) -> Span {
-        Span::new(self.impl_token.span.file, self.impl_token.span.start, self.close.span.end)
+    fn span_with_id(&self) -> SpanWithId {
+        self.span
     }
 }
 impl<'a, 'i> Display for ExprImplBlock<'a, 'i> {
@@ -2505,18 +2610,19 @@ impl<'a, 'i> Display for ExprImplBlock<'a, 'i> {
 pub struct ExprInclude {
     pub include_token: TokenInclude,
     pub file: TokenDqString,
+    pub span: SpanWithId,
 }
 impl<'a, 'i> Parse<'a, 'i> for ExprInclude {
     fn parse_marked(parser: &mut Parser<'a, '_, 'i>, depth: Depth) -> Result<Self, InternalError> {
-        Ok(ExprInclude {
-            include_token: parser.parse(depth.next())?,
-            file: parser.parse(depth.next())?,
-        })
+        let include_token: TokenInclude = parser.parse(depth.next())?;
+        let file: TokenDqString = parser.parse(depth.next())?;
+        let span = include_token.span | file.span;
+        Ok(ExprInclude { include_token, file, span })
     }
 }
 impl Spanned for ExprInclude {
-    fn span(&self) -> Span {
-        Span::new(self.include_token.span.file, self.include_token.span.start, self.file.span.end)
+    fn span_with_id(&self) -> SpanWithId {
+        self.span
     }
 }
 impl Display for ExprInclude {

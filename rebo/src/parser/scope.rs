@@ -33,7 +33,7 @@ static NEXT_BINDING_ID: AtomicU32 = AtomicU32::new(0);
 impl BindingId {
     pub fn unique() -> BindingId {
         let id = NEXT_BINDING_ID.fetch_add(1, Ordering::SeqCst);
-        // why do I even have this check?!
+        // why do we even have this check?!
         if id == u32::MAX {
             panic!("binding id overflow");
         }

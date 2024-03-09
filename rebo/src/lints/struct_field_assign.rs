@@ -1,10 +1,11 @@
 use crate::lints::visitor::Visitor;
 use diagnostic::Diagnostics;
-use crate::common::{MetaInfo, BlockStack};
-use crate::parser::{ExprFieldAccess, ExprAssign, ExprAssignLhs, Spanned};
+use crate::common::{BlockStack, MetaInfo};
+use crate::common::Spanned;
+use crate::parser::{ExprAssign, ExprAssignLhs, ExprFieldAccess};
 use crate::error_codes::ErrorCode;
 use crate::typeck::TypeVar;
-use crate::typeck::types::{Type, SpecificType};
+use crate::typeck::types::{SpecificType, Type};
 
 pub struct StructFieldAssign;
 
@@ -19,7 +20,7 @@ impl Visitor for StructFieldAssign {
 fn check_non_struct_field_access(diagnostics: &Diagnostics<ErrorCode>, meta_info: &MetaInfo, expr: &ExprFieldAccess) {
     let ExprFieldAccess { variable, fields, .. } = expr;
     let mut typ = meta_info.types[&TypeVar::new(variable.binding.ident.span)].clone();
-    let mut span = variable.span();
+    let mut span = variable.span_();
     for field in fields {
         let struct_name = match &typ {
             Type::Top | Type::Bottom => return,
@@ -42,7 +43,7 @@ fn check_non_struct_field_access(diagnostics: &Diagnostics<ErrorCode>, meta_info
         match field_type {
             Some(field_typ) => {
                 typ = field_typ.clone();
-                span = field.span;
+                span = field.span_();
             }
             None => diagnostics.error(ErrorCode::UnknownFieldAccess)
                 .with_error_label(span, format!("tried to access non-existent field `{}` of `struct {}`", field.ident, struct_name))

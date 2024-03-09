@@ -1,14 +1,15 @@
 use std::borrow::Cow;
 use diagnostic::{DiagnosticBuilder, Diagnostics};
-use crate::typeck::graph::{Graph, Constraint, Node};
+use crate::typeck::graph::{Constraint, Graph, Node};
 use crate::common::MetaInfo;
 use crate::error_codes::ErrorCode;
 use itertools::Itertools;
-use crate::typeck::types::{Type, SpecificType, ResolvableSpecificType};
+use crate::typeck::types::{ResolvableSpecificType, SpecificType, Type};
 use std::collections::{HashSet, VecDeque};
 use std::ops::Range;
+use crate::common::Spanned;
 use crate::Expr;
-use crate::parser::{FieldOrMethod, Spanned};
+use crate::parser::FieldOrMethod;
 use crate::util::CowVec;
 
 impl<'i> Graph<'i> {

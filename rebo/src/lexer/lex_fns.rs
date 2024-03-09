@@ -1,6 +1,7 @@
 use crate::lexer::{Error, Token, TokenEof, LexerMode};
 use diagnostic::{FileId, Diagnostics, Span};
 use rebo::util::{EscapedResult, TryParseDqstringResult};
+use crate::common::{SpanWithId, Spanned};
 use crate::error_codes::ErrorCode;
 use super::token::*;
 use crate::util::{self, TryParseNumberResult};
@@ -23,11 +24,11 @@ pub fn lex_next<'i>(diagnostics: &Diagnostics<ErrorCode>, file: FileId, s: &'i s
         // skip preceding whitespace
         index = match skip_whitespace(s, index) {
             Some(index) => index,
-            None => return Ok(Token::Eof(TokenEof { span: Span::new(file, index, index) })),
+            None => return Ok(Token::Eof(TokenEof { span: SpanWithId::new(file, index, index) })),
         };
 
         if s[index..].is_empty() {
-            return Ok(Token::Eof(TokenEof { span: Span::new(file, index, index) }));
+            return Ok(Token::Eof(TokenEof { span: SpanWithId::new(file, index, index) }));
         }
 
         let functions = [
@@ -41,7 +42,7 @@ pub fn lex_next<'i>(diagnostics: &Diagnostics<ErrorCode>, file: FileId, s: &'i s
         for f in &functions {
             match f(diagnostics, file, s, index)? {
                 MaybeToken::Token(token) => {
-                    trace!("lexed {:?} as {:?}", &s[token.span().start..token.span().end], token);
+                    trace!("lexed {:?} as {:?}", &s[token.span_().start..token.span_().end], token);
                     return Ok(token)
                 },
                 MaybeToken::Backtrack => continue,
@@ -133,13 +134,13 @@ pub fn try_lex_token<'i>(diagnostics: &Diagnostics<ErrorCode>, file: FileId, s: 
     }
     let char = s[index..].chars().next().unwrap();
     let char_len = char.len_utf8();
-    let span = Span::new(file, index, index + char.len_utf8());
+    let span = SpanWithId::new(file, index, index + char.len_utf8());
     let char2 = s[index+char_len..].chars().next();
     let char2_len = char2.map(char::len_utf8).unwrap_or_default();
-    let span2 = Span::new(file, index, index + char_len + char2_len);
+    let span2 = char2.map(|_| SpanWithId::new(file, index, index + char_len + char2_len));
     let char3 = s[index+char_len+char2_len..].chars().next();
     let char3_len = char3.map(char::len_utf8).unwrap_or_default();
-    let span3 = Span::new(file, index, index + char_len + char2_len + char3_len);
+    let span3 = char3.map(|_| SpanWithId::new(file, index, index + char_len + char2_len + char3_len));
     match char {
         '(' => Ok(MaybeToken::Token(Token::OpenParen(TokenOpenParen { span }))),
         ')' => Ok(MaybeToken::Token(Token::CloseParen(TokenCloseParen { span }))),
@@ -148,12 +149,12 @@ pub fn try_lex_token<'i>(diagnostics: &Diagnostics<ErrorCode>, file: FileId, s: 
         ';' => Ok(MaybeToken::Token(Token::Semicolon(TokenSemicolon { span }))),
         '\'' => Ok(MaybeToken::Token(Token::Apostrophe(TokenApostrophe { span }))),
         ':' => match char2 {
-            Some(':') => Ok(MaybeToken::Token(Token::DoubleColon(TokenDoubleColon { span: span2 }))),
+            Some(':') => Ok(MaybeToken::Token(Token::DoubleColon(TokenDoubleColon { span: span2.unwrap() }))),
             _ => Ok(MaybeToken::Token(Token::Colon(TokenColon { span }))),
         }
         '+' => Ok(MaybeToken::Token(Token::Plus(TokenPlus { span }))),
         '-' => match char2 {
-            Some('>') => Ok(MaybeToken::Token(Token::Arrow(TokenArrow { span: span2 }))),
+            Some('>') => Ok(MaybeToken::Token(Token::Arrow(TokenArrow { span: span2.unwrap() }))),
             _ => Ok(MaybeToken::Token(Token::Minus(TokenMinus { span }))),
         }
         '*' => Ok(MaybeToken::Token(Token::Star(TokenStar { span }))),
@@ -166,32 +167,32 @@ pub fn try_lex_token<'i>(diagnostics: &Diagnostics<ErrorCode>, file: FileId, s: 
         '^' => Ok(MaybeToken::Token(Token::Circumflex(TokenCircumflex { span }))),
         ',' => Ok(MaybeToken::Token(Token::Comma(TokenComma { span }))),
         '=' => match char2 {
-            Some('=') => Ok(MaybeToken::Token(Token::Equals(TokenEquals { span: span2 }))),
-            Some('>') => Ok(MaybeToken::Token(Token::FatArrow(TokenFatArrow { span: span2 }))),
+            Some('=') => Ok(MaybeToken::Token(Token::Equals(TokenEquals { span: span2.unwrap() }))),
+            Some('>') => Ok(MaybeToken::Token(Token::FatArrow(TokenFatArrow { span: span2.unwrap() }))),
             _ => Ok(MaybeToken::Token(Token::Assign(TokenAssign { span }))),
         }
         '>' => match char2 {
-            Some('=') => Ok(MaybeToken::Token(Token::GreaterEquals(TokenGreaterEquals { span: span2 }))),
+            Some('=') => Ok(MaybeToken::Token(Token::GreaterEquals(TokenGreaterEquals { span: span2.unwrap() }))),
             _ => Ok(MaybeToken::Token(Token::GreaterThan(TokenGreaterThan { span }))),
         }
         '<' => match char2 {
-            Some('=') => Ok(MaybeToken::Token(Token::LessEquals(TokenLessEquals { span: span2 }))),
+            Some('=') => Ok(MaybeToken::Token(Token::LessEquals(TokenLessEquals { span: span2.unwrap() }))),
             _ => Ok(MaybeToken::Token(Token::LessThan(TokenLessThan { span }))),
         }
         '!' => match char2 {
-            Some('=') => Ok(MaybeToken::Token(Token::NotEquals(TokenNotEquals { span: span2 }))),
+            Some('=') => Ok(MaybeToken::Token(Token::NotEquals(TokenNotEquals { span: span2.unwrap() }))),
             _ => Ok(MaybeToken::Token(Token::Bang(TokenBang { span }))),
         }
         '&' => match char2 {
-            Some('&') => Ok(MaybeToken::Token(Token::DoubleAmp(TokenDoubleAmp { span: span2 }))),
+            Some('&') => Ok(MaybeToken::Token(Token::DoubleAmp(TokenDoubleAmp { span: span2.unwrap() }))),
             _ => Ok(MaybeToken::Token(Token::Amp(TokenAmp { span }))),
         }
         '|' => match char2 {
-            Some('|') => Ok(MaybeToken::Token(Token::DoublePipe(TokenDoublePipe { span: span2 }))),
+            Some('|') => Ok(MaybeToken::Token(Token::DoublePipe(TokenDoublePipe { span: span2.unwrap() }))),
             _ => Ok(MaybeToken::Token(Token::Pipe(TokenPipe { span }))),
         }
         '.' => match (char2, char3) {
-            (Some('.'), Some('.')) => Ok(MaybeToken::Token(Token::DotDotDot(TokenDotDotDot { span: span3 }))),
+            (Some('.'), Some('.')) => Ok(MaybeToken::Token(Token::DotDotDot(TokenDotDotDot { span: span3.unwrap() }))),
             _ => Ok(MaybeToken::Token(Token::Dot(TokenDot { span }))),
         }
         '_' => match char2 {
@@ -212,12 +213,12 @@ pub fn try_lex_number<'i>(diagnostics: &Diagnostics<ErrorCode>, file: FileId, s:
     trace!("try_lex_number: {}", index);
     match util::try_parse_number(&s[index..]) {
         TryParseNumberResult::Int(value, radix, end) => Ok(MaybeToken::Token(Token::Integer(TokenInteger {
-            span: Span::new(file, index, index + end),
+            span: SpanWithId::new(file, index, index + end),
             value,
             radix,
         }))),
         TryParseNumberResult::Float(value, radix, end) => Ok(MaybeToken::Token(Token::Float(TokenFloat {
-            span: Span::new(file, index, index + end),
+            span: SpanWithId::new(file, index, index + end),
             value,
             radix,
         }))),
@@ -235,12 +236,12 @@ pub fn try_lex_bool<'i>(_diagnostics: &Diagnostics<ErrorCode>, file: FileId, s: 
     trace!("try_lex_bool: {}", index);
     if s[index..].starts_with("true") {
         Ok(MaybeToken::Token(Token::Bool(TokenBool {
-            span: Span::new(file, index, index + 4),
+            span: SpanWithId::new(file, index, index + 4),
             value: true,
         })))
     } else if s[index..].starts_with("false") {
         Ok(MaybeToken::Token(Token::Bool(TokenBool {
-            span: Span::new(file, index, index + 5),
+            span: SpanWithId::new(file, index, index + 5),
             value: false,
         })))
     } else {
@@ -261,7 +262,7 @@ pub fn try_lex_ident<'i>(_diagnostics: &Diagnostics<ErrorCode>, file: FileId, s:
         match s[index..].chars().next() {
             Some('a'..='z' | 'A'..='Z' | '_' | '0'..='9') => index += 1,
             Some(_) | None => return Ok(MaybeToken::Token(Token::Ident(TokenIdent {
-                span: Span::new(file, start, index),
+                span: SpanWithId::new(file, start, index),
                 ident: &s[start..index]
             }))),
         }
@@ -284,7 +285,7 @@ pub fn lex_line_comment<'i>(_diagnostics: &Diagnostics<ErrorCode>, file: FileId,
         }
     }
     Token::LineComment(TokenLineComment {
-        span: Span::new(file, index, end),
+        span: SpanWithId::new(file, index, end),
         comment: &s[index..end],
     })
 }
@@ -298,7 +299,7 @@ pub fn lex_block_comment<'i>(diagnostics: &Diagnostics<ErrorCode>, file: FileId,
             .with_info_label(Span::new(file, end, end), "try inserting `*/` here")
             .emit();
         Token::BlockComment(TokenBlockComment {
-            span: Span::new(file, start, end),
+            span: SpanWithId::new(file, start, end),
             comment: &s[start..end],
         })
     };
@@ -318,7 +319,7 @@ pub fn lex_block_comment<'i>(diagnostics: &Diagnostics<ErrorCode>, file: FileId,
             ('*', '/') if depth == 0 => {
                 end += c2.len_utf8();
                 return Token::BlockComment(TokenBlockComment {
-                    span: Span::new(file, index, end),
+                    span: SpanWithId::new(file, index, end),
                     comment: &s[index..end],
                 });
             },
@@ -344,7 +345,7 @@ pub fn lex_double_quoted_string<'i>(diagnostics: &Diagnostics<ErrorCode>, file: 
         },
     };
     Ok(Token::DqString(TokenDqString {
-        span: Span::new(file, index, end),
+        span: SpanWithId::new(file, index, end),
         string,
     }))
 }
@@ -478,7 +479,7 @@ pub fn lex_format_string<'i>(diagnostics: &Diagnostics<ErrorCode>, file: FileId,
     }
     parts.push(make_part(s, current, part_start, index));
     Token::FormatString(TokenFormatString {
-        span: Span::new(file, start, index + post_index),
+        span: SpanWithId::new(file, start, index + post_index),
         parts,
         rogue,
     })

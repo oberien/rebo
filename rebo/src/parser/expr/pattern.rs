@@ -1,8 +1,7 @@
-use crate::parser::{Parse, Parser, InternalError, Spanned, Binding, ExprType, Separated, ExprLiteral, expr::NewBinding};
-use crate::common::Depth;
-use diagnostic::Span;
+use crate::parser::{Binding, expr::NewBinding, ExprLiteral, ExprType, InternalError, Parse, Parser, Separated};
+use crate::common::{Depth, Spanned, SpanWithId};
 use std::fmt::{self, Display, Formatter};
-use crate::lexer::{TokenColon, TokenUnderscore, TokenIdent, TokenDoubleColon, TokenOpenParen, TokenComma, TokenCloseParen};
+use crate::lexer::{TokenCloseParen, TokenColon, TokenComma, TokenDoubleColon, TokenIdent, TokenOpenParen, TokenUnderscore};
 use super::helper;
 use derive_more::Display;
 use itertools::Itertools;
@@ -38,10 +37,10 @@ impl<'a, 'i> Parse<'a, 'i> for ExprPattern<'a, 'i> {
     }
 }
 impl<'a, 'i> Spanned for ExprPattern<'a, 'i> {
-    fn span(&self) -> Span {
+    fn span_with_id(&self) -> SpanWithId {
         match self {
-            ExprPattern::Typed(t) => t.span(),
-            ExprPattern::Untyped(t) => t.span(),
+            ExprPattern::Typed(t) => t.span_with_id(),
+            ExprPattern::Untyped(t) => t.span_with_id(),
         }
     }
 }
@@ -57,8 +56,8 @@ impl<'a, 'i> Parse<'a, 'i> for ExprPatternUntyped<'i> {
     }
 }
 impl<'i> Spanned for ExprPatternUntyped<'i> {
-    fn span(&self) -> Span {
-        self.binding.span()
+    fn span_with_id(&self) -> SpanWithId {
+        self.binding.span_with_id()
     }
 }
 impl<'i> Display for ExprPatternUntyped<'i> {
@@ -76,21 +75,25 @@ pub struct ExprPatternTyped<'a, 'i> {
     pub pattern: ExprPatternUntyped<'i>,
     pub colon_token: TokenColon,
     pub typ: ExprType<'a, 'i>,
+    pub span: SpanWithId,
+}
+impl<'a, 'i> ExprPatternTyped<'a, 'i> {
+    pub fn new(pattern: ExprPatternUntyped<'i>, colon_token: TokenColon, typ: ExprType<'a, 'i>) -> Self {
+        let span = pattern.span_with_id() | typ.span_with_id();
+        ExprPatternTyped { pattern, colon_token, typ, span }
+    }
 }
 impl<'a, 'i> Parse<'a, 'i> for ExprPatternTyped<'a, 'i> {
     fn parse_marked(parser: &mut Parser<'a, '_, 'i>, depth: Depth) -> Result<Self, InternalError> {
-        Ok(ExprPatternTyped {
-            pattern: parser.parse(depth.next())?,
-            colon_token: parser.parse(depth.next())?,
-            typ: parser.parse(depth.last())?,
-        })
+        let pattern = parser.parse(depth.next())?;
+        let colon_token = parser.parse(depth.next())?;
+        let typ = parser.parse(depth.last())?;
+        Ok(ExprPatternTyped::new(pattern, colon_token, typ))
     }
 }
 impl<'a, 'i> Spanned for ExprPatternTyped<'a, 'i> {
-    fn span(&self) -> Span {
-        let first = self.pattern.span();
-        let last = self.typ.span();
-        Span::new(first.file, first.start, last.end)
+    fn span_with_id(&self) -> SpanWithId {
+        self.span
     }
 }
 impl<'a, 'i> Display for ExprPatternTyped<'a, 'i> {
@@ -129,12 +132,12 @@ impl<'a, 'i> Parse<'a, 'i> for ExprMatchPattern<'a, 'i> {
     }
 }
 impl<'a, 'i> Spanned for ExprMatchPattern<'a, 'i> {
-    fn span(&self) -> Span {
+    fn span_with_id(&self) -> SpanWithId {
         match self {
-            ExprMatchPattern::Literal(lit) => lit.span(),
-            ExprMatchPattern::Variant(variant) => variant.span(),
-            ExprMatchPattern::Binding(binding) => binding.span(),
-            ExprMatchPattern::Wildcard(wildcard) => wildcard.span(),
+            ExprMatchPattern::Literal(lit) => lit.span_with_id(),
+            ExprMatchPattern::Variant(variant) => variant.span_with_id(),
+            ExprMatchPattern::Binding(binding) => binding.span_with_id(),
+            ExprMatchPattern::Wildcard(wildcard) => wildcard.span_with_id(),
         }
     }
 }
@@ -145,26 +148,28 @@ pub struct ExprMatchPatternVariant<'a, 'i> {
     pub double_colon: TokenDoubleColon,
     pub variant_name: TokenIdent<'i>,
     pub fields: Option<(TokenOpenParen, Separated<'a, 'i, Binding<'i>, TokenComma>, TokenCloseParen)>,
+    pub span: SpanWithId,
+}
+impl<'a, 'i> ExprMatchPatternVariant<'a, 'i> {
+    pub fn new(enum_name: TokenIdent<'i>, double_colon: TokenDoubleColon, variant_name: TokenIdent<'i>, fields: Option<(TokenOpenParen, Separated<'a, 'i, Binding<'i>, TokenComma>, TokenCloseParen)>) -> Self {
+        let span = enum_name.span | variant_name.span | fields.as_ref().map(|(.., close)| close.span_());
+        ExprMatchPatternVariant { enum_name, double_colon, variant_name, fields, span }
+    }
 }
 impl<'a, 'i> Parse<'a, 'i> for ExprMatchPatternVariant<'a, 'i> {
     fn parse_marked(parser: &mut Parser<'a, '_, 'i>, depth: Depth) -> Result<Self, InternalError> {
-        let enum_name = parser.parse(depth.next())?;
-        let double_colon = parser.parse(depth.next())?;
-        let variant_name = parser.parse(depth.next())?;
-        let fields: Option<(TokenOpenParen, Separated<'a, 'i, NewBinding<'i>, TokenComma>, TokenCloseParen)> = parser.parse(depth.next())?;
-        Ok(ExprMatchPatternVariant {
-            enum_name,
-            double_colon,
-            variant_name,
-            fields: fields.map(|(open, sep, close)| (open, Separated::from(sep), close)),
-        })
+        Ok(ExprMatchPatternVariant::new(
+            parser.parse(depth.next())?,
+            parser.parse(depth.next())?,
+            parser.parse(depth.next())?,
+            parser.parse::<Option<(TokenOpenParen, Separated<'a, 'i, NewBinding<'i>, TokenComma>, TokenCloseParen)>>(depth.next())?
+                .map(|(open, sep, close)| (open, Separated::from(sep), close)),
+        ))
     }
 }
 impl<'a, 'i> Spanned for ExprMatchPatternVariant<'a, 'i> {
-    fn span(&self) -> Span {
-        let end = self.fields.as_ref().map(|(.., close)| close.span.end)
-            .unwrap_or(self.variant_name.span.end);
-        Span::new(self.enum_name.span.file, self.enum_name.span.start, end)
+    fn span_with_id(&self) -> SpanWithId {
+        self.span
     }
 }
 impl<'a, 'i> Display for ExprMatchPatternVariant<'a, 'i> {

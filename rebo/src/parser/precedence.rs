@@ -4,7 +4,7 @@ use crate::lexer::Token;
 use super::{Expr, InternalError, Parser, Backtrack};
 use crate::parser::{Expected};
 use crate::parser::expr::{ExprBoolAnd, ExprBoolOr, ExprAdd, ExprSub, ExprMul, ExprDiv, ExprMod, ExprXor, ParseUntil};
-use crate::common::Depth;
+use crate::common::{Depth, Spanned};
 
 // make trace! here log as if this still was the parser module
 macro_rules! module_path {
@@ -42,7 +42,7 @@ impl Precedence for Math {
             Token::Slash(_) => Ok(Math::Div),
             Token::Percent(_) => Ok(Math::Mod),
             Token::Circumflex(_) => Ok(Math::Xor),
-            _ => Err(InternalError::Backtrack(Backtrack { span: token.span(), expected: Self::expected() })),
+            _ => Err(InternalError::Backtrack(Backtrack { span: token.span_(), expected: Self::expected() })),
         }
     }
 
@@ -85,7 +85,7 @@ impl Precedence for BooleanExpr {
         match token {
             Token::DoubleAmp(_) => Ok(BooleanExpr::And),
             Token::DoublePipe(_) => Ok(BooleanExpr::Or),
-            _ => Err(InternalError::Backtrack(Backtrack { span: token.span(), expected: Self::expected() })),
+            _ => Err(InternalError::Backtrack(Backtrack { span: token.span_(), expected: Self::expected() })),
         }
     }
 

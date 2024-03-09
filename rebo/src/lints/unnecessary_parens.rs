@@ -1,7 +1,8 @@
 use crate::lints::visitor::Visitor;
 use diagnostic::Diagnostics;
-use crate::common::{MetaInfo, BlockStack};
-use crate::parser::{ExprIfElse, ExprMatch, ExprWhile, Expr, Spanned};
+use crate::common::{BlockStack, MetaInfo};
+use crate::common::Spanned;
+use crate::parser::{Expr, ExprIfElse, ExprMatch, ExprWhile};
 use crate::error_codes::ErrorCode;
 
 pub struct UnnecessaryParens;
@@ -20,7 +21,7 @@ impl Visitor for UnnecessaryParens {
 fn check_unnecessary_parens(diagnostics: &Diagnostics<ErrorCode>, expr: &Expr, error_code: ErrorCode) {
     if let Expr::Parenthesized(_) = expr {
         diagnostics.warning(error_code)
-            .with_info_label(expr.span(), "in this expression")
+            .with_info_label(expr.span_(), "in this expression")
             .with_note("remove the parenthesis")
             .emit();
     }

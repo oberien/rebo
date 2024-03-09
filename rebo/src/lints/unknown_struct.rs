@@ -12,9 +12,9 @@ impl Visitor for UnknownStruct {
         if meta_info.struct_types.get(name.ident).is_none() {
             let similar = crate::util::similar_name(name.ident, meta_info.struct_types.keys());
             let mut diag = diagnostics.error(ErrorCode::UnknownStruct)
-                .with_error_label(name.span, "this struct doesn't exist");
+                .with_error_label(name.span_(), "this struct doesn't exist");
             if let Some(similar) = similar {
-                diag = diag.with_info_label(name.span, format!("did you mean `{}`", similar));
+                diag = diag.with_info_label(name.span_(), format!("did you mean `{}`", similar));
             }
             diag.emit();
         }

@@ -1,10 +1,11 @@
 use crate::lints::visitor::Visitor;
 use diagnostic::Diagnostics;
-use crate::common::{MetaInfo, BlockStack};
-use crate::parser::{ExprIfElse, Spanned};
+use crate::common::{BlockStack, MetaInfo};
+use crate::common::Spanned;
+use crate::parser::ExprIfElse;
 use crate::typeck::TypeVar;
 use crate::error_codes::ErrorCode;
-use crate::typeck::types::{Type, SpecificType};
+use crate::typeck::types::{SpecificType, Type};
 
 pub struct IfElseReturnValue;
 
@@ -16,7 +17,7 @@ impl Visitor for IfElseReturnValue {
         if block_type_vars.iter().any(|var| meta_info.types[var] != Type::Specific(SpecificType::Unit)) {
             if ifelse.els.is_none() {
                 diagnostics.error(ErrorCode::MissingElse)
-                    .with_error_label(ifelse.span(), "missing else-branch in this if")
+                    .with_error_label(ifelse.span_(), "missing else-branch in this if")
                     .with_note("if the `if` should return a value, all branches must return a value")
                     .emit();
             }
@@ -28,16 +29,16 @@ impl Visitor for IfElseReturnValue {
                 // if returns value but block is empty
                 if block.body.exprs.is_empty() {
                     diagnostics.error(ErrorCode::MissingBranchBody)
-                        .with_error_label(block.span(), "this branch body is expected to evaluate to a value")
-                        .with_info_label(ifelse.span(), "all branches in this if must evaluate to a value")
+                        .with_error_label(block.span_(), "this branch body is expected to evaluate to a value")
+                        .with_info_label(ifelse.span_(), "all branches in this if must evaluate to a value")
                         .with_note("if not all branches are terminated with a `;` an if-expression evalutes to a value")
                         .emit();
                     // if returns value but block is terminated
                 }
                 if block.body.terminated_with_semicolon {
                     diagnostics.error(ErrorCode::MissingBranchValue)
-                        .with_error_label(block.span(), "this block doesn't evaluate to a value")
-                        .with_info_label(ifelse.span(), "all branches in this if must evaluate to a value")
+                        .with_error_label(block.span_(), "this block doesn't evaluate to a value")
+                        .with_info_label(ifelse.span_(), "all branches in this if must evaluate to a value")
                         .with_note("if not all branches are terminated with a `;` an if-expression evalutes to a value")
                         .emit();
                 }

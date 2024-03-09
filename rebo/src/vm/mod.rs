@@ -6,11 +6,12 @@ use parking_lot::ReentrantMutex;
 
 use crate::common::{Depth, Enum, EnumArc, Function, FunctionValue, FuzzyFloat, MetaInfo, RequiredReboFunction, RequiredReboFunctionStruct, Struct, StructArc, Value};
 use crate::lexer::{TokenBool, TokenDqString, TokenFloat, TokenIdent, TokenInteger};
-use crate::parser::{Binding, BlockBody, Expr, ExprAdd, ExprAssign, ExprAssignLhs, ExprBind, ExprBlock, ExprBool, ExprBoolAnd, ExprBoolNot, ExprBoolOr, ExprDiv, ExprMod, ExprModAssign, ExprXor, ExprXorAssign, ExprEnumDefinition, ExprEnumInitialization, ExprEquals, ExprFieldAccess, ExprFloat, ExprFormatString, ExprFormatStringPart, ExprFunctionCall, ExprGreaterEquals, ExprGreaterThan, ExprIfElse, ExprInteger, ExprLessEquals, ExprLessThan, ExprLiteral, ExprMatch, ExprMatchPattern, ExprMul, ExprNotEquals, ExprParenthesized, ExprPattern, ExprPatternTyped, ExprPatternUntyped, ExprString, ExprStructDefinition, ExprStructInitialization, ExprSub, ExprVariable, ExprWhile, ExprAccess, FieldOrMethod, Spanned, ExprFor, ExprMethodCall, ExprNeg, ExprAddAssign, ExprSubAssign, ExprMulAssign, ExprDivAssign, ExprBoolAndAssign, ExprBoolOrAssign, ExprLoop, ExprBreak, ExprContinue, ExprReturn, ExprLabel};
-pub use crate::vm::scope::{Scopes, Scope};
+use crate::parser::{Binding, BlockBody, Expr, ExprAccess, ExprAdd, ExprAddAssign, ExprAssign, ExprAssignLhs, ExprBind, ExprBlock, ExprBool, ExprBoolAnd, ExprBoolAndAssign, ExprBoolNot, ExprBoolOr, ExprBoolOrAssign, ExprBreak, ExprContinue, ExprDiv, ExprDivAssign, ExprEnumDefinition, ExprEnumInitialization, ExprEquals, ExprFieldAccess, ExprFloat, ExprFor, ExprFormatString, ExprFormatStringPart, ExprFunctionCall, ExprGreaterEquals, ExprGreaterThan, ExprIfElse, ExprInteger, ExprLabel, ExprLessEquals, ExprLessThan, ExprLiteral, ExprLoop, ExprMatch, ExprMatchPattern, ExprMethodCall, ExprMod, ExprModAssign, ExprMul, ExprMulAssign, ExprNeg, ExprNotEquals, ExprParenthesized, ExprPattern, ExprPatternTyped, ExprPatternUntyped, ExprReturn, ExprString, ExprStructDefinition, ExprStructInitialization, ExprSub, ExprSubAssign, ExprVariable, ExprWhile, ExprXor, ExprXorAssign, FieldOrMethod};
+pub use crate::vm::scope::{Scope, Scopes};
 use diagnostic::{Diagnostics, Span};
-use rt_format::{Substitution, Specifier};
-use crate::{EXTERNAL_SPAN, IncludeDirectory, ErrorCode};
+use rt_format::{Specifier, Substitution};
+use crate::{ErrorCode, EXTERNAL_SPAN, IncludeDirectory};
+use crate::common::Spanned;
 
 mod scope;
 

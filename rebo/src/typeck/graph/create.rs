@@ -1,17 +1,18 @@
-use crate::typeck::graph::{Graph, Node, PossibleTypes, Constraint};
-use crate::parser::{Expr, Spanned, ExprFormatString, ExprFormatStringPart, ExprBind, ExprPattern, ExprPatternTyped, ExprPatternUntyped, ExprAssign, ExprAssignLhs, ExprVariable, ExprFieldAccess, ExprBoolNot, ExprAdd, ExprSub, ExprMul, ExprDiv, ExprMod, ExprXor, ExprBoolAnd, ExprBoolOr, ExprLessThan, ExprLessEquals, ExprEquals, ExprNotEquals, ExprGreaterEquals, ExprGreaterThan, ExprBlock, BlockBody, ExprParenthesized, ExprMatch, ExprMatchPattern, ExprWhile, ExprFunctionCall, ExprFunctionDefinition, ExprStructInitialization, ExprImplBlock, ExprType, ExprGenerics, ExprAccess, FieldOrMethod, ExprFor, ExprStatic, ExprFunctionType, ExprFunctionSignature, ExprNeg, ExprStaticSignature, ExprAddAssign, ExprSubAssign, ExprMulAssign, ExprDivAssign, ExprModAssign, ExprXorAssign, ExprBoolAndAssign, ExprBoolOrAssign, ExprLoop, ExprBreak, ExprContinue, ExprReturn, ExprYield};
-use crate::common::{MetaInfo, UserType, Function, RequiredReboFunctionStruct, BlockStack, BlockType};
+use crate::typeck::graph::{Constraint, Graph, Node, PossibleTypes};
+use crate::parser::{BlockBody, Expr, ExprAccess, ExprAdd, ExprAddAssign, ExprAssign, ExprAssignLhs, ExprBind, ExprBlock, ExprBoolAnd, ExprBoolAndAssign, ExprBoolNot, ExprBoolOr, ExprBoolOrAssign, ExprBreak, ExprContinue, ExprDiv, ExprDivAssign, ExprEquals, ExprFieldAccess, ExprFor, ExprFormatString, ExprFormatStringPart, ExprFunctionCall, ExprFunctionDefinition, ExprFunctionSignature, ExprFunctionType, ExprGenerics, ExprGreaterEquals, ExprGreaterThan, ExprImplBlock, ExprLessEquals, ExprLessThan, ExprLoop, ExprMatch, ExprMatchPattern, ExprMod, ExprModAssign, ExprMul, ExprMulAssign, ExprNeg, ExprNotEquals, ExprParenthesized, ExprPattern, ExprPatternTyped, ExprPatternUntyped, ExprReturn, ExprStatic, ExprStaticSignature, ExprStructInitialization, ExprSub, ExprSubAssign, ExprType, ExprVariable, ExprWhile, ExprXor, ExprXorAssign, ExprYield, FieldOrMethod, ExprTypeParenthesized, ExprTypeUserType};
+use crate::common::{BlockStack, BlockType, Function, MetaInfo, RequiredReboFunctionStruct, UserType};
 use itertools::Either;
-use crate::typeck::types::{StructType, EnumType, EnumTypeVariant, SpecificType, FunctionType, Type, ResolvableSpecificType};
+use crate::typeck::types::{EnumType, EnumTypeVariant, FunctionType, ResolvableSpecificType, SpecificType, StructType, Type};
 use diagnostic::{Diagnostics, Span};
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::rc::Rc;
 use crate::error_codes::ErrorCode;
-use std::sync::atomic::{Ordering, AtomicU64};
+use std::sync::atomic::{AtomicU64, Ordering};
 use rt_format::Format;
-use rebo::{Value, FunctionValue};
+use rebo::{FunctionValue, Value};
 use crate::{CowVec, EXTERNAL_SPAN};
+use crate::common::Spanned;
 
 static CALL_INDEX: AtomicU64 = AtomicU64::new(0);
 
@@ -179,14 +180,14 @@ struct Context<'ctx, 'a, 'i> {
 
 fn convert_expr_type(typ: &ExprType, diagnostics: &Diagnostics<ErrorCode>, meta_info: &MetaInfo) -> Type {
     match typ {
-        ExprType::Parenthesized(_, t, _) => convert_expr_type(t, diagnostics, meta_info),
+        ExprType::Parenthesized(ExprTypeParenthesized { typ, .. }) => convert_expr_type(typ, diagnostics, meta_info),
         ExprType::String(_) => Type::Specific(SpecificType::String),
         ExprType::Int(_) => Type::Specific(SpecificType::Integer),
         ExprType::Float(_) => Type::Specific(SpecificType::Float),
         ExprType::Bool(_) => Type::Specific(SpecificType::Bool),
-        ExprType::Unit(_, _) => Type::Specific(SpecificType::Unit),
-        ExprType::UserType(ut, generics) => {
-            let (type_constructor, typ_span, expected_generics, name): (fn(_, _) -> _, _, _, _) = match meta_info.user_types.get(ut.ident) {
+        ExprType::Unit(_) => Type::Specific(SpecificType::Unit),
+        ExprType::UserType(ExprTypeUserType { name, generics, .. }) => {
+            let (type_constructor, typ_span, expected_generics, name): (fn(_, _) -> _, _, _, _) = match meta_info.user_types.get(name.ident) {
                 Some(UserType::Struct(s)) => (
                     |generics, name| Type::Specific(SpecificType::Struct(Cow::Owned(name), CowVec::Owned(generics))),
                     s.name.span,
@@ -200,11 +201,11 @@ fn convert_expr_type(typ: &ExprType, diagnostics: &Diagnostics<ErrorCode>, meta_
                     e.name.ident.to_string(),
                 ),
                 None => {
-                    let similar = crate::util::similar_name(ut.ident, meta_info.user_types.keys());
+                    let similar = crate::util::similar_name(name.ident, meta_info.user_types.keys());
                     let mut diag = diagnostics.error(ErrorCode::UnknownType)
-                        .with_error_label(typ.span(), "can't find type with this name");
+                        .with_error_label(typ.span_(), "can't find type with this name");
                     if let Some(similar) = similar {
-                        diag = diag.with_info_label(typ.span(), format!("did you mean `{}`", similar));
+                        diag = diag.with_info_label(typ.span_(), format!("did you mean `{}`", similar));
                     }
                     diag.emit();
                     // hack to make the type resolve regularly even though we don't have any information

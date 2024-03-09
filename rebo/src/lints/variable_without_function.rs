@@ -3,7 +3,8 @@ use rebo::parser::ExprAccess;
 use crate::lints::visitor::Visitor;
 use crate::{ErrorCode, MetaInfo};
 use crate::common::BlockStack;
-use crate::parser::{ExprFieldAccess, ExprAssignLhs, ExprAssign, ExprVariable, ExprAddAssign, ExprSubAssign, ExprMulAssign, ExprDivAssign, ExprBoolAndAssign, ExprBoolOrAssign, Spanned};
+use crate::common::Spanned;
+use crate::parser::{ExprAddAssign, ExprAssign, ExprAssignLhs, ExprBoolAndAssign, ExprBoolOrAssign, ExprDivAssign, ExprFieldAccess, ExprMulAssign, ExprSubAssign, ExprVariable};
 
 pub struct VariableWithoutFunction;
 
@@ -49,6 +50,6 @@ fn check_variable(diagnostics: &Diagnostics<ErrorCode>, variable: &ExprVariable)
         return;
     }
     diagnostics.error(ErrorCode::NonVariableAssign)
-        .with_error_label(variable.span(), "tried to assign to this non-variable")
+        .with_error_label(variable.span_(), "tried to assign to this non-variable")
         .emit();
 }

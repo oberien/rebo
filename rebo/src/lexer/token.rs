@@ -1,4 +1,4 @@
-use diagnostic::Span;
+use rebo::common::{SpanWithId, Spanned};
 use derive_more::Display;
 
 macro_rules! gen_tokens {
@@ -21,7 +21,9 @@ macro_rules! gen_tokens {
                     )+
                 }
             }
-            pub fn span(&self) -> Span {
+        }
+        impl<'i> Spanned for Token<'i> {
+            fn span_with_id(&self) -> SpanWithId {
                 match self {
                     $(
                         Token::$name($tokenname { span, .. }) => *span,
@@ -57,10 +59,16 @@ macro_rules! gen_tokens {
             $(#[$comment])?
             #[doc = $repr]
             pub struct $tokenname $(<$lt>)? {
-                pub span: Span,
+                pub span: SpanWithId,
                 $(
                     pub $field: $field_ty,
                 )*
+            }
+
+            impl$(<$lt>)? Spanned for $tokenname$(<$lt>)? {
+                fn span_with_id(&self) -> SpanWithId {
+                    self.span
+                }
             }
         )+
     }

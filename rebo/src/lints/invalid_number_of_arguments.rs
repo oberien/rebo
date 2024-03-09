@@ -1,9 +1,10 @@
 use crate::lints::visitor::Visitor;
-use crate::parser::{ExprFunctionCall, Separated, Spanned};
-use crate::common::{MetaInfo, BlockStack};
+use crate::parser::{ExprFunctionCall, Separated};
+use crate::common::{BlockStack, MetaInfo};
 use diagnostic::{Diagnostics, Span};
 use crate::error_codes::ErrorCode;
 use crate::{Expr, FunctionType, SpecificType};
+use crate::common::Spanned;
 use crate::lexer::{TokenCloseParen, TokenComma, TokenOpenParen};
 use crate::typeck::types::Type;
 use crate::typeck::TypeVar;
@@ -12,10 +13,10 @@ pub struct InvalidNumberOfArguments;
 
 impl Visitor for InvalidNumberOfArguments {
     fn visit_function_call(&self, diagnostics: &Diagnostics<ErrorCode>, meta_info: &MetaInfo, _: &BlockStack<'_, '_, ()>, call: &ExprFunctionCall) {
-        let ExprFunctionCall { name, open, args, close } = call;
+        let ExprFunctionCall { name, open, args, close, .. } = call;
 
         if let Type::Specific(SpecificType::Function(fun)) = &meta_info.types[&TypeVar::new(name.binding.ident.span)] {
-            check_function_call_arg_num(diagnostics, fun, CallType::FunctionCall, name.span(), open, args, close)
+            check_function_call_arg_num(diagnostics, fun, CallType::FunctionCall, name.span_(), open, args, close)
         }
     }
 }
@@ -26,7 +27,7 @@ pub enum CallType {
 }
 
 pub fn check_function_call_arg_num(diagnostics: &Diagnostics<ErrorCode>, fun: &FunctionType, call_type: CallType, name_span: Span, open: &TokenOpenParen, args: &Separated<&Expr, TokenComma>, close: &TokenCloseParen) {
-    let args_span = args.span().unwrap_or_else(|| Span::new(open.span.file, open.span.start, close.span.end));
+    let args_span = args.span().unwrap_or_else(|| Span::new(open.span_().file, open.span_().start, close.span_().end));
 
     let actual = match call_type {
         CallType::FunctionCall => args.len(),

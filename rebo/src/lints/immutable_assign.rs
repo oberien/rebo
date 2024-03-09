@@ -1,7 +1,8 @@
 use crate::lints::visitor::Visitor;
 use diagnostic::Diagnostics;
-use crate::common::{MetaInfo, BlockStack};
-use crate::parser::{ExprAddAssign, ExprAssign, ExprAssignLhs, ExprBoolAndAssign, ExprBoolOrAssign, ExprDivAssign, ExprFieldAccess, ExprMulAssign, ExprSubAssign, Spanned};
+use crate::common::{BlockStack, MetaInfo};
+use crate::common::Spanned;
+use crate::parser::{ExprAddAssign, ExprAssign, ExprAssignLhs, ExprBoolAndAssign, ExprBoolOrAssign, ExprDivAssign, ExprFieldAccess, ExprMulAssign, ExprSubAssign};
 use crate::error_codes::ErrorCode;
 
 pub struct ImmutableAssign;
@@ -37,9 +38,9 @@ fn check_mutable_assign(lhs: &ExprAssignLhs, diagnostics: &Diagnostics<ErrorCode
     };
     if variable.binding.mutable.is_none() {
         diagnostics.error(ErrorCode::ImmutableAssign)
-            .with_error_label(variable.span(), format!("variable `{}` is assigned to even though it's not declared as mutable", variable.binding.ident.ident))
-            .with_info_label(variable.binding.ident.span, format!("`{}` defined here", variable.binding.ident.ident))
-            .with_info_label(variable.binding.ident.span, format!("help: try using `mut {}` here", variable.binding.ident.ident))
+            .with_error_label(variable.span_(), format!("variable `{}` is assigned to even though it's not declared as mutable", variable.binding.ident.ident))
+            .with_info_label(variable.binding.ident.span_(), format!("`{}` defined here", variable.binding.ident.ident))
+            .with_info_label(variable.binding.ident.span_(), format!("help: try using `mut {}` here", variable.binding.ident.ident))
             .emit();
     }
 }
