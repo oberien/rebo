@@ -1,6 +1,6 @@
 use crate::lints::visitor::Visitor;
 use diagnostic::Diagnostics;
-use crate::common::{MetaInfo, BlockStack};
+use crate::common::{MetaInfo, BlockStack, Spanned};
 use crate::parser::ExprStructInitialization;
 use crate::error_codes::ErrorCode;
 

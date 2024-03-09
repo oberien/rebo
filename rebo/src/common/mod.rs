@@ -1,4 +1,4 @@
-use std::borrow::{Borrow, Cow};
+use std::borrow::Cow;
 use std::fmt::{self, Display, Formatter};
 use std::path::PathBuf;
 
@@ -110,7 +110,7 @@ pub struct MetaInfo<'a, 'i> {
     /// anonymous functions found in the code
     ///
     /// Available after the parser.
-    pub anonymous_rebo_functions: IndexMap<Span, (Vec<BindingId>, &'a ExprFunctionDefinition<'a, 'i>)>,
+    pub anonymous_rebo_functions: IndexMap<SpanId, (Vec<BindingId>, &'a ExprFunctionDefinition<'a, 'i>)>,
     /// functions defined in rust
     ///
     /// Available before the parser.
@@ -180,8 +180,8 @@ impl<'a, 'i> MetaInfo<'a, 'i> {
         }
     }
 
-    pub fn get_function_signature(&self, name: &str, def_span: Span) -> Option<&ExprFunctionSignature<'a, 'i>> {
-        if let Some(fun) = self.anonymous_rebo_functions.get(&def_span) {
+    pub fn get_function_signature(&self, name: &str, def_span_id: SpanId) -> Option<&ExprFunctionSignature<'a, 'i>> {
+        if let Some(fun) = self.anonymous_rebo_functions.get(&def_span_id) {
             return Some(&fun.1.sig);
         }
         if let Some(sig) = self.external_function_signatures.get(name) {
@@ -204,7 +204,7 @@ impl<'a, 'i> MetaInfo<'a, 'i> {
                 self.rebo_functions.insert(name, fun);
             }
             None => {
-                self.anonymous_rebo_functions.insert(fun.span_(), (arg_binding_ids, fun));
+                self.anonymous_rebo_functions.insert(fun.span_id(), (arg_binding_ids, fun));
             }
         }
     }
@@ -242,7 +242,7 @@ impl<'a, 'i> MetaInfo<'a, 'i> {
         if let Some(existing) = self.functions.get(name) {
             match existing {
                 Function::Rebo(existing_name, _) => {
-                    duplicate(self.rebo_functions[existing_name.as_str()].sig.name.as_ref().unwrap().span, span);
+                    duplicate(self.rebo_functions[existing_name.as_str()].sig.name.as_ref().unwrap().span_(), span);
                 }
                 Function::Rust(_) => diagnostics.error(ErrorCode::DuplicateGlobal)
                     .with_error_label(span, "a function with the same name is already provided externally")
@@ -308,7 +308,7 @@ impl<'a, 'i> MetaInfo<'a, 'i> {
         }
     }
     pub fn add_static(&mut self, diagnostics: &Diagnostics<ErrorCode>, static_def: &'a ExprStatic<'a, 'i>) {
-        let new_span = static_def.span();
+        let new_span = static_def.span_();
         let name = match &static_def.sig.pattern {
             ExprPattern::Untyped(untyped) => untyped.binding.ident.ident,
             ExprPattern::Typed(typed) => typed.pattern.binding.ident.ident,
@@ -317,7 +317,7 @@ impl<'a, 'i> MetaInfo<'a, 'i> {
             Entry::Vacant(vacant) => { vacant.insert(static_def); }
             Entry::Occupied(occupied) => {
                 let old = occupied.get();
-                let mut spans = [old.span(), new_span];
+                let mut spans = [old.span_(), new_span];
                 spans.sort();
                 diagnostics.error(ErrorCode::DuplicateGlobal)
                     .with_info_label(spans[0], "first defined here")

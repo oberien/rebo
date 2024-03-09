@@ -28,7 +28,7 @@ impl Display for SpanId {
     }
 }
 
-#[derive(Debug, Clone, Copy, Eq, PartialEq, Hash)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct SpanWithId {
     id: SpanId,
     span: Span,

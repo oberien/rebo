@@ -16,6 +16,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::convert::{Infallible, TryInto};
 use rt_format::{FormatArgument, Specifier};
 use rebo::common::FunctionValue::{Anonymous, Named};
+use rebo::common::SpanWithId;
 use rebo::vm::Scope;
 
 pub trait ExternalTypeType {
@@ -108,7 +109,7 @@ impl DeepCopy for Value {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum FunctionValue {
     Named(String),
-    Anonymous(Scope, Span),
+    Anonymous(Scope, SpanWithId),
 }
 impl DeepCopy for FunctionValue {
     fn deep_copy(&self) -> Self {
@@ -274,7 +275,7 @@ macro_rules! fmt_value_wrappers {
                     }
                     Value::Function(fun) =>  match fun {
                         FunctionValue::Named(name) => write!(f, "function {}", name),
-                        FunctionValue::Anonymous(_, span) => write!(f, "anonymous function at {}:{}:{}", span.file, span.start, span.end),
+                        FunctionValue::Anonymous(_, span) => write!(f, "anonymous function at {}:{}:{}", span.span().file, span.span().start, span.span().end),
                     },
                 }
             }

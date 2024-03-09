@@ -166,7 +166,7 @@ impl<'a, 'b, 'i> Vm<'a, 'b, 'i> {
             Expr::Literal(ExprLiteral::Float(ExprFloat { float: TokenFloat { value, .. }})) => Ok(Value::Float(FuzzyFloat(*value))),
             Expr::Literal(ExprLiteral::Bool(ExprBool { b: TokenBool { value, .. } })) => Ok(Value::Bool(*value)),
             Expr::Literal(ExprLiteral::String(ExprString { string: TokenDqString { string, .. } })) => Ok(Value::String(string.clone())),
-            Expr::Variable(var @ ExprVariable { binding, .. }) => Ok(self.load_binding(binding, var.span(), depth.last())),
+            Expr::Variable(var @ ExprVariable { binding, .. }) => Ok(self.load_binding(binding, var.span_(), depth.last())),
             Expr::Access(ExprAccess { variable, accesses, .. }) => self.load_access(variable, accesses, depth),
             Expr::FormatString(ExprFormatString { parts, .. }) => {
                 let mut res = String::new();
@@ -423,9 +423,9 @@ impl<'a, 'b, 'i> Vm<'a, 'b, 'i> {
             }
             Expr::Yield(_) => unreachable!("encountered a yield expression in the VM"),
             Expr::FunctionCall(ExprFunctionCall { name, args, .. }) => {
-                let fun = self.load_binding(&name.binding, name.span(), depth.next()).expect_function("called a function on a binding that's not a function");
+                let fun = self.load_binding(&name.binding, name.span_(), depth.next()).expect_function("called a function on a binding that's not a function");
                 let args = args.iter().map(|expr| self.eval_expr(expr, depth.next())).collect::<Result<_, _>>()?;
-                self.call_function(&fun, expr.span(), args, depth.last())
+                self.call_function(&fun, expr.span_(), args, depth.last())
             },
             Expr::FunctionDefinition(fun) => match fun.sig.name {
                 // ignore function definitions as we have those handled already
@@ -433,10 +433,10 @@ impl<'a, 'b, 'i> Vm<'a, 'b, 'i> {
                 None => {
                     let mut scope = Scope::new();
                     for binding in &fun.captures {
-                        let val = self.load_binding(binding, fun.span(), depth.next());
+                        let val = self.load_binding(binding, fun.span_(), depth.next());
                         scope.create(binding.id, val);
                     }
-                    Ok(Value::Function(FunctionValue::Anonymous(scope, fun.span())))
+                    Ok(Value::Function(FunctionValue::Anonymous(scope, fun.span)))
                 },
             },
             Expr::StructDefinition(ExprStructDefinition { .. }) => Ok(Value::Unit),
@@ -486,7 +486,7 @@ impl<'a, 'b, 'i> Vm<'a, 'b, 'i> {
         let _guard = self.push_callstack(expr_span);
         let (arg_binding_ids, mut scope, fun) = match fun {
             FunctionValue::Anonymous(scope, span) => {
-                let (arg_binding_ids, fun) = &self.meta_info.anonymous_rebo_functions[span];
+                let (arg_binding_ids, fun) = &self.meta_info.anonymous_rebo_functions[&span.id()];
                 (arg_binding_ids, scope.clone(), *fun)
             },
             FunctionValue::Named(name) => match &self.meta_info.functions.get(name.as_str()).unwrap_or_else(|| panic!("can't find function {}", name.as_str())) {
@@ -523,7 +523,7 @@ impl<'a, 'b, 'i> Vm<'a, 'b, 'i> {
         match lhs {
             ExprAssignLhs::Variable(ExprVariable { binding, .. }) => self.assign_binding(binding, value, depth.last()),
             ExprAssignLhs::FieldAccess(ExprFieldAccess { variable, fields, .. }) => {
-                let mut struct_arc = match self.load_binding(&variable.binding, variable.span(), depth.next()) {
+                let mut struct_arc = match self.load_binding(&variable.binding, variable.span_(), depth.next()) {
                     Value::Struct(s) => s,
                     _ => unreachable!("typechecker should have ensured that this is a struct"),
                 };
@@ -553,7 +553,7 @@ impl<'a, 'b, 'i> Vm<'a, 'b, 'i> {
 
     fn load_lhs_value(&mut self, lhs: &ExprAssignLhs<'a, 'i>, depth: Depth) -> Result<Value, ExecError<'a, 'i>> {
         match lhs {
-            ExprAssignLhs::Variable(variable) => Ok(self.load_binding(&variable.binding, variable.span(), depth.next())),
+            ExprAssignLhs::Variable(variable) => Ok(self.load_binding(&variable.binding, variable.span_(), depth.next())),
             ExprAssignLhs::FieldAccess(ExprFieldAccess { variable, fields, .. }) => {
                 self.load_access(variable, fields.iter().map(|ident| FieldOrMethod::Field(*ident)), depth)
             }
@@ -561,7 +561,7 @@ impl<'a, 'b, 'i> Vm<'a, 'b, 'i> {
     }
 
     fn load_access(&mut self, variable: &ExprVariable, accesses: impl IntoIterator<Item = impl ::std::borrow::Borrow<FieldOrMethod<'a, 'i>>>, depth: Depth) -> Result<Value, ExecError<'a, 'i>> {
-        let mut val = self.load_binding(&variable.binding, variable.span(), depth.next());
+        let mut val = self.load_binding(&variable.binding, variable.span_(), depth.next());
         for acc in accesses {
             let acc = acc.borrow();
             val = match acc {
@@ -582,7 +582,7 @@ impl<'a, 'b, 'i> Vm<'a, 'b, 'i> {
                     let args = std::iter::once(Ok(val))
                         .chain(args.iter().map(|expr| self.eval_expr(expr, depth.next())))
                         .collect::<Result<_, _>>()?;
-                    self.call_function(&FunctionValue::Named(fn_name), acc.span(), args, depth.last())?
+                    self.call_function(&FunctionValue::Named(fn_name), acc.span_(), args, depth.last())?
                 }
             };
         }

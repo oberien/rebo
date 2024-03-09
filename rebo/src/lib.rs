@@ -8,7 +8,7 @@ pub use diagnostic::{Diagnostics, Span, Output, FileId};
 use itertools::Itertools;
 use typed_arena::Arena;
 
-use crate::common::{MetaInfo, RequiredReboFunctionStruct};
+use crate::common::{MetaInfo, RequiredReboFunctionStruct, SpanWithId};
 use crate::lexer::{Lexer, TokenIdent};
 use crate::parser::{Ast, Binding, Expr, Parser};
 use crate::vm::Vm;
@@ -185,10 +185,11 @@ pub fn run_with_config(filename: String, code: String, config: ReboConfig) -> Ru
             id: BindingId::unique(),
             mutable: None,
             ident: TokenIdent {
-                span: Span::new(fileid, 4, 4 + name.len()),
+                span: SpanWithId::new(fileid, 4, 4 + name.len()),
                 ident: &code[4..][..name.len()],
             },
             rogue: false,
+            span: SpanWithId::new(fileid, 4, 4 + name.len()),
         };
         meta_info.external_values.insert(binding, value);
     }
