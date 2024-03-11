@@ -80,7 +80,7 @@ fn generate_fn(fn_ident: &Ident, sig: &FunctionSignature) -> TokenStream2 {
         fn #fn_ident<'a, 'i, #(#generic_idents: ::rebo::FromValue + ::rebo::IntoValue),*>(vm: &mut ::rebo::VmContext<'a, '_, '_, 'i>, #(#arg_idents: #arg_types),*) -> Result<#ret_type, ::rebo::ExecError<'a, 'i>> {
             let values = #into_value_conversions;
             let res = vm.call_required_rebo_function::<#ident>(values)?;
-            // required if the function returns the never type
+            // unreachable_code annotation required if the function returns the never type
             #[allow(unreachable_code)]
             Ok(<#ret_type as ::rebo::FromValue>::from_value(res))
         }
@@ -166,6 +166,7 @@ fn generate_impl(sig: &FunctionSignature) -> TokenStream2 {
             const GENERICS: &'static [&'static str] = &[#(#generic_ident_strings),*];
             const GENERICS_FILE_NAME: &'static str = #generics_file_name;
             const GENERICS_FILE_CONTENT: &'static str = #generics_file_content;
+            fn args() -> Vec<>
             const ARGS: &'static [::rebo::Type] = #reboc_arg_types;
             const RET: ::rebo::Type = #reboc_return_type;
         }

@@ -1,4 +1,4 @@
-use diagnostic::{Diagnostics, Span};
+use diagnostic::Diagnostics;
 use typed_arena::Arena;
 use crate::parser::Expr;
 use crate::common::{MetaInfo, Value, MapArc, DeepCopy};
@@ -7,7 +7,8 @@ use std::borrow::Cow;
 use std::collections::{BTreeMap, HashMap};
 use std::hash::Hash;
 use std::marker::PhantomData;
-use crate::{CowVec, ExternalType, FileId, FromValue, IntoValue, Typed, ErrorCode};
+use std::sync::OnceLock;
+use crate::{CowVec, ExternalType, FileId, FromValue, IntoValue, Typed, ErrorCode, SpanWithId};
 use crate::stdlib::list::List;
 
 pub struct Map<K, V> {
@@ -30,8 +31,6 @@ impl<K: IntoValue, V: IntoValue> Map<K, V> {
 }
 
 const FILE_NAME: &str = "external-Map.re";
-const MAP_K: Span = Span::new(FileId::synthetic_named(FILE_NAME), 11, 12);
-const MAP_V: Span = Span::new(FileId::synthetic_named(FILE_NAME), 14, 15);
 
 impl<K: FromValue + IntoValue, V: FromValue + IntoValue> ExternalType for Map<K, V> {
     const CODE: &'static str = "struct Map<K, V> {\n    /* ... */\n}";
@@ -51,10 +50,19 @@ impl<K: IntoValue, V: IntoValue> IntoValue for Map<K, V> {
     }
 }
 impl<K, V> Typed for Map<K, V> {
-    const TYPE: SpecificType = SpecificType::Struct(
-        Cow::Borrowed("Map"),
-        CowVec::Borrowed(&[(MAP_K, Type::Top), (MAP_V, Type::Top)]),
-    );
+    fn typ() -> SpecificType {
+        static MAP_K: OnceLock<SpanWithId> = OnceLock::new();
+        static MAP_V: OnceLock<SpanWithId> = OnceLock::new();
+        let span_k = MAP_K.get_or_init(|| SpanWithId::new(FileId::synthetic_named(FILE_NAME), 11, 12));
+        let span_v = MAP_V.get_or_init(|| SpanWithId::new(FileId::synthetic_named(FILE_NAME), 14, 15));
+        SpecificType::Struct(
+            "Map".to_string(),
+            vec![
+                (span_k.id(), Type::Top),
+                (span_v.id(), Type::Top),
+            ],
+        )
+    }
 }
 impl<K, V> DeepCopy for Map<K, V> {
     fn deep_copy(&self) -> Self {

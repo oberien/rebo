@@ -5,7 +5,9 @@ use crate::common::{MetaInfo, Value, ListArc, DeepCopy};
 use crate::typeck::types::{Type, SpecificType};
 use std::borrow::Cow;
 use std::marker::PhantomData;
+use std::sync::OnceLock;
 use itertools::Itertools;
+use rebo::common::SpanWithId;
 use rebo::stdlib::Sliceable;
 use crate::{CowVec, DisplayValue, ExternalType, FileId, FromValue, IntoValue, Typed, ErrorCode};
 
@@ -27,7 +29,6 @@ impl<T: IntoValue> List<T> {
 }
 
 const FILE_NAME: &str = "external-List.re";
-const LIST_T: Span = Span::new(FileId::synthetic_named(FILE_NAME), 12, 13);
 
 impl<T: FromValue + IntoValue> ExternalType for List<T> {
     const CODE: &'static str = "struct List<T> {\n    /* ... */\n}";
@@ -47,10 +48,14 @@ impl<T: IntoValue> IntoValue for List<T> {
     }
 }
 impl<T> Typed for List<T> {
-    const TYPE: SpecificType = SpecificType::Struct(
-        Cow::Borrowed("List"),
-        CowVec::Borrowed(&[(LIST_T, Type::Top)]),
-    );
+    fn typ() -> SpecificType {
+        static LIST_T: OnceLock<SpanWithId> = OnceLock::new();
+        let span = LIST_T.get_or_init(|| SpanWithId::new(FileId::synthetic_named(FILE_NAME), 12, 13));
+        SpecificType::Struct(
+            "List".to_string(),
+            vec![(span.id(), Type::Top)],
+        )
+    }
 }
 
 impl<T: IntoValue> IntoValue for Vec<T> {

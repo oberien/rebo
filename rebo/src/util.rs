@@ -5,49 +5,6 @@ use rt_format::argument::ArgumentSource;
 use crate::{Value, IncludeDirectory};
 use crate::lexer::Radix;
 
-/// Workaround for <https://github.com/rust-lang/rust/issues/89940>
-#[derive(Debug, Clone, Ord, PartialOrd, Eq, Hash)]
-pub enum CowVec<'a, T> {
-    Borrowed(&'a [T]),
-    Owned(Vec<T>),
-}
-impl<'a, T: Clone> CowVec<'a, T> {
-    pub fn to_owned(&self) -> Vec<T> {
-        self.deref().to_vec()
-    }
-}
-impl<'a, T> Deref for CowVec<'a, T> {
-    type Target = [T];
-
-    fn deref(&self) -> &Self::Target {
-        match self {
-            CowVec::Borrowed(b) => b,
-            CowVec::Owned(v) => v,
-        }
-    }
-}
-impl<'a, 'b, T> IntoIterator for &'b CowVec<'a, T> {
-    type Item = &'b T;
-    type IntoIter = std::slice::Iter<'b, T>;
-
-    fn into_iter(self) -> Self::IntoIter {
-        self.deref().iter()
-    }
-}
-impl<'a, T: PartialEq> PartialEq for CowVec<'a, T> {
-    fn eq(&self, other: &Self) -> bool {
-        let left = match self {
-            CowVec::Owned(vec) => vec.as_slice(),
-            CowVec::Borrowed(slice) => slice,
-        };
-        let right = match other {
-            CowVec::Owned(vec) => vec.as_slice(),
-            CowVec::Borrowed(slice) => slice,
-        };
-        left == right
-    }
-}
-
 pub struct PadFmt<T: fmt::Write> {
     f: T,
     on_newline: bool,

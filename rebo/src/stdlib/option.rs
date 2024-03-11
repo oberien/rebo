@@ -1,12 +1,12 @@
 use std::borrow::Cow;
 use std::cell::RefCell;
 use diagnostic::Span;
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 use parking_lot::lock_api::ReentrantMutex;
+use rebo::common::SpanWithId;
 use crate::{CowVec, Enum, EnumArc, ExternalType, FileId, FromValue, IntoValue, SpecificType, Type, Typed, Value};
 
 const FILE_NAME: &str = "external-Option.re";
-const OPTION_T: Span = Span::new(FileId::synthetic_named(FILE_NAME), 12, 13);
 
 impl<T: FromValue + IntoValue> ExternalType for Option<T> {
     const CODE: &'static str = r#"enum Option<T> {
@@ -80,10 +80,14 @@ impl<T: IntoValue> IntoValue for Option<T> {
     }
 }
 impl<T> Typed for Option<T> {
-    const TYPE: SpecificType = SpecificType::Enum(
-        Cow::Borrowed("Option"),
-        CowVec::Borrowed(&[(OPTION_T, Type::Top)]),
-    );
+    fn typ() -> SpecificType {
+        static OPTION_T: OnceLock<SpanWithId> = OnceLock::new();
+        let span = OPTION_T.get_or_init(|| SpanWithId::new(FileId::synthetic_named(FILE_NAME), 12, 13));
+        SpecificType::Enum(
+            "Option".to_string(),
+            vec![(span.id(), Type::Top)],
+        )
+    }
 }
 
 #[cfg(test)]

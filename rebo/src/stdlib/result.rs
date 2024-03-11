@@ -1,12 +1,11 @@
 use std::borrow::Cow;
 use std::cell::RefCell;
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 use parking_lot::ReentrantMutex;
+use rebo::common::SpanWithId;
 use crate::{CowVec, Enum, EnumArc, ExternalType, FileId, FromValue, IntoValue, Span, SpecificType, Type, Typed, Value};
 
 const FILE_NAME: &str = "external-Result.re";
-const RESULT_T: Span = Span::new(FileId::synthetic_named(FILE_NAME), 12, 13);
-const RESULT_E: Span = Span::new(FileId::synthetic_named(FILE_NAME), 15, 16);
 
 impl<T: FromValue + IntoValue, E: FromValue + IntoValue> ExternalType for Result<T, E> {
     const CODE: &'static str = r#"enum Result<T, E> {
@@ -71,8 +70,30 @@ impl<T: IntoValue, E: IntoValue> IntoValue for Result<T, E> {
     }
 }
 impl<T, E> Typed for Result<T, E> {
-    const TYPE: SpecificType = SpecificType::Enum(
-        Cow::Borrowed("Result"),
-        CowVec::Borrowed(&[(RESULT_T, Type::Top), (RESULT_E, Type::Top)]),
-    );
+    fn typ() -> SpecificType {
+        // A
+        static RESULT_T: OnceLock<SpanWithId> = OnceLock::new();
+        static RESULT_E: OnceLock<SpanWithId> = OnceLock::new();
+        let span_t = RESULT_T.get_or_init(|| SpanWithId::new(FileId::synthetic_named(FILE_NAME), 12, 13));
+        let span_e = RESULT_E.get_or_init(|| SpanWithId::new(FileId::synthetic_named(FILE_NAME), 15, 16));
+        SpecificType::Enum(
+            "Result".to_string(),
+            vec![
+                (span_t.id(), Type::Top),
+                (span_e.id(), Type::Top),
+            ],
+        );
+
+        // B
+        static TYP: OnceLock<SpecificType> = OnceLock::new();
+        TYP.get_or_init(|| {
+            SpecificType::Enum(
+                "Result".to_string(),
+                vec![
+                    (SpanWithId::new(FileId::synthetic_named(FILE_NAME), 12, 13).id(), Type::Top),
+                    (SpanWithId::new(FileId::synthetic_named(FILE_NAME), 15, 16).id(), Type::Top),
+                ],
+            );
+        }).clone()
+    }
 }

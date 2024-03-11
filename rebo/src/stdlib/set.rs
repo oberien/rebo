@@ -5,7 +5,8 @@ use crate::common::{MetaInfo, Value, SetArc};
 use crate::typeck::types::{Type, SpecificType};
 use std::borrow::Cow;
 use std::marker::PhantomData;
-use rebo::common::DeepCopy;
+use std::sync::OnceLock;
+use rebo::common::{DeepCopy, SpanWithId};
 use crate::{CowVec, ExternalType, FileId, FromValue, IntoValue, Typed, ErrorCode};
 use crate::stdlib::list::List;
 
@@ -23,7 +24,6 @@ impl<T: IntoValue> Set<T> {
 }
 
 const FILE_NAME: &str = "external-Set.re";
-const SET_T: Span = Span::new(FileId::synthetic_named(FILE_NAME), 11, 12);
 
 impl<T: FromValue + IntoValue> ExternalType for Set<T> {
     const CODE: &'static str = "struct Set<T> {\n    /* ... */\n}";
@@ -43,10 +43,14 @@ impl<T: IntoValue> IntoValue for Set<T> {
     }
 }
 impl<T> Typed for Set<T> {
-    const TYPE: SpecificType = SpecificType::Struct(
-        Cow::Borrowed("Set"),
-        CowVec::Borrowed(&[(SET_T, Type::Top)]),
-    );
+    fn typ() -> SpecificType {
+        static SET_T: OnceLock<SpanWithId> = OnceLock::new();
+        let span = SET_T.get_or_init(|| SpanWithId::new(FileId::synthetic_named(FILE_NAME), 11, 12));
+        SpecificType::Struct(
+            "Set".to_string(),
+            vec![(span.id(), Type::Top)],
+        )
+    }
 }
 impl<T> DeepCopy for Set<T> {
     fn deep_copy(&self) -> Self {

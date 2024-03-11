@@ -33,7 +33,7 @@ pub trait IntoValue {
     fn into_value(self) -> Value;
 }
 pub trait Typed {
-    const TYPE: SpecificType;
+    fn typ() -> SpecificType;
 }
 
 pub trait DeepCopy {
@@ -449,8 +449,8 @@ pub trait RequiredReboFunction {
     const GENERICS: &'static [&'static str];
     const GENERICS_FILE_NAME: &'static str;
     const GENERICS_FILE_CONTENT: &'static str;
-    const ARGS: &'static [Type];
-    const RET: Type;
+    fn arg_types() -> Vec<Type>;
+    fn ret_type() -> Type;
 }
 #[derive(Debug, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub struct RequiredReboFunctionStruct {
@@ -459,7 +459,7 @@ pub struct RequiredReboFunctionStruct {
     pub generics: &'static [&'static str],
     pub generics_file_name: &'static str,
     pub generics_file_content: &'static str,
-    pub args: &'static [Type],
+    pub args: Vec<Type>,
     pub ret: Type,
 }
 impl RequiredReboFunctionStruct {
@@ -470,8 +470,8 @@ impl RequiredReboFunctionStruct {
             generics: T::GENERICS,
             generics_file_name: T::GENERICS_FILE_NAME,
             generics_file_content: T::GENERICS_FILE_CONTENT,
-            args: T::ARGS,
-            ret: T::RET,
+            args: T::arg_types(),
+            ret: T::ret_type(),
         }
     }
 }
@@ -712,7 +712,9 @@ impl Eq for SetArc {}
 macro_rules! impl_from_into {
     ($ty:ty, $name:ident) => {
         impl Typed for $ty {
-            const TYPE: SpecificType = SpecificType::$name;
+            fn typ() -> SpecificType {
+                SpecificType::$name
+            }
         }
         impl FromValue for $ty {
             fn from_value(value: Value) -> Self {
@@ -744,7 +746,9 @@ impl IntoValue for () {
     }
 }
 impl Typed for () {
-    const TYPE: SpecificType = SpecificType::Unit;
+    fn typ() -> SpecificType {
+        SpecificType::Unit
+    }
 }
 
 // Never type represented by ::std::convert::Infallible.
@@ -800,7 +804,9 @@ macro_rules! impl_int_types {
     ($($t:ty),*) => {
         $(
             impl Typed for $t {
-                const TYPE: SpecificType = SpecificType::Integer;
+                fn typ() -> SpecificType {
+                    SpecificType::Integer
+                }
             }
             impl IntoValue for $t {
                 fn into_value(self) -> Value {
@@ -823,7 +829,9 @@ macro_rules! impl_int_types {
 
 impl_int_types!(u8, i8, u16, i16, u32, i32, u64, usize, isize);
 impl Typed for f32 {
-    const TYPE: SpecificType = SpecificType::Float;
+    fn typ() -> SpecificType {
+        SpecificType::Float
+    }
 }
 impl IntoValue for f32 {
     fn into_value(self) -> Value {
@@ -842,7 +850,9 @@ impl FromValue for f32 {
 }
 
 impl Typed for f64 {
-    const TYPE: SpecificType = SpecificType::Float;
+    fn typ() -> SpecificType {
+        SpecificType::Float
+    }
 }
 impl IntoValue for f64 {
     fn into_value(self) -> Value {

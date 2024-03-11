@@ -13,6 +13,7 @@ use petgraph::graph::{EdgeIndex, EdgeReference};
 use petgraph::prelude::{DiGraph, EdgeRef, NodeIndex};
 use petgraph::visit::NodeFiltered;
 use strum::IntoEnumIterator;
+use rebo::common::Spanned;
 
 use crate::typeck::types::{ResolvableSpecificType, ResolvableSpecificTypeDiscriminants};
 use crate::typeck::TypeVar;
@@ -124,28 +125,22 @@ impl Display for Constraint {
 pub enum Node {
     TypeVar(TypeVar),
     /// origin, unique-id
-    Synthetic(Span, u64),
+    Synthetic(SpanId, u64),
 }
 static SYNTHETIC_NODE_IDX: AtomicU64 = AtomicU64::new(0);
 impl Node {
-    pub fn type_var(origin: Span) -> Node {
-        Node::TypeVar(TypeVar::new(origin))
+    pub fn type_var(origin: impl Spanned) -> Node {
+        Node::TypeVar(TypeVar::from_spanned(origin))
     }
-    pub fn synthetic(origin: Span) -> Node {
-        Node::Synthetic(origin, SYNTHETIC_NODE_IDX.fetch_add(1, Ordering::SeqCst))
-    }
-    pub fn span(self) -> Span {
-        match self {
-            Node::TypeVar(var) => var.span,
-            Node::Synthetic(span, _) => span,
-        }
+    pub fn synthetic(origin: impl Spanned) -> Node {
+        Node::Synthetic(origin.span_id(), SYNTHETIC_NODE_IDX.fetch_add(1, Ordering::SeqCst))
     }
 }
 impl Display for Node {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            Node::TypeVar(var) => write!(f, "[{}:{}:{}]", var.span.file, var.span.start, var.span.end),
-            Node::Synthetic(span, id) => write!(f, "[{}<{}:{}:{}>]", id, span.file, span.start, span.end),
+            Node::TypeVar(var) => write!(f, "[{var}]"),
+            Node::Synthetic(span_id, id) => write!(f, "[{id}<{span_id}>]"),
         }
     }
 }
@@ -156,7 +151,7 @@ pub struct Graph<'i> {
     graph_indices: IndexMap<Node, NodeIndex<u32>>,
     possible_types: IndexMap<Node, PossibleTypes>,
     method_function_generics: IndexMap<u64, FunctionGenerics>,
-    any_nodes: HashMap<Span, Node>,
+    any_nodes: HashMap<SpanId, Node>,
 }
 
 impl<'i> Graph<'i> {

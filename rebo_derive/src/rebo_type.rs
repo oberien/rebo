@@ -60,6 +60,9 @@ pub fn enum_type(e: ItemEnum) -> TokenStream {
     let code = format!("enum {}{} {{\n{}}}", ident, generics_string, variants_string);
 
     let generic_spans = util::generic_spans(&generic_idents, &code_filename, &code);
+    let generic_static_span_cache_idents = generic_idents.iter()
+        .map(|ident| Ident::new(&format!("SPAN_{ident}"), ident.span()))
+        .collect::<Vec<_>>();
     let from_values = field_types.iter()
         .map(|types| if types.is_empty() {
             quote::quote!()
@@ -119,14 +122,19 @@ pub fn enum_type(e: ItemEnum) -> TokenStream {
             }
         }
         impl<#(#generic_idents),*> ::rebo::Typed for #ident<#(#generic_idents),*> {
-            const TYPE: ::rebo::SpecificType = ::rebo::SpecificType::Enum(
-                ::std::borrow::Cow::Borrowed(#ident_string),
-                ::rebo::CowVec::Borrowed(&[
-                    #(
-                        (#generic_spans, ::rebo::Type::Top),
-                    )*
-                ]),
-            );
+            fn typ() -> ::rebo::SpecificType {
+                #(
+                    static #generic_static_span_cache_idents: ::std::sync::OnceLock<::rebo::SpanWithId> = ::std::sync::OnceLock::new();
+                    #[allow(non_snake_case_idents)]
+                    let #generic_static_span_cache_idents = #generic_static_span_cache_idents.get_or_init(|| #generic_spans);
+                )*
+                ::rebo::SpecificType::Enum(
+                    #ident_string.to_string(),
+                    vec![#(
+                        (#generic_static_span_cache_idents.id(), ::rebo::Type::Top),
+                    )*],
+                )
+            }
         }
     }).into()
 }
@@ -162,6 +170,9 @@ pub fn struct_type(s: ItemStruct) -> TokenStream {
     let code = format!("struct {}{} {{\n{}}}", ident, generics_string, fields_string);
 
     let generic_spans = util::generic_spans(&generic_idents, &code_filename, &code);
+    let generic_static_span_cache_idents = generic_idents.iter()
+        .map(|ident| Ident::new(&format!("SPAN_{ident}"), ident.span()))
+        .collect::<Vec<_>>();
 
     (quote::quote! {
         #vis struct #value_ident<#(#generic_idents),*>(::std::marker::PhantomData<(#(#generic_idents),*)>);
@@ -204,14 +215,19 @@ pub fn struct_type(s: ItemStruct) -> TokenStream {
             }
         }
         impl<#(#generic_idents),*> ::rebo::Typed for #ident<#(#generic_idents),*> {
-            const TYPE: ::rebo::SpecificType = ::rebo::SpecificType::Struct(
-                ::std::borrow::Cow::Borrowed(#ident_string),
-                ::rebo::CowVec::Borrowed(&[
-                    #(
-                        (#generic_spans, ::rebo::Type::Top),
-                    )*
-                ]),
-            );
+            fn typ() -> ::rebo::SpecificType {
+                #(
+                    static #generic_static_span_cache_idents: ::std::sync::OnceLock<::rebo::SpanWithId> = ::std::sync::OnceLock::new();
+                    #[allow(non_snake_case_idents)]
+                    let #generic_static_span_cache_idents = #generic_static_span_cache_idents.get_or_init(|| #generic_spans);
+                )*
+                ::rebo::SpecificType::Struct(
+                    #ident_string.to_string(),
+                    vec![#(
+                        (#generic_static_span_cache_idents.id(), ::rebo::Type::Top),
+                    )*],
+                )
+            }
         }
     }).into()
 }

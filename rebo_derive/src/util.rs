@@ -11,7 +11,9 @@ pub enum Bounds {
     Allow,
 }
 
-/// Convert the Generics of a type or function to a list of their Idents and bounds
+/// Convert the Generics of a type or function to a list of their Idents and trait bounds (if bounds should not be rejected)
+///
+/// Given `A: Foo, B, C: Bar` this function will return `(vec![A, B, C], vec![Foo, , Bar])`
 pub fn parse_generics(generics: &Generics, context: &str, bounds: Bounds) -> (Vec<Ident>, Vec<TokenStream>) {
     generics.params.iter().map(|generic| {
         match generic {
@@ -30,7 +32,7 @@ pub fn parse_generics(generics: &Generics, context: &str, bounds: Bounds) -> (Ve
     }).unzip()
 }
 
-/// Get rebo-Synthetic-Spans inside the code_string to the passed Generic-Idents
+/// Get rebo-SpanWithId with synthetic rebo-Spans for the generics inside the code_string
 ///
 /// code_string contains the generated stubbed rebo code for a type including its generics.
 /// This function returns the TokenStreams representing the rebo-compiler-Spans of the generics.
@@ -42,9 +44,10 @@ pub fn generic_spans(generic_idents: &[Ident], code_filename: &str, code_string:
         let end = code_string.find('>').unwrap();
         code_string[start..end].split(',')
             .map(str::trim)
+            .inspect(|g| assert!(generic_idents.iter().any(|expected| expected == *g), "generic {} not found in generic-list {:?}", g, generic_idents))
             .map(|g| (g.as_ptr() as usize - code_string.as_ptr() as usize, g.len()))
             .map(|(start, len)| (start, start + len))
-            .map(|(start, end)| quote::quote!(::rebo::Span::new(::rebo::FileId::synthetic_named(#code_filename), #start, #end)))
+            .map(|(start, end)| quote::quote!(::rebo::SpanWithId::new(::rebo::FileId::synthetic_named(#code_filename), #start, #end)))
             .collect()
     }
 }
@@ -233,7 +236,7 @@ pub fn parse_function_signature(sig: Signature, context: &str) -> FunctionSignat
 
 /// Replace generics recursively in the passed type with `::rebo::Value`
 ///
-/// Both `T` will and the `T` in `Option<T>` will be replaced.
+/// Both `T` and the `T` in `Option<T>` will be replaced.
 pub fn replace_generics_with_value(typ: &Type, generic_idents: &[Ident]) -> TokenStream {
     replace_generics_with(typ, generic_idents, |_| quote::quote!(::rebo::Value))
 }
@@ -250,15 +253,15 @@ pub fn replace_generics_with(typ: &Type, generic_idents: &[Ident], with: impl Fn
 }
 /// Convert a syn::Type to a rebo::Type
 ///
-/// * `T` -> `Type::Specific(SpecificType::Generic(span))`
-/// * `Option<T>` -> `Type::Specific(<Option<Value> as Typed>::TYPE)`
-pub fn convert_type_to_reboc_type(typ: &Type, generic_idents: &[Ident], generics_spans: &HashMap<Ident, TokenStream>) -> TokenStream {
+/// * `T` -> `Type::Specific(SpecificType::Generic(span_id))`
+/// * `Option<T>` -> `Type::Specific(<Option<Value> as Typed>::typ())`
+pub fn convert_type_to_reboc_type(typ: &Type, generic_idents: &[Ident], generics_span_ids: &HashMap<Ident, TokenStream>) -> TokenStream {
     match typ {
-        Type::Path(path) if path.path.get_ident().is_some() && generics_spans.contains_key(path.path.get_ident().unwrap()) => {
+        Type::Path(path) if path.path.get_ident().is_some() && generics_span_ids.contains_key(path.path.get_ident().unwrap()) => {
             let ident = path.path.get_ident().unwrap();
-            let span = &generics_spans.get(ident)
-                .expect(&format!("ident `{ident}` not found in generics_spans {generics_spans:?}"));
-            quote::quote_spanned!(typ.span()=> ::rebo::Type::Specific(::rebo::SpecificType::Generic(#span)))
+            let span_id = &generics_span_ids.get(ident)
+                .expect(&format!("ident `{ident}` not found in generic_idents {generic_idents:?}"));
+            quote::quote_spanned!(typ.span()=> ::rebo::Type::Specific(::rebo::SpecificType::Generic(#span_id)))
         }
         Type::Never(_) => quote::quote_spanned!(typ.span()=> ::rebo::Type::Bottom),
         _ => {
