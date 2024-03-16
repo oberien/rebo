@@ -81,12 +81,13 @@ impl<T: IntoValue> IntoValue for Option<T> {
 }
 impl<T> Typed for Option<T> {
     fn typ() -> SpecificType {
-        static OPTION_T: OnceLock<SpanWithId> = OnceLock::new();
-        let span = OPTION_T.get_or_init(|| SpanWithId::new(FileId::synthetic_named(FILE_NAME), 12, 13));
-        SpecificType::Enum(
-            "Option".to_string(),
-            vec![(span.id(), Type::Top)],
-        )
+        static TYPE: OnceLock<SpecificType> = OnceLock::new();
+        TYPE.get_or_init(|| {
+            SpecificType::Enum(
+                "Option".to_string(),
+                vec![(SpanWithId::new(FileId::synthetic_named(FILE_NAME), 12, 13).id(), Type::Top)],
+            )
+        }).clone()
     }
 }
 

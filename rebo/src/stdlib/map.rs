@@ -51,17 +51,16 @@ impl<K: IntoValue, V: IntoValue> IntoValue for Map<K, V> {
 }
 impl<K, V> Typed for Map<K, V> {
     fn typ() -> SpecificType {
-        static MAP_K: OnceLock<SpanWithId> = OnceLock::new();
-        static MAP_V: OnceLock<SpanWithId> = OnceLock::new();
-        let span_k = MAP_K.get_or_init(|| SpanWithId::new(FileId::synthetic_named(FILE_NAME), 11, 12));
-        let span_v = MAP_V.get_or_init(|| SpanWithId::new(FileId::synthetic_named(FILE_NAME), 14, 15));
-        SpecificType::Struct(
-            "Map".to_string(),
-            vec![
-                (span_k.id(), Type::Top),
-                (span_v.id(), Type::Top),
-            ],
-        )
+        static TYPE: OnceLock<SpecificType> = OnceLock::new();
+        TYPE.get_or_init(|| {
+            SpecificType::Struct(
+                "Map".to_string(),
+                vec![
+                    (SpanWithId::new(FileId::synthetic_named(FILE_NAME), 11, 12).id(), Type::Top),
+                    (SpanWithId::new(FileId::synthetic_named(FILE_NAME), 14, 15).id(), Type::Top),
+                ],
+            )
+        }).clone()
     }
 }
 impl<K, V> DeepCopy for Map<K, V> {

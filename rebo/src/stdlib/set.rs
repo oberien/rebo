@@ -44,12 +44,13 @@ impl<T: IntoValue> IntoValue for Set<T> {
 }
 impl<T> Typed for Set<T> {
     fn typ() -> SpecificType {
-        static SET_T: OnceLock<SpanWithId> = OnceLock::new();
-        let span = SET_T.get_or_init(|| SpanWithId::new(FileId::synthetic_named(FILE_NAME), 11, 12));
-        SpecificType::Struct(
-            "Set".to_string(),
-            vec![(span.id(), Type::Top)],
-        )
+        static TYPE: OnceLock<SpecificType> = OnceLock::new();
+        TYPE.get_or_init(|| {
+            SpecificType::Struct(
+                "Set".to_string(),
+                vec![(SpanWithId::new(FileId::synthetic_named(FILE_NAME), 11, 12).id(), Type::Top)],
+            )
+        })
     }
 }
 impl<T> DeepCopy for Set<T> {

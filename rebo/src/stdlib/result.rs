@@ -71,20 +71,6 @@ impl<T: IntoValue, E: IntoValue> IntoValue for Result<T, E> {
 }
 impl<T, E> Typed for Result<T, E> {
     fn typ() -> SpecificType {
-        // A
-        static RESULT_T: OnceLock<SpanWithId> = OnceLock::new();
-        static RESULT_E: OnceLock<SpanWithId> = OnceLock::new();
-        let span_t = RESULT_T.get_or_init(|| SpanWithId::new(FileId::synthetic_named(FILE_NAME), 12, 13));
-        let span_e = RESULT_E.get_or_init(|| SpanWithId::new(FileId::synthetic_named(FILE_NAME), 15, 16));
-        SpecificType::Enum(
-            "Result".to_string(),
-            vec![
-                (span_t.id(), Type::Top),
-                (span_e.id(), Type::Top),
-            ],
-        );
-
-        // B
         static TYP: OnceLock<SpecificType> = OnceLock::new();
         TYP.get_or_init(|| {
             SpecificType::Enum(

@@ -49,12 +49,13 @@ impl<T: IntoValue> IntoValue for List<T> {
 }
 impl<T> Typed for List<T> {
     fn typ() -> SpecificType {
-        static LIST_T: OnceLock<SpanWithId> = OnceLock::new();
-        let span = LIST_T.get_or_init(|| SpanWithId::new(FileId::synthetic_named(FILE_NAME), 12, 13));
-        SpecificType::Struct(
-            "List".to_string(),
-            vec![(span.id(), Type::Top)],
-        )
+        static TYPE: OnceLock<SpecificType> = OnceLock::new();
+        TYPE.get_or_init(|| {
+            SpecificType::Struct(
+                "List".to_string(),
+                vec![(SpanWithId::new(FileId::synthetic_named(FILE_NAME), 12, 13).id(), Type::Top)],
+            )
+        }).clone()
     }
 }
 
