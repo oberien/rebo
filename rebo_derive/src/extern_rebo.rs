@@ -142,7 +142,7 @@ fn generate_impl(sig: &FunctionSignature) -> TokenStream2 {
         generics_file_content.push_str(&generic_ident.to_string());
         let end = generics_file_content.len();
         generics_file_content.push_str("\n\n");
-        generics_spans.insert(generic_ident.clone(), quote::quote_spanned!(generic_ident.span()=> ::rebo::Span::new(::rebo::FileId::synthetic_named(#generics_file_name), #start, #end)));
+        generics_spans.insert(generic_ident.clone(), quote::quote_spanned!(generic_ident.span()=> ::rebo::SpanWithId::new(::rebo::FileId::synthetic_named(#generics_file_name), #start, #end)));
     }
 
     let reboc_arg_types = sig.arg_types.iter()
@@ -150,13 +150,13 @@ fn generate_impl(sig: &FunctionSignature) -> TokenStream2 {
         .collect::<Vec<_>>();
     let reboc_arg_types = match &sig.varargs {
         Some(varargs) => match &varargs.kind {
-            VarargsKind::Typed(typ) => quote::quote_spanned!(varargs.span=> &[::rebo::Type::TypedVarargs(::rebo::Type::Specific(<#typ as ::rebo::Typed>::TYPE))]),
+            VarargsKind::Typed(typ) => quote::quote_spanned!(varargs.span=> &[::rebo::Type::TypedVarargs(::rebo::Type::Specific(<#typ as ::rebo::Typed>::typ()))]),
             VarargsKind::Untyped => quote::quote_spanned!(varargs.span=> &[::rebo::Type::UntypedVarargs]),
         }
         None => quote::quote!(&[#(#reboc_arg_types),*]),
     };
     let reboc_return_type = match &sig.output {
-        ReturnType::Default => quote::quote_spanned!(sig.output.span()=> ::rebo::Type::Specific(<() as ::rebo::Typed>::TYPE)),
+        ReturnType::Default => quote::quote_spanned!(sig.output.span()=> ::rebo::Type::Specific(<() as ::rebo::Typed>::typ())),
         ReturnType::Type(_, typ) => util::convert_type_to_reboc_type(typ, &sig.generic_idents, &generics_spans),
     };
     quote::quote! {
@@ -166,7 +166,12 @@ fn generate_impl(sig: &FunctionSignature) -> TokenStream2 {
             const GENERICS: &'static [&'static str] = &[#(#generic_ident_strings),*];
             const GENERICS_FILE_NAME: &'static str = #generics_file_name;
             const GENERICS_FILE_CONTENT: &'static str = #generics_file_content;
-            fn args() -> Vec<>
+            fn arg_types() -> Vec<::rebo::Type> {
+
+            }
+            fn ret_type() -> ::rebo::Type {
+
+            }
             const ARGS: &'static [::rebo::Type] = #reboc_arg_types;
             const RET: ::rebo::Type = #reboc_return_type;
         }

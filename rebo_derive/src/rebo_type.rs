@@ -59,7 +59,7 @@ pub fn enum_type(e: ItemEnum) -> TokenStream {
         })).join("");
     let code = format!("enum {}{} {{\n{}}}", ident, generics_string, variants_string);
 
-    let generic_spans = util::generic_spans(&generic_idents, &code_filename, &code);
+    let generic_spans = util::generic_span_with_ids(&generic_idents, &code_filename, &code);
     let from_values = field_types.iter()
         .map(|types| if types.is_empty() {
             quote::quote!()
@@ -164,7 +164,7 @@ pub fn struct_type(s: ItemStruct) -> TokenStream {
         .join("");
     let code = format!("struct {}{} {{\n{}}}", ident, generics_string, fields_string);
 
-    let generic_spans = util::generic_spans(&generic_idents, &code_filename, &code);
+    let generic_spans = util::generic_span_with_ids(&generic_idents, &code_filename, &code);
 
     (quote::quote! {
         #vis struct #value_ident<#(#generic_idents),*>(::std::marker::PhantomData<(#(#generic_idents),*)>);

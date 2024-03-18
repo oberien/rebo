@@ -32,11 +32,11 @@ pub fn parse_generics(generics: &Generics, context: &str, bounds: Bounds) -> (Ve
     }).unzip()
 }
 
-/// Get rebo-SpanWithId with synthetic rebo-Spans for the generics inside the code_string
+/// Get rebo-SpanWithId with synthetic rebo-Span for the generics inside the code_string
 ///
 /// code_string contains the generated stubbed rebo code for a type including its generics.
 /// This function returns the TokenStreams representing the rebo-compiler-Spans of the generics.
-pub fn generic_spans(generic_idents: &[Ident], code_filename: &str, code_string: &str) -> Vec<TokenStream> {
+pub fn generic_span_with_ids(generic_idents: &[Ident], code_filename: &str, code_string: &str) -> Vec<TokenStream> {
     if generic_idents.is_empty() {
         Vec::new()
     } else {
