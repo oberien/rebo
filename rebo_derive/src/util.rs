@@ -238,7 +238,7 @@ pub fn parse_function_signature(sig: Signature, context: &str) -> FunctionSignat
 ///
 /// Both `T` and the `T` in `Option<T>` will be replaced.
 pub fn replace_generics_with_value(typ: &Type, generic_idents: &[Ident]) -> TokenStream {
-    replace_generics_with(typ, generic_idents, |_| quote::quote!(::rebo::Value))
+    replace_generics_with(typ, generic_idents, |ident| quote::quote_spanned!(ident.span()=> ::rebo::Value))
 }
 /// Replace generics in the passed type with the TokenStream returned from the callback
 ///
@@ -251,17 +251,23 @@ pub fn replace_generics_with(typ: &Type, generic_idents: &[Ident], with: impl Fn
         Some(ident.into_token_stream())
     })
 }
-/// Convert a syn::Type to a rebo::Type
+/// Convert a syn::Type to a rebo::Type, using the passed `SpanWithId`(-getter).
 ///
-/// * `T` -> `Type::Specific(SpecificType::Generic(span_id))`
+/// The `SpanWithId` getter could be the span directly, or anything returning the SpanWithId
+/// (e.g. a value cached in a static `OnceLock`):
+/// * ::rebo::SpanWithId::new(...)
+/// * OnceLock::get_or_init(|| ...)
+///
+/// Does the following transformation:
+/// * `T` -> `Type::Specific(SpecificType::Generic(generic_span_with_id.id()))`
 /// * `Option<T>` -> `Type::Specific(<Option<Value> as Typed>::typ())`
-pub fn convert_type_to_reboc_type(typ: &Type, generic_idents: &[Ident], generics_span_ids: &HashMap<Ident, TokenStream>) -> TokenStream {
+pub fn convert_type_to_reboc_type(typ: &Type, generic_idents: &[Ident], generics_span_with_ids: &HashMap<Ident, TokenStream>) -> TokenStream {
     match typ {
-        Type::Path(path) if path.path.get_ident().is_some() && generics_span_ids.contains_key(path.path.get_ident().unwrap()) => {
+        Type::Path(path) if path.path.get_ident().is_some() && generics_span_with_ids.contains_key(path.path.get_ident().unwrap()) => {
             let ident = path.path.get_ident().unwrap();
-            let span_id = &generics_span_ids.get(ident)
+            let span_with_id = &generics_span_with_ids.get(ident)
                 .expect(&format!("ident `{ident}` not found in generic_idents {generic_idents:?}"));
-            quote::quote_spanned!(typ.span()=> ::rebo::Type::Specific(::rebo::SpecificType::Generic(#span_id)))
+            quote::quote_spanned!(typ.span()=> ::rebo::Type::Specific(::rebo::SpecificType::Generic(#span_with_id.id())))
         }
         Type::Never(_) => quote::quote_spanned!(typ.span()=> ::rebo::Type::Bottom),
         _ => {

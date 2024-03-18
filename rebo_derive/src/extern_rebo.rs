@@ -133,16 +133,30 @@ fn generate_impl(sig: &FunctionSignature) -> TokenStream2 {
     //     _ => abort!(ty, "this-argument must be {}", receiver_type_string.as_ref().unwrap()),
     // }
 
+    // example: `fn id<T>(t: T) -> T { t }`
+    // We may need to use the same generic both in the arguments and in the return type.
+    // The SpanId associated with the generic must be the same in both cases.
+    // Therefore, we need to create them once as a OnceLock and use that instance wherever the
+    // generic is used as type anywhere as (sub-)type.
+
+    // Names of the `static T: OnceLock = OnceLock::new();`
+    let generics_mod = Ident::new(&format!("{ident}_generics_mod"), ident.span());
+    let generics_static_once_names: Vec<_> = sig.generic_idents.iter()
+        .map(|ident| Ident::new(&format!("{ident}_SPAN_ONCE").to_uppercase(), ident.span()))
+        .collect();
     let generic_ident_strings = sig.generic_idents.iter().map(|ident| ident.to_string()).collect::<Vec<_>>();
     let generics_file_name = format!("external-required-rebo-function-{ident}-generics.re");
+    // Getters of the static generic `SpanWithId`s: `OnceLock::get_or_init(|| ...)
     let mut generics_spans = HashMap::new();
     let mut generics_file_content = String::new();
-    for generic_ident in &sig.generic_idents {
+    for (generic_ident, static_once_name) in sig.generic_idents.iter().zip(&generics_static_once_names) {
         let start = generics_file_content.len();
         generics_file_content.push_str(&generic_ident.to_string());
         let end = generics_file_content.len();
         generics_file_content.push_str("\n\n");
-        generics_spans.insert(generic_ident.clone(), quote::quote_spanned!(generic_ident.span()=> ::rebo::SpanWithId::new(::rebo::FileId::synthetic_named(#generics_file_name), #start, #end)));
+        generics_spans.insert(generic_ident.clone(), quote::quote_spanned!{generic_ident.span()=>
+            self::#generics_mod::#static_once_name.get_or_init(|| ::rebo::SpanWithId::new(::rebo::FileId::synthetic_named(#generics_file_name), #start, #end))
+        });
     }
 
     let reboc_arg_types = sig.arg_types.iter()
@@ -150,16 +164,21 @@ fn generate_impl(sig: &FunctionSignature) -> TokenStream2 {
         .collect::<Vec<_>>();
     let reboc_arg_types = match &sig.varargs {
         Some(varargs) => match &varargs.kind {
-            VarargsKind::Typed(typ) => quote::quote_spanned!(varargs.span=> &[::rebo::Type::TypedVarargs(::rebo::Type::Specific(<#typ as ::rebo::Typed>::typ()))]),
-            VarargsKind::Untyped => quote::quote_spanned!(varargs.span=> &[::rebo::Type::UntypedVarargs]),
+            VarargsKind::Typed(typ) => quote::quote_spanned!(varargs.span=> vec![::rebo::Type::TypedVarargs(::rebo::Type::Specific(<#typ as ::rebo::Typed>::typ()))]),
+            VarargsKind::Untyped => quote::quote_spanned!(varargs.span=> vec![::rebo::Type::UntypedVarargs]),
         }
-        None => quote::quote!(&[#(#reboc_arg_types),*]),
+        None => quote::quote!(vec![#(#reboc_arg_types),*]),
     };
     let reboc_return_type = match &sig.output {
         ReturnType::Default => quote::quote_spanned!(sig.output.span()=> ::rebo::Type::Specific(<() as ::rebo::Typed>::typ())),
         ReturnType::Type(_, typ) => util::convert_type_to_reboc_type(typ, &sig.generic_idents, &generics_spans),
     };
     quote::quote! {
+        mod #generics_mod {
+            #(
+                pub static #generics_static_once_names: ::std::sync::OnceLock<::rebo::SpanWithId> = ::std::sync::OnceLock::new();
+            )*
+        }
         impl ::rebo::RequiredReboFunction for #ident {
             const NAME: &'static str = #rebo_function_name;
             const IS_METHOD: bool = #is_method;
@@ -167,13 +186,11 @@ fn generate_impl(sig: &FunctionSignature) -> TokenStream2 {
             const GENERICS_FILE_NAME: &'static str = #generics_file_name;
             const GENERICS_FILE_CONTENT: &'static str = #generics_file_content;
             fn arg_types() -> Vec<::rebo::Type> {
-
+                #reboc_arg_types
             }
             fn ret_type() -> ::rebo::Type {
-
+                #reboc_return_type
             }
-            const ARGS: &'static [::rebo::Type] = #reboc_arg_types;
-            const RET: ::rebo::Type = #reboc_return_type;
         }
     }
 }
