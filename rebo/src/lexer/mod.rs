@@ -98,7 +98,7 @@ impl<'i> Lexer<'i> {
     }
     pub fn next_span_from(&self, from: usize) -> Span {
         match self.inner.borrow_mut().peek(from) {
-            Ok(token) => token.span_(),
+            Ok(token) => token.diagnostics_span(),
             Err(_) => {
                 let file = self.inner.borrow().file;
                 let index = self.inner.borrow().lex_index;
@@ -132,7 +132,7 @@ impl<'i> LexerInner<'i> {
                     self.tokens.push_back(token);
                 }
                 token => {
-                    self.lex_index = token.span_().end;
+                    self.lex_index = token.diagnostics_span().end;
                     self.tokens.push_back(token);
                 }
             }

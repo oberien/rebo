@@ -45,7 +45,7 @@ impl TypeVar {
 }
 impl Display for TypeVar {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        let span = self.span_with_id.span();
+        let span = self.span_with_id.diagnostics_span();
         write!(f, "{}<{}:{}-{}>", self.span_with_id.id(), span.file, span.start, span.end)
     }
 }

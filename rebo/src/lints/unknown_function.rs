@@ -18,9 +18,9 @@ impl Visitor for UnknownFunction {
                 None => {
                     let similar = crate::util::similar_name(binding.ident.ident, meta_info.functions.keys());
                     let mut diag = diagnostics.error(ErrorCode::UnknownFunction)
-                        .with_error_label(var.span_(), "can't find associated function or method with this name");
+                        .with_error_label(var.diagnostics_span(), "can't find associated function or method with this name");
                     if let Some(similar) = similar {
-                        diag = diag.with_info_label(var.span_(), format!("did you mean `{}`", similar));
+                        diag = diag.with_info_label(var.diagnostics_span(), format!("did you mean `{}`", similar));
                     }
                     diag.emit();
                 }
@@ -35,9 +35,9 @@ impl Visitor for UnknownFunction {
             _ => {
                 let similar = crate::util::similar_name(name.binding.ident.ident, meta_info.functions.keys());
                 let mut diag = diagnostics.error(ErrorCode::UnknownFunction)
-                    .with_error_label(name.span_(), "can't find function with this name");
+                    .with_error_label(name.diagnostics_span(), "can't find function with this name");
                 if let Some(similar) = similar {
-                    diag = diag.with_info_label(name.span_(), format!("did you mean `{}`", similar));
+                    diag = diag.with_info_label(name.diagnostics_span(), format!("did you mean `{}`", similar));
                 }
                 diag.emit();
             }

@@ -287,7 +287,7 @@ fn emit_stacktrace<'i>(vm: &VmContext, mut diag: DiagnosticBuilder<'i, ErrorCode
     // last call is the rust function itself
     callstack.pop().expect("emit_stacktrace called without being in a rust-functiontcall");
     for (i, span) in callstack.into_iter().enumerate() {
-        diag = diag.with_info_label(span, format!("{}. in this function call", i+1));
+        diag = diag.with_info_label(span.diagnostics_span(), format!("{}. in this function call", i+1));
     }
     diag
 }

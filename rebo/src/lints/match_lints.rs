@@ -1,6 +1,6 @@
 use crate::lints::visitor::Visitor;
-use diagnostic::{Diagnostics, Span};
-use crate::common::{BlockStack, MetaInfo, UserType};
+use diagnostic::Diagnostics;
+use crate::common::{BlockStack, MetaInfo, SpanWithId, UserType};
 use crate::parser::{ExprBool, ExprInteger, ExprLiteral, ExprMatch, ExprMatchPattern, ExprString};
 use crate::error_codes::ErrorCode;
 use std::fmt::{Debug, Formatter};
@@ -17,7 +17,7 @@ pub struct MatchLints;
 
 impl Visitor for MatchLints {
     fn visit_match(&self, diagnostics: &Diagnostics<ErrorCode>, meta_info: &MetaInfo, _: &BlockStack<'_, '_, ()>, expr: &ExprMatch) {
-        let match_span = expr.span_();
+        let match_span = expr.span_with_id();
         let ExprMatch { expr, arms, .. } = expr;
 
         let typ = &meta_info.types[&TypeVar::from_spanned(expr)];
@@ -29,17 +29,17 @@ impl Visitor for MatchLints {
             Type::Specific(SpecificType::Any(span)) => unreachable!("Any after typeck: any<{}>", span.id()),
             Type::Specific(SpecificType::Float) => {
                 diagnostics.error(ErrorCode::FloatMatch)
-                    .with_error_label(expr.span_(), "")
+                    .with_error_label(expr.diagnostics_span(), "")
                     .emit();
             }
             Type::Specific(SpecificType::Function(_)) => {
                 diagnostics.error(ErrorCode::FunctionMatch)
-                    .with_error_label(expr.span_(), "")
+                    .with_error_label(expr.diagnostics_span(), "")
                     .emit();
             }
             Type::Specific(SpecificType::Struct(_, _)) => {
                 diagnostics.error(ErrorCode::StructMatch)
-                    .with_error_label(expr.span_(), "")
+                    .with_error_label(expr.diagnostics_span(), "")
                     .emit();
             }
             Type::Specific(SpecificType::Unit) => {
@@ -47,11 +47,11 @@ impl Visitor for MatchLints {
                 for (pattern, _arrow, _expr) in arms {
                     match pattern {
                         ExprMatchPattern::Literal(ExprLiteral::Unit(_)) => {
-                            checker.insert((), pattern.span_());
+                            checker.insert((), pattern.span_with_id());
                         }
                         ExprMatchPattern::Binding(_)
                         | ExprMatchPattern::Wildcard(_) => {
-                            checker.catchall(pattern.span_());
+                            checker.catchall(pattern.span_with_id());
                         }
                         ExprMatchPattern::Literal(_)
                         | ExprMatchPattern::Variant(_) => (),
@@ -63,11 +63,11 @@ impl Visitor for MatchLints {
                 for (pattern, _arrow, _expr) in arms {
                     match pattern {
                         ExprMatchPattern::Literal(ExprLiteral::Integer(ExprInteger { int: TokenInteger { value, .. } })) => {
-                            checker.insert(value, pattern.span_());
+                            checker.insert(value, pattern.span_with_id());
                         }
                         ExprMatchPattern::Binding(_)
                         | ExprMatchPattern::Wildcard(_) => {
-                            checker.catchall(pattern.span_());
+                            checker.catchall(pattern.span_with_id());
                         }
                         ExprMatchPattern::Literal(_)
                         | ExprMatchPattern::Variant(_) => (),
@@ -79,11 +79,11 @@ impl Visitor for MatchLints {
                 for (pattern, _arrow, _expr) in arms {
                     match pattern {
                         ExprMatchPattern::Literal(ExprLiteral::Bool(ExprBool { b: TokenBool { value, .. }, .. })) => {
-                            checker.insert(*value, pattern.span_());
+                            checker.insert(*value, pattern.span_with_id());
                         }
                         ExprMatchPattern::Binding(_)
                         | ExprMatchPattern::Wildcard(_) => {
-                            checker.catchall(pattern.span_());
+                            checker.catchall(pattern.span_with_id());
                         }
                         ExprMatchPattern::Literal(_)
                         | ExprMatchPattern::Variant(_) => (),
@@ -95,11 +95,11 @@ impl Visitor for MatchLints {
                 for (pattern, _arrow, _expr) in arms {
                     match pattern {
                         ExprMatchPattern::Literal(ExprLiteral::String(ExprString { string: TokenDqString { string, .. } })) => {
-                            checker.insert(string, pattern.span_());
+                            checker.insert(string, pattern.span_with_id());
                         }
                         ExprMatchPattern::Binding(_)
                         | ExprMatchPattern::Wildcard(_) => {
-                            checker.catchall(pattern.span_());
+                            checker.catchall(pattern.span_with_id());
                         }
                         ExprMatchPattern::Literal(_)
                         | ExprMatchPattern::Variant(_) => (),
@@ -112,9 +112,9 @@ impl Visitor for MatchLints {
                     None => {
                         let similar = crate::util::similar_name(name, meta_info.enum_types.keys());
                         let mut diag = diagnostics.error(ErrorCode::UnknownEnum)
-                            .with_error_label(expr.span_(), format!("unknown enum `{name}` in match"));
+                            .with_error_label(expr.diagnostics_span(), format!("unknown enum `{name}` in match"));
                         if let Some(similar) = similar {
-                            diag = diag.with_info_label(expr.span_(), format!("did you mean `{}`", similar));
+                            diag = diag.with_info_label(expr.diagnostics_span(), format!("did you mean `{}`", similar));
                         }
                         diag.emit();
                         return
@@ -133,9 +133,9 @@ impl Visitor for MatchLints {
                                 None => {
                                     let similar = crate::util::similar_name(variant.enum_name.ident, meta_info.enum_types.keys());
                                     let mut diag = diagnostics.error(ErrorCode::UnknownEnum)
-                                        .with_error_label(variant.enum_name.span_(), "unknown enum in match pattern");
+                                        .with_error_label(variant.enum_name.diagnostics_span(), "unknown enum in match pattern");
                                     if let Some(similar) = similar {
-                                        diag = diag.with_info_label(variant.enum_name.span_(), format!("did you mean `{}`", similar));
+                                        diag = diag.with_info_label(variant.enum_name.diagnostics_span(), format!("did you mean `{}`", similar));
                                     }
                                     diag.emit();
                                     continue
@@ -151,16 +151,16 @@ impl Visitor for MatchLints {
                                     let variant_names = enum_type.variants.iter().map(|(name, _variant)| name);
                                     let similar = crate::util::similar_name(variant.variant_name.ident, variant_names);
                                     let mut diag = diagnostics.error(ErrorCode::UnknownEnumVariant)
-                                        .with_error_label(variant.variant_name.span_(), "unknown enum variant in match pattern");
+                                        .with_error_label(variant.variant_name.diagnostics_span(), "unknown enum variant in match pattern");
                                     if let Some(similar) = similar {
-                                        diag = diag.with_info_label(variant.variant_name.span_(), format!("did you mean `{}`", similar));
+                                        diag = diag.with_info_label(variant.variant_name.diagnostics_span(), format!("did you mean `{}`", similar));
                                     }
                                     diag.emit();
                                     continue
                                 }
                             };
 
-                            checker.insert(RequiredEnumVariant(variant.variant_name.ident), variant.variant_name.span_());
+                            checker.insert(RequiredEnumVariant(variant.variant_name.ident), variant.variant_name.span_with_id());
                             let actual_field_num = variant.fields.as_ref()
                                 .map(|(_open, fields, _close)| fields.len())
                                 .unwrap_or(0);
@@ -173,14 +173,14 @@ impl Visitor for MatchLints {
                                     .find(|v| v.name.ident == variant.variant_name.ident)
                                     .unwrap();
                                 diagnostics.error(ErrorCode::InvalidNumberOfEnumVariantFields)
-                                    .with_error_label(variant.variant_name.span_(), format!("expected {} fields but got {}", variant_field_num, actual_field_num))
-                                    .with_info_label(variant_def.name.span_(), "variant defined here")
+                                    .with_error_label(variant.variant_name.diagnostics_span(), format!("expected {} fields but got {}", variant_field_num, actual_field_num))
+                                    .with_info_label(variant_def.name.diagnostics_span(), "variant defined here")
                                     .emit()
                             }
                         }
                         ExprMatchPattern::Binding(_)
                         | ExprMatchPattern::Wildcard(_) => {
-                            checker.catchall(pattern.span_());
+                            checker.catchall(pattern.span_with_id());
                         }
                     }
                 }
@@ -200,14 +200,14 @@ impl<'i> Debug for RequiredEnumVariant<'i> {
 
 struct VariantChecker<'i, T: Debug> {
     diagnostics: &'i Diagnostics<ErrorCode>,
-    match_span: Span,
-    catchall: Option<Span>,
-    cases: IndexMap<T, Span>,
+    match_span: SpanWithId,
+    catchall: Option<SpanWithId>,
+    cases: IndexMap<T, SpanWithId>,
     required: IndexSet<T>,
     had_required: bool,
 }
 impl<'i, T: Clone + Hash + Eq + Debug> VariantChecker<'i, T> {
-    fn new(diagnostics: &'i Diagnostics<ErrorCode>, match_span: Span, required: Option<&[T]>) -> Self {
+    fn new(diagnostics: &'i Diagnostics<ErrorCode>, match_span: SpanWithId, required: Option<&[T]>) -> Self {
         Self {
             diagnostics,
             match_span,
@@ -217,7 +217,7 @@ impl<'i, T: Clone + Hash + Eq + Debug> VariantChecker<'i, T> {
             required: required.into_iter().flatten().cloned().collect(),
         }
     }
-    fn insert(&mut self, value: T, value_span: Span) {
+    fn insert(&mut self, value: T, value_span: SpanWithId) {
         if let Some(previous_span) = self.catchall {
             self.diag(value_span, previous_span);
         }
@@ -232,23 +232,23 @@ impl<'i, T: Clone + Hash + Eq + Debug> VariantChecker<'i, T> {
             },
         }
     }
-    fn catchall(&mut self, catchall_span: Span) {
+    fn catchall(&mut self, catchall_span: SpanWithId) {
         if let Some(previous_span) = self.catchall {
             self.diag(catchall_span, previous_span);
         } else if self.had_required && self.required.is_empty() {
             self.diagnostics.warning(ErrorCode::UnreachableMatchArm)
-                .with_error_label(catchall_span, "this pattern is unreachable")
-                .with_info_label(catchall_span, "all possible cases are already covered")
+                .with_error_label(catchall_span.diagnostics_span(), "this pattern is unreachable")
+                .with_info_label(catchall_span.diagnostics_span(), "all possible cases are already covered")
                 .emit();
         } else {
             self.catchall = Some(catchall_span);
             self.required.clear();
         }
     }
-    fn diag(&self, value_span: Span, previous_span: Span) {
+    fn diag(&self, value_span: SpanWithId, previous_span: SpanWithId) {
         self.diagnostics.warning(ErrorCode::UnreachableMatchArm)
-            .with_error_label(value_span, "this pattern is unreachable")
-            .with_info_label(previous_span, "already covered here")
+            .with_error_label(value_span.diagnostics_span(), "this pattern is unreachable")
+            .with_info_label(previous_span.diagnostics_span(), "already covered here")
             .emit();
     }
 }
@@ -256,7 +256,7 @@ impl<'i, T: Debug> Drop for VariantChecker<'i, T> {
     fn drop(&mut self) {
         if self.catchall.is_none() && !self.had_required {
             self.diagnostics.error(ErrorCode::MatchNoCatchall)
-                .with_error_label(self.match_span, "this match doesn't have a catchall case")
+                .with_error_label(self.match_span.diagnostics_span(), "this match doesn't have a catchall case")
                 .with_note("consider adding a `_ => ...` or `foo => ...` case")
                 .emit();
         }
@@ -264,7 +264,7 @@ impl<'i, T: Debug> Drop for VariantChecker<'i, T> {
         if !self.required.is_empty() {
             let joined = self.required.iter().map(|req| format!("`{:?}`", req)).join(", ");
             self.diagnostics.error(ErrorCode::NonExhaustiveMatch)
-                .with_error_label(self.match_span, format!("cases {} not covered", joined))
+                .with_error_label(self.match_span.diagnostics_span(), format!("cases {} not covered", joined))
                 .emit();
         }
     }

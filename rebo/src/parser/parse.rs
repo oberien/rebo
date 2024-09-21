@@ -2,9 +2,9 @@ use crate::parser::{Expr, InternalError, Parser};
 use std::fmt::{self, Display, Formatter};
 use std::iter::FromIterator;
 use crate::lexer::*;
-use diagnostic::Span;
+use diagnostic::{FileId, Span};
 use std::marker::PhantomData;
-use crate::common::Depth;
+use crate::common::{Depth, SpanWithId};
 use regex::Regex;
 use crate::common::Spanned;
 use crate::parser::scope::ScopeType;
@@ -165,13 +165,22 @@ impl<'b, 'a: 'b, 'i: 'b, T: 'a, D: 'a> Separated<'a, 'i, T, D> {
     }
 }
 impl<'a, 'i, T: Spanned + 'a, D: 'a> Separated<'a, 'i, T, D> {
-    pub fn span(&self) -> Option<Span> {
+    pub fn diagnostics_span(&self) -> Option<Span> {
         let first = self.iter().next();
         let last = self.last.as_ref().or_else(|| self.inner.iter().last().map(|(t, _d)| t));
         match (first, last) {
-            (Some(first), None) => Some(first.span_()),
-            (None, Some(last)) => Some(last.span_()),
-            (Some(first), Some(last)) => Some(Span::new(first.span_().file, first.span_().start, last.span_().end)),
+            (Some(first), None) => Some(first.diagnostics_span()),
+            (None, Some(last)) => Some(last.diagnostics_span()),
+            (Some(first), Some(last)) => {
+                let first: SpanWithId = first.span_with_id();
+                let last: SpanWithId = last.span_with_id();
+                // let first: SpanWithId = SpanWithId::new(FileId::synthetic_named("uiae"), 0, 1);
+                // let last: SpanWithId = SpanWithId::new(FileId::synthetic_named("uiae"), 2, 5);
+                // let span_with_id: SpanWithId = first | last;
+                // let span = span_with_id.diagnostics_span();
+                // Some(span)
+                todo!()
+            },
             (None, None) => None,
         }
     }

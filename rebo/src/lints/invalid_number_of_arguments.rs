@@ -1,7 +1,8 @@
 use crate::lints::visitor::Visitor;
 use crate::parser::{ExprFunctionCall, Separated};
 use crate::common::{BlockStack, MetaInfo};
-use diagnostic::{Diagnostics, Span};
+use diagnostic::{Diagnostics, FileId};
+use rebo::common::SpanWithId;
 use crate::error_codes::ErrorCode;
 use crate::{Expr, FunctionType, SpecificType};
 use crate::common::Spanned;
@@ -16,7 +17,7 @@ impl Visitor for InvalidNumberOfArguments {
         let ExprFunctionCall { name, open, args, close, .. } = call;
 
         if let Type::Specific(SpecificType::Function(fun)) = &meta_info.types[&TypeVar::from_spanned(name)] {
-            check_function_call_arg_num(diagnostics, fun, CallType::FunctionCall, name.span_(), open, args, close)
+            check_function_call_arg_num(diagnostics, fun, CallType::FunctionCall, name.span_with_id(), open, args, close)
         }
     }
 }
@@ -26,8 +27,10 @@ pub enum CallType {
     MethodCall,
 }
 
-pub fn check_function_call_arg_num(diagnostics: &Diagnostics<ErrorCode>, fun: &FunctionType, call_type: CallType, name_span: Span, open: &TokenOpenParen, args: &Separated<&Expr, TokenComma>, close: &TokenCloseParen) {
-    let args_span = args.span().unwrap_or_else(|| Span::new(open.span_().file, open.span_().start, close.span_().end));
+pub fn check_function_call_arg_num(diagnostics: &Diagnostics<ErrorCode>, fun: &FunctionType, call_type: CallType, name_span: SpanWithId, open: &TokenOpenParen, args: &Separated<&Expr, TokenComma>, close: &TokenCloseParen) {
+    let args_diagnostics_span = args.diagnostics_span().unwrap_or_else(|| {
+        (open.span_with_id() | close.span_with_id()).diagnostics_span()
+    });
 
     let actual = match call_type {
         CallType::FunctionCall => args.len(),
@@ -46,8 +49,8 @@ pub fn check_function_call_arg_num(diagnostics: &Diagnostics<ErrorCode>, fun: &F
             CallType::MethodCall => expected.saturating_sub(1),
         };
         diagnostics.error(ErrorCode::InvalidNumberOfArguments)
-            .with_error_label(args_span, format!("found {} arguments", actual))
-            .with_info_label(name_span, format!("expected {}{} arguments", expected_str, expected))
+            .with_error_label(args_diagnostics_span, format!("found {} arguments", actual))
+            .with_info_label(name_span.diagnostics_span(), format!("expected {}{} arguments", expected_str, expected))
             .emit();
     }
 }

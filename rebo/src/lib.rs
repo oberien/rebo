@@ -35,12 +35,13 @@ pub use typeck::types::{Type, FunctionType, SpecificType};
 pub use stdlib::{Stdlib, List, Map};
 pub use common::expr_gen::*;
 use std::path::{PathBuf, Path};
+use std::sync::LazyLock;
 use diagnostic::Emitted;
 use rebo::parser::BindingId;
 use crate::error_codes::ErrorCode;
 
 const EXTERNAL_SOURCE: &str = "defined externally";
-const EXTERNAL_SPAN: Span = Span::new(FileId::synthetic_named("external.re"), 0, EXTERNAL_SOURCE.len());
+const EXTERNAL_SPAN: LazyLock<SpanWithId> = LazyLock::new(|| SpanWithId::new(FileId::synthetic_named("external.re"), 0, EXTERNAL_SOURCE.len()));
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct RunResult {

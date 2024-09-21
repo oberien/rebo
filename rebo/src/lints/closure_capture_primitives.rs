@@ -27,8 +27,8 @@ impl Visitor for ClosureCapturePrimitives {
                 _ => (),
             }
             diagnostic.error(ErrorCode::ClosureCapturesMutablePrimitive)
-                .with_error_label(sig.span_(), format!("this function captures `{}`, which is a mutable primitive", binding.ident.ident))
-                .with_info_label(binding.ident.span_(), "declared here")
+                .with_error_label(sig.diagnostics_span(), format!("this function captures `{}`, which is a mutable primitive", binding.ident.ident))
+                .with_info_label(binding.ident.diagnostics_span(), "declared here")
                 .with_note("primitives can't be captured mutably in closures as their value is copied into the closure")
                 .with_note("if you want to modify a primitive from outside or within a closure, wrap it in a struct")
                 .emit();

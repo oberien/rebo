@@ -152,7 +152,7 @@ pub struct ExprMatchPatternVariant<'a, 'i> {
 }
 impl<'a, 'i> ExprMatchPatternVariant<'a, 'i> {
     pub fn new(enum_name: TokenIdent<'i>, double_colon: TokenDoubleColon, variant_name: TokenIdent<'i>, fields: Option<(TokenOpenParen, Separated<'a, 'i, Binding<'i>, TokenComma>, TokenCloseParen)>) -> Self {
-        let span = enum_name.span | variant_name.span | fields.as_ref().map(|(.., close)| close.span_());
+        let span = enum_name.span | variant_name.span | fields.as_ref().map(|(.., close)| close.span_with_id());
         ExprMatchPatternVariant { enum_name, double_colon, variant_name, fields, span }
     }
 }

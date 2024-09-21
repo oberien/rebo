@@ -42,7 +42,7 @@ impl Precedence for Math {
             Token::Slash(_) => Ok(Math::Div),
             Token::Percent(_) => Ok(Math::Mod),
             Token::Circumflex(_) => Ok(Math::Xor),
-            _ => Err(InternalError::Backtrack(Backtrack { span: token.span_(), expected: Self::expected() })),
+            _ => Err(InternalError::Backtrack(Backtrack { span: token.diagnostics_span(), expected: Self::expected() })),
         }
     }
 
@@ -85,7 +85,7 @@ impl Precedence for BooleanExpr {
         match token {
             Token::DoubleAmp(_) => Ok(BooleanExpr::And),
             Token::DoublePipe(_) => Ok(BooleanExpr::Or),
-            _ => Err(InternalError::Backtrack(Backtrack { span: token.span_(), expected: Self::expected() })),
+            _ => Err(InternalError::Backtrack(Backtrack { span: token.diagnostics_span(), expected: Self::expected() })),
         }
     }
 

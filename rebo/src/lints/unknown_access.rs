@@ -22,8 +22,8 @@ impl Visitor for UnknownAccess {
                 Type::Specific(specific) => specific,
                 typ => {
                     diagnostics.error(ErrorCode::AccessOfUnknown)
-                        .with_error_label(access.span_(), "can't infer a specific type for what is accessed here")
-                        .with_info_label(access.span_(), format!("inferred {}", typ))
+                        .with_error_label(access.diagnostics_span(), "can't infer a specific type for what is accessed here")
+                        .with_info_label(access.diagnostics_span(), format!("inferred {}", typ))
                         .emit();
                     return
                 },
@@ -34,14 +34,14 @@ impl Visitor for UnknownAccess {
                         SpecificType::Struct(name, _) if name != "struct" => name,
                         SpecificType::Struct(_, _) => {
                             diagnostics.error(ErrorCode::NonStructFieldAccess)
-                                .with_error_label(type_var.span_(), "can't infer type of this struct")
-                                .with_info_label(type_var.span_(), "type annotation needed")
+                                .with_error_label(type_var.diagnostics_span(), "can't infer type of this struct")
+                                .with_info_label(type_var.diagnostics_span(), "type annotation needed")
                                 .emit();
                             return
                         }
                         typ => {
                             diagnostics.error(ErrorCode::NonStructFieldAccess)
-                                .with_error_label(type_var.span_(), format!("`{}` is of type `{}`, which is not a struct", diagnostics.resolve_span(type_var.span_()), typ))
+                                .with_error_label(type_var.diagnostics_span(), format!("`{}` is of type `{}`, which is not a struct", diagnostics.resolve_span(type_var.diagnostics_span()), typ))
                                 .emit();
                             return
                         }
@@ -50,7 +50,7 @@ impl Visitor for UnknownAccess {
                         Some(_) => TypeVar::from_spanned(field),
                         None => {
                             diagnostics.error(ErrorCode::UnknownFieldAccess)
-                                .with_error_label(field.span_(), format!("tried to access non-existent field `{}` of `struct {}`", field.ident, struct_name))
+                                .with_error_label(field.diagnostics_span(), format!("tried to access non-existent field `{}` of `struct {}`", field.ident, struct_name))
                                 .emit();
                             return
                         }
@@ -60,16 +60,16 @@ impl Visitor for UnknownAccess {
                     let fn_name = format!("{}::{}", typ.type_name(), fn_call.name.ident);
 
                     if let Some(fun) = meta_info.function_types.get(fn_name.as_str()) {
-                        check_function_call_arg_num(diagnostics, fun, CallType::MethodCall, fn_call.span_(), &fn_call.open, &fn_call.args, &fn_call.close)
+                        check_function_call_arg_num(diagnostics, fun, CallType::MethodCall, fn_call.name.span_with_id(), &fn_call.open, &fn_call.args, &fn_call.close)
                     }
 
                     match meta_info.functions.get(fn_name.as_str()) {
                         None => {
                             let similar = crate::util::similar_name(&fn_name, meta_info.functions.keys());
                             let mut diag = diagnostics.error(ErrorCode::UnknownMethod)
-                                .with_error_label(fn_call.name.span_(), format!("can't find method `{}`", fn_name));
+                                .with_error_label(fn_call.name.diagnostics_span(), format!("can't find method `{}`", fn_name));
                             if let Some(similar) = similar {
-                                diag = diag.with_info_label(fn_call.name.span_(), format!("did you mean `{}`", similar));
+                                diag = diag.with_info_label(fn_call.name.diagnostics_span(), format!("did you mean `{}`", similar));
                             }
                             diag.emit();
                             return
@@ -78,7 +78,7 @@ impl Visitor for UnknownAccess {
                             let fn_typ = &meta_info.function_types[fn_name.as_str()];
                             if !fn_typ.is_method {
                                 diagnostics.error(ErrorCode::NotAMethod)
-                                    .with_error_label(fn_call.name.span_(), format!("`{}` is an external function and not a method", fn_name))
+                                    .with_error_label(fn_call.name.diagnostics_span(), format!("`{}` is an external function and not a method", fn_name))
                                     .emit();
                             }
                             TypeVar::from_spanned(fn_call)
@@ -88,9 +88,9 @@ impl Visitor for UnknownAccess {
                             let fun = &meta_info.rebo_functions[fn_name.as_str()];
                             if fun.sig.self_arg.is_none() {
                                 diagnostics.error(ErrorCode::NotAMethod)
-                                    .with_error_label(fn_call.name.span_(), format!("`{}` is a function and not a method", fn_name))
-                                    .with_info_label(fn_call.name.span_(), "methods must have `self` as first argument")
-                                    .with_info_label(fun.arg_span(), "this function doesn't have `self` as first argument")
+                                    .with_error_label(fn_call.name.diagnostics_span(), format!("`{}` is a function and not a method", fn_name))
+                                    .with_info_label(fn_call.name.diagnostics_span(), "methods must have `self` as first argument")
+                                    .with_info_label(fun.arg_diagnostics_span(), "this function doesn't have `self` as first argument")
                                     .emit();
                             }
                             TypeVar::from_spanned(fn_call)

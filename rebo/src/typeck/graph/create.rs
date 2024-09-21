@@ -66,17 +66,17 @@ impl FunctionGenerics {
     }
     pub(super) fn contains_generic(&self, node: Node) -> bool {
         self.generic_nodes.borrow().iter().flatten()
-            .any(|&n| n.span_id() == node.span_id())
+            .any(|&n| n.span_with_id() == node.span_with_id())
     }
     pub(super) fn contains_generic_span(&self, span: SpanWithId) -> bool {
         self.generic_nodes.borrow().iter().flatten()
-            .any(|&n| n.span_id() == span.id())
+            .any(|&n| n.span_with_id() == span)
     }
     pub(super) fn generics(&self) -> impl Iterator<Item = Node> {
         self.generic_nodes.borrow().iter().rev().flatten().copied().collect::<Vec<_>>().into_iter()
     }
     pub(super) fn get_generic(&self, span: SpanWithId) -> Option<Node> {
-        self.generics().find(|n| n.span_id() == span.id())
+        self.generics().find(|n| n.span_with_id() == span)
     }
     pub(super) fn apply_type_reduce(&self, source: Node, from: Node, to: Node, typ: &Type, graph: &mut Graph) {
         match typ {
@@ -204,9 +204,9 @@ fn convert_expr_type(typ: &ExprType, diagnostics: &Diagnostics<ErrorCode>, meta_
                 None => {
                     let similar = crate::util::similar_name(name.ident, meta_info.user_types.keys());
                     let mut diag = diagnostics.error(ErrorCode::UnknownType)
-                        .with_error_label(typ.span_(), "can't find type with this name");
+                        .with_error_label(typ.diagnostics_span(), "can't find type with this name");
                     if let Some(similar) = similar {
-                        diag = diag.with_info_label(typ.span_(), format!("did you mean `{}`", similar));
+                        diag = diag.with_info_label(typ.diagnostics_span(), format!("did you mean `{}`", similar));
                     }
                     diag.emit();
                     // hack to make the type resolve regularly even though we don't have any information
@@ -217,10 +217,10 @@ fn convert_expr_type(typ: &ExprType, diagnostics: &Diagnostics<ErrorCode>, meta_
                 return type_constructor(Vec::new(), name);
             }
             let (open, generics, close) = generics.as_ref().unwrap();
-            let generic_span = (open.span | close.span).span();
+            let generic_span = (open.span | close.span).diagnostics_span();
 
             let expected_generics = expected_generics.and_then(|g| g.generics.as_ref());
-            let expected_generic_span = expected_generics.and_then(|g| g.span()).unwrap_or(typ_span.span());
+            let expected_generic_span = expected_generics.and_then(|g| g.diagnostics_span()).unwrap_or(typ_span.diagnostics_span());
             let expected_generic_iter = match expected_generics {
                 Some(generics) => Either::Left(generics.iter().map(Some).chain(std::iter::repeat(None))),
                 None => Either::Right(std::iter::repeat(None)),
@@ -237,12 +237,12 @@ fn convert_expr_type(typ: &ExprType, diagnostics: &Diagnostics<ErrorCode>, meta_
                     Some((Some(expected), None)) => {
                         diagnostics.error(ErrorCode::MissingGeneric)
                             .with_error_label(generic_span, format!("missing generic `{}`", expected.def_ident.ident))
-                            .with_info_label(expected.def_ident.span_(), "defined here")
+                            .with_info_label(expected.def_ident.diagnostics_span(), "defined here")
                             .emit();
                         generics.push((expected.span_with_id(), Type::Top));
                     },
                     Some((None, Some(generic))) => diagnostics.error(ErrorCode::TooManyGenerics)
-                        .with_error_label(generic.span_(), format!("too many generics, unknown generic `{}`", generic))
+                        .with_error_label(generic.diagnostics_span(), format!("too many generics, unknown generic `{}`", generic))
                         .with_info_label(expected_generic_span, "expected generics defined here")
                         .emit(),
                     Some((None, None)) => break,
@@ -330,10 +330,10 @@ impl<'i> Graph<'i> {
             };
             // here we check the Span without the SpanId, as these are 2 separately created Spans
             let matches = external_generics.iter().map(|(span, _)| span).zip(internal_generics.as_ref())
-                .find(|(ext, int)| ext.span_() != int.span_());
+                .find(|(ext, int)| ext.span_with_id() != int.span_with_id());
             assert!(matches.is_none(), "Generic `{}::{}` of ExternalType-definition (`{:?}`) doesn't equal parsed generic (`{:?}`)",
                     name,
-                    diagnostics.resolve_span(matches.unwrap().1.span()),
+                    diagnostics.resolve_span(matches.unwrap().1.diagnostics_span()),
                     matches.unwrap().0,
                     matches.unwrap().1,
             );
@@ -358,7 +358,7 @@ impl<'i> Graph<'i> {
                         Type::Specific(specific) => Type::TypedVarargs(specific),
                         _ => {
                             diagnostics.error(ErrorCode::InvalidVarargs)
-                                .with_error_label(vararg_typ.span_(), "can't convert this type")
+                                .with_error_label(vararg_typ.diagnostics_span(), "can't convert this type")
                                 .emit();
                             Type::UntypedVarargs
                         }
@@ -417,7 +417,7 @@ impl<'i> Graph<'i> {
                 Some(typ) => typ,
                 None => {
                     diagnostics.error(ErrorCode::RequiredReboFunctionUnavailable)
-                        .with_error_label(EXTERNAL_SPAN, format!("couldn't find {} {}", metfun, name))
+                        .with_error_label(EXTERNAL_SPAN.diagnostics_span(), format!("couldn't find {} {}", metfun, name))
                         .emit();
                     continue;
                 }
@@ -427,24 +427,24 @@ impl<'i> Graph<'i> {
                 .unwrap();
             if typ.is_method != *is_method {
                 diagnostics.error(ErrorCode::RequiredReboFunctionDiffers)
-                    .with_error_label(sig.span_(), format!("expected this to be a {}", metfun))
+                    .with_error_label(sig.diagnostics_span(), format!("expected this to be a {}", metfun))
                     .emit();
             }
             if typ.generics.len() != generics.len() {
                 diagnostics.error(ErrorCode::RequiredReboFunctionDiffers)
-                    .with_error_label(sig.span_(), format!("expected {} generics, got {}", generics.len(), typ.generics.len()))
+                    .with_error_label(sig.diagnostics_span(), format!("expected {} generics, got {}", generics.len(), typ.generics.len()))
                     .emit();
             }
-            for ((span, generic), expected) in typ.generics.iter().map(|&span| (span, diagnostics.resolve_span(span.span()))).zip(*generics) {
+            for ((span, generic), expected) in typ.generics.iter().map(|&span| (span, diagnostics.resolve_span(span.diagnostics_span()))).zip(*generics) {
                 if generic != *expected {
                     diagnostics.error(ErrorCode::RequiredReboFunctionDiffers)
-                        .with_error_label(span.span(), format!("expected generic named `{}`", expected))
+                        .with_error_label(span.diagnostics_span(), format!("expected generic named `{}`", expected))
                         .emit();
                 }
             }
             if typ.args.len() != args.len() {
                 diagnostics.error(ErrorCode::RequiredReboFunctionDiffers)
-                    .with_error_label((sig.open.span | sig.close.span).span(), format!("expected {} args, found {}", args.len(), typ.args.len()))
+                    .with_error_label((sig.open.span | sig.close.span).diagnostics_span(), format!("expected {} args, found {}", args.len(), typ.args.len()))
                     .emit();
             }
 
@@ -454,8 +454,8 @@ impl<'i> Graph<'i> {
             fn required_rebo_type_equal(actual: &Type, expected: &Type, diagnostics: &Diagnostics<ErrorCode>) -> Result<(), (String, String)> {
                 match (actual, expected) {
                     (Type::Specific(SpecificType::Generic(span)), Type::Specific(SpecificType::Generic(expected_span))) => {
-                        let actual = diagnostics.resolve_span(span.span());
-                        let expected = diagnostics.resolve_span(expected_span.span());
+                        let actual = diagnostics.resolve_span(span.diagnostics_span());
+                        let expected = diagnostics.resolve_span(expected_span.diagnostics_span());
                         if actual == expected {
                             Ok(())
                         } else {
@@ -470,21 +470,21 @@ impl<'i> Graph<'i> {
                 }
             }
 
-            let arg_spans: Vec<_> = sig.self_arg.iter().map(|a| a.span_()).chain(sig.args.iter().map(|a| a.span_())).collect();
+            let arg_spans: Vec<_> = sig.self_arg.iter().map(|a| a.span_with_id()).chain(sig.args.iter().map(|a| a.span_with_id())).collect();
             for (i, (arg, expected)) in typ.args.iter().zip(args).enumerate() {
                 if let Err((actual, expected)) = required_rebo_type_equal(arg, &expected, diagnostics) {
                     diagnostics.error(ErrorCode::RequiredReboFunctionDiffers)
-                        .with_error_label(arg_spans[i], format!("expected type `{}`, found type `{}`", expected, actual))
+                        .with_error_label(arg_spans[i].diagnostics_span(), format!("expected type `{}`, found type `{}`", expected, actual))
                         .emit();
                 }
             }
             if let Err((actual, expected)) = required_rebo_type_equal(&typ.ret, ret, diagnostics) {
                 let end = match &sig.ret_type {
-                    Some((_arrow, typ)) => typ.span_().end,
-                    None => sig.close.span.span().end,
+                    Some((_arrow, typ)) => typ.end(),
+                    None => sig.close.span.end(),
                 };
                 diagnostics.error(ErrorCode::RequiredReboFunctionDiffers)
-                    .with_error_label(Span::new(sig.close.span.span().file, sig.close.span.span().end, end), format!("expected return type `{}`, found `{}`", expected, actual))
+                    .with_error_label(Span::new(sig.close.span.diagnostics_span().file, sig.close.span.diagnostics_span().end, end), format!("expected return type `{}`, found `{}`", expected, actual))
                     .emit();
             }
         }

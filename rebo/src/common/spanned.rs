@@ -6,11 +6,17 @@ use diagnostic::{FileId, Span};
 
 pub trait Spanned {
     fn span_with_id(&self) -> SpanWithId;
-    fn span_(&self) -> Span {
-        self.span_with_id().span()
+    fn diagnostics_span(&self) -> Span {
+        self.span_with_id().diagnostics_span()
     }
-    fn span_id(&self) -> SpanId {
-        self.span_with_id().id()
+    fn file_id(&self) -> FileId {
+        self.diagnostics_span().file
+    }
+    fn start(&self) -> usize {
+        self.diagnostics_span().start
+    }
+    fn end(&self) -> usize {
+        self.diagnostics_span().end
     }
 }
 
@@ -117,7 +123,7 @@ impl SpanWithId {
     pub fn id(self) -> SpanId {
         self.id
     }
-    pub fn span(self) -> Span {
+    pub fn diagnostics_span(self) -> Span {
         self.span
     }
 }

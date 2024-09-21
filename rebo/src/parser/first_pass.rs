@@ -72,16 +72,16 @@ impl<'a, 'b, 'i> Parser<'a, 'b, 'i> {
                     Ok(path) => path,
                     Err(ResolveFileError::Canonicalize(path, e)) => {
                         parser.diagnostics.error(ErrorCode::ErrorReadingIncludedFile)
-                            .with_error_label(include.span_(), format!("error canonicalizing `{}`", path.display()))
-                            .with_error_label(include.span_(), e.to_string())
+                            .with_error_label(include.diagnostics_span(), format!("error canonicalizing `{}`", path.display()))
+                            .with_error_label(include.diagnostics_span(), e.to_string())
                             .emit();
                         return Ok(None);
                     }
                     Err(ResolveFileError::StartsWith(path)) => {
                         parser.diagnostics.error(ErrorCode::ErrorReadingIncludedFile)
-                            .with_error_label(include.span_(), "the file is not in the include directory")
-                            .with_info_label(include.span_(), format!("this file resolved to {}", path.display()))
-                            .with_error_label(include.span_(), format!("included files must be in {}", parser.include_directory.unwrap_path().display()))
+                            .with_error_label(include.diagnostics_span(), "the file is not in the include directory")
+                            .with_info_label(include.diagnostics_span(), format!("this file resolved to {}", path.display()))
+                            .with_error_label(include.diagnostics_span(), format!("included files must be in {}", parser.include_directory.unwrap_path().display()))
                             .emit();
                         return Ok(None);
                     }
@@ -90,14 +90,14 @@ impl<'a, 'b, 'i> Parser<'a, 'b, 'i> {
                     Ok(code) => code,
                     Err(e) => {
                         parser.diagnostics.error(ErrorCode::ErrorReadingIncludedFile)
-                            .with_error_label(include.span_(), format!("error reading file `{}`", path.display()))
-                            .with_error_label(include.span_(), e.to_string())
+                            .with_error_label(include.diagnostics_span(), format!("error reading file `{}`", path.display()))
+                            .with_error_label(include.diagnostics_span(), e.to_string())
                             .emit();
                         return Ok(None);
                     }
                 };
                 let (file, _) = parser.diagnostics.add_file(include.file.string.clone(), code);
-                parser.meta_info.included_files.insert(include.span_(), file);
+                parser.meta_info.included_files.insert(include.span_with_id(), file);
                 let lexer = Lexer::new(parser.diagnostics, file);
                 let old_lexer = ::std::mem::replace(&mut parser.lexer, lexer);
                 parser.first_pass(depth.next());
@@ -125,7 +125,7 @@ impl<'a, 'b, 'i> Parser<'a, 'b, 'i> {
             // includes -> second-pass
             |parser: &mut Parser<'a, '_, 'i>, _, depth| {
                 let include = ExprInclude::parse_reset(parser, depth.duplicate())?;
-                let file = match parser.meta_info.included_files.get(&include.span_()) {
+                let file = match parser.meta_info.included_files.get(&include.span_with_id()) {
                     Some(&file) => file,
                     None => return Ok(None),
                 };
@@ -179,9 +179,9 @@ impl<'a, 'b, 'i> Parser<'a, 'b, 'i> {
                     Err(_) => continue,
                 };
                 if let Some(expr) = expr {
-                    self.pre_parsed.insert((expr.span_().file, expr.span_().start), expr);
+                    self.pre_parsed.insert((expr.file_id(), expr.start()), expr);
                     // consume tokens except last one as that's consumed after the for loop
-                    while self.peek_token(0).unwrap().span_().end < expr.span_().end {
+                    while self.peek_token(0).unwrap().diagnostics_span().end < expr.diagnostics_span().end {
                         drop(self.next_token());
                     }
                 }

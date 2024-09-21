@@ -20,21 +20,21 @@ impl Visitor for StructFieldAssign {
 fn check_non_struct_field_access(diagnostics: &Diagnostics<ErrorCode>, meta_info: &MetaInfo, expr: &ExprFieldAccess) {
     let ExprFieldAccess { variable, fields, .. } = expr;
     let mut typ = meta_info.types[&TypeVar::from_spanned(variable)].clone();
-    let mut span = variable.span_();
+    let mut diagnostics_span = variable.diagnostics_span();
     for field in fields {
         let struct_name = match &typ {
             Type::Top | Type::Bottom => return,
             Type::Specific(SpecificType::Struct(name, _)) => name,
             _ => {
                 diagnostics.error(ErrorCode::NonStructFieldAccess)
-                    .with_error_label(span, format!("`{}` is of type `{}`, which is not a struct", diagnostics.resolve_span(span), typ))
+                    .with_error_label(diagnostics_span, format!("`{}` is of type `{}`, which is not a struct", diagnostics.resolve_span(diagnostics_span), typ))
                     .emit();
                 return
             }
         };
         if struct_name == "struct" {
             diagnostics.error(ErrorCode::UnknownStruct)
-                .with_error_label(span, "can't infer this struct type")
+                .with_error_label(diagnostics_span, "can't infer this struct type")
                 .emit();
             return;
         }
@@ -43,10 +43,10 @@ fn check_non_struct_field_access(diagnostics: &Diagnostics<ErrorCode>, meta_info
         match field_type {
             Some(field_typ) => {
                 typ = field_typ.clone();
-                span = field.span_();
+                diagnostics_span = field.diagnostics_span();
             }
             None => diagnostics.error(ErrorCode::UnknownFieldAccess)
-                .with_error_label(span, format!("tried to access non-existent field `{}` of `struct {}`", field.ident, struct_name))
+                .with_error_label(diagnostics_span, format!("tried to access non-existent field `{}` of `struct {}`", field.ident, struct_name))
                 .emit(),
         }
     }

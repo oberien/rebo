@@ -58,13 +58,13 @@ impl<'i> Binding<'i> {
         let ident: TokenIdent = parser.parse(depth.last())?;
         if !require_self && ident.ident == "self" {
             parser.diagnostics.error(ErrorCode::SelfBinding)
-                .with_error_label(ident.span.span(), "using `self` as variable is not allowed here")
+                .with_error_label(ident.span.diagnostics_span(), "using `self` as variable is not allowed here")
                 .with_note("note: `self` is only allowed as first parameter of methods")
                 .emit();
         }
         if require_self && ident.ident != "self" {
             return Err(InternalError::Backtrack(Backtrack {
-                span: ident.span.span(),
+                span: ident.span.diagnostics_span(),
                 expected: Cow::Borrowed( & [Expected::Token(TokenType::Ident)]),
             }));
         }
@@ -98,14 +98,14 @@ impl<'i> Binding<'i> {
                 let span = ident.span | rest.span;
                 TokenIdent {
                     span,
-                    ident: parser.diagnostics.resolve_span(span.span()),
+                    ident: parser.diagnostics.resolve_span(span.diagnostics_span()),
                 }
             }
         };
         let binding = match parser.get_binding(ident.ident) {
             Some(binding) => binding,
-            None if ident.ident.contains("::") => parser.add_rogue_binding(ident, Some(TokenMut { span: SpanWithId::from(ident.span.span()) })),
-            None => parser.diagnostic_unknown_identifier(ident, |d| d.with_info_label(ident.span.span(), format!("use `let {} = ...` to create a new binding", ident))),
+            None if ident.ident.contains("::") => parser.add_rogue_binding(ident, Some(TokenMut { span: SpanWithId::from(ident.span.diagnostics_span()) })),
+            None => parser.diagnostic_unknown_identifier(ident, |d| d.with_info_label(ident.span.diagnostics_span(), format!("use `let {} = ...` to create a new binding", ident))),
         };
         trace!("{} got binding {}", depth, binding);
         Ok((binding, ident.span))
@@ -453,7 +453,7 @@ impl<'a, 'i> Expr<'a, 'i> {
                     span: include.include_token.span | include.file.span,
                 }))));
 
-                let file = match parser.meta_info.included_files.get(&include.span_()) {
+                let file = match parser.meta_info.included_files.get(&include.span_with_id()) {
                     Some(&file) => file,
                     None => return err,
                 };
@@ -509,9 +509,9 @@ impl<'a, 'i> Expr<'a, 'i> {
         for (i, f) in fns.iter().enumerate() {
             // check if we have memoization already
             let token = parser.peek_token(0)?;
-            let memoized = if let Some(expr) = parser.pre_parsed.remove(&(token.span_().file, token.span_().start)) {
+            let memoized = if let Some(expr) = parser.pre_parsed.remove(&(token.file_id(), token.start())) {
                 Some(expr)
-            } else if let Some(&(expr, memuntil)) = parser.memoization.get(&(token.span_().file, token.span_().start)) {
+            } else if let Some(&(expr, memuntil)) = parser.memoization.get(&(token.file_id(), token.start())) {
                 if cmp(&until, &memuntil) {
                     Some(expr)
                 } else {
@@ -524,10 +524,10 @@ impl<'a, 'i> Expr<'a, 'i> {
                 None => (),
                 Some(expr) => {
                     // consume tokens of known expression
-                    while parser.peek_token(0).unwrap().span_().start < expr.span_().end {
+                    while parser.peek_token(0).unwrap().start() < expr.end() {
                         drop(parser.next_token());
                     }
-                    trace!("{}    reusing {:?}: {}", depth, expr.span_(), expr);
+                    trace!("{}    reusing {:?}: {}", depth, expr.diagnostics_span(), expr);
                     return Ok(expr);
                 }
             }
@@ -536,8 +536,8 @@ impl<'a, 'i> Expr<'a, 'i> {
             let next_depth = if i == fns.len() - 1 { depth.last() } else { depth.next() };
             match f(parser, next_depth) {
                 Ok(expr) => {
-                    trace!("{}    memoize {:?}: {}", depth, expr.span_(), expr);
-                    parser.memoization.entry((expr.span_().file, expr.span_().start))
+                    trace!("{}    memoize {:?}: {}", depth, expr.diagnostics_span(), expr);
+                    parser.memoization.entry((expr.file_id(), expr.start()))
                         .and_modify(|mem| if until >= mem.1 {
                             *mem = (expr, until);
                         }).or_insert((expr, until));
@@ -574,7 +574,7 @@ impl<'a, 'i> Expr<'a, 'i> {
             op @ Token::GreaterEquals(_) => (ExprGreaterEquals::new_as_expr, op),
             op @ Token::GreaterThan(_) => (ExprGreaterThan::new_as_expr, op),
             token => return Err(InternalError::Backtrack(Backtrack {
-                span: token.span_(),
+                span: token.diagnostics_span(),
                 expected: Cow::Borrowed(Expected::COMPARE_OP),
             })),
         };
@@ -785,7 +785,7 @@ impl<'a, 'i> Display for ExprType<'a, 'i> {
                 }
                 Ok(())
             },
-            ExprType::Generic(g) => write!(f, "{}<{},{},{}; {},{},{}>", g.ident.ident, g.def_ident.span_().file, g.def_ident.span_().start, g.def_ident.span_().end, g.ident.span_().file, g.ident.span_().start, g.ident.span_().end),
+            ExprType::Generic(g) => write!(f, "{}<{},{},{}; {},{},{}>", g.ident.ident, g.def_ident.file_id(), g.def_ident.start(), g.def_ident.end(), g.ident.file_id(), g.ident.start(), g.ident.end()),
             ExprType::Function(fun) => Display::fmt(fun, f),
             ExprType::Never(_) => write!(f, "!"),
             ExprType::Any(_) => write!(f, "\"any\""),
@@ -1039,7 +1039,7 @@ impl<'a, 'i> Parse<'a, 'i> for ExprFormatString<'a, 'i> {
                 TokenFormatStringPart::Escaped(s) => parts.push(ExprFormatStringPart::Escaped(s)),
                 &TokenFormatStringPart::FormatArg(s, part_start) => {
                     let part_end = part_start + s.len();
-                    let part_lexer = Lexer::new_in(parser.diagnostics, fmtstr.span_().file, part_start, part_end, LexerMode::UnexpectedCharacterEof);
+                    let part_lexer = Lexer::new_in(parser.diagnostics, fmtstr.file_id(), part_start, part_end, LexerMode::UnexpectedCharacterEof);
                     let old_lexer = std::mem::replace(&mut parser.lexer, part_lexer);
 
                     let expr = parser.parse_scoped(depth.next())?;
@@ -1049,13 +1049,13 @@ impl<'a, 'i> Parse<'a, 'i> for ExprFormatString<'a, 'i> {
                     let spec = match next {
                         Ok(Token::Eof(_)) => None,
                         Ok(Token::Colon(colon)) => {
-                            let spec_str = &s[colon.span_().end - part_start..];
-                            let spec_span = SpanWithId::new(colon.span_().file, colon.span_().end, colon.span_().end + spec_str.len());
+                            let spec_str = &s[colon.end() - part_start..];
+                            let spec_span = SpanWithId::new(colon.file_id(), colon.end(), colon.end() + spec_str.len());
                             let spec = match rt_format::parser::parse_specifier(spec_str, &mut util::NoValues) {
                                 Ok(spec) => spec,
                                 Err(()) => {
                                     parser.diagnostics.error(ErrorCode::InvalidFormatStringSpecifier)
-                                        .with_error_label(Span::new(colon.span_().file, part_start, part_end), "this is not a valid format specifier")
+                                        .with_error_label(Span::new(colon.file_id(), part_start, part_end), "this is not a valid format specifier")
                                         .emit();
                                     Specifier {
                                         format: Format::Display,
@@ -1066,13 +1066,13 @@ impl<'a, 'i> Parse<'a, 'i> for ExprFormatString<'a, 'i> {
                             Some((colon, spec, spec_span))
                         }
                         _ => {
-                            let arg_span = Span::new(fmtstr.span_().file, part_start, part_end);
+                            let arg_diagnostics_span = Span::new(fmtstr.file_id(), part_start, part_end);
                             let mut diag = parser.diagnostics.error(ErrorCode::InvalidFormatString)
-                                .with_error_label(fmtstr.span_(), "in this format string")
-                                .with_error_label(arg_span, "in this format argument");
+                                .with_error_label(fmtstr.diagnostics_span(), "in this format string")
+                                .with_error_label(arg_diagnostics_span, "in this format argument");
                             match next {
-                                Ok(token) => diag = diag.with_info_label(arg_span, format!("expected end of format string, got `{}`", token)),
-                                Err(e) => diag = diag.with_info_label(arg_span, format!("error: `{:?}`", e)),
+                                Ok(token) => diag = diag.with_info_label(arg_diagnostics_span, format!("expected end of format string, got `{}`", token)),
+                                Err(e) => diag = diag.with_info_label(arg_diagnostics_span, format!("error: `{:?}`", e)),
                             }
                             diag.emit();
                             None
@@ -1275,7 +1275,7 @@ impl<'a, 'i> ExprFieldAccess<'a, 'i> {
     pub fn new(variable: ExprVariable<'i>, dot: TokenDot, fields: Separated<'a, 'i, TokenIdent<'i>, TokenDot>) -> Self {
         assert!(!fields.is_empty());
         assert!(!fields.is_terminated());
-        let span = variable.span | fields.span().unwrap();
+        let span = variable.span | fields.diagnostics_span().unwrap();
         ExprFieldAccess { variable, dot, fields, span }
     }
 }
@@ -1294,7 +1294,7 @@ impl<'a, 'i> Parse<'a, 'i> for ExprFieldAccess<'a, 'i> {
         // check trailing dot
         if fields.is_terminated() {
             parser.diagnostics.error(ErrorCode::InvalidExpression)
-                .with_error_label(fields.span().unwrap(), "trailing dot")
+                .with_error_label(fields.diagnostics_span().unwrap(), "trailing dot")
                 .emit();
         }
         Ok(ExprFieldAccess::new(variable, dot, fields))
@@ -1323,7 +1323,7 @@ impl<'a, 'i> ExprAccess<'a, 'i> {
     pub fn new(variable: ExprVariable<'i>, dot: TokenDot, accesses: Separated<'a, 'i, FieldOrMethod<'a, 'i>, TokenDot>) -> Self {
         assert!(!accesses.is_empty());
         assert!(!accesses.is_terminated());
-        let span = variable.span | accesses.span().unwrap();
+        let span = variable.span | accesses.diagnostics_span().unwrap();
         ExprAccess { variable, dot, accesses, span }
     }
 }
@@ -1342,7 +1342,7 @@ impl<'a, 'i> Parse<'a, 'i> for ExprAccess<'a, 'i> {
         // check trailing dot
         if accesses.is_terminated() {
             parser.diagnostics.error(ErrorCode::InvalidExpression)
-                .with_error_label(accesses.span().unwrap(), "trailing dot")
+                .with_error_label(accesses.diagnostics_span().unwrap(), "trailing dot")
                 .emit();
         }
         Ok(ExprAccess::new(variable, dot, accesses))
@@ -1637,7 +1637,7 @@ impl<'a, 'i> Parse<'a, 'i> for BlockBody<'a, 'i> {
             match last {
                 Last::Terminated | Last::TerminatedWithSemicolon => (),
                 Last::Unterminated(span) => parser.diagnostics.error(ErrorCode::MissingSemicolon)
-                    .with_info_label(Span::new(span.file, span.end, span.end), "try adding a semicolon here")
+                    .with_info_label(span, "try adding a semicolon here")
                     .emit(),
             }
             if trailing_semicolon {
@@ -1654,7 +1654,7 @@ impl<'a, 'i> Parse<'a, 'i> for BlockBody<'a, 'i> {
                     | Expr::While(_)
                     | Expr::For(_)
                     | Expr::Block(_) => Last::Terminated,
-                    _ => Last::Unterminated(expr.span_()),
+                    _ => Last::Unterminated(expr.diagnostics_span()),
                 };
             }
 
@@ -1730,8 +1730,8 @@ impl<'a, 'i> Parse<'a, 'i> for ExprIfElse<'a, 'i> {
 
         let span = if_token.span
             | then.span
-            | else_ifs.last().map(|(_, _, _, block)| block.span_())
-            | els.as_ref().map(|(_, block)| block.span_());
+            | else_ifs.last().map(|(_, _, _, block)| block.span_with_id())
+            | els.as_ref().map(|(_, block)| block.span_with_id());
         Ok(ExprIfElse { if_token, condition, then, else_ifs, els, span })
     }
 }
@@ -1811,7 +1811,7 @@ impl<'a, 'i> Parse<'a, 'i> for ExprWhile<'a, 'i> {
         let condition = Expr::try_parse_until_including(parser, ParseUntil::All, depth.next())?;
         let _guard = parser.push_scope(ScopeType::While(label.clone()));
         let block: ExprBlock = parser.parse(depth.next())?;
-        let span = label.as_ref().map(Spanned::span_) | while_token.span | block.span;
+        let span = label.as_ref().map(Spanned::span_with_id) | while_token.span | block.span;
         Ok(ExprWhile { label, while_token, condition, block, span })
     }
 }
@@ -1853,7 +1853,7 @@ impl<'a, 'i> Parse<'a, 'i> for ExprFor<'a, 'i> {
         let added_binding = parser.add_binding(binding.ident, binding.mutable);
         assert_eq!(added_binding, binding);
         let block: ExprBlock = parser.parse(depth.next())?;
-        let span = label.as_ref().map(Spanned::span_) | for_token.span | block.span;
+        let span = label.as_ref().map(Spanned::span_with_id) | for_token.span | block.span;
         Ok(ExprFor { label, for_token, binding, in_token, expr, block, span })
     }
 }
@@ -1880,7 +1880,7 @@ pub struct ExprLoop<'a, 'i> {
 }
 impl<'a, 'i> ExprLoop<'a, 'i> {
     pub fn new(label: Option<ExprLabelDef<'i>>, loop_token: TokenLoop, block: ExprBlock<'a, 'i>) -> Self {
-        let span = label.as_ref().map(Spanned::span_) | loop_token.span | block.span;
+        let span = label.as_ref().map(Spanned::span_with_id) | loop_token.span | block.span;
         ExprLoop { label, loop_token, block, span }
     }
 }
@@ -1919,7 +1919,7 @@ impl<'a, 'i> Parse<'a, 'i> for ExprBreak<'a, 'i> {
         let break_token: TokenBreak = parser.parse(depth.next())?;
         let label: Option<ExprLabel> = parser.parse(depth.next())?;
         let expr: Option<&Expr> = parser.parse(depth.last())?;
-        let span = break_token.span | label.as_ref().map(Spanned::span_) | expr.map(Spanned::span_);
+        let span = break_token.span | label.as_ref().map(Spanned::span_with_id) | expr.map(Spanned::span_with_id);
         Ok(ExprBreak { break_token, label, expr, span })
     }
 }
@@ -1951,7 +1951,7 @@ impl<'a, 'i> Parse<'a, 'i> for ExprContinue<'i> {
     fn parse_marked(parser: &mut Parser<'a, '_, 'i>, depth: Depth) -> Result<Self, InternalError> {
         let continue_token: TokenContinue = parser.parse(depth.next())?;
         let label: Option<ExprLabel> = parser.parse(depth.next())?;
-        let span = continue_token.span | label.as_ref().map(Spanned::span_);
+        let span = continue_token.span | label.as_ref().map(Spanned::span_with_id);
         Ok(ExprContinue { continue_token, label, span })
     }
 }
@@ -1978,7 +1978,7 @@ pub struct ExprReturn<'a, 'i> {
 }
 impl<'a, 'i> ExprReturn<'a, 'i> {
     pub fn new(return_token: TokenReturn, expr: Option<&'a Expr<'a, 'i>>) -> Self {
-        ExprReturn { return_token, expr, span: return_token.span | expr.map(Spanned::span_) }
+        ExprReturn { return_token, expr, span: return_token.span | expr.map(Spanned::span_with_id) }
     }
 }
 impl<'a, 'i> Parse<'a, 'i> for ExprReturn<'a, 'i> {
@@ -2050,7 +2050,7 @@ pub struct ExprFunctionOrMethodCall<'a, 'i, T> {
 }
 impl<'a, 'i, T: Spanned> ExprFunctionOrMethodCall<'a, 'i, T> {
     pub fn new(name: T, open: TokenOpenParen, args: Separated<'a, 'i, &'a Expr<'a, 'i>, TokenComma>, close: TokenCloseParen) -> Self {
-        let span = name.span_() | close.span;
+        let span = name.span_with_id() | close.span;
         ExprFunctionOrMethodCall { name, open, args, close, span }
     }
 }
@@ -2121,7 +2121,7 @@ impl<'a, 'i> Parse<'a, 'i> for ExprFunctionType<'a, 'i> {
         let args = parser.parse(depth.next())?;
         let close: TokenCloseParen = parser.parse(depth.next())?;
         let ret_type: Option<(TokenArrow, ExprType)> = parser.parse(depth.next())?;
-        let span = fn_token.span | close.span | ret_type.as_ref().map(|(_, t)| t.span_());
+        let span = fn_token.span | close.span | ret_type.as_ref().map(|(_, t)| t.span_with_id());
         Ok(ExprFunctionType { fn_token, generics, open, args, close, ret_type, span })
     }
 }
@@ -2160,7 +2160,7 @@ pub struct ExprFunctionSignature<'a, 'i> {
 }
 impl<'a, 'i> ExprFunctionSignature<'a, 'i> {
     pub fn new(gen_token: Option<TokenGen>, fn_token: TokenFn, name: Option<TokenIdent<'i>>, generics: Option<ExprGenerics<'a, 'i>>, open: TokenOpenParen, self_arg: Option<Binding<'i>>, self_arg_comma: Option<TokenComma>, args: Separated<'a, 'i, ExprPatternTyped<'a, 'i>, TokenComma>, varargs: Option<(Option<ExprType<'a, 'i>>, TokenDotDotDot)>, close: TokenCloseParen, ret_type: Option<(TokenArrow, ExprType<'a, 'i>)>) -> Self {
-        let span = gen_token.as_ref().map(Spanned::span_) | fn_token.span | close.span | ret_type.as_ref().map(|(_, typ)| typ.span_());
+        let span = gen_token.as_ref().map(Spanned::span_with_id) | fn_token.span | close.span | ret_type.as_ref().map(|(_, typ)| typ.span_with_id());
         ExprFunctionSignature { gen_token, fn_token, name, generics, open, self_arg, self_arg_comma, args, varargs, close, ret_type, span }
     }
 }
@@ -2222,8 +2222,8 @@ impl<'a, 'i> ExprFunctionDefinition<'a, 'i> {
         let span = sig.span | body.span;
         ExprFunctionDefinition { sig, captures, body, span }
     }
-    pub fn arg_span(&self) -> Span {
-        Span::new(self.sig.open.span_().file, self.sig.open.span_().start, self.sig.close.span_().end)
+    pub fn arg_diagnostics_span(&self) -> Span {
+        Span::new(self.sig.open.file_id(), self.sig.open.start(), self.sig.close.end())
     }
     fn parse_with_generics(parser: &mut Parser<'a, '_, 'i>, depth: Depth, generics: &[Generic<'i>]) -> Result<Self, InternalError> {
         // scope for generics and argument-bindings
@@ -2337,7 +2337,7 @@ impl<'a, 'i> Parse<'a, 'i> for ExprStructInitialization<'a, 'i> {
         let name: TokenIdent = parser.parse(depth.next())?;
         if parser.meta_info.user_types.get(name.ident).is_none() {
             return Err(InternalError::Backtrack(Backtrack {
-                span: name.span_(),
+                span: name.diagnostics_span(),
                 expected: Cow::Borrowed(&[Expected::Token(TokenType::Ident)]),
             }));
         }
@@ -2451,7 +2451,7 @@ impl<'a, 'i> Parse<'a, 'i> for ExprEnumInitialization<'i> {
                 Ok(ExprEnumInitialization::new(enum_name, double_colon, variant_name))
             }
             _ => Err(InternalError::Backtrack(Backtrack {
-                span: enum_name.span_(),
+                span: enum_name.diagnostics_span(),
                 expected: Cow::Borrowed(&[Expected::Token(TokenType::Ident)]),
             })),
         }
@@ -2517,18 +2517,18 @@ impl<'a, 'i> Parse<'a, 'i> for ExprImplBlock<'a, 'i> {
                     Some((Some(expected), Some(generic))) => {
                         if expected.def_ident.ident != generic.def_ident.ident {
                             parser.diagnostics.error(ErrorCode::MismatchedGeneric)
-                                .with_error_label(generic.def_ident.span_(), format!("expected generic name `{}`, found `{}`", expected.def_ident.ident, generic.def_ident.ident))
+                                .with_error_label(generic.def_ident.diagnostics_span(), format!("expected generic name `{}`, found `{}`", expected.def_ident.ident, generic.def_ident.ident))
                                 .with_note("generics of a type must have the same name in the type def and impl-block")
                                 .emit();
                         }
                     },
                     Some((Some(expected), None)) => parser.diagnostics.error(ErrorCode::MissingGeneric)
-                        .with_error_label(generic_span.span(), format!("missing generic `{}`", expected.def_ident.ident))
-                        .with_info_label(expected.def_ident.span_(), "defined here")
+                        .with_error_label(generic_span.diagnostics_span(), format!("missing generic `{}`", expected.def_ident.ident))
+                        .with_info_label(expected.def_ident.diagnostics_span(), "defined here")
                         .emit(),
                     Some((None, Some(generic))) => parser.diagnostics.error(ErrorCode::TooManyGenerics)
-                        .with_error_label(generic.span_(), format!("too many generics, unknown generic `{}`", generic.def_ident.ident))
-                        .with_info_label(expected_generic_span.span(), "expected generics defined here")
+                        .with_error_label(generic.diagnostics_span(), format!("too many generics, unknown generic `{}`", generic.def_ident.ident))
+                        .with_info_label(expected_generic_span.diagnostics_span(), "expected generics defined here")
                         .emit(),
                     Some((None, None)) => break,
                     None => unreachable!(),

@@ -14,7 +14,6 @@ use petgraph::prelude::{DiGraph, EdgeRef, NodeIndex};
 use petgraph::visit::NodeFiltered;
 use strum::IntoEnumIterator;
 use rebo::common::{Spanned, SpanWithId};
-use crate::common::SpanId;
 
 use crate::typeck::types::{ResolvableSpecificType, ResolvableSpecificTypeDiscriminants};
 use crate::typeck::TypeVar;
@@ -136,18 +135,12 @@ impl Node {
     pub fn synthetic(origin: impl Spanned) -> Node {
         Node::Synthetic(origin.span_with_id(), SYNTHETIC_NODE_IDX.fetch_add(1, Ordering::SeqCst))
     }
-    pub fn span_id(self) -> SpanId {
-        match self {
-            Node::TypeVar(type_var) => type_var.span_id(),
-            Node::Synthetic(span, _) => span.id(),
-        }
-    }
 }
 impl Display for Node {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             Node::TypeVar(var) => write!(f, "[{}]", var),
-            Node::Synthetic(span, id) => write!(f, "[{id}:{}<{}:{}-{}>]", span.id(), span.span().file, span.span().start, span.span().end),
+            Node::Synthetic(span, id) => write!(f, "[{id}:{}<{}:{}-{}>]", span.id(), span.diagnostics_span().file, span.diagnostics_span().start, span.diagnostics_span().end),
         }
     }
 }
@@ -220,11 +213,11 @@ impl<'i> Display for Graph<'i> {
         // create Dot graph
         let f1 = &|_, e: EdgeReference<Constraint>| format!("label = {:?}", e.weight().to_string());
         let f2 = &|_, (_, node): (NodeIndex<u32>, &Node)| {
-            let code = format!("{:?}", self.diagnostics.resolve_span(node.span_()));
+            let code = format!("{:?}", self.diagnostics.resolve_span(node.diagnostics_span()));
             format!("label = \"{node}: {}\\n{}\"", &code[1..code.len()-1], self.possible_types[node])
         };
         let graph = NodeFiltered::from_fn(&self.graph, |nid| {
-            let file_name = self.diagnostics.file_name(self.graph.node_weight(nid).unwrap().span_().file);
+            let file_name = self.diagnostics.file_name(self.graph.node_weight(nid).unwrap().file_id());
             !file_name.starts_with("external-")
         });
         let dot = Dot::with_attr_getters(

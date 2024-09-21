@@ -50,6 +50,6 @@ fn check_variable(diagnostics: &Diagnostics<ErrorCode>, variable: &ExprVariable)
         return;
     }
     diagnostics.error(ErrorCode::NonVariableAssign)
-        .with_error_label(variable.span_(), "tried to assign to this non-variable")
+        .with_error_label(variable.diagnostics_span(), "tried to assign to this non-variable")
         .emit();
 }

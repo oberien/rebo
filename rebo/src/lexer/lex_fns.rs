@@ -42,7 +42,7 @@ pub fn lex_next<'i>(diagnostics: &Diagnostics<ErrorCode>, file: FileId, s: &'i s
         for f in &functions {
             match f(diagnostics, file, s, index)? {
                 MaybeToken::Token(token) => {
-                    trace!("lexed {:?} as {:?}", &s[token.span_().start..token.span_().end], token);
+                    trace!("lexed {:?} as {:?}", &s[token.diagnostics_span().start..token.diagnostics_span().end], token);
                     return Ok(token)
                 },
                 MaybeToken::Backtrack => continue,

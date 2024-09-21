@@ -8,8 +8,9 @@ use crate::common::{Depth, Enum, EnumArc, Function, FunctionValue, FuzzyFloat, M
 use crate::lexer::{TokenBool, TokenDqString, TokenFloat, TokenIdent, TokenInteger};
 use crate::parser::{Binding, BlockBody, Expr, ExprAccess, ExprAdd, ExprAddAssign, ExprAssign, ExprAssignLhs, ExprBind, ExprBlock, ExprBool, ExprBoolAnd, ExprBoolAndAssign, ExprBoolNot, ExprBoolOr, ExprBoolOrAssign, ExprBreak, ExprContinue, ExprDiv, ExprDivAssign, ExprEnumDefinition, ExprEnumInitialization, ExprEquals, ExprFieldAccess, ExprFloat, ExprFor, ExprFormatString, ExprFormatStringPart, ExprFunctionCall, ExprGreaterEquals, ExprGreaterThan, ExprIfElse, ExprInteger, ExprLabel, ExprLessEquals, ExprLessThan, ExprLiteral, ExprLoop, ExprMatch, ExprMatchPattern, ExprMethodCall, ExprMod, ExprModAssign, ExprMul, ExprMulAssign, ExprNeg, ExprNotEquals, ExprParenthesized, ExprPattern, ExprPatternTyped, ExprPatternUntyped, ExprReturn, ExprString, ExprStructDefinition, ExprStructInitialization, ExprSub, ExprSubAssign, ExprVariable, ExprWhile, ExprXor, ExprXorAssign, FieldOrMethod};
 pub use crate::vm::scope::{Scope, Scopes};
-use diagnostic::{Diagnostics, Span};
+use diagnostic::Diagnostics;
 use rt_format::{Specifier, Substitution};
+use rebo::common::SpanWithId;
 use crate::{ErrorCode, EXTERNAL_SPAN, IncludeDirectory};
 use crate::common::Spanned;
 
@@ -22,7 +23,7 @@ pub struct Vm<'a, 'b, 'i> {
     diagnostics: &'i Diagnostics<ErrorCode>,
     scopes: Scopes,
     // read in the voice of Brüggi
-    callstack: Rc<RefCell<Vec<Span>>>,
+    callstack: Rc<RefCell<Vec<SpanWithId>>>,
     meta_info: &'b MetaInfo<'a, 'i>,
     include_directory: IncludeDirectory,
 }
@@ -53,17 +54,17 @@ impl<'a, 'b, 'vm, 'i> VmContext<'a, 'b, 'vm, 'i> {
         if !self.vm.meta_info.required_rebo_functions.contains(&RequiredReboFunctionStruct::from_required_rebo_function::<T>()) {
             panic!("required rebo function `{}` wasn't registered via `ReboConfig`", T::NAME);
         }
-        self.vm.call_function(&FunctionValue::Named(T::NAME.to_string()), EXTERNAL_SPAN, args, Depth::start())
+        self.vm.call_function(&FunctionValue::Named(T::NAME.to_string()), *EXTERNAL_SPAN, args, Depth::start())
     }
 
-    pub fn callstack(&self) -> Vec<Span> {
+    pub fn callstack(&self) -> Vec<SpanWithId> {
         self.vm.callstack.borrow().clone()
     }
 }
 
 #[must_use]
 struct CallstackGuard {
-    callstack: Rc<RefCell<Vec<Span>>>,
+    callstack: Rc<RefCell<Vec<SpanWithId>>>,
 }
 impl Drop for CallstackGuard {
     fn drop(&mut self) {
@@ -116,20 +117,20 @@ impl<'a, 'b, 'i> Vm<'a, 'b, 'i> {
         Ok(value.unwrap_or(Value::Unit))
     }
 
-    fn push_callstack(&mut self, expr_span: Span) -> CallstackGuard {
+    fn push_callstack(&mut self, expr_span: SpanWithId) -> CallstackGuard {
         self.callstack.borrow_mut().push(expr_span);
         CallstackGuard {
             callstack: Rc::clone(&self.callstack),
         }
     }
 
-    fn load_binding(&self, binding: &Binding, span: Span, depth: Depth) -> Value {
+    fn load_binding(&self, binding: &Binding, span: SpanWithId, depth: Depth) -> Value {
         trace!("{}load_binding: {}", depth, binding.ident.ident);
         self.scopes.get(binding.id)
             .unwrap_or_else(|| {
                 let msg = format!("binding {}[{}] is None", binding.ident.ident, binding.id);
                 self.diagnostics.bug(ErrorCode::VmBindingIsNone)
-                    .with_error_label(span, &msg)
+                    .with_error_label(span.diagnostics_span(), &msg)
                     .emit();
                 panic!("{}", msg);
             })
@@ -166,7 +167,7 @@ impl<'a, 'b, 'i> Vm<'a, 'b, 'i> {
             Expr::Literal(ExprLiteral::Float(ExprFloat { float: TokenFloat { value, .. }})) => Ok(Value::Float(FuzzyFloat(*value))),
             Expr::Literal(ExprLiteral::Bool(ExprBool { b: TokenBool { value, .. } })) => Ok(Value::Bool(*value)),
             Expr::Literal(ExprLiteral::String(ExprString { string: TokenDqString { string, .. } })) => Ok(Value::String(string.clone())),
-            Expr::Variable(var @ ExprVariable { binding, .. }) => Ok(self.load_binding(binding, var.span_(), depth.last())),
+            Expr::Variable(var @ ExprVariable { binding, .. }) => Ok(self.load_binding(binding, var.span_with_id(), depth.last())),
             Expr::Access(ExprAccess { variable, accesses, .. }) => self.load_access(variable, accesses, depth),
             Expr::FormatString(ExprFormatString { parts, .. }) => {
                 let mut res = String::new();
@@ -423,9 +424,9 @@ impl<'a, 'b, 'i> Vm<'a, 'b, 'i> {
             }
             Expr::Yield(_) => unreachable!("encountered a yield expression in the VM"),
             Expr::FunctionCall(ExprFunctionCall { name, args, .. }) => {
-                let fun = self.load_binding(&name.binding, name.span_(), depth.next()).expect_function("called a function on a binding that's not a function");
+                let fun = self.load_binding(&name.binding, name.span_with_id(), depth.next()).expect_function("called a function on a binding that's not a function");
                 let args = args.iter().map(|expr| self.eval_expr(expr, depth.next())).collect::<Result<_, _>>()?;
-                self.call_function(&fun, expr.span_(), args, depth.last())
+                self.call_function(&fun, expr.span_with_id(), args, depth.last())
             },
             Expr::FunctionDefinition(fun) => match fun.sig.name {
                 // ignore function definitions as we have those handled already
@@ -433,7 +434,7 @@ impl<'a, 'b, 'i> Vm<'a, 'b, 'i> {
                 None => {
                     let mut scope = Scope::new();
                     for binding in &fun.captures {
-                        let val = self.load_binding(binding, fun.span_(), depth.next());
+                        let val = self.load_binding(binding, fun.span_with_id(), depth.next());
                         scope.create(binding.id, val);
                     }
                     Ok(Value::Function(FunctionValue::Anonymous(scope, fun.span)))
@@ -481,16 +482,16 @@ impl<'a, 'b, 'i> Vm<'a, 'b, 'i> {
             Ok(val)
         }
     }
-    fn call_function(&mut self, fun: &FunctionValue, expr_span: Span, args: Vec<Value>, depth: Depth) -> Result<Value, ExecError<'a, 'i>> {
+    fn call_function(&mut self, fun: &FunctionValue, expr_span: SpanWithId, args: Vec<Value>, depth: Depth) -> Result<Value, ExecError<'a, 'i>> {
         trace!("{}call_function: {:?}({:?})", depth, fun, args);
         let _guard = self.push_callstack(expr_span);
         let (arg_binding_ids, mut scope, fun) = match fun {
             FunctionValue::Anonymous(scope, span) => {
-                let (arg_binding_ids, fun) = &self.meta_info.anonymous_rebo_functions[&span.id()];
+                let (arg_binding_ids, fun) = &self.meta_info.anonymous_rebo_functions[span];
                 (arg_binding_ids, scope.clone(), *fun)
             },
             FunctionValue::Named(name) => match &self.meta_info.functions.get(name.as_str()).unwrap_or_else(|| panic!("can't find function {}", name.as_str())) {
-                Function::Rust(f) => return (*f)(expr_span, &mut VmContext { vm: self }, args),
+                Function::Rust(f) => return (*f)(expr_span.diagnostics_span(), &mut VmContext { vm: self }, args),
                 Function::EnumInitializer(enum_name, variant_name) => {
                     return Ok(Value::Enum(EnumArc { e: Arc::new(ReentrantMutex::new(RefCell::new(Enum {
                         name: enum_name.clone(),
@@ -523,7 +524,7 @@ impl<'a, 'b, 'i> Vm<'a, 'b, 'i> {
         match lhs {
             ExprAssignLhs::Variable(ExprVariable { binding, .. }) => self.assign_binding(binding, value, depth.last()),
             ExprAssignLhs::FieldAccess(ExprFieldAccess { variable, fields, .. }) => {
-                let mut struct_arc = match self.load_binding(&variable.binding, variable.span_(), depth.next()) {
+                let mut struct_arc = match self.load_binding(&variable.binding, variable.span_with_id(), depth.next()) {
                     Value::Struct(s) => s,
                     _ => unreachable!("typechecker should have ensured that this is a struct"),
                 };
@@ -553,7 +554,7 @@ impl<'a, 'b, 'i> Vm<'a, 'b, 'i> {
 
     fn load_lhs_value(&mut self, lhs: &ExprAssignLhs<'a, 'i>, depth: Depth) -> Result<Value, ExecError<'a, 'i>> {
         match lhs {
-            ExprAssignLhs::Variable(variable) => Ok(self.load_binding(&variable.binding, variable.span_(), depth.next())),
+            ExprAssignLhs::Variable(variable) => Ok(self.load_binding(&variable.binding, variable.span_with_id(), depth.next())),
             ExprAssignLhs::FieldAccess(ExprFieldAccess { variable, fields, .. }) => {
                 self.load_access(variable, fields.iter().map(|ident| FieldOrMethod::Field(*ident)), depth)
             }
@@ -561,7 +562,7 @@ impl<'a, 'b, 'i> Vm<'a, 'b, 'i> {
     }
 
     fn load_access(&mut self, variable: &ExprVariable, accesses: impl IntoIterator<Item = impl ::std::borrow::Borrow<FieldOrMethod<'a, 'i>>>, depth: Depth) -> Result<Value, ExecError<'a, 'i>> {
-        let mut val = self.load_binding(&variable.binding, variable.span_(), depth.next());
+        let mut val = self.load_binding(&variable.binding, variable.span_with_id(), depth.next());
         for acc in accesses {
             let acc = acc.borrow();
             val = match acc {
@@ -582,7 +583,7 @@ impl<'a, 'b, 'i> Vm<'a, 'b, 'i> {
                     let args = std::iter::once(Ok(val))
                         .chain(args.iter().map(|expr| self.eval_expr(expr, depth.next())))
                         .collect::<Result<_, _>>()?;
-                    self.call_function(&FunctionValue::Named(fn_name), acc.span_(), args, depth.last())?
+                    self.call_function(&FunctionValue::Named(fn_name), acc.span_with_id(), args, depth.last())?
                 }
             };
         }

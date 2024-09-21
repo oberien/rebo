@@ -275,7 +275,7 @@ macro_rules! fmt_value_wrappers {
                     }
                     Value::Function(fun) =>  match fun {
                         FunctionValue::Named(name) => write!(f, "function {}", name),
-                        FunctionValue::Anonymous(_, span) => write!(f, "anonymous function at {}:{}:{}", span.span().file, span.span().start, span.span().end),
+                        FunctionValue::Anonymous(_, span) => write!(f, "anonymous function at {}:{}:{}", span.diagnostics_span().file, span.diagnostics_span().start, span.diagnostics_span().end),
                     },
                 }
             }

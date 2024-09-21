@@ -64,7 +64,8 @@ struct GeneratorTransformator<'a, 'i, 'p, 'm> {
 
 impl<'a, 'i, 'p, 'm> GeneratorTransformator<'a, 'i, 'p, 'm> {
     pub fn transform(mut self, fun: ExprFunctionDefinition<'a, 'i>) -> ExprFunctionDefinition<'a, 'i> {
-        let fun_span = fun.span_();
+        // TODO
+        let fun_span = fun.diagnostics_span();
         let body_open = fun.body.open.span;
         let body_close = fun.body.close.span;
 
@@ -292,7 +293,7 @@ impl<'a, 'i, 'p, 'm> GeneratorTransformator<'a, 'i, 'p, 'm> {
             &Expr::Return(ExprReturn { return_token, ref expr, span }) => {
                 if let Some(expr) = expr {
                     self.parser.diagnostics.error(ErrorCode::GeneratorReturnExpression)
-                        .with_error_label(expr.span_(), "returns within generators must not have an expression")
+                        .with_error_label(expr.diagnostics_span(), "returns within generators must not have an expression")
                         .emit();
                     // don't transform the expression as it'll result in hard to understand type error
                 }

@@ -32,11 +32,11 @@ pub enum UserType<'a, 'i> {
     Enum(&'a ExprEnumDefinition<'a, 'i>),
 }
 impl<'a, 'i> UserType<'a, 'i> {
-    pub fn variant_initializer_span(&self, variant_name: &str) -> Option<Span> {
+    pub fn variant_initializer_diagnostics_span(&self, variant_name: &str) -> Option<Span> {
         match self {
             UserType::Enum(enum_def) => enum_def.variants.iter()
                 .filter(|variant| variant.name.ident == variant_name)
-                .map(|variant| variant.name.span_())
+                .map(|variant| variant.name.diagnostics_span())
                 .next(),
             _ => None,
         }
@@ -84,7 +84,7 @@ pub struct MetaInfo<'a, 'i> {
     /// map from `ExprInclude::span` to its FileId
     ///
     /// Available after parser's first-pass.
-    pub included_files: IndexMap<Span, FileId>,
+    pub included_files: IndexMap<SpanWithId, FileId>,
     /// map of all rust / rebo functions or associated functions to their implementation reference
     ///
     /// Available after the parser's first-pass.
@@ -106,7 +106,7 @@ pub struct MetaInfo<'a, 'i> {
     /// anonymous functions found in the code
     ///
     /// Available after the parser.
-    pub anonymous_rebo_functions: IndexMap<SpanId, (Vec<BindingId>, &'a ExprFunctionDefinition<'a, 'i>)>,
+    pub anonymous_rebo_functions: IndexMap<SpanWithId, (Vec<BindingId>, &'a ExprFunctionDefinition<'a, 'i>)>,
     /// functions defined in rust
     ///
     /// Available before the parser.
@@ -176,8 +176,8 @@ impl<'a, 'i> MetaInfo<'a, 'i> {
         }
     }
 
-    pub fn get_function_signature(&self, name: &str, def_span_id: SpanId) -> Option<&ExprFunctionSignature<'a, 'i>> {
-        if let Some(fun) = self.anonymous_rebo_functions.get(&def_span_id) {
+    pub fn get_function_signature(&self, name: &str, def_span: SpanWithId) -> Option<&ExprFunctionSignature<'a, 'i>> {
+        if let Some(fun) = self.anonymous_rebo_functions.get(&def_span) {
             return Some(&fun.1.sig);
         }
         if let Some(sig) = self.external_function_signatures.get(name) {
@@ -193,14 +193,14 @@ impl<'a, 'i> MetaInfo<'a, 'i> {
         match name {
             Some(name) => {
                 let function = Function::Rebo(name.to_string(), arg_binding_ids);
-                if self.check_existing_function(diagnostics, &name, fun.sig.name.as_ref().unwrap().span_()) {
+                if self.check_existing_function(diagnostics, &name, fun.sig.name.as_ref().unwrap().diagnostics_span()) {
                     return;
                 }
                 self.functions.insert(name.clone(), function);
                 self.rebo_functions.insert(name, fun);
             }
             None => {
-                self.anonymous_rebo_functions.insert(fun.span_id(), (arg_binding_ids, fun));
+                self.anonymous_rebo_functions.insert(fun.span_with_id(), (arg_binding_ids, fun));
             }
         }
     }
@@ -220,13 +220,13 @@ impl<'a, 'i> MetaInfo<'a, 'i> {
     }
     fn add_enum_initializer_function(&mut self, diagnostics: &Diagnostics<ErrorCode>, enum_name: String, variant_name: String) {
         let name = format!("{}::{}", enum_name, variant_name);
-        let span = self.user_types[enum_name.as_str()].variant_initializer_span(&variant_name).unwrap();
-        if self.check_existing_function(diagnostics, &name, span) {
+        let diagnostics_span = self.user_types[enum_name.as_str()].variant_initializer_diagnostics_span(&variant_name).unwrap();
+        if self.check_existing_function(diagnostics, &name, diagnostics_span) {
             return;
         }
         self.functions.insert(Cow::Owned(name), Function::EnumInitializer(enum_name, variant_name));
     }
-    fn check_existing_function(&self, diagnostics: &Diagnostics<ErrorCode>, name: &str, span: Span) -> bool {
+    fn check_existing_function(&self, diagnostics: &Diagnostics<ErrorCode>, name: &str, diagnostics_span: Span) -> bool {
         let duplicate = |a: Span, b: Span| {
             let mut spans = [a, b];
             spans.sort();
@@ -238,15 +238,15 @@ impl<'a, 'i> MetaInfo<'a, 'i> {
         if let Some(existing) = self.functions.get(name) {
             match existing {
                 Function::Rebo(existing_name, _) => {
-                    duplicate(self.rebo_functions[existing_name.as_str()].sig.name.as_ref().unwrap().span_(), span);
+                    duplicate(self.rebo_functions[existing_name.as_str()].sig.name.as_ref().unwrap().diagnostics_span(), diagnostics_span);
                 }
                 Function::Rust(_) => diagnostics.error(ErrorCode::DuplicateGlobal)
-                    .with_error_label(span, "a function with the same name is already provided externally")
+                    .with_error_label(diagnostics_span, "a function with the same name is already provided externally")
                     .with_note("use a different name")
                     .emit(),
                 Function::EnumInitializer(enum_name, variant_name) => {
-                    let new_span = self.user_types[enum_name.as_str()].variant_initializer_span(variant_name).unwrap();
-                    duplicate(new_span, span);
+                    let new_diagnostics_span = self.user_types[enum_name.as_str()].variant_initializer_diagnostics_span(variant_name).unwrap();
+                    duplicate(new_diagnostics_span, diagnostics_span);
                 }
             }
             return true;
@@ -289,12 +289,11 @@ impl<'a, 'i> MetaInfo<'a, 'i> {
         self.add_user_type(diagnostics, struct_def.name.ident, UserType::Struct(struct_def))
     }
     pub fn add_user_type(&mut self, diagnostics: &Diagnostics<ErrorCode>, name: &'i str, user_type: UserType<'a, 'i>) {
-        let new_span = user_type.span_();
         match self.user_types.entry(name) {
             Entry::Vacant(vacant) => { vacant.insert(user_type); },
             Entry::Occupied(occupied) => {
                 let old = occupied.get();
-                let mut spans = [old.span_(), new_span];
+                let mut spans = [old.diagnostics_span(), user_type.diagnostics_span()];
                 spans.sort();
                 diagnostics.error(ErrorCode::DuplicateGlobal)
                     .with_info_label(spans[0], "first defined here")
@@ -304,7 +303,6 @@ impl<'a, 'i> MetaInfo<'a, 'i> {
         }
     }
     pub fn add_static(&mut self, diagnostics: &Diagnostics<ErrorCode>, static_def: &'a ExprStatic<'a, 'i>) {
-        let new_span = static_def.span_();
         let name = match &static_def.sig.pattern {
             ExprPattern::Untyped(untyped) => untyped.binding.ident.ident,
             ExprPattern::Typed(typed) => typed.pattern.binding.ident.ident,
@@ -313,7 +311,7 @@ impl<'a, 'i> MetaInfo<'a, 'i> {
             Entry::Vacant(vacant) => { vacant.insert(static_def); }
             Entry::Occupied(occupied) => {
                 let old = occupied.get();
-                let mut spans = [old.span_(), new_span];
+                let mut spans = [old.diagnostics_span(), static_def.diagnostics_span()];
                 spans.sort();
                 diagnostics.error(ErrorCode::DuplicateGlobal)
                     .with_info_label(spans[0], "first defined here")

@@ -38,9 +38,9 @@ fn check_mutable_assign(lhs: &ExprAssignLhs, diagnostics: &Diagnostics<ErrorCode
     };
     if variable.binding.mutable.is_none() {
         diagnostics.error(ErrorCode::ImmutableAssign)
-            .with_error_label(variable.span_(), format!("variable `{}` is assigned to even though it's not declared as mutable", variable.binding.ident.ident))
-            .with_info_label(variable.binding.ident.span_(), format!("`{}` defined here", variable.binding.ident.ident))
-            .with_info_label(variable.binding.ident.span_(), format!("help: try using `mut {}` here", variable.binding.ident.ident))
+            .with_error_label(variable.diagnostics_span(), format!("variable `{}` is assigned to even though it's not declared as mutable", variable.binding.ident.ident))
+            .with_info_label(variable.binding.ident.diagnostics_span(), format!("`{}` defined here", variable.binding.ident.ident))
+            .with_info_label(variable.binding.ident.diagnostics_span(), format!("help: try using `mut {}` here", variable.binding.ident.ident))
             .emit();
     }
 }

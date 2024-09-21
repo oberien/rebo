@@ -58,13 +58,13 @@ impl<'i> Graph<'i> {
         already_errored.insert(node);
         let mut diag = if types.is_empty() {
             diagnostics.error(ErrorCode::UnableToInferType)
-                .with_error_label(node.span_(), "can't infer this type")
+                .with_error_label(node.diagnostics_span(), "can't infer this type")
         } else {
             // TODO: unreachable branch?
             diagnostics.error(ErrorCode::TypeConflict)
-                .with_error_label(node.span_(), "can't infer this type")
-                .with_info_label(node.span_(), "must be a single type")
-                .with_info_label(node.span_(), format!("inferred `{}`", types.iter().join(", ")))
+                .with_error_label(node.diagnostics_span(), "can't infer this type")
+                .with_info_label(node.diagnostics_span(), "must be a single type")
+                .with_info_label(node.diagnostics_span(), format!("inferred `{}`", types.iter().join(", ")))
         };
         for (_, constraint, incoming) in self.incoming(node) {
             let msg = match constraint {
@@ -129,7 +129,7 @@ impl<'i> Graph<'i> {
                         "can't infer type of this method-call target".to_string()
                     } else {
                         let type_name = field_access_typ[0].type_name();
-                        let method_name = diagnostics.resolve_span(incoming.span_());
+                        let method_name = diagnostics.resolve_span(incoming.diagnostics_span());
                         let fn_name = format!("{}::{}", type_name, method_name);
                         match meta_info.function_types.get(fn_name.as_str()) {
                             Some(fn_typ) => match fn_typ.args.iter().chain(std::iter::repeat(&Type::UntypedVarargs)).nth(arg_index) {
@@ -149,7 +149,7 @@ impl<'i> Graph<'i> {
                         "can't infer type of this method-call target".to_string()
                     } else {
                         let type_name = field_access_typ[0].type_name();
-                        let method_name = diagnostics.resolve_span(incoming.span_());
+                        let method_name = diagnostics.resolve_span(incoming.diagnostics_span());
                         let fn_name = format!("{}::{}", type_name, method_name);
                         match meta_info.function_types.get(fn_name.as_str()) {
                             Some(fn_typ) => match &fn_typ.ret {
@@ -165,7 +165,7 @@ impl<'i> Graph<'i> {
                 Constraint::Generic | Constraint::GenericEqSource => continue,
             };
             let normalized = self.normalize(incoming);
-            diag = diag.with_info_label(normalized.span_(), msg);
+            diag = diag.with_info_label(normalized.diagnostics_span(), msg);
             diag = self.check_in_function_call(normalized, diag, meta_info);
         }
 
@@ -250,11 +250,11 @@ impl<'i> Graph<'i> {
         // if the node is used within a function or method call, display the signature of the
         // function as well
         let range = Range {
-            start: (normalized.span_().file, normalized.span_().start),
-            end: (normalized.span_().file, normalized.span_().end),
+            start: (normalized.file_id(), normalized.start()),
+            end: (normalized.file_id(), normalized.end()),
         };
         'expr: for element in meta_info.expression_spans.query(range) {
-            let (function_name, def_span_id) = match element.value {
+            let (function_name, def_span) = match element.value {
                 Expr::FunctionCall(call) => {
                     let node = Node::type_var(call.name.binding.ident);
                     let possible_types = &self.possible_types[&node];
@@ -288,7 +288,7 @@ impl<'i> Graph<'i> {
                                 },
                                 Constraint::Reduce(reduce) if reduce.len() == 1 => {
                                     if reduce[0] == *typ {
-                                        break 'bfsearch (call.name.binding.ident.ident.to_string(), current.span_id());
+                                        break 'bfsearch (call.name.binding.ident.ident.to_string(), current.span_with_id());
                                     }
                                 }
                                 _ => (),
@@ -313,20 +313,20 @@ impl<'i> Graph<'i> {
                         assert_eq!(incoming_types.len(), 1);
 
                         let type_name = incoming_types.0[0].type_name();
-                        let method_name = self.diagnostics.resolve_span(method_node.span_());
+                        let method_name = self.diagnostics.resolve_span(method_node.diagnostics_span());
                         let name = format!("{}::{}", type_name, method_name);
-                        (name, incoming.span_id())
+                        (name, incoming.span_with_id())
                     },
                     FieldOrMethod::Field(_) => continue,
                 }
                 _ => continue,
             };
 
-            let function_sig = match meta_info.get_function_signature(&function_name, def_span_id) {
+            let function_sig = match meta_info.get_function_signature(&function_name, def_span) {
                 Some(sig) => sig,
                 None => continue,
             };
-            diag = diag.with_info_label(function_sig.span_(), format!("`{}` defined here", function_name));
+            diag = diag.with_info_label(function_sig.diagnostics_span(), format!("`{}` defined here", function_name));
         }
         diag
     }

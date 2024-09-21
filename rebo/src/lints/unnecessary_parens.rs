@@ -21,7 +21,7 @@ impl Visitor for UnnecessaryParens {
 fn check_unnecessary_parens(diagnostics: &Diagnostics<ErrorCode>, expr: &Expr, error_code: ErrorCode) {
     if let Expr::Parenthesized(_) = expr {
         diagnostics.warning(error_code)
-            .with_info_label(expr.span_(), "in this expression")
+            .with_info_label(expr.diagnostics_span(), "in this expression")
             .with_note("remove the parenthesis")
             .emit();
     }

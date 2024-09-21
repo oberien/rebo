@@ -15,9 +15,9 @@ impl Visitor for UnknownStructFieldType {
             if let ExprType::UserType(ExprTypeUserType { name, .. }) = typ {
                 if meta_info.user_types.get(name.ident).is_none() {
                     let mut diag = diagnostics.error(ErrorCode::UnknownStructFieldType)
-                        .with_error_label(typ.span_(), format!("unknown type `{}` of field `{}`", name.ident, field.ident));
+                        .with_error_label(typ.diagnostics_span(), format!("unknown type `{}` of field `{}`", name.ident, field.ident));
                     if let Some(similar) = crate::util::similar_name(name.ident, meta_info.user_types.keys().copied()) {
-                        diag = diag.with_info_label(typ.span_(), format!("did you mean `{}`", similar));
+                        diag = diag.with_info_label(typ.diagnostics_span(), format!("did you mean `{}`", similar));
                     }
                     diag.emit();
                 }

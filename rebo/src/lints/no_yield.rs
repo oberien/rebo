@@ -14,7 +14,7 @@ impl Visitor for ImplBlockLints {
         // Any ExprYield we encounter here is outside of a generator and thus wrong.
 
         diagnostics.error(ErrorCode::YieldOutsideOfGenerator)
-            .with_error_label(expr.span_(), "yield may only be used within a generator")
+            .with_error_label(expr.diagnostics_span(), "yield may only be used within a generator")
             .emit();
     }
 }

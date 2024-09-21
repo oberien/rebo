@@ -16,7 +16,7 @@ impl Visitor for StructDefLints {
         let ExprStructDefinition { name, fields, .. } = def;
 
         // ignore duplicate struct definitions
-        if meta_info.user_types[name.ident].span_id() != def.span_id() {
+        if meta_info.user_types[name.ident].span_with_id() != def.span_with_id() {
             return;
         }
 
@@ -25,8 +25,8 @@ impl Visitor for StructDefLints {
         for (name, _colon, _typ) in fields {
             if let Some(old_span) = map.insert(name.ident, name.span) {
                 diagnostics.error(ErrorCode::DuplicateStructField)
-                    .with_error_label(name.span_(), "duplicate struct field")
-                    .with_info_label(old_span.span(), "previously defined here")
+                    .with_error_label(name.diagnostics_span(), "duplicate struct field")
+                    .with_info_label(old_span.diagnostics_span(), "previously defined here")
                     .emit()
             }
         }
@@ -51,7 +51,7 @@ fn check_struct_recursion(diagnostics: &Diagnostics<ErrorCode>, meta_info: &Meta
     if struct_name.ident == field_struct_name {
         let path = field_path.iter().join(".");
         diagnostics.error(ErrorCode::RecursiveStruct)
-            .with_error_label(struct_name.span_(), format!("this struct is recursive via `{}.{}`", struct_name.ident, path))
+            .with_error_label(struct_name.diagnostics_span(), format!("this struct is recursive via `{}.{}`", struct_name.ident, path))
             .with_note("recursive structs can never be initialized")
             .emit();
         return

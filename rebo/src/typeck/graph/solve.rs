@@ -127,7 +127,7 @@ impl<'i> Graph<'i> {
         };
 
         for (&expected, &gotten) in struct_typ.generics.iter().zip(&struct_generics) {
-            if expected.span_id() != gotten.span_id() {
+            if expected.span_with_id() != gotten.span_with_id() {
                 let synthetic = Node::synthetic(expected);
                 self.add_node(synthetic);
                 self.add_generic_constraint(field_node, synthetic);
@@ -232,7 +232,7 @@ impl<'i> Graph<'i> {
             return;
         }
 
-        let method_name = self.diagnostics.resolve_span(method_node.span_());
+        let method_name = self.diagnostics.resolve_span(method_node.diagnostics_span());
         let typ = possible_types.0[0].clone();
         let type_name = typ.type_name();
         let fn_name = format!("{}::{}", type_name, method_name);

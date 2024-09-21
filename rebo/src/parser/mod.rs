@@ -26,7 +26,7 @@ use std::ops::Range;
 use std::rc::{Rc, Weak};
 use indexmap::set::IndexSet;
 use intervaltree::Element;
-use rebo::common::{SpanWithId, SpanId, Spanned};
+use rebo::common::{SpanWithId, Spanned};
 use crate::IncludeDirectory;
 
 #[derive(Debug, Clone)]
@@ -118,6 +118,8 @@ pub struct Parser<'a, 'm, 'i> {
     /// pre-info to add first-pass definitions to
     meta_info: &'m mut MetaInfo<'a, 'i>,
     /// already parsed expressions in the first-pass, to be consumed by the second pass
+    ///
+    /// (FileId, expr-start) -> Expr
     pre_parsed: HashMap<(FileId, usize), &'a Expr<'a, 'i>>,
     /// stack of scopes with bindings that are still live
     scopes: Rc<RefCell<Vec<Scope<'i>>>>,
@@ -125,7 +127,7 @@ pub struct Parser<'a, 'm, 'i> {
     captures: Option<IndexSet<Binding<'i>>>,
     memoization: IndexMap<(FileId, usize), (&'a Expr<'a, 'i>, ParseUntil)>,
     binding_memoization: BTreeMap<Span, Binding<'i>>,
-    generic_memoization: HashSet<SpanId>,
+    generic_memoization: HashSet<SpanWithId>,
     /// List of all encountered backtracks.
     ///
     /// If an error should be printed out, the backtrack that starts furthest in the code is used.
@@ -203,8 +205,8 @@ impl<'a, 'm, 'i> Parser<'a, 'm, 'i> {
         self.meta_info.expression_spans = body.exprs.iter().copied()
             .map(|expr| Element {
                 range: Range {
-                    start: (expr.span_().file, expr.span_().start),
-                    end: (expr.span_().file, expr.span_().end),
+                    start: (expr.file_id(), expr.start()),
+                    end: (expr.file_id(), expr.end()),
                 },
                 value: expr,
             }).collect();
@@ -291,12 +293,13 @@ impl<'a, 'm, 'i> Parser<'a, 'm, 'i> {
         self.add_binding_internal(ident.ident.to_string(), ident, mutable, true)
     }
     fn add_binding_internal(&mut self, name: String, ident: TokenIdent<'i>, mutable: Option<TokenMut>, rogue: bool) -> Binding<'i> {
-        let binding = match self.binding_memoization.entry(ident.span_()) {
+        // can't use SpanWithId as the same span can be parsed multiple times
+        let binding = match self.binding_memoization.entry(ident.diagnostics_span()) {
             Entry::Vacant(vacant) => {
                 let id = BindingId::unique();
                 let span = match mutable {
                     Some(mutable) => mutable.span | ident.span,
-                    None => SpanWithId::from(ident.span.span()),
+                    None => SpanWithId::from(ident.span.diagnostics_span()),
                 };
                 let binding = Binding { id, mutable, ident, rogue, span };
                 vacant.insert(binding);
@@ -334,14 +337,14 @@ impl<'a, 'm, 'i> Parser<'a, 'm, 'i> {
         None
     }
     fn add_generic(&mut self, generic: Generic<'i>) {
-        if self.get_generic(generic.def_ident.ident).is_some() && self.generic_memoization.contains(&generic.def_ident.span_id()) {
+        if self.get_generic(generic.def_ident.ident).is_some() && self.generic_memoization.contains(&generic.def_ident.span_with_id()) {
             return;
         }
-        self.generic_memoization.insert(generic.def_ident.span_id());
+        self.generic_memoization.insert(generic.def_ident.span_with_id());
         match self.get_generic(generic.def_ident.ident) {
             Some(prev) => self.diagnostics.error(ErrorCode::DuplicateGeneric)
-                .with_error_label(generic.def_ident.span_(), "this generic has already been defined")
-                .with_info_label(prev.def_ident.span_(), "previously defined here")
+                .with_error_label(generic.def_ident.diagnostics_span(), "this generic has already been defined")
+                .with_info_label(prev.def_ident.diagnostics_span(), "previously defined here")
                 .emit(),
             None => {
                 self.scopes.borrow_mut().last_mut().unwrap().generics.insert(generic.def_ident.ident, generic);
@@ -406,10 +409,10 @@ impl<'a, 'm, 'i> Parser<'a, 'm, 'i> {
 
     fn diagnostic_unknown_identifier(&mut self, ident: TokenIdent<'i>, f: impl for<'d> FnOnce(DiagnosticBuilder<'d, ErrorCode>) -> DiagnosticBuilder<'d, ErrorCode>) -> Binding<'i> {
         let mut d = self.diagnostics.error(ErrorCode::UnknownIdentifier)
-            .with_error_label(ident.span_(), format!("variable `{}` doesn't exist", ident.ident));
+            .with_error_label(ident.diagnostics_span(), format!("variable `{}` doesn't exist", ident.ident));
         d = f(d);
         if let Some(similar) = self.similar_ident(ident.ident) {
-            d = d.with_info_label(ident.span_(), format!("did you mean `{}`", similar));
+            d = d.with_info_label(ident.diagnostics_span(), format!("did you mean `{}`", similar));
         }
         d.emit();
         // introduce rogue variable
@@ -437,8 +440,8 @@ impl<'a, 'm, 'i> Parser<'a, 'm, 'i> {
     fn add_free_function_to_meta_info(&mut self, fun: &'a ExprFunctionDefinition<'a, 'i>) {
         if let Some(self_arg) = &fun.sig.self_arg {
             self.diagnostics.error(ErrorCode::SelfBinding)
-                .with_error_label(self_arg.span_(), "self-argument not allowed here")
-                .with_info_label(self_arg.span_(), "self-argument is only allowed in methods")
+                .with_error_label(self_arg.diagnostics_span(), "self-argument not allowed here")
+                .with_info_label(self_arg.diagnostics_span(), "self-argument is only allowed in methods")
                 .emit();
         }
 
@@ -453,7 +456,7 @@ impl<'a, 'm, 'i> Parser<'a, 'm, 'i> {
                     self.meta_info.add_function(self.diagnostics, Some(Cow::Owned(path)), fun);
                 }
                 None => self.diagnostics.error(ErrorCode::MissingFunctionName)
-                    .with_error_label(fun.sig.span_(), "functions in impl-blocks must have names")
+                    .with_error_label(fun.sig.diagnostics_span(), "functions in impl-blocks must have names")
                     .emit(),
             }
         }
