@@ -19,7 +19,7 @@ impl Visitor for StructFieldAssign {
 }
 fn check_non_struct_field_access(diagnostics: &Diagnostics<ErrorCode>, meta_info: &MetaInfo, expr: &ExprFieldAccess) {
     let ExprFieldAccess { variable, fields, .. } = expr;
-    let mut typ = meta_info.types[&TypeVar::new(variable.binding.ident.span)].clone();
+    let mut typ = meta_info.types[&TypeVar::from_spanned(variable)].clone();
     let mut span = variable.span_();
     for field in fields {
         let struct_name = match &typ {
@@ -38,7 +38,7 @@ fn check_non_struct_field_access(diagnostics: &Diagnostics<ErrorCode>, meta_info
                 .emit();
             return;
         }
-        let struct_type = &meta_info.struct_types[struct_name.as_ref()];
+        let struct_type = &meta_info.struct_types[struct_name.as_str()];
         let field_type = struct_type.get_field(field.ident);
         match field_type {
             Some(field_typ) => {

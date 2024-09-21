@@ -56,7 +56,7 @@ fn check_struct_recursion(diagnostics: &Diagnostics<ErrorCode>, meta_info: &Meta
             .emit();
         return
     }
-    let typ = match meta_info.struct_types.get(field_struct_name.as_ref()) {
+    let typ = match meta_info.struct_types.get(field_struct_name.as_str()) {
         Some(typ) => typ,
         None => return,
     };

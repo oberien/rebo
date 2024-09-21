@@ -15,7 +15,7 @@ impl Visitor for UnknownAccess {
     fn visit_access(&self, diagnostics: &Diagnostics<ErrorCode>, meta_info: &MetaInfo, _: &BlockStack<'_, '_, ()>, access: &ExprAccess) {
         let ExprAccess { variable, accesses, .. } = access;
 
-        let mut type_var = TypeVar::new(variable.binding.ident.span_());
+        let mut type_var = TypeVar::from_spanned(variable);
 
         for access in accesses {
             let typ = match &meta_info.types[&type_var] {
@@ -41,16 +41,16 @@ impl Visitor for UnknownAccess {
                         }
                         typ => {
                             diagnostics.error(ErrorCode::NonStructFieldAccess)
-                                .with_error_label(type_var.span_(), format!("`{}` is of type `{}`, which is not a struct", diagnostics.resolve_span(type_var.span), typ))
+                                .with_error_label(type_var.span_(), format!("`{}` is of type `{}`, which is not a struct", diagnostics.resolve_span(type_var.span_()), typ))
                                 .emit();
                             return
                         }
                     };
-                    match meta_info.struct_types[struct_name.as_ref()].get_field(field.ident) {
-                        Some(_) => TypeVar::new(field.span),
+                    match meta_info.struct_types[struct_name.as_str()].get_field(field.ident) {
+                        Some(_) => TypeVar::from_spanned(field),
                         None => {
                             diagnostics.error(ErrorCode::UnknownFieldAccess)
-                                .with_error_label(type_var.span, format!("tried to access non-existent field `{}` of `struct {}`", field.ident, struct_name))
+                                .with_error_label(field.span_(), format!("tried to access non-existent field `{}` of `struct {}`", field.ident, struct_name))
                                 .emit();
                             return
                         }
@@ -81,7 +81,7 @@ impl Visitor for UnknownAccess {
                                     .with_error_label(fn_call.name.span_(), format!("`{}` is an external function and not a method", fn_name))
                                     .emit();
                             }
-                            TypeVar::new(fn_call.span())
+                            TypeVar::from_spanned(fn_call)
                         },
                         Some(Function::EnumInitializer(_, _)) => unreachable!("can't call an EnumInitializer as self-method"),
                         Some(Function::Rebo(_, _)) => {
@@ -93,7 +93,7 @@ impl Visitor for UnknownAccess {
                                     .with_info_label(fun.arg_span(), "this function doesn't have `self` as first argument")
                                     .emit();
                             }
-                            TypeVar::new(fn_call.span())
+                            TypeVar::from_spanned(fn_call)
                         }
                     }
                 }

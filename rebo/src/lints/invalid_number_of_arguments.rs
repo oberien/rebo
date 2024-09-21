@@ -15,7 +15,7 @@ impl Visitor for InvalidNumberOfArguments {
     fn visit_function_call(&self, diagnostics: &Diagnostics<ErrorCode>, meta_info: &MetaInfo, _: &BlockStack<'_, '_, ()>, call: &ExprFunctionCall) {
         let ExprFunctionCall { name, open, args, close, .. } = call;
 
-        if let Type::Specific(SpecificType::Function(fun)) = &meta_info.types[&TypeVar::new(name.binding.ident.span)] {
+        if let Type::Specific(SpecificType::Function(fun)) = &meta_info.types[&TypeVar::from_spanned(name)] {
             check_function_call_arg_num(diagnostics, fun, CallType::FunctionCall, name.span_(), open, args, close)
         }
     }

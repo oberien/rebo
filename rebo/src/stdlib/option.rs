@@ -1,10 +1,8 @@
-use std::borrow::Cow;
 use std::cell::RefCell;
-use diagnostic::Span;
 use std::sync::{Arc, OnceLock};
 use parking_lot::lock_api::ReentrantMutex;
 use rebo::common::SpanWithId;
-use crate::{CowVec, Enum, EnumArc, ExternalType, FileId, FromValue, IntoValue, SpecificType, Type, Typed, Value};
+use crate::{Enum, EnumArc, ExternalType, FileId, FromValue, IntoValue, SpecificType, Type, Typed, Value};
 
 const FILE_NAME: &str = "external-Option.re";
 
@@ -85,7 +83,7 @@ impl<T> Typed for Option<T> {
         TYPE.get_or_init(|| {
             SpecificType::Enum(
                 "Option".to_string(),
-                vec![(SpanWithId::new(FileId::synthetic_named(FILE_NAME), 12, 13).id(), Type::Top)],
+                vec![(SpanWithId::new(FileId::synthetic_named(FILE_NAME), 12, 13), Type::Top)],
             )
         }).clone()
     }

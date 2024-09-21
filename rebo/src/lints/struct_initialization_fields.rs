@@ -20,7 +20,7 @@ impl Visitor for StructInitializationFields {
         }
 
         if let Some(typ) = meta_info.struct_types.get(name.ident) {
-            let def_span = meta_info.user_types[name.ident].span();
+            let def_span = meta_info.user_types[name.ident].span_();
             let mut expected_fields: IndexSet<_> = typ.fields.iter().map(|(name, _typ)| name.as_str()).collect();
             for (field, _colon, _expr) in fields {
                 if !expected_fields.remove(field.ident) {

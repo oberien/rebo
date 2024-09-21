@@ -11,6 +11,7 @@ use crate::lexer::{TokenBool, TokenDqString, TokenInteger};
 use itertools::Itertools;
 use crate::common::Spanned;
 use crate::typeck::types::{SpecificType, Type};
+use crate::typeck::TypeVar;
 
 pub struct MatchLints;
 
@@ -19,13 +20,13 @@ impl Visitor for MatchLints {
         let match_span = expr.span_();
         let ExprMatch { expr, arms, .. } = expr;
 
-        let typ = &meta_info.types[&expr.span_()];
+        let typ = &meta_info.types[&TypeVar::from_spanned(expr)];
         match typ {
             Type::Top => (),
             Type::Bottom => unreachable!("Type::Bottom after typeck"),
             Type::UntypedVarargs => unreachable!("Type::UntypedVarargs as match-expr"),
             Type::TypedVarargs(_) => unreachable!("Type::TypedVarargs as match-expr"),
-            Type::Specific(SpecificType::Any(Span { file, start, end })) => unreachable!("Any after typeck: any<{}:{}:{}>", file, start, end),
+            Type::Specific(SpecificType::Any(span)) => unreachable!("Any after typeck: any<{}>", span.id()),
             Type::Specific(SpecificType::Float) => {
                 diagnostics.error(ErrorCode::FloatMatch)
                     .with_error_label(expr.span_(), "")
@@ -106,7 +107,7 @@ impl Visitor for MatchLints {
                 }
             }
             Type::Specific(SpecificType::Enum(name, _)) => {
-                let e = match meta_info.enum_types.get(name.as_ref()) {
+                let e = match meta_info.enum_types.get(name.as_str()) {
                     Some(e) => e,
                     None => {
                         let similar = crate::util::similar_name(name, meta_info.enum_types.keys());

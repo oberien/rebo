@@ -108,21 +108,21 @@ pub fn transform_path_type(typ: &Type, callback: &impl Fn(&Ident) -> Option<Toke
 pub fn convert_type_to_rebo(typ: &Type) -> TokenStream {
     transform_path_type(typ, &|ident| {
         #[allow(clippy::if_same_then_else)]
-        if ident == "f32" { Some(quote::quote!(float)) }
-        else if ident == "f64" { Some(quote::quote!(float)) }
-        else if ident == "FuzzyFloat" { Some(quote::quote!(float)) }
-        else if ident == "u8" { Some(quote::quote!(int)) }
-        else if ident == "i8" { Some(quote::quote!(int)) }
-        else if ident == "u16" { Some(quote::quote!(int)) }
-        else if ident == "i16" { Some(quote::quote!(int)) }
-        else if ident == "u32" { Some(quote::quote!(int)) }
-        else if ident == "i32" { Some(quote::quote!(int)) }
-        else if ident == "u64" { Some(quote::quote!(int)) }
-        else if ident == "i64" { Some(quote::quote!(int)) }
-        else if ident == "usize" { Some(quote::quote!(int)) }
-        else if ident == "isize" { Some(quote::quote!(int)) }
-        else if ident == "String" { Some(quote::quote!(string)) }
-        else if ident == "Vec" { Some(quote::quote!(List)) }
+        if ident == "f32" { Some(quote::quote_spanned!(ident.span()=> float)) }
+        else if ident == "f64" { Some(quote::quote_spanned!(ident.span()=> float)) }
+        else if ident == "FuzzyFloat" { Some(quote::quote_spanned!(ident.span()=> float)) }
+        else if ident == "u8" { Some(quote::quote_spanned!(ident.span()=> int)) }
+        else if ident == "i8" { Some(quote::quote_spanned!(ident.span()=> int)) }
+        else if ident == "u16" { Some(quote::quote_spanned!(ident.span()=> int)) }
+        else if ident == "i16" { Some(quote::quote_spanned!(ident.span()=> int)) }
+        else if ident == "u32" { Some(quote::quote_spanned!(ident.span()=> int)) }
+        else if ident == "i32" { Some(quote::quote_spanned!(ident.span()=> int)) }
+        else if ident == "u64" { Some(quote::quote_spanned!(ident.span()=> int)) }
+        else if ident == "i64" { Some(quote::quote_spanned!(ident.span()=> int)) }
+        else if ident == "usize" { Some(quote::quote_spanned!(ident.span()=> int)) }
+        else if ident == "isize" { Some(quote::quote_spanned!(ident.span()=> int)) }
+        else if ident == "String" { Some(quote::quote_spanned!(ident.span()=> string)) }
+        else if ident == "Vec" { Some(quote::quote_spanned!(ident.span()=> List)) }
         else { None }
     })
 }
@@ -259,7 +259,7 @@ pub fn replace_generics_with(typ: &Type, generic_idents: &[Ident], with: impl Fn
 /// * OnceLock::get_or_init(|| ...)
 ///
 /// Does the following transformation:
-/// * `T` -> `Type::Specific(SpecificType::Generic(generic_span_with_id.id()))`
+/// * `T` -> `Type::Specific(SpecificType::Generic(generic_span_with_id))`
 /// * `Option<T>` -> `Type::Specific(<Option<Value> as Typed>::typ())`
 pub fn convert_type_to_reboc_type(typ: &Type, generic_idents: &[Ident], generics_span_with_ids: &HashMap<Ident, TokenStream>) -> TokenStream {
     match typ {
@@ -267,12 +267,12 @@ pub fn convert_type_to_reboc_type(typ: &Type, generic_idents: &[Ident], generics
             let ident = path.path.get_ident().unwrap();
             let span_with_id = &generics_span_with_ids.get(ident)
                 .expect(&format!("ident `{ident}` not found in generic_idents {generic_idents:?}"));
-            quote::quote_spanned!(typ.span()=> ::rebo::Type::Specific(::rebo::SpecificType::Generic(#span_with_id.id())))
+            quote::quote_spanned!(typ.span()=> ::rebo::Type::Specific(::rebo::SpecificType::Generic(*#span_with_id)))
         }
         Type::Never(_) => quote::quote_spanned!(typ.span()=> ::rebo::Type::Bottom),
         _ => {
             let cleaned = replace_generics_with_value(typ, generic_idents);
-            quote::quote_spanned!(typ.span()=> ::rebo::Type::Specific(<#cleaned as ::rebo::Typed>::TYPE))
+            quote::quote_spanned!(typ.span()=> ::rebo::Type::Specific(<#cleaned as ::rebo::Typed>::typ()))
         }
     }
 }

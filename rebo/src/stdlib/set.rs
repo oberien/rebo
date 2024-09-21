@@ -1,13 +1,12 @@
-use diagnostic::{Diagnostics, Span};
+use diagnostic::Diagnostics;
 use typed_arena::Arena;
 use crate::parser::Expr;
 use crate::common::{MetaInfo, Value, SetArc};
 use crate::typeck::types::{Type, SpecificType};
-use std::borrow::Cow;
 use std::marker::PhantomData;
 use std::sync::OnceLock;
 use rebo::common::{DeepCopy, SpanWithId};
-use crate::{CowVec, ExternalType, FileId, FromValue, IntoValue, Typed, ErrorCode};
+use crate::{ExternalType, FileId, FromValue, IntoValue, Typed, ErrorCode};
 use crate::stdlib::list::List;
 
 pub struct Set<T> {
@@ -48,9 +47,9 @@ impl<T> Typed for Set<T> {
         TYPE.get_or_init(|| {
             SpecificType::Struct(
                 "Set".to_string(),
-                vec![(SpanWithId::new(FileId::synthetic_named(FILE_NAME), 11, 12).id(), Type::Top)],
+                vec![(SpanWithId::new(FileId::synthetic_named(FILE_NAME), 11, 12), Type::Top)],
             )
-        })
+        }).clone()
     }
 }
 impl<T> DeepCopy for Set<T> {

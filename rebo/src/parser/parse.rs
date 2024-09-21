@@ -127,13 +127,13 @@ impl<'b, 'a: 'b, 'i: 'b, T: 'a, D: 'a> Separated<'a, 'i, T, D> {
     pub fn iter_with_delimiters(&'b self) -> Box<dyn Iterator<Item = (&'b T, Option<&'b D>)> + 'b> {
         Box::new(self.inner.iter().map(|(t, d)| (t, Some(d))).chain(self.last.as_ref().map(|t| (t, None))))
     }
-    pub fn last_unterminated(&'b self) -> Option<&T> {
+    pub fn last_unterminated(&'b self) -> Option<&'b T> {
         self.last.as_ref()
     }
-    pub fn last_terminated(&'b self) -> Option<&T> {
+    pub fn last_terminated(&'b self) -> Option<&'b T> {
         self.inner.last().map(|(t, _d)| t)
     }
-    pub fn last(&'b self) -> Option<&T> {
+    pub fn last(&'b self) -> Option<&'b T> {
         self.last_unterminated().or_else(|| self.last_terminated())
     }
     pub fn is_terminated(&self) -> bool {

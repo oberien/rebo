@@ -95,10 +95,10 @@ impl<'a, 'i> ExprBuilder<'a, 'i> {
         let lit = t.into();
         Self::make(move |gen| lit.build(gen))
     }
-    pub fn binding_existing(binding: Binding<'i>) -> ExprBuilderBinding {
+    pub fn binding_existing(binding: Binding<'i>) -> ExprBuilderBinding<'i> {
         binding.into()
     }
-    pub fn binding_new(name: &'i str, mutable: bool) -> ExprBuilderBinding {
+    pub fn binding_new(name: &'i str, mutable: bool) -> ExprBuilderBinding<'i> {
         ExprBuilderBinding {
             inner: Rc::new(RefCell::new(ExprBuilderBindingInner {
                 id: BindingId::unique(),

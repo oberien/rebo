@@ -30,7 +30,7 @@ impl Visitor for UnknownFunction {
     fn visit_function_call(&self, diagnostics: &Diagnostics<ErrorCode>, meta_info: &MetaInfo, _: &BlockStack<'_, '_, ()>, call: &ExprFunctionCall) {
         let ExprFunctionCall { name, .. } = call;
 
-        match &meta_info.types[&TypeVar::new(name.binding.ident.span)] {
+        match &meta_info.types[&TypeVar::from_spanned(name)] {
             Type::Specific(SpecificType::Function(_)) => (),
             _ => {
                 let similar = crate::util::similar_name(name.binding.ident.ident, meta_info.functions.keys());

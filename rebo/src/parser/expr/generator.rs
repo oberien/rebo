@@ -64,7 +64,7 @@ struct GeneratorTransformator<'a, 'i, 'p, 'm> {
 
 impl<'a, 'i, 'p, 'm> GeneratorTransformator<'a, 'i, 'p, 'm> {
     pub fn transform(mut self, fun: ExprFunctionDefinition<'a, 'i>) -> ExprFunctionDefinition<'a, 'i> {
-        let fun_span = fun.span();
+        let fun_span = fun.span_();
         let body_open = fun.body.open.span;
         let body_close = fun.body.close.span;
 
@@ -94,10 +94,11 @@ impl<'a, 'i, 'p, 'm> GeneratorTransformator<'a, 'i, 'p, 'm> {
         // generate state machine
         let yield_type = match fun.sig.ret_type {
             Some((_, typ)) => typ,
-            None => ExprType::Unit(
-                TokenOpenParen { span: fun.sig.span() },
-                TokenCloseParen { span: fun.sig.span() },
-            ),
+            None => ExprType::Unit(ExprTypeUnit {
+                open: TokenOpenParen { span: fun.sig.span_with_id() },
+                close: TokenCloseParen { span: fun.sig.span_with_id() },
+                span: fun.sig.span_with_id(),
+            }),
         };
         let struct_ident = self.create_ident(format!("Generator_{}_{}_{}_{}", fun.sig.name.map(|i| i.ident).unwrap_or(""), fun_span.file, fun_span.start, fun_span.end));
         let impl_block_builder = self.generate_state_machine_impl_block(struct_ident, yield_type);
@@ -148,10 +149,19 @@ impl<'a, 'i, 'p, 'm> GeneratorTransformator<'a, 'i, 'p, 'm> {
                 args: fun.sig.args,
                 varargs: fun.sig.varargs,
                 close: fun.sig.close,
-                ret_type: Some((TokenArrow { span: struct_ident.span }, ExprType::UserType(struct_ident, None))),
+                ret_type: Some((
+                    TokenArrow { span: struct_ident.span },
+                    ExprType::UserType(ExprTypeUserType {
+                        name: struct_ident,
+                        generics: None,
+                        span: struct_ident.span_with_id(),
+                    }),
+                )),
+                span: fun.sig.span,
             },
             captures: fun.captures,
             body: function_body,
+            span: fun.span,
         }
     }
 
@@ -267,9 +277,9 @@ impl<'a, 'i, 'p, 'm> GeneratorTransformator<'a, 'i, 'p, 'm> {
             Expr::Block(block) => self.transform_block(block),
             Expr::Variable(_) => todo!(),
             Expr::Access(_) => todo!(),
-            &Expr::Parenthesized(ExprParenthesized { open, expr, close }) => self.transform_unop(
+            &Expr::Parenthesized(ExprParenthesized { open, expr, close, span }) => self.transform_unop(
                 expr,
-                |expr| Expr::Parenthesized(ExprParenthesized { open, expr, close }),
+                |expr| Expr::Parenthesized(ExprParenthesized { open, expr, close, span }),
                 |expr| ExprBuilder::parenthesized(expr),
             ),
             Expr::IfElse(_) => todo!(),
@@ -279,10 +289,10 @@ impl<'a, 'i, 'p, 'm> GeneratorTransformator<'a, 'i, 'p, 'm> {
             Expr::Loop(_) => todo!(),
             Expr::Break(_) => todo!(),
             Expr::Continue(_) => todo!(),
-            &Expr::Return(ExprReturn { return_token, ref expr }) => {
+            &Expr::Return(ExprReturn { return_token, ref expr, span }) => {
                 if let Some(expr) = expr {
                     self.parser.diagnostics.error(ErrorCode::GeneratorReturnExpression)
-                        .with_error_label(expr.span(), "returns within generators must not have an expression")
+                        .with_error_label(expr.span_(), "returns within generators must not have an expression")
                         .emit();
                     // don't transform the expression as it'll result in hard to understand type error
                 }
@@ -294,7 +304,9 @@ impl<'a, 'i, 'p, 'm> GeneratorTransformator<'a, 'i, 'p, 'm> {
                         enum_name: TokenIdent { span: return_token.span, ident: "Option" },
                         double_colon: TokenDoubleColon { span: return_token.span },
                         variant_name: TokenIdent { span: return_token.span, ident: "None" },
+                        span,
                     }))),
+                    span,
                 })))
             },
             Expr::Yield(ExprYield { expr, .. }) => {
@@ -463,6 +475,7 @@ impl<'a, 'i, 'p, 'm> GeneratorTransformator<'a, 'i, 'p, 'm> {
                 open: block.open,
                 body: BlockBody { exprs: transformed_exprs, terminated_with_semicolon: block.body.terminated_with_semicolon },
                 close: block.close,
+                span: todo!(),
             })))
         }
     }
@@ -475,7 +488,7 @@ impl<'a, 'i, 'p, 'm> GeneratorTransformator<'a, 'i, 'p, 'm> {
         let len = name.len();
         let (file, ident) = self.parser.diagnostics.add_file(Uuid::new_v4().to_string(), name);
         TokenIdent {
-            span: Span::new(file, 0, len),
+            span: SpanWithId::new(file, 0, len),
             ident,
         }
     }

@@ -3,8 +3,8 @@ use std::borrow::Cow;
 use strum_macros::{EnumDiscriminants, EnumIter};
 use crate::parser::ExprLiteral;
 use itertools::Itertools;
+use rebo::common::SpanWithId;
 use crate::typeck::graph::Node;
-use crate::common::SpanId;
 
 #[derive(Debug, Clone, PartialOrd, Ord, PartialEq, Eq, Hash)]
 pub enum Type {
@@ -26,15 +26,15 @@ pub enum SpecificType {
     Bool,
     String,
     /// struct name, generics
-    Struct(String, Vec<(SpanId, Type)>),
+    Struct(String, Vec<(SpanWithId, Type)>),
     /// enum name, generics
-    Enum(String, Vec<(SpanId, Type)>),
+    Enum(String, Vec<(SpanWithId, Type)>),
     /// generics, args, ret
     Function(Box<FunctionType>),
     /// def_ident-span
-    Generic(SpanId),
+    Generic(SpanWithId),
     /// def-span
-    Any(SpanId),
+    Any(SpanWithId),
 }
 #[derive(Debug, Clone, PartialOrd, Ord, PartialEq, Eq, Hash, EnumDiscriminants)]
 #[strum_discriminants(derive(EnumIter))]
@@ -52,18 +52,18 @@ pub enum ResolvableSpecificType {
     Function(Option<FunctionType>),
     /// def_ident-span: a generic inside a function definition or impl-block definition, which must not
     /// unify except with itself (or some other generics)
-    UnUnifyableGeneric(SpanId),
+    UnUnifyableGeneric(SpanWithId),
 }
 #[derive(Debug, Clone, PartialOrd, Ord, PartialEq, Eq, Hash)]
 pub struct FunctionType {
     pub is_method: bool,
-    pub generics: Cow<'static, [SpanId]>,
+    pub generics: Cow<'static, [SpanWithId]>,
     pub args: Cow<'static, [Type]>,
     pub ret: Type,
 }
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct StructType {
-    pub generics: Cow<'static, [SpanId]>,
+    pub generics: Cow<'static, [SpanWithId]>,
     pub name: String,
     pub fields: Vec<(String, Type)>,
 }
@@ -77,7 +77,7 @@ impl StructType {
 }
 #[derive(Debug, Clone, PartialOrd, PartialEq, Hash)]
 pub struct EnumType {
-    pub generics: Cow<'static, [SpanId]>,
+    pub generics: Cow<'static, [SpanWithId]>,
     pub name: String,
     pub variants: Vec<(String, EnumTypeVariant)>,
 }
@@ -125,11 +125,11 @@ impl SpecificType {
             SpecificType::Float => "float".to_string(),
             SpecificType::Bool => "bool".to_string(),
             SpecificType::String => "string".to_string(),
-            SpecificType::Struct(name, _) => name.clone().into_owned(),
-            SpecificType::Enum(name, _) => name.clone().into_owned(),
+            SpecificType::Struct(name, _) => name.clone(),
+            SpecificType::Enum(name, _) => name.clone(),
             SpecificType::Function(_) => "function".to_string(),
-            SpecificType::Generic(span_id) => format!("<{span_id}>"),
-            SpecificType::Any(span_id) => format!("any<{span_id}>"),
+            SpecificType::Generic(span) => format!("<{}>", span.id()),
+            SpecificType::Any(span) => format!("any<{}>", span.id()),
         }
     }
 
@@ -159,7 +159,7 @@ impl ResolvableSpecificType {
             ResolvableSpecificType::Struct(name, _) => name.clone(),
             ResolvableSpecificType::Enum(name, _) => name.clone(),
             ResolvableSpecificType::Function(_) => "function".to_string(),
-            ResolvableSpecificType::UnUnifyableGeneric(span_id) => format!("<{span_id}>"),
+            ResolvableSpecificType::UnUnifyableGeneric(span) => format!("<{}>", span.id()),
         }
     }
     pub fn generics(&self) -> Vec<Node> {
@@ -186,19 +186,19 @@ impl fmt::Display for SpecificType {
             SpecificType::Bool => write!(f, "bool"),
             SpecificType::String => write!(f, "string"),
             SpecificType::Struct(name, generics) => {
-                let generics = generics.iter().map(|(g, _)| format!("<{g}>")).join(", ");
+                let generics = generics.iter().map(|(g, _)| format!("<{}>", g.id())).join(", ");
                 write!(f, "struct {}<{}>", name, generics)
             },
             SpecificType::Enum(name, generics) => {
-                let generics = generics.iter().map(|(g, _)| format!("<{g}>")).join(", ");
+                let generics = generics.iter().map(|(g, _)| format!("<{}>", g.id())).join(", ");
                 write!(f, "enum {}<{}>", name, generics)
             },
             SpecificType::Function(fun) => {
-                let generics = fun.generics.iter().map(|g| format!("<{g}>")).join(", ");
+                let generics = fun.generics.iter().map(|g| format!("<{}>", g.id())).join(", ");
                 write!(f, "fn<{}>({}) -> {}", generics, fun.args.iter().join(", "), fun.ret)
             }
-            SpecificType::Generic(span_id) => write!(f, "<{span_id}>"),
-            SpecificType::Any(span_id) => write!(f, "any<{span_id}>"),
+            SpecificType::Generic(span) => write!(f, "<{}>", span.id()),
+            SpecificType::Any(span) => write!(f, "any<{}>", span.id()),
         }
     }
 }
@@ -214,10 +214,10 @@ impl fmt::Display for ResolvableSpecificType {
             ResolvableSpecificType::Enum(name, generics) => ("enum", name, generics),
             ResolvableSpecificType::Function(None) => return write!(f, "fn?"),
             ResolvableSpecificType::Function(Some(fun)) => {
-                let generics = fun.generics.iter().map(|g| format!("<{g}>")).join(", ");
+                let generics = fun.generics.iter().map(|g| format!("<{}>", g.id())).join(", ");
                 return write!(f, "fn<{}>({}) -> {}", generics, fun.args.iter().join(", "), fun.ret)
             }
-            ResolvableSpecificType::UnUnifyableGeneric(span_id) => return write!(f, "<{span_id}>"),
+            ResolvableSpecificType::UnUnifyableGeneric(span) => return write!(f, "<{}>", span.id()),
         };
         write!(f, "{} {}", typ, name)?;
         if !generics.is_empty() {
@@ -225,7 +225,7 @@ impl fmt::Display for ResolvableSpecificType {
             for generic in generics {
                 match generic {
                     Node::TypeVar(var) => write!(f, "[{}]", var)?,
-                    Node::Synthetic(span, id) => write!(f, "[{}<{}:{}:{}>]", id, span.file, span.start, span.end)?,
+                    Node::Synthetic(span, id) => write!(f, "[{}<{}:{}-{}>]", id, span.span().file, span.span().start, span.span().end)?,
                 }
             }
             write!(f, ">")?;

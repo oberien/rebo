@@ -12,7 +12,7 @@ pub struct IfElseReturnValue;
 impl Visitor for IfElseReturnValue {
     fn visit_if_else(&self, diagnostics: &Diagnostics<ErrorCode>, meta_info: &MetaInfo, _: &BlockStack<'_, '_, ()>, ifelse: &ExprIfElse) {
         let block_type_vars: Vec<_> = ifelse.iter_branches()
-            .map(|(_cond, block)| TypeVar::new(block.span()))
+            .map(|(_cond, block)| TypeVar::from_spanned(block))
             .collect();
         if block_type_vars.iter().any(|var| meta_info.types[var] != Type::Specific(SpecificType::Unit)) {
             if ifelse.els.is_none() {

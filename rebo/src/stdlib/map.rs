@@ -3,12 +3,11 @@ use typed_arena::Arena;
 use crate::parser::Expr;
 use crate::common::{MetaInfo, Value, MapArc, DeepCopy};
 use crate::typeck::types::{Type, SpecificType};
-use std::borrow::Cow;
 use std::collections::{BTreeMap, HashMap};
 use std::hash::Hash;
 use std::marker::PhantomData;
 use std::sync::OnceLock;
-use crate::{CowVec, ExternalType, FileId, FromValue, IntoValue, Typed, ErrorCode, SpanWithId};
+use crate::{ExternalType, FileId, FromValue, IntoValue, Typed, ErrorCode, SpanWithId};
 use crate::stdlib::list::List;
 
 pub struct Map<K, V> {
@@ -56,8 +55,8 @@ impl<K, V> Typed for Map<K, V> {
             SpecificType::Struct(
                 "Map".to_string(),
                 vec![
-                    (SpanWithId::new(FileId::synthetic_named(FILE_NAME), 11, 12).id(), Type::Top),
-                    (SpanWithId::new(FileId::synthetic_named(FILE_NAME), 14, 15).id(), Type::Top),
+                    (SpanWithId::new(FileId::synthetic_named(FILE_NAME), 11, 12), Type::Top),
+                    (SpanWithId::new(FileId::synthetic_named(FILE_NAME), 14, 15), Type::Top),
                 ],
             )
         }).clone()

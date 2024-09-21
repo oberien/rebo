@@ -121,14 +121,14 @@ pub fn enum_type(e: ItemEnum) -> TokenStream {
         impl<#(#generic_idents),*> ::rebo::Typed for #ident<#(#generic_idents),*> {
             fn typ() -> ::rebo::SpecificType {
                 static TYPE: ::std::sync::OnceLock<::rebo::SpecificType> = ::std::sync::OnceLock::new();
-                TYPE.get_or_init_with(|| {
+                TYPE.get_or_init(|| {
                     ::rebo::SpecificType::Enum(
                         #ident_string.to_string(),
                         vec![#(
-                            (#generic_spans.id(), ::rebo::Type::Top),
+                            (#generic_spans, ::rebo::Type::Top),
                         )*],
                     )
-                })
+                }).clone()
             }
         }
     }).into()
@@ -213,10 +213,10 @@ pub fn struct_type(s: ItemStruct) -> TokenStream {
                     ::rebo::SpecificType::Struct(
                         #ident_string.to_string(),
                         vec![#(
-                            (#generic_spans.id(), ::rebo::Type::Top),
+                            (#generic_spans, ::rebo::Type::Top),
                         )*],
                     )
-                })
+                }).clone()
             }
         }
     }).into()

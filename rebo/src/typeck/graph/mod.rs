@@ -4,7 +4,7 @@ use std::io::Write;
 use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use diagnostic::{Diagnostics, Span};
+use diagnostic::Diagnostics;
 use indexmap::map::IndexMap;
 use itertools::Itertools;
 use petgraph::Direction;
@@ -13,7 +13,8 @@ use petgraph::graph::{EdgeIndex, EdgeReference};
 use petgraph::prelude::{DiGraph, EdgeRef, NodeIndex};
 use petgraph::visit::NodeFiltered;
 use strum::IntoEnumIterator;
-use rebo::common::Spanned;
+use rebo::common::{Spanned, SpanWithId};
+use crate::common::SpanId;
 
 use crate::typeck::types::{ResolvableSpecificType, ResolvableSpecificTypeDiscriminants};
 use crate::typeck::TypeVar;
@@ -125,7 +126,7 @@ impl Display for Constraint {
 pub enum Node {
     TypeVar(TypeVar),
     /// origin, unique-id
-    Synthetic(SpanId, u64),
+    Synthetic(SpanWithId, u64),
 }
 static SYNTHETIC_NODE_IDX: AtomicU64 = AtomicU64::new(0);
 impl Node {
@@ -133,14 +134,28 @@ impl Node {
         Node::TypeVar(TypeVar::from_spanned(origin))
     }
     pub fn synthetic(origin: impl Spanned) -> Node {
-        Node::Synthetic(origin.span_id(), SYNTHETIC_NODE_IDX.fetch_add(1, Ordering::SeqCst))
+        Node::Synthetic(origin.span_with_id(), SYNTHETIC_NODE_IDX.fetch_add(1, Ordering::SeqCst))
+    }
+    pub fn span_id(self) -> SpanId {
+        match self {
+            Node::TypeVar(type_var) => type_var.span_id(),
+            Node::Synthetic(span, _) => span.id(),
+        }
     }
 }
 impl Display for Node {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            Node::TypeVar(var) => write!(f, "[{var}]"),
-            Node::Synthetic(span_id, id) => write!(f, "[{id}<{span_id}>]"),
+            Node::TypeVar(var) => write!(f, "[{}]", var),
+            Node::Synthetic(span, id) => write!(f, "[{id}:{}<{}:{}-{}>]", span.id(), span.span().file, span.span().start, span.span().end),
+        }
+    }
+}
+impl Spanned for Node {
+    fn span_with_id(&self) -> SpanWithId {
+        match self {
+            Node::TypeVar(type_var) => type_var.span_with_id(),
+            Node::Synthetic(span, _) => *span,
         }
     }
 }
@@ -151,11 +166,11 @@ pub struct Graph<'i> {
     graph_indices: IndexMap<Node, NodeIndex<u32>>,
     possible_types: IndexMap<Node, PossibleTypes>,
     method_function_generics: IndexMap<u64, FunctionGenerics>,
-    any_nodes: HashMap<SpanId, Node>,
+    any_nodes: HashMap<SpanWithId, Node>,
 }
 
 impl<'i> Graph<'i> {
-    fn new(diagnostics: &'i Diagnostics<ErrorCode>) -> Graph {
+    fn new(diagnostics: &'i Diagnostics<ErrorCode>) -> Graph<'i> {
         Graph {
             diagnostics,
             graph: DiGraph::new(),
@@ -204,13 +219,12 @@ impl<'i> Display for Graph<'i> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         // create Dot graph
         let f1 = &|_, e: EdgeReference<Constraint>| format!("label = {:?}", e.weight().to_string());
-        let f2 = &|_, (_, n): (NodeIndex<u32>, &Node)| {
-            let code = format!("{:?}", self.diagnostics.resolve_span(n.span()));
-            format!("label = \"[{}:{}:{}]: {}\\n{}\"", self.diagnostics.file_name(n.span().file), n.span().start, n.span().end, &code[1..code.len()-1], self.possible_types[n])
+        let f2 = &|_, (_, node): (NodeIndex<u32>, &Node)| {
+            let code = format!("{:?}", self.diagnostics.resolve_span(node.span_()));
+            format!("label = \"{node}: {}\\n{}\"", &code[1..code.len()-1], self.possible_types[node])
         };
         let graph = NodeFiltered::from_fn(&self.graph, |nid| {
-            let fileid = self.graph.node_weight(nid).unwrap().span().file;
-            let file_name = self.diagnostics.file_name(fileid);
+            let file_name = self.diagnostics.file_name(self.graph.node_weight(nid).unwrap().span_().file);
             !file_name.starts_with("external-")
         });
         let dot = Dot::with_attr_getters(

@@ -1,9 +1,8 @@
-use std::borrow::Cow;
 use std::cell::RefCell;
 use std::sync::{Arc, OnceLock};
 use parking_lot::ReentrantMutex;
 use rebo::common::SpanWithId;
-use crate::{CowVec, Enum, EnumArc, ExternalType, FileId, FromValue, IntoValue, Span, SpecificType, Type, Typed, Value};
+use crate::{Enum, EnumArc, ExternalType, FileId, FromValue, IntoValue, SpecificType, Type, Typed, Value};
 
 const FILE_NAME: &str = "external-Result.re";
 
@@ -76,10 +75,10 @@ impl<T, E> Typed for Result<T, E> {
             SpecificType::Enum(
                 "Result".to_string(),
                 vec![
-                    (SpanWithId::new(FileId::synthetic_named(FILE_NAME), 12, 13).id(), Type::Top),
-                    (SpanWithId::new(FileId::synthetic_named(FILE_NAME), 15, 16).id(), Type::Top),
+                    (SpanWithId::new(FileId::synthetic_named(FILE_NAME), 12, 13), Type::Top),
+                    (SpanWithId::new(FileId::synthetic_named(FILE_NAME), 15, 16), Type::Top),
                 ],
-            );
+            )
         }).clone()
     }
 }

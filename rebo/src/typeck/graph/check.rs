@@ -1,4 +1,3 @@
-use std::borrow::Cow;
 use diagnostic::{DiagnosticBuilder, Diagnostics};
 use crate::typeck::graph::{Constraint, Graph, Node};
 use crate::common::MetaInfo;
@@ -10,7 +9,6 @@ use std::ops::Range;
 use crate::common::Spanned;
 use crate::Expr;
 use crate::parser::FieldOrMethod;
-use crate::util::CowVec;
 
 impl<'i> Graph<'i> {
     pub fn check(&self, diagnostics: &Diagnostics<ErrorCode>, meta_info: &mut MetaInfo) {
@@ -37,16 +35,16 @@ impl<'i> Graph<'i> {
                 ResolvableSpecificType::Function(Some(typ)) => SpecificType::Function(Box::new(typ.clone())),
                 ResolvableSpecificType::Function(None) => return None,
                 ResolvableSpecificType::Struct(name, generics) => SpecificType::Struct(
-                    Cow::Owned(name.clone()),
-                    CowVec::Owned(generics.iter().copied()
-                        .map(|node| (node.span(), self.try_convert_possible_types(already_errored, diagnostics, meta_info, node).unwrap_or(Type::Top)))
-                        .collect()),
+                    name.clone(),
+                    generics.iter().copied()
+                        .map(|node| (node.span_with_id(), self.try_convert_possible_types(already_errored, diagnostics, meta_info, node).unwrap_or(Type::Top)))
+                        .collect(),
                 ),
                 ResolvableSpecificType::Enum(name, generics) => SpecificType::Enum(
-                    Cow::Owned(name.clone()),
-                    CowVec::Owned(generics.iter().copied()
-                        .map(|node| (node.span(), self.try_convert_possible_types(already_errored, diagnostics, meta_info, node).unwrap_or(Type::Top)))
-                        .collect()),
+                    name.clone(),
+                    generics.iter().copied()
+                        .map(|node| (node.span_with_id(), self.try_convert_possible_types(already_errored, diagnostics, meta_info, node).unwrap_or(Type::Top)))
+                        .collect(),
                 ),
                 &ResolvableSpecificType::UnUnifyableGeneric(span) => SpecificType::Generic(span),
             }));
@@ -60,13 +58,13 @@ impl<'i> Graph<'i> {
         already_errored.insert(node);
         let mut diag = if types.is_empty() {
             diagnostics.error(ErrorCode::UnableToInferType)
-                .with_error_label(node.span(), "can't infer this type")
+                .with_error_label(node.span_(), "can't infer this type")
         } else {
             // TODO: unreachable branch?
             diagnostics.error(ErrorCode::TypeConflict)
-                .with_error_label(node.span(), "can't infer this type")
-                .with_info_label(node.span(), "must be a single type")
-                .with_info_label(node.span(), format!("inferred `{}`", types.iter().join(", ")))
+                .with_error_label(node.span_(), "can't infer this type")
+                .with_info_label(node.span_(), "must be a single type")
+                .with_info_label(node.span_(), format!("inferred `{}`", types.iter().join(", ")))
         };
         for (_, constraint, incoming) in self.incoming(node) {
             let msg = match constraint {
@@ -131,7 +129,7 @@ impl<'i> Graph<'i> {
                         "can't infer type of this method-call target".to_string()
                     } else {
                         let type_name = field_access_typ[0].type_name();
-                        let method_name = diagnostics.resolve_span(incoming.span());
+                        let method_name = diagnostics.resolve_span(incoming.span_());
                         let fn_name = format!("{}::{}", type_name, method_name);
                         match meta_info.function_types.get(fn_name.as_str()) {
                             Some(fn_typ) => match fn_typ.args.iter().chain(std::iter::repeat(&Type::UntypedVarargs)).nth(arg_index) {
@@ -151,7 +149,7 @@ impl<'i> Graph<'i> {
                         "can't infer type of this method-call target".to_string()
                     } else {
                         let type_name = field_access_typ[0].type_name();
-                        let method_name = diagnostics.resolve_span(incoming.span());
+                        let method_name = diagnostics.resolve_span(incoming.span_());
                         let fn_name = format!("{}::{}", type_name, method_name);
                         match meta_info.function_types.get(fn_name.as_str()) {
                             Some(fn_typ) => match &fn_typ.ret {
@@ -167,7 +165,7 @@ impl<'i> Graph<'i> {
                 Constraint::Generic | Constraint::GenericEqSource => continue,
             };
             let normalized = self.normalize(incoming);
-            diag = diag.with_info_label(normalized.span(), msg);
+            diag = diag.with_info_label(normalized.span_(), msg);
             diag = self.check_in_function_call(normalized, diag, meta_info);
         }
 
@@ -252,13 +250,13 @@ impl<'i> Graph<'i> {
         // if the node is used within a function or method call, display the signature of the
         // function as well
         let range = Range {
-            start: (normalized.span().file, normalized.span().start),
-            end: (normalized.span().file, normalized.span().end),
+            start: (normalized.span_().file, normalized.span_().start),
+            end: (normalized.span_().file, normalized.span_().end),
         };
         'expr: for element in meta_info.expression_spans.query(range) {
-            let (function_name, def_span) = match element.value {
+            let (function_name, def_span_id) = match element.value {
                 Expr::FunctionCall(call) => {
-                    let node = Node::type_var(call.name.binding.ident.span);
+                    let node = Node::type_var(call.name.binding.ident);
                     let possible_types = &self.possible_types[&node];
                     if possible_types.len() != 1 {
                         continue;
@@ -290,7 +288,7 @@ impl<'i> Graph<'i> {
                                 },
                                 Constraint::Reduce(reduce) if reduce.len() == 1 => {
                                     if reduce[0] == *typ {
-                                        break 'bfsearch (call.name.binding.ident.ident.to_string(), current.span());
+                                        break 'bfsearch (call.name.binding.ident.ident.to_string(), current.span_id());
                                     }
                                 }
                                 _ => (),
@@ -300,7 +298,7 @@ impl<'i> Graph<'i> {
                 },
                 Expr::Access(access) => match access.accesses.last().unwrap() {
                     FieldOrMethod::Method(method) => {
-                        let method_node = Node::type_var(method.name.span);
+                        let method_node = Node::type_var(method.name);
                         let incoming = self.incoming(method_node);
                         assert_eq!(incoming.len(), 1);
                         let (_edge_index, constraint, incoming) = &incoming[0];
@@ -315,20 +313,20 @@ impl<'i> Graph<'i> {
                         assert_eq!(incoming_types.len(), 1);
 
                         let type_name = incoming_types.0[0].type_name();
-                        let method_name = self.diagnostics.resolve_span(method_node.span());
+                        let method_name = self.diagnostics.resolve_span(method_node.span_());
                         let name = format!("{}::{}", type_name, method_name);
-                        (name, incoming.span())
+                        (name, incoming.span_id())
                     },
                     FieldOrMethod::Field(_) => continue,
                 }
                 _ => continue,
             };
 
-            let function_sig = match meta_info.get_function_signature(&function_name, def_span) {
+            let function_sig = match meta_info.get_function_signature(&function_name, def_span_id) {
                 Some(sig) => sig,
                 None => continue,
             };
-            diag = diag.with_info_label(function_sig.span(), format!("`{}` defined here", function_name));
+            diag = diag.with_info_label(function_sig.span_(), format!("`{}` defined here", function_name));
         }
         diag
     }

@@ -3,7 +3,7 @@ mod helper;
 mod generator;
 #[cfg(test)]
 mod generator_tests;
-pub use pattern::{ExprMatchPattern, ExprMatchPatternVariant, ExprPattern, ExprPatternTyped, ExprPatternUntyped};
+pub use pattern::{ExprMatchPattern, ExprPattern, ExprPatternTyped, ExprPatternUntyped};
 
 use std::fmt::{self, Debug, Display, Formatter, Write};
 use derive_more::Display;
@@ -646,9 +646,9 @@ impl Spanned for ExprTypeUnit {
 }
 #[derive(Debug, Clone)]
 pub struct ExprTypeUserType<'a, 'i> {
-    name: TokenIdent<'i>,
-    generics: Option<TypeGenerics<'a, 'i>>,
-    span: SpanWithId,
+    pub name: TokenIdent<'i>,
+    pub generics: Option<TypeGenerics<'a, 'i>>,
+    pub span: SpanWithId,
 }
 impl<'a, 'i> ExprTypeUserType<'a, 'i> {
     pub fn new(name: TokenIdent<'i>, generics: Option<TypeGenerics<'a, 'i>>) -> Self {
@@ -867,7 +867,8 @@ pub struct ExprLabelDef<'i> {
 }
 impl<'i> ExprLabelDef<'i> {
     pub fn new(label: ExprLabel<'i>, colon: TokenColon) -> Self {
-        ExprLabelDef { label, colon, span: label.span | colon.span }
+        let span = label.span | colon.span;
+        ExprLabelDef { label, colon, span }
     }
 }
 impl<'a, 'i> Parse<'a, 'i> for ExprLabelDef<'i> {
@@ -1016,7 +1017,7 @@ pub enum ExprFormatStringPart<'a, 'i> {
     Str(&'i str),
     Escaped(&'i str),
     /// expr, format-string specifier
-    FmtArg(&'a Expr<'a, 'i>, Option<(TokenColon, Specifier, Span)>),
+    FmtArg(&'a Expr<'a, 'i>, Option<(TokenColon, Specifier, SpanWithId)>),
 }
 #[derive(Debug, Clone)]
 pub struct ExprFormatString<'a, 'i> {
@@ -1032,11 +1033,11 @@ impl<'a, 'i> Parse<'a, 'i> for ExprFormatString<'a, 'i> {
             fmtstr.parts.pop();
         }
 
-        for part in fmtstr.parts {
+        for part in &fmtstr.parts {
             match part {
                 TokenFormatStringPart::Str(s) => parts.push(ExprFormatStringPart::Str(s)),
                 TokenFormatStringPart::Escaped(s) => parts.push(ExprFormatStringPart::Escaped(s)),
-                TokenFormatStringPart::FormatArg(s, part_start) => {
+                &TokenFormatStringPart::FormatArg(s, part_start) => {
                     let part_end = part_start + s.len();
                     let part_lexer = Lexer::new_in(parser.diagnostics, fmtstr.span_().file, part_start, part_end, LexerMode::UnexpectedCharacterEof);
                     let old_lexer = std::mem::replace(&mut parser.lexer, part_lexer);
@@ -1049,7 +1050,7 @@ impl<'a, 'i> Parse<'a, 'i> for ExprFormatString<'a, 'i> {
                         Ok(Token::Eof(_)) => None,
                         Ok(Token::Colon(colon)) => {
                             let spec_str = &s[colon.span_().end - part_start..];
-                            let spec_span = Span::new(colon.span_().file, colon.span_().end, colon.span_().end + spec_str.len());
+                            let spec_span = SpanWithId::new(colon.span_().file, colon.span_().end, colon.span_().end + spec_str.len());
                             let spec = match rt_format::parser::parse_specifier(spec_str, &mut util::NoValues) {
                                 Ok(spec) => spec,
                                 Err(()) => {
@@ -1214,7 +1215,8 @@ pub struct ExprAssign<'a, 'i> {
 }
 impl<'a, 'i> ExprAssign<'a, 'i> {
     pub fn new(lhs: ExprAssignLhs<'a, 'i>, assign: TokenAssign, expr: &'a Expr<'a, 'i>) -> Self {
-        ExprAssign { lhs, assign, expr, span: lhs.span_with_id() | expr.span_with_id() }
+        let span = lhs.span_with_id() | expr.span_with_id();
+        ExprAssign { lhs, assign, expr, span }
     }
 }
 impl<'a, 'i> Parse<'a, 'i> for ExprAssign<'a, 'i> {
@@ -1273,7 +1275,8 @@ impl<'a, 'i> ExprFieldAccess<'a, 'i> {
     pub fn new(variable: ExprVariable<'i>, dot: TokenDot, fields: Separated<'a, 'i, TokenIdent<'i>, TokenDot>) -> Self {
         assert!(!fields.is_empty());
         assert!(!fields.is_terminated());
-        ExprFieldAccess { variable, dot, fields, span: variable.span | fields.span().unwrap() }
+        let span = variable.span | fields.span().unwrap();
+        ExprFieldAccess { variable, dot, fields, span }
     }
 }
 impl<'a, 'i> Parse<'a, 'i> for ExprFieldAccess<'a, 'i> {
@@ -1320,7 +1323,8 @@ impl<'a, 'i> ExprAccess<'a, 'i> {
     pub fn new(variable: ExprVariable<'i>, dot: TokenDot, accesses: Separated<'a, 'i, FieldOrMethod<'a, 'i>, TokenDot>) -> Self {
         assert!(!accesses.is_empty());
         assert!(!accesses.is_terminated());
-        ExprAccess { variable, dot, accesses, span: variable.span | accesses.span().unwrap() }
+        let span = variable.span | accesses.span().unwrap();
+        ExprAccess { variable, dot, accesses, span }
     }
 }
 impl<'a, 'i> Parse<'a, 'i> for ExprAccess<'a, 'i> {
@@ -1876,7 +1880,8 @@ pub struct ExprLoop<'a, 'i> {
 }
 impl<'a, 'i> ExprLoop<'a, 'i> {
     pub fn new(label: Option<ExprLabelDef<'i>>, loop_token: TokenLoop, block: ExprBlock<'a, 'i>) -> Self {
-        ExprLoop { label, loop_token, block, span: label.as_ref().map(Spanned::span_) | loop_token.span | block.span }
+        let span = label.as_ref().map(Spanned::span_) | loop_token.span | block.span;
+        ExprLoop { label, loop_token, block, span }
     }
 }
 impl<'a, 'i> Parse<'a, 'i> for ExprLoop<'a, 'i> {
@@ -2045,7 +2050,8 @@ pub struct ExprFunctionOrMethodCall<'a, 'i, T> {
 }
 impl<'a, 'i, T: Spanned> ExprFunctionOrMethodCall<'a, 'i, T> {
     pub fn new(name: T, open: TokenOpenParen, args: Separated<'a, 'i, &'a Expr<'a, 'i>, TokenComma>, close: TokenCloseParen) -> Self {
-        ExprFunctionOrMethodCall { name, open, args, close, span: name.span_() | close.span }
+        let span = name.span_() | close.span;
+        ExprFunctionOrMethodCall { name, open, args, close, span }
     }
 }
 impl<'a, 'i, T: Parse<'a, 'i> + Spanned> Parse<'a, 'i> for ExprFunctionOrMethodCall<'a, 'i, T> {

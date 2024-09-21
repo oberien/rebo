@@ -19,7 +19,7 @@ impl Visitor for ClosureCapturePrimitives {
             if binding.mutable.is_none() {
                 continue;
             }
-            let typ = &meta_info.types[&TypeVar::new(binding.ident.span)];
+            let typ = &meta_info.types[&TypeVar::from_spanned(binding)];
             match typ {
                 Type::Specific(spec) if !spec.is_primitive() => {
                     continue

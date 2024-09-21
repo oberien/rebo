@@ -1,5 +1,4 @@
 use std::fmt;
-use std::ops::Deref;
 use std::path::{Path, PathBuf};
 use rt_format::argument::ArgumentSource;
 use crate::{Value, IncludeDirectory};

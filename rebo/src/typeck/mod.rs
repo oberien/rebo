@@ -1,10 +1,7 @@
-use std::borrow::Borrow;
-
 use diagnostic::Diagnostics;
 use log::Level;
 
 use graph::Graph;
-use rebo::common::SpanId;
 
 use crate::common::MetaInfo;
 use crate::parser::Expr;

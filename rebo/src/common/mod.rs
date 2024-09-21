@@ -32,18 +32,6 @@ pub enum UserType<'a, 'i> {
     Enum(&'a ExprEnumDefinition<'a, 'i>),
 }
 impl<'a, 'i> UserType<'a, 'i> {
-    pub fn span(&self) -> Span {
-        match self {
-            UserType::Struct(s) => s.span_(),
-            UserType::Enum(e) => e.span_(),
-        }
-    }
-    pub fn span_id(&self) -> SpanId {
-        match self {
-            UserType::Struct(s) => s.span_id(),
-            UserType::Enum(e) => e.span_id(),
-        }
-    }
     pub fn variant_initializer_span(&self, variant_name: &str) -> Option<Span> {
         match self {
             UserType::Enum(enum_def) => enum_def.variants.iter()
@@ -75,6 +63,14 @@ impl<'a, 'i> UserType<'a, 'i> {
         match self {
             UserType::Struct(_) => panic!("UserType::unwrap_enum called with struct"),
             UserType::Enum(e) => e,
+        }
+    }
+}
+impl<'a, 'i> Spanned for UserType<'a, 'i> {
+    fn span_with_id(&self) -> SpanWithId {
+        match self {
+            UserType::Struct(s) => s.span_with_id(),
+            UserType::Enum(e) => e.span_with_id(),
         }
     }
 }
@@ -266,7 +262,7 @@ impl<'a, 'i> MetaInfo<'a, 'i> {
     }
     pub fn add_external_type<T: ExternalType>(&mut self, arena: &'a Arena<Expr<'a, 'i>>, diagnostics: &'i Diagnostics<ErrorCode>) {
         let (file, _) = diagnostics.add_synthetic_named_file(T::FILE_NAME, T::CODE.to_string());
-        self.external_types.insert(T::TYPE.type_name(), T::TYPE);
+        self.external_types.insert(T::typ().type_name(), T::typ());
 
         let lexer = Lexer::new(diagnostics, file);
         let parser = Parser::new(IncludeDirectory::Path(PathBuf::new()), arena, lexer, diagnostics, self, true);
@@ -293,12 +289,12 @@ impl<'a, 'i> MetaInfo<'a, 'i> {
         self.add_user_type(diagnostics, struct_def.name.ident, UserType::Struct(struct_def))
     }
     pub fn add_user_type(&mut self, diagnostics: &Diagnostics<ErrorCode>, name: &'i str, user_type: UserType<'a, 'i>) {
-        let new_span = user_type.span();
+        let new_span = user_type.span_();
         match self.user_types.entry(name) {
             Entry::Vacant(vacant) => { vacant.insert(user_type); },
             Entry::Occupied(occupied) => {
                 let old = occupied.get();
-                let mut spans = [old.span(), new_span];
+                let mut spans = [old.span_(), new_span];
                 spans.sort();
                 diagnostics.error(ErrorCode::DuplicateGlobal)
                     .with_info_label(spans[0], "first defined here")

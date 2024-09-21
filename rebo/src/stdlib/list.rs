@@ -1,15 +1,14 @@
-use diagnostic::{Diagnostics, Span};
+use diagnostic::Diagnostics;
 use typed_arena::Arena;
 use crate::parser::Expr;
 use crate::common::{MetaInfo, Value, ListArc, DeepCopy};
 use crate::typeck::types::{Type, SpecificType};
-use std::borrow::Cow;
 use std::marker::PhantomData;
 use std::sync::OnceLock;
 use itertools::Itertools;
 use rebo::common::SpanWithId;
 use rebo::stdlib::Sliceable;
-use crate::{CowVec, DisplayValue, ExternalType, FileId, FromValue, IntoValue, Typed, ErrorCode};
+use crate::{DisplayValue, ExternalType, FileId, FromValue, IntoValue, Typed, ErrorCode};
 
 #[derive(Debug, Clone)]
 pub struct List<T> {
@@ -53,7 +52,7 @@ impl<T> Typed for List<T> {
         TYPE.get_or_init(|| {
             SpecificType::Struct(
                 "List".to_string(),
-                vec![(SpanWithId::new(FileId::synthetic_named(FILE_NAME), 12, 13).id(), Type::Top)],
+                vec![(SpanWithId::new(FileId::synthetic_named(FILE_NAME), 12, 13), Type::Top)],
             )
         }).clone()
     }
