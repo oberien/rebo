@@ -16,7 +16,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::convert::{Infallible, TryInto};
 use rt_format::{FormatArgument, Specifier};
 use rebo::common::FunctionValue::{Anonymous, Named};
-use rebo::common::SpanWithId;
+use rebo::common::{SpanWithId, Spanned};
 use rebo::vm::Scope;
 
 pub trait ExternalTypeType {

@@ -1,5 +1,5 @@
 use std::io::ErrorKind;
-use crate::common::{Value, MetaInfo, FuzzyFloat, DisplayValue};
+use crate::common::{Value, MetaInfo, FuzzyFloat, DisplayValue, Spanned};
 use crate as rebo;
 use itertools::Itertools;
 use diagnostic::{DiagnosticBuilder, Diagnostics, Span};

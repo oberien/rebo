@@ -2,9 +2,9 @@ use crate::parser::{Expr, InternalError, Parser};
 use std::fmt::{self, Display, Formatter};
 use std::iter::FromIterator;
 use crate::lexer::*;
-use diagnostic::{FileId, Span};
+use diagnostic::Span;
 use std::marker::PhantomData;
-use crate::common::{Depth, SpanWithId};
+use crate::common::Depth;
 use regex::Regex;
 use crate::common::Spanned;
 use crate::parser::scope::ScopeType;
@@ -171,16 +171,7 @@ impl<'a, 'i, T: Spanned + 'a, D: 'a> Separated<'a, 'i, T, D> {
         match (first, last) {
             (Some(first), None) => Some(first.diagnostics_span()),
             (None, Some(last)) => Some(last.diagnostics_span()),
-            (Some(first), Some(last)) => {
-                let first: SpanWithId = first.span_with_id();
-                let last: SpanWithId = last.span_with_id();
-                // let first: SpanWithId = SpanWithId::new(FileId::synthetic_named("uiae"), 0, 1);
-                // let last: SpanWithId = SpanWithId::new(FileId::synthetic_named("uiae"), 2, 5);
-                // let span_with_id: SpanWithId = first | last;
-                // let span = span_with_id.diagnostics_span();
-                // Some(span)
-                todo!()
-            },
+            (Some(first), Some(last)) => Some((first.span_with_id() | last.span_with_id()).diagnostics_span()),
             (None, None) => None,
         }
     }

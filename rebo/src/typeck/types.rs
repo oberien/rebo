@@ -4,6 +4,7 @@ use strum_macros::{EnumDiscriminants, EnumIter};
 use crate::parser::ExprLiteral;
 use itertools::Itertools;
 use rebo::common::SpanWithId;
+use crate::common::Spanned;
 use crate::typeck::graph::Node;
 
 #[derive(Debug, Clone, PartialOrd, Ord, PartialEq, Eq, Hash)]

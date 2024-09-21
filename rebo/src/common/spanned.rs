@@ -7,7 +7,7 @@ use diagnostic::{FileId, Span};
 pub trait Spanned {
     fn span_with_id(&self) -> SpanWithId;
     fn diagnostics_span(&self) -> Span {
-        self.span_with_id().diagnostics_span()
+        self.span_with_id().span
     }
     fn file_id(&self) -> FileId {
         self.diagnostics_span().file
@@ -123,9 +123,6 @@ impl SpanWithId {
     pub fn id(self) -> SpanId {
         self.id
     }
-    pub fn diagnostics_span(self) -> Span {
-        self.span
-    }
 }
 impl From<Span> for SpanWithId {
     fn from(span: Span) -> Self {
@@ -148,17 +145,9 @@ impl BitOr<Span> for SpanWithId {
         SpanWithId::new(self.span.file, self.span.start, rhs.end)
     }
 }
-impl BitOr<usize> for SpanWithId {
+impl BitOr<Option<SpanWithId>> for SpanWithId {
     type Output = SpanWithId;
-    fn bitor(self, rhs: usize) -> Self::Output {
-        SpanWithId::new(self.span.file, self.span.start, rhs)
-    }
-}
-impl<T> BitOr<Option<T>> for SpanWithId
-    where SpanWithId: BitOr<T, Output = SpanWithId>
-{
-    type Output = SpanWithId;
-    fn bitor(self, rhs: Option<T>) -> Self::Output {
+    fn bitor(self, rhs: Option<SpanWithId>) -> Self::Output {
         match rhs {
             Some(rhs) => self | rhs,
             None => self,
@@ -167,22 +156,7 @@ impl<T> BitOr<Option<T>> for SpanWithId
 }
 
 // value | SpanWithId
-impl BitOr<SpanWithId> for Span {
-    type Output = SpanWithId;
-    fn bitor(self, rhs: SpanWithId) -> Self::Output {
-        assert_eq!(self.file, rhs.span.file);
-        SpanWithId::new(self.file, self.start, rhs.span.end)
-    }
-}
-impl BitOr<SpanWithId> for usize {
-    type Output = SpanWithId;
-    fn bitor(self, rhs: SpanWithId) -> Self::Output {
-        SpanWithId::new(rhs.span.file, self, rhs.span.end)
-    }
-}
-impl<T> BitOr<SpanWithId> for Option<T>
-    where T: BitOr<SpanWithId, Output = SpanWithId>
-{
+impl BitOr<SpanWithId> for Option<SpanWithId> {
     type Output = SpanWithId;
     fn bitor(self, rhs: SpanWithId) -> Self::Output {
         match self {

@@ -330,7 +330,7 @@ impl<'i> Graph<'i> {
             };
             // here we check the Span without the SpanId, as these are 2 separately created Spans
             let matches = external_generics.iter().map(|(span, _)| span).zip(internal_generics.as_ref())
-                .find(|(ext, int)| ext.span_with_id() != int.span_with_id());
+                .find(|(ext, int)| ext.diagnostics_span() != int.diagnostics_span());
             assert!(matches.is_none(), "Generic `{}::{}` of ExternalType-definition (`{:?}`) doesn't equal parsed generic (`{:?}`)",
                     name,
                     diagnostics.resolve_span(matches.unwrap().1.diagnostics_span()),

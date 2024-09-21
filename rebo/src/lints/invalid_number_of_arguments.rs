@@ -1,7 +1,7 @@
 use crate::lints::visitor::Visitor;
 use crate::parser::{ExprFunctionCall, Separated};
 use crate::common::{BlockStack, MetaInfo};
-use diagnostic::{Diagnostics, FileId};
+use diagnostic::Diagnostics;
 use rebo::common::SpanWithId;
 use crate::error_codes::ErrorCode;
 use crate::{Expr, FunctionType, SpecificType};
