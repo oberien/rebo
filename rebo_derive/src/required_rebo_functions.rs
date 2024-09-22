@@ -6,7 +6,7 @@ use proc_macro2::TokenStream as TokenStream2;
 use crate::util;
 use crate::util::{VarargsKind, FunctionSignature};
 
-pub fn extern_rebo(_args: TokenStream, input: TokenStream) -> TokenStream {
+pub fn required_rebo_functions(_args: TokenStream, input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as ItemForeignMod);
     let ItemForeignMod { attrs: _, abi, brace_token: _, items } = input;
     if abi.name.is_none() || abi.name.as_ref().unwrap().value() != "rebo" {

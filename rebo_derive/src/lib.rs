@@ -6,7 +6,7 @@ use syn::token::{Union, Struct};
 
 mod function;
 mod rebo_type;
-mod extern_rebo;
+mod required_rebo_functions;
 mod util;
 
 #[proc_macro_error]
@@ -17,7 +17,7 @@ pub fn function(args: TokenStream, input: TokenStream) -> TokenStream {
 #[proc_macro_error]
 #[proc_macro_attribute]
 pub fn required_rebo_functions(args: TokenStream, input: TokenStream) -> TokenStream {
-    extern_rebo::extern_rebo(args, input)
+    required_rebo_functions::required_rebo_functions(args, input)
 }
 
 #[proc_macro_error]
