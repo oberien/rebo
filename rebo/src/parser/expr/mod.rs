@@ -1,6 +1,6 @@
 mod pattern;
 mod helper;
-mod generator;
+mod generator_transform;
 #[cfg(test)]
 mod generator_tests;
 pub use pattern::{ExprMatchPattern, ExprPattern, ExprPatternTyped, ExprPatternUntyped};
@@ -2248,7 +2248,7 @@ impl<'a, 'i> ExprFunctionDefinition<'a, 'i> {
         mark.apply();
         let fun = ExprFunctionDefinition::new(sig, captures, body);
         Ok(match fun.sig.gen_token {
-            Some(gen_token) => generator::transform_generator(parser, gen_token, fun),
+            Some(gen_token) => generator_transform::transform_generator(parser, gen_token, fun),
             None => fun
         })
     }
