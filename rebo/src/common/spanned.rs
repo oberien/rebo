@@ -112,6 +112,11 @@ impl SpanWithId {
         }
         SpanWithId { id: SpanId(id), span: Span::new(file, start, end) }
     }
+    /// Duplicate this span, using a new SpanId
+    pub fn new_span_id(self) -> SpanWithId {
+        let Span { file, start, end } = self.diagnostics_span();
+        SpanWithId::new(file, start, end)
+    }
     /// Create a new SpanWithId with a unique SpanId for just the start position of this Span.
     pub fn start_span(self) -> SpanWithId {
         SpanWithId::new(self.span.file, self.span.start, self.span.start)

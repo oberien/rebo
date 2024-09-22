@@ -64,19 +64,18 @@ struct GeneratorTransformator<'a, 'i, 'p, 'm> {
 
 impl<'a, 'i, 'p, 'm> GeneratorTransformator<'a, 'i, 'p, 'm> {
     pub fn transform(mut self, fun: ExprFunctionDefinition<'a, 'i>) -> ExprFunctionDefinition<'a, 'i> {
-        // TODO
-        let fun_span = fun.diagnostics_span();
-        let body_open = fun.body.open.span;
-        let body_close = fun.body.close.span;
+        let fun_span = fun.span_with_id();
+        let body_open_span = fun.body.open.span;
+        let body_close_span = fun.body.close.span;
+        let body_span = fun.body.span;
 
-
+        // create fused final node in state-machine
         let option_none = ExprBuilder::enum_initialization("Option", "None");
         let return_none = ExprBuilder::return_(Some(option_none));
         let fused_node = self.graph.add_node(Some(return_none));
         assert_eq!(fused_node.index(), 0);
 
         let trafo_result = self.transform_block(&fun.body);
-
         let (start, end) = match trafo_result {
             TrafoResult::Expr(expr) => {
                 let block = match expr {
@@ -95,13 +94,17 @@ impl<'a, 'i, 'p, 'm> GeneratorTransformator<'a, 'i, 'p, 'm> {
         // generate state machine
         let yield_type = match fun.sig.ret_type {
             Some((_, typ)) => typ,
-            None => ExprType::Unit(ExprTypeUnit {
-                open: TokenOpenParen { span: fun.sig.span_with_id() },
-                close: TokenCloseParen { span: fun.sig.span_with_id() },
-                span: fun.sig.span_with_id(),
-            }),
+            None => {
+                let unit_span = fun.sig.span_with_id().new_span_id();
+                let type_span = fun.sig.span_with_id().new_span_id();
+                ExprType::Unit(ExprTypeUnit {
+                    open: TokenOpenParen { span: unit_span },
+                    close: TokenCloseParen { span: unit_span },
+                    span: type_span,
+                })
+            },
         };
-        let struct_ident = self.create_ident(format!("Generator_{}_{}_{}_{}", fun.sig.name.map(|i| i.ident).unwrap_or(""), fun_span.file, fun_span.start, fun_span.end));
+        let struct_ident = self.create_ident(format!("Generator_{}_{}_{}_{}", fun.sig.name.map(|i| i.ident).unwrap_or(""), fun_span.file_id(), fun_span.start(), fun_span.end()));
         let impl_block_builder = self.generate_state_machine_impl_block(struct_ident, yield_type);
         let struct_builder = self.generate_generator_struct(struct_ident);
 
@@ -116,7 +119,7 @@ impl<'a, 'i, 'p, 'm> GeneratorTransformator<'a, 'i, 'p, 'm> {
         function_body.insert_expr(1, impl_block_builder.build());
 
         // actually build everything
-        let generator_file_name = format!("Generator_{}_{}_{}_{}.re", fun.sig.name.map(|i| i.ident).unwrap_or(""), fun_span.file, fun_span.start, fun_span.end);
+        let generator_file_name = format!("Generator_{}_{}_{}_{}.re", fun.sig.name.map(|i| i.ident).unwrap_or(""), fun_span.file_id(), fun_span.start(), fun_span.end());
         let generator_file_id = FileId::new_synthetic_numbered();
         let mut function_body = ExprBuilder::generate(function_body, self.parser.arena, self.parser.diagnostics, generator_file_id, generator_file_name);
 
@@ -135,8 +138,9 @@ impl<'a, 'i, 'p, 'm> GeneratorTransformator<'a, 'i, 'p, 'm> {
         // The parser takes the end of the current Expr as the start from where parsing should continue.
         // The generated function-body contains fake spans.
         // Thus, we need to modify the body's open and close curly to be the original spans.
-        function_body.open.span = body_open;
-        function_body.close.span = body_close;
+        function_body.open.span = body_open_span;
+        function_body.close.span = body_close_span;
+        function_body.span = body_span;
 
         ExprFunctionDefinition {
             sig: ExprFunctionSignature {
@@ -165,6 +169,7 @@ impl<'a, 'i, 'p, 'm> GeneratorTransformator<'a, 'i, 'p, 'm> {
             span: fun.span,
         }
     }
+
 
     // helper functions
 
@@ -476,7 +481,7 @@ impl<'a, 'i, 'p, 'm> GeneratorTransformator<'a, 'i, 'p, 'm> {
                 open: block.open,
                 body: BlockBody { exprs: transformed_exprs, terminated_with_semicolon: block.body.terminated_with_semicolon },
                 close: block.close,
-                span: todo!(),
+                span: block.span,
             })))
         }
     }
