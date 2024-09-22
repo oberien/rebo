@@ -657,29 +657,17 @@ impl<'a, 'i, 'p, 'm> GeneratorTransformator<'a, 'i, 'p, 'm> {
             .function(fun_sig.body(fun_body))
     }
 
-    // pub fn xdot(&self) {
+    // pub fn dot(&self) -> String {
     //     use petgraph::dot::Dot;
-    //     use std::process::{Command, Stdio};
-    //     use std::io::Write;
-    //     let mut xdot = Command::new("xdot")
-    //         .arg("-")
-    //         .stdin(Stdio::piped())
-    //         .stdout(Stdio::inherit())
-    //         .stderr(Stdio::inherit())
-    //         .spawn()
-    //         .unwrap();
-    //     {
-    //         let dot = Dot::with_attr_getters(
-    //             &self.graph,
-    //             &[],
-    //             &|_, edge| match edge.weight() {
-    //                 Edge::Pattern(p) => format!("label = \"{}\"", p),
-    //                 Edge::Yield => "style = dotted".to_string(),
-    //             },
-    //             &|_, (node_id, expr)| format!("label = \"[{}]\n{}\"", node_id.index(), expr),
-    //         );
-    //         writeln!(xdot.stdin.take().unwrap(), "{}", dot).unwrap();
-    //     }
-    //     xdot.wait().unwrap();
+    //     let dot = Dot::with_attr_getters(
+    //         &self.graph,
+    //         &[],
+    //         &|_, edge| match edge.weight() {
+    //             Edge::Pattern(p) => format!("label = \"{}\"", p),
+    //             Edge::Yield => "style = dotted".to_string(),
+    //         },
+    //         &|_, (node_id, expr)| format!("label = \"[{}]\n{}\"", node_id.index(), expr),
+    //     );
+    //     dot.to_string()
     // }
 }

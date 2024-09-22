@@ -2,6 +2,7 @@
 extern crate log;
 extern crate self as rebo;
 
+use std::collections::HashMap;
 use instant::Instant;
 
 pub use diagnostic::{Diagnostics, Span, Output, FileId};
@@ -21,6 +22,7 @@ mod lints;
 mod vm;
 mod stdlib;
 mod util;
+mod xdot;
 mod common;
 #[cfg(test)]
 mod tests;
@@ -46,8 +48,12 @@ const EXTERNAL_SPAN: LazyLock<SpanWithId> = LazyLock::new(|| SpanWithId::new(Fil
 #[derive(Debug, PartialEq, Eq)]
 pub struct RunResult {
     pub return_value: ReturnValue,
+    /// dot graph
     pub type_graph_before: Option<String>,
+    /// dot graph
     pub type_graph_after: Option<String>,
+    /// function-name -> (dot-state-graph, generated-code)
+    pub generators: HashMap<String, (String, String)>,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -230,6 +236,7 @@ pub fn run_with_config(filename: String, code: String, config: ReboConfig) -> Ru
                 return_value: ReturnValue::ParseError,
                 type_graph_before: None,
                 type_graph_after: None,
+                generators: meta_info.generators,
             }
         },
     };
@@ -257,6 +264,7 @@ pub fn run_with_config(filename: String, code: String, config: ReboConfig) -> Ru
             return_value: ReturnValue::Diagnostics(diags),
             type_graph_before: Some(type_graph_before),
             type_graph_after: Some(type_graph_after),
+            generators: meta_info.generators,
         }
     }
 
@@ -278,5 +286,6 @@ pub fn run_with_config(filename: String, code: String, config: ReboConfig) -> Ru
         return_value,
         type_graph_before: Some(type_graph_before),
         type_graph_after: Some(type_graph_after),
+        generators: meta_info.generators,
     }
 }

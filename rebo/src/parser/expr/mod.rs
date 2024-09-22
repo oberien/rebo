@@ -2248,7 +2248,13 @@ impl<'a, 'i> ExprFunctionDefinition<'a, 'i> {
         mark.apply();
         let fun = ExprFunctionDefinition::new(sig, captures, body);
         Ok(match fun.sig.gen_token {
-            Some(gen_token) => generator_transform::transform_generator(parser, gen_token, fun),
+            Some(gen_token) => {
+                let fun = generator_transform::transform_generator(parser, gen_token, fun);
+                if let Some(ident) = fun.sig.name {
+                    parser.meta_info.generators.insert(ident.ident.to_string(), (String::new(), fun.to_string()));
+                }
+                fun
+            },
             None => fun
         })
     }

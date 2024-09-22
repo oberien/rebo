@@ -12,7 +12,6 @@ lexical = { version = "5.2.2", features = ["radix"] }
 typed-arena = "2.0.1"
 diagnostic = { git = "https://github.com/oberien/diagnostic", rev = "889fb5da592d746b47b0fafca6bc7e71c4e2a55e" }
 log = "0.4.11"
-env_logger = "0.8.4"
 rebo_derive = { path = "../rebo_derive" }
 lazy_static = "1.4.0"
 strsim = "0.10.0"
@@ -35,3 +34,7 @@ unicode-segmentation = "1.8.0"
 intervaltree = "0.2.7"
 num = "0.4.1"
 uuid = { version = "1.5.0", features = ["v4"] }
+
+# FIXME: bin-dependencies not supported: https://github.com/rust-lang/cargo/issues/1982
+env_logger = "0.8.4"
+clap = { version = "4.5.18", features = ["derive"] }

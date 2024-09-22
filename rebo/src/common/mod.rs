@@ -17,6 +17,7 @@ use crate::typeck::types::{EnumType, FunctionType, StructType, Type};
 use crate::typeck::TypeVar;
 use std::rc::Rc;
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::iter::FromIterator;
 use intervaltree::{Element, IntervalTree};
 use rebo::parser::ScopeType;
@@ -150,6 +151,10 @@ pub struct MetaInfo<'a, 'i> {
     pub types: IndexMap<TypeVar, Type>,
     pub external_types: IndexMap<String, SpecificType>,
     pub required_rebo_functions: IndexSet<RequiredReboFunctionStruct>,
+    /// function-name -> (dot-state-graph, generated-code)
+    ///
+    /// Available after the parser. Used for debugging
+    pub generators: HashMap<String, (String, String)>,
 }
 impl<'a, 'i> MetaInfo<'a, 'i> {
     pub fn new() -> Self {
@@ -173,6 +178,7 @@ impl<'a, 'i> MetaInfo<'a, 'i> {
             types: IndexMap::new(),
             external_types: IndexMap::new(),
             required_rebo_functions: IndexSet::new(),
+            generators: HashMap::new(),
         }
     }
 

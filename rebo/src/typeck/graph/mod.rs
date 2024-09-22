@@ -1,7 +1,5 @@
 use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
-use std::io::Write;
-use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use diagnostic::Diagnostics;
@@ -194,17 +192,7 @@ impl<'i> Graph<'i> {
     }
 
     pub fn xdot(&self) {
-        let mut xdot = Command::new("xdot")
-            .arg("-")
-            .stdin(Stdio::piped())
-            .stdout(Stdio::inherit())
-            .stderr(Stdio::inherit())
-            .spawn()
-            .unwrap();
-        {
-            writeln!(xdot.stdin.take().unwrap(), "{}", self).unwrap();
-        }
-        xdot.wait().unwrap();
+        crate::xdot::xdot(&self.to_string());
     }
 }
 
