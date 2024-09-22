@@ -93,7 +93,6 @@ impl Expected {
 #[derive(Debug)]
 pub struct Ast<'a, 'i> {
     pub exprs: Vec<&'a Expr<'a, 'i>>,
-    pub bindings: Vec<Binding<'i>>,
 }
 
 impl<'a, 'i> fmt::Display for Ast<'a, 'i> {
@@ -113,8 +112,6 @@ pub struct Parser<'a, 'm, 'i> {
     /// tokens to be consumed
     lexer: Lexer<'i>,
     diagnostics: &'i Diagnostics<ErrorCode>,
-    /// finished bindings that aren't live anymore
-    bindings: Vec<Binding<'i>>,
     /// pre-info to add first-pass definitions to
     meta_info: &'m mut MetaInfo<'a, 'i>,
     /// already parsed expressions in the first-pass, to be consumed by the second pass
@@ -172,7 +169,6 @@ impl<'a, 'm, 'i> Parser<'a, 'm, 'i> {
             arena,
             lexer,
             diagnostics,
-            bindings: Vec::new(),
             meta_info,
             pre_parsed: HashMap::new(),
             scopes: Rc::new(RefCell::new(vec![])),
@@ -211,10 +207,7 @@ impl<'a, 'm, 'i> Parser<'a, 'm, 'i> {
                 value: expr,
             }).collect();
 
-        Ok(Ast {
-            exprs: body.exprs,
-            bindings: self.bindings,
-        })
+        Ok(Ast { exprs: body.exprs })
     }
     fn parse_file_content(&mut self) -> Result<BlockBody<'a, 'i>, Error> {
         // remove all scopes except the global one when parsing a new file

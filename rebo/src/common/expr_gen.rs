@@ -449,13 +449,10 @@ impl<'i> ExprBuilderBinding<'i> {
                 inner.mut_span.is_none() && inner.mutable,
             )
         };
-        let mut_span = if needs_mut_span {
+        if needs_mut_span {
             let mut_span = gen.next_fake_span("mut ");
             self.inner.borrow_mut().mut_span = Some(mut_span);
-            Some(mut_span)
-        } else {
-            None
-        };
+        }
         if needs_def_span {
             let def_span = gen.next_fake_span(self.inner.borrow().name);
             self.inner.borrow_mut().def_span = Some(def_span);

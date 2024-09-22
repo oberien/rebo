@@ -14,8 +14,12 @@ pub enum ScopeType<'i> {
     Global,
     File,
     Function,
+    // the inner label is only used for debugging
+    #[expect(unused)]
     While(Option<ExprLabelDef<'i>>),
+    #[expect(unused)]
     For(Option<ExprLabelDef<'i>>),
+    #[expect(unused)]
     Loop(Option<ExprLabelDef<'i>>),
     Synthetic,
 }

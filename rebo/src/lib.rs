@@ -235,7 +235,7 @@ pub fn run_with_config(filename: String, code: String, config: ReboConfig) -> Ru
     };
     info!("Parsing took {}μs", time.elapsed().as_micros());
     debug!("AST:\n{}\n", ast);
-    let Ast { exprs, bindings: _ } = ast;
+    let Ast { exprs } = ast;
 
     // typeck
     let time = Instant::now();

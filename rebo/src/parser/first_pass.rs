@@ -197,19 +197,16 @@ impl<'a, 'b, 'i> Parser<'a, 'b, 'i> {
 }
 
 #[derive(Clone, Debug)]
-pub struct ImplBlockSignature<'a, 'i> {
-    pub impl_token: TokenImpl,
+pub struct ImplBlockSignature<'i> {
     pub name: TokenIdent<'i>,
-    pub generics: Option<ExprGenerics<'a, 'i>>,
-    pub open: TokenOpenCurly,
 }
-impl<'a, 'i> Parse<'a, 'i> for ImplBlockSignature<'a, 'i> {
+impl<'a, 'i> Parse<'a, 'i> for ImplBlockSignature<'i> {
     fn parse_marked(parser: &mut Parser<'a, '_, 'i>, depth: Depth) -> Result<Self, InternalError> {
-        Ok(ImplBlockSignature {
-            impl_token: parser.parse(depth.next())?,
-            name: parser.parse(depth.next())?,
-            generics: parser.parse(depth.next())?,
-            open: parser.parse(depth.last())?,
-        })
+        // during the first pass when we find function signatures, we only need the impl-block-target
+        let _: TokenImpl = parser.parse(depth.next())?;
+        let name: TokenIdent<'i> = parser.parse(depth.next())?;
+        let _: Option<ExprGenerics<'a, 'i>> = parser.parse(depth.next())?;
+        let _: TokenOpenCurly = parser.parse(depth.last())?;
+        Ok(ImplBlockSignature { name })
     }
 }
