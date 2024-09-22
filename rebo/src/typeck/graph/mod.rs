@@ -218,7 +218,7 @@ impl<'i> Display for Graph<'i> {
         // write Dot Graph
         writeln!(f, "digraph {{")?;
         writeln!(f, "    ranksep = .1;")?;
-        writeln!(f, "rankdir = LR;")?;
+        writeln!(f, "    rankdir = LR;")?;
         writeln!(f, "{:?}", dot)?;
         writeln!(f, "}}")?;
         Ok(())

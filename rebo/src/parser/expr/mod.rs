@@ -391,6 +391,21 @@ pub(in crate::parser) enum ParseUntil {
     All,
 }
 impl<'a, 'i> Expr<'a, 'i> {
+    pub fn is_item(&self) -> bool {
+        match self {
+            Expr::FunctionDefinition(ExprFunctionDefinition { sig: ExprFunctionSignature { name: Some(_), .. }, .. })
+            | Expr::StructDefinition(_)
+            | Expr::EnumDefinition(_)
+            | Expr::ImplBlock(_)
+            | Expr::IfElse(_)
+            | Expr::Match(_)
+            | Expr::Loop(_)
+            | Expr::While(_)
+            | Expr::For(_)
+            | Expr::Block(_) => true,
+            _ => false,
+        }
+    }
     fn try_parse_until_including(parser: &mut Parser<'a, '_, 'i>, until: ParseUntil, depth: Depth) -> Result<&'a Expr<'a, 'i>, InternalError> {
         trace!("{} Expr::try_parse_until_including {:?}        ({:?})", depth, until, parser.peek_token(0));
         Expr::try_parse_until(parser, until, PartialOrd::ge, depth)
@@ -1592,17 +1607,22 @@ impl<'a, 'i> Spanned for ExprBlock<'a, 'i> {
 }
 impl<'a, 'i> Display for ExprBlock<'a, 'i> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        if self.body.exprs.is_empty() {
+            return write!(f, "{{}}");
+        }
         writeln!(f, "{{")?;
         let mut padded = PadFmt::new(&mut *f);
         for (i, expr) in self.body.exprs.iter().enumerate() {
             write!(&mut padded, "{}", expr)?;
-            if i == self.body.exprs.len() - 1 && !self.body.terminated_with_semicolon {
+            let no_semicolon = (i == self.body.exprs.len() - 1 && !self.body.terminated_with_semicolon)
+                || expr.is_item();
+            if no_semicolon {
                 writeln!(padded)?;
             } else {
                 writeln!(padded, ";")?;
             }
         }
-        writeln!(f, "}}")
+        write!(f, "}}")
     }
 }
 
@@ -1643,18 +1663,9 @@ impl<'a, 'i> Parse<'a, 'i> for BlockBody<'a, 'i> {
             if trailing_semicolon {
                 last = Last::TerminatedWithSemicolon;
             } else {
-                last = match expr {
-                    Expr::FunctionDefinition(ExprFunctionDefinition { sig: ExprFunctionSignature { name: Some(_), .. }, .. })
-                    | Expr::StructDefinition(_)
-                    | Expr::EnumDefinition(_)
-                    | Expr::ImplBlock(_)
-                    | Expr::IfElse(_)
-                    | Expr::Match(_)
-                    | Expr::Loop(_)
-                    | Expr::While(_)
-                    | Expr::For(_)
-                    | Expr::Block(_) => Last::Terminated,
-                    _ => Last::Unterminated(expr.diagnostics_span()),
+                last = match expr.is_item() {
+                    true => Last::Terminated,
+                    false => Last::Unterminated(expr.diagnostics_span()),
                 };
             }
 
@@ -1786,12 +1797,16 @@ impl<'a, 'i> Spanned for ExprMatch<'a, 'i> {
 }
 impl<'a, 'i> Display for ExprMatch<'a, 'i> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        writeln!(f, "match {} {{", self.expr)?;
+        write!(f, "match ({}) ", self.expr)?;
+        if self.arms.is_empty() {
+            return write!(f, "{{}}");
+        }
+        writeln!(f, "{{")?;
         let mut padded = PadFmt::new(&mut *f);
         for (pat, _, expr) in &self.arms {
             writeln!(padded, "{} => {},", pat, expr)?;
         }
-        writeln!(f, "}}")?;
+        write!(f, "}}")?;
         Ok(())
     }
 }
@@ -2317,8 +2332,9 @@ impl<'a, 'i> Display for ExprStructDefinition<'a, 'i> {
             write!(f, "{}", generics)?;
         }
         writeln!(f, " {{")?;
-        for (name, _comma, typ) in &self.fields {
-            write!(f, "{}: {}, ", name.ident, typ)?;
+        let mut padfmt = PadFmt::new(&mut *f);
+        for (name, _colon, typ) in &self.fields {
+            writeln!(padfmt, "{}: {},", name.ident, typ)?;
         }
         write!(f, "}}")
     }
@@ -2360,11 +2376,16 @@ impl<'a, 'i> Spanned for ExprStructInitialization<'a, 'i> {
 }
 impl<'a, 'i> Display for ExprStructInitialization<'a, 'i> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "{} {{ ", self.name.ident)?;
-        for (name, _comma, expr) in &self.fields {
-            write!(f, "{}: {}, ", name.ident, expr)?;
+        write!(f, "{} ", self.name.ident)?;
+        if self.fields.is_empty() {
+            return write!(f, "{{}}");
         }
-        write!(f, "}}")
+        writeln!(f, "{{ ")?;
+        let mut padfmt = PadFmt::new(&mut *f);
+        for (name, _comma, expr) in &self.fields {
+            writeln!(padfmt, "{}: {},", name.ident, expr)?;
+        }
+        writeln!(f, "}}")
     }
 }
 
