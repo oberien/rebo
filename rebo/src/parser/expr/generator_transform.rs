@@ -121,7 +121,7 @@ impl<'a, 'i, 'p, 'm> GeneratorTransformator<'a, 'i, 'p, 'm> {
         // actually build everything
         let generator_file_name = format!("Generator_{}_{}_{}_{}.re", fun.sig.name.map(|i| i.ident).unwrap_or(""), fun_span.file_id(), fun_span.start(), fun_span.end());
         let generator_file_id = FileId::new_synthetic_numbered();
-        let mut function_body = ExprBuilder::generate(function_body, self.parser.arena, self.parser.diagnostics, generator_file_id, generator_file_name);
+        let mut function_body = ExprBuilder::generate(&function_body, self.parser.arena, self.parser.diagnostics, generator_file_id, generator_file_name);
 
         // add stuff to meta_info
         let struct_def = match function_body.body.exprs[0] {
@@ -355,8 +355,8 @@ impl<'a, 'i, 'p, 'm> GeneratorTransformator<'a, 'i, 'p, 'm> {
     fn transform_unop(
         &mut self,
         expr: &'a Expr<'a, 'i>,
-        make_expr: impl FnOnce(&'a Expr<'a, 'i>) -> Expr<'a, 'i>,
-        make_builder: impl FnOnce(ExprBuilder<'a, 'i>) -> ExprBuilder<'a, 'i>,
+        make_expr: impl Fn(&'a Expr<'a, 'i>) -> Expr<'a, 'i>,
+        make_builder: impl Fn(ExprBuilder<'a, 'i>) -> ExprBuilder<'a, 'i>,
     ) -> TrafoResult<'a, 'i> {
         match self.transform_expr(expr) {
             TrafoResult::Expr(expr) => TrafoResult::Expr(self.parser.arena.alloc(make_expr(expr))),

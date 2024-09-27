@@ -1,4 +1,5 @@
 use std::cell::{Cell, RefCell};
+use std::fmt::{Display, Formatter};
 use std::iter;
 use std::rc::Rc;
 use diagnostic::{Diagnostics, ErrorCode, FileId};
@@ -10,9 +11,17 @@ use rebo::parser::{Binding, BindingId, ExprAccess, ExprAdd, ExprBlock, ExprBoolA
 use crate::lexer::{Radix, TokenApostrophe, TokenArrow, TokenAssign, TokenBang, TokenBool, TokenDoubleColon, TokenDqString, TokenFloat, TokenFn, TokenImpl, TokenInteger, TokenLessEquals, TokenMinus, TokenNotEquals, TokenOpenParen, TokenPlus, TokenReturn, TokenStar, TokenStruct};
 use crate::parser::{BlockBody, Expr, ExprAssign, ExprAssignLhs, ExprBool, ExprBoolNot, ExprBoolOr, ExprEnumInitialization, ExprFieldAccess, ExprFloat, ExprFunctionCall, ExprFunctionSignature, ExprGenerics, ExprGreaterThan, ExprInteger, ExprLabel, ExprLiteral, ExprNeg, ExprNotEquals, ExprParenthesized, ExprPatternUntyped, ExprString, ExprTypeUnit, ExprTypeUserType, ExprUnit, ExprVariable};
 
+// impl<'a, 'i> BuildExpr<'a, 'i> for MyExprBuilder<'a, 'i> {
+//     type Expr = Expr<'a, 'i>;
+//
+//     fn build_expr(&self, gen: &ExprGen<'a, 'i>) -> Expr<'a, 'i> {
+//         todo!()
+//     }
+// }
+
 pub trait BuildExpr<'a, 'i> {
     type Expr;
-    fn build_expr(self, gen: &ExprGen<'a, 'i>) -> Self::Expr;
+    fn build_expr(&self, gen: &ExprGen<'a, 'i>) -> Self::Expr;
 }
 
 pub struct ExprGen<'a, 'i> {
@@ -63,9 +72,21 @@ impl<'a, 'i> ExprGen<'a, 'i> {
     }
 }
 
+trait MyFn {
+    fn do_the_thing<'anew, 'inew>(&self, gen: &ExprGen<'anew, 'inew>) -> &'anew Expr<'anew, 'inew>;
+}
+
 #[must_use]
 pub struct ExprBuilder<'a, 'i> {
-    expr: Box<dyn FnOnce(&ExprGen<'a, 'i>) -> &'a Expr<'a, 'i> + 'a>,
+    expr: Box<dyn MyFn + 'a, 'i>,
+}
+impl<'a, 'i> Display for ExprBuilder<'a, 'i> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        let arena = Arena::new();
+        let diagnostics: Diagnostics<crate::ErrorCode> = Diagnostics::new();
+        let expr = ExprBuilder::generate(self, &arena, &diagnostics, FileId::synthetic_named("uiae"), "uiae".to_string());
+        Display::fmt(expr, f)
+    }
 }
 impl<'a, 'i> ExprBuilder<'a, 'i> {
     pub fn from_expr(expr: &'a Expr<'a, 'i>) -> Self {
@@ -81,7 +102,7 @@ impl<'a, 'i> ExprBuilder<'a, 'i> {
     pub fn from_block_with_new_spans(block_body: BlockBody<'a, 'i>) -> Self {
         Self::make(move |gen| ExprBlock::new(
             TokenOpenCurly { span: gen.next_fake_span_indent("{\n") },
-            block_body,
+            block_body.clone(),
             TokenCloseCurly { span: gen.next_fake_span_unindent("\n}") },
         ))
     }
@@ -93,7 +114,7 @@ impl<'a, 'i> ExprBuilder<'a, 'i> {
     }
     pub fn literal<T: Into<ExprLiteralBuilder>>(t: T) -> Self {
         let lit = t.into();
-        Self::make(move |gen| lit.build(gen))
+        Self::make(move |gen| lit.clone().build(gen))
     }
     pub fn binding_existing(binding: Binding<'i>) -> ExprBuilderBinding<'i> {
         binding.into()
@@ -245,7 +266,7 @@ impl<'a, 'i> ExprBuilder<'a, 'i> {
     }
     pub fn variable(binding: impl Into<ExprBuilderBinding<'i>>) -> ExprBuilder<'a, 'i> {
         let binding = binding.into();
-        ExprBuilder::make(|gen| ExprBuilder::build_expr_variable(binding, gen))
+        ExprBuilder::make(move |gen| ExprBuilder::build_expr_variable(binding.clone(), gen))
     }
     fn build_expr_variable(binding: impl Into<ExprBuilderBinding<'i>>, gen: &ExprGen<'a, 'i>) -> ExprVariable<'i> {
         let binding = binding.into();
@@ -299,9 +320,9 @@ impl<'a, 'i> ExprBuilder<'a, 'i> {
     // Break(ExprBreak<'a, 'i>),
     // Continue(ExprContinue<'i>),
     pub fn return_(expr: Option<ExprBuilder<'a, 'i>>) -> ExprBuilder<'a, 'i> {
-        Self::make(|gen| ExprReturn::new(
+        Self::make(move |gen| ExprReturn::new(
             TokenReturn { span: gen.next_fake_span("return ") },
-            expr.map(|expr| expr.build_expr(gen)),
+            expr.as_ref().map(|expr| expr.build_expr(gen)),
         ))
     }
     // Yield(ExprYield<'a, 'i>),
@@ -368,16 +389,18 @@ impl<'a, 'i> ExprBuilder<'a, 'i> {
 
     // builder functions
 
-    fn make<E: Into<Expr<'a, 'i>>, F: FnOnce(&ExprGen<'a, 'i>) -> E + 'a>(f: F) -> Self {
+    fn make<E: Into<Expr<'a, 'i>>, F: Fn(&ExprGen<'a, 'i>) -> E + 'a>(f: F) -> Self {
         Self { expr: Box::new(move |gen| gen.arena.alloc(f(gen).into())) }
     }
-    pub fn generate<B: BuildExpr<'a, 'i>>(
-        builder: B,
-        arena: &'a Arena<Expr<'a, 'i>>,
+    pub fn generate<'anew, 'inew, B: BuildExpr<'anew, 'inew>>(
+        builder: &B,
+        arena: &'anew Arena<Expr<'anew, 'inew>>,
         diagnostics: &Diagnostics<impl ErrorCode>,
         file_id: FileId,
         file_name: String,
-    ) -> B::Expr {
+    ) -> B::Expr
+        where 'a: 'anew, 'i: 'inew
+    {
         let gen = ExprGen {
             indent: Cell::new(0),
             arena,
@@ -392,7 +415,7 @@ impl<'a, 'i> ExprBuilder<'a, 'i> {
 }
 impl<'a, 'i> BuildExpr<'a, 'i> for ExprBuilder<'a, 'i> {
     type Expr = &'a Expr<'a, 'i>;
-    fn build_expr(self, gen: &ExprGen<'a, 'i>) -> Self::Expr {
+    fn build_expr(&self, gen: &ExprGen<'a, 'i>) -> Self::Expr {
         (self.expr)(gen)
     }
 }
@@ -482,11 +505,11 @@ impl<'i> ExprAssignBuilder<'i> {
         self
     }
     pub fn assign<'a>(self, rhs: ExprBuilder<'a, 'i>) -> ExprBuilder<'a, 'i> {
-        ExprBuilder::make(|gen| ExprAssign::new(
+        ExprBuilder::make(move |gen| ExprAssign::new(
             ExprAssignLhs::FieldAccess(ExprFieldAccess::new(
-                ExprBuilder::build_expr_variable(self.binding, gen),
+                ExprBuilder::build_expr_variable(self.binding.clone(), gen),
                 TokenDot { span: gen.next_fake_span(".") },
-                self.fields.into_iter().map(|name| (
+                self.fields.iter().map(|name| (
                     TokenDot { span: gen.next_fake_span(".") },
                     TokenIdent { ident: name, span: gen.next_fake_span(name) },
                 )).collect(),
@@ -535,17 +558,17 @@ impl<'a, 'i> ExprBlockBuilder<'a, 'i> {
         self
     }
     pub fn build(self) -> ExprBuilder<'a, 'i> {
-        ExprBuilder::make(|gen| self.build_expr(gen))
+        ExprBuilder::make(move |gen| self.build_expr(gen))
     }
 }
 impl<'a, 'i> BuildExpr<'a, 'i> for ExprBlockBuilder<'a, 'i> {
     type Expr = ExprBlock<'a, 'i>;
-    fn build_expr(self, gen: &ExprGen<'a, 'i>) -> Self::Expr {
+    fn build_expr(&self, gen: &ExprGen<'a, 'i>) -> Self::Expr {
         ExprBlock::new(
             TokenOpenCurly { span: gen.next_fake_span_indent("{\n") },
             BlockBody {
                 exprs: {
-                    let res = self.exprs.into_iter().map(|expr| {
+                    let res = self.exprs.iter().map(|expr| {
                         let res = expr.build_expr(gen);
                         // fake semicolon for better readability
                         let _ = gen.next_fake_span("\n");
@@ -585,9 +608,9 @@ impl<'a, 'i> ExprAccessBuilder<'a, 'i> {
     }
     pub fn build(self) -> ExprBuilder<'a, 'i> {
         ExprBuilder::make(move |gen| ExprAccess::new(
-            ExprBuilder::build_expr_variable(self.binding, gen),
+            ExprBuilder::build_expr_variable(self.binding.clone(), gen),
             TokenDot { span: gen.next_fake_span(".") },
-            self.accesses.into_iter().map(|acc| match acc {
+            self.accesses.iter().map(|acc| match acc {
                 ExprBuilderFieldOrMethod::Field(name) => (
                     TokenDot { span: gen.next_fake_span(".") },
                     FieldOrMethod::Field(TokenIdent {
@@ -627,11 +650,11 @@ impl<'a, 'i> ExprMatchBuilder<'a, 'i> {
         self
     }
     pub fn build(self) -> ExprBuilder<'a, 'i> {
-        ExprBuilder::make(|gen| ExprMatch::new(
+        ExprBuilder::make(move |gen| ExprMatch::new(
             TokenMatch { span: gen.next_fake_span("match ") },
             self.expr.build_expr(gen),
             TokenOpenCurly { span: gen.next_fake_span_indent(" {\n") },
-            self.arms.into_iter().map(|(pattern, expr)| {
+            self.arms.iter().map(|(pattern, expr)| {
                 let res = (
                     pattern.build_expr(gen),
                     TokenFatArrow { span: gen.next_fake_span(" => ") },
@@ -657,9 +680,9 @@ pub enum ExprMatchPatternBuilder<'a, 'i> {
 // WTF why is this lifetime bound required???
 impl<'a, 'i: 'a> BuildExpr<'a, 'i> for ExprMatchPatternBuilder<'a, 'i> {
     type Expr = ExprMatchPattern<'a, 'i>;
-    fn build_expr(self, gen: &ExprGen<'a, 'i>) -> Self::Expr {
+    fn build_expr(&self, gen: &ExprGen<'a, 'i>) -> Self::Expr {
         match self {
-            ExprMatchPatternBuilder::Literal(lit) => ExprMatchPattern::Literal(lit.build(gen)),
+            ExprMatchPatternBuilder::Literal(lit) => ExprMatchPattern::Literal(lit.clone().build(gen)),
             ExprMatchPatternBuilder::Variant(_) => todo!("match pattern variant"),
             ExprMatchPatternBuilder::Binding(binding) => ExprMatchPattern::Binding(binding.build(gen)),
             ExprMatchPatternBuilder::Wildcard => ExprMatchPattern::Wildcard(TokenUnderscore { span: gen.next_fake_span("_") }),
@@ -684,10 +707,10 @@ impl<'a, 'i> ExprFunctionCallBuilder<'a, 'i> {
         self
     }
     pub fn call(self) -> ExprBuilder<'a, 'i> {
-        ExprBuilder::make(|gen| ExprFunctionCall::new(
-            ExprBuilder::build_expr_variable(self.binding, gen),
+        ExprBuilder::make(move |gen| ExprFunctionCall::new(
+            ExprBuilder::build_expr_variable(self.binding.clone(), gen),
             TokenOpenParen { span: gen.next_fake_span("(") },
-            self.args.into_iter().map(|arg| (
+            self.args.iter().map(|arg| (
                 TokenComma { span: gen.next_fake_span(", ") },
                 arg.build_expr(gen),
             )).collect(),
@@ -754,27 +777,27 @@ impl<'a, 'i> ExprFunctionSignatureBuilder<'a, 'i> {
 }
 impl<'a, 'i> BuildExpr<'a, 'i> for ExprFunctionSignatureBuilder<'a, 'i> {
     type Expr = ExprFunctionSignature<'a, 'i>;
-    fn build_expr(self, gen: &ExprGen<'a, 'i>) -> Self::Expr {
+    fn build_expr(&self, gen: &ExprGen<'a, 'i>) -> Self::Expr {
         ExprFunctionSignature::new(
             None,
             TokenFn { span: gen.next_fake_span("fn ") },
             Some(TokenIdent { ident: self.name, span: gen.next_fake_span(self.name) }),
-            gen_expr_generics(gen, self.generics),
+            gen_expr_generics(gen, &self.generics),
             TokenOpenParen { span: gen.next_fake_span("(") },
             self.self_arg.as_ref().map(|(binding, _)| binding.build(gen)),
             (self.self_arg.is_some() && !self.args.is_empty())
                 .then(|| TokenComma { span: gen.next_fake_span(", ") }),
-            self.self_arg.into_iter().chain(self.args).map(|(binding, typ)| (
+            self.self_arg.iter().chain(&self.args).map(|(binding, typ)| (
                 TokenComma { span: gen.next_fake_span(", ") },
                 ExprPatternTyped::new(
                     ExprPatternUntyped { binding: binding.build(gen) },
                     TokenColon { span: gen.next_fake_span(": ") },
-                    typ.build(gen),
+                    typ.clone().build(gen),
                 )
             )).collect(),
             None,
             TokenCloseParen { span: gen.next_fake_span(")") },
-            self.ret_type.map(|typ| (
+            self.ret_type.clone().map(|typ| (
                 TokenArrow { span: gen.next_fake_span(" -> ") },
                 typ.build(gen),
             )),
@@ -788,12 +811,12 @@ pub struct ExprFunctionDefinitionBuilder<'a, 'i> {
 }
 impl<'a, 'i> ExprFunctionDefinitionBuilder<'a, 'i> {
     pub fn build(self) -> ExprBuilder<'a, 'i> {
-        ExprBuilder::make(|gen| self.build_expr(gen))
+        ExprBuilder::make(move |gen| self.build_expr(gen))
     }
 }
 impl<'a, 'i> BuildExpr<'a, 'i> for ExprFunctionDefinitionBuilder<'a, 'i> {
     type Expr = ExprFunctionDefinition<'a, 'i>;
-    fn build_expr(self, gen: &ExprGen<'a, 'i>) -> Self::Expr {
+    fn build_expr(&self, gen: &ExprGen<'a, 'i>) -> Self::Expr {
         ExprFunctionDefinition::new(
             self.sig.build_expr(gen),
             IndexSet::new(),
@@ -827,17 +850,17 @@ impl<'a, 'i> ExprStructDefinitionBuilder<'a, 'i> {
         self
     }
     pub fn build(self) -> ExprBuilder<'a, 'i> {
-        ExprBuilder::make(|gen| ExprStructDefinition::new(
+        ExprBuilder::make(move |gen| ExprStructDefinition::new(
             TokenStruct { span: gen.next_fake_span("struct ") },
             TokenIdent { ident: self.name, span: gen.next_fake_span(self.name) },
-            gen_expr_generics(gen, self.generics),
+            gen_expr_generics(gen, &self.generics),
             TokenOpenCurly { span: gen.next_fake_span_indent(" {\n") },
-            self.fields.into_iter().map(|(field, typ)| (
+            self.fields.iter().map(|(field, typ)| (
                 TokenComma { span: gen.next_fake_span(",\n") },
                 (
                     TokenIdent { ident: field, span: gen.next_fake_span(field) },
                     TokenColon { span: gen.next_fake_span(": ") },
-                    typ.build(gen),
+                    typ.clone().build(gen),
                 )
             )).collect(),
             TokenCloseCurly { span: gen.next_fake_span_unindent("\n}") },
@@ -860,10 +883,10 @@ impl<'a, 'i> ExprStructInitializationBuilder<'a, 'i> {
         self
     }
     pub fn build(self) -> ExprBuilder<'a, 'i> {
-        ExprBuilder::make(|gen| ExprStructInitialization::new(
+        ExprBuilder::make(move |gen| ExprStructInitialization::new(
             TokenIdent { ident: self.name, span: gen.next_fake_span(self.name) },
             TokenOpenCurly { span: gen.next_fake_span_indent(" {\n") },
-            self.fields.into_iter().map(|(field, value)| (
+            self.fields.iter().map(|(field, value)| (
                 TokenComma { span: gen.next_fake_span(",\n") },
                 (
                     TokenIdent { ident: field, span: gen.next_fake_span(field) },
@@ -876,10 +899,12 @@ impl<'a, 'i> ExprStructInitializationBuilder<'a, 'i> {
     }
 }
 
+#[derive(Clone)]
 #[must_use]
 pub struct ExprTypeBuilder<'a, 'i> {
     inner: ExprTypeBuilderInner<'a, 'i>,
 }
+#[derive(Clone)]
 enum ExprTypeBuilderInner<'a, 'i> {
     /// wrap an original ExprType to ensure start and end of any use belong to our file
     Parenthesized(ExprType<'a, 'i>),
@@ -976,13 +1001,13 @@ impl<'a, 'i> ExprImplBlockBuilder<'a, 'i> {
         self
     }
     pub fn build(self) -> ExprBuilder<'a, 'i> {
-        ExprBuilder::make(|gen| ExprImplBlock::new(
+        ExprBuilder::make(move |gen| ExprImplBlock::new(
             TokenImpl { span: gen.next_fake_span("impl ") },
             TokenIdent { ident: self.target, span: gen.next_fake_span(self.target) },
             // TODO: generics
             None,
             TokenOpenCurly { span: gen.next_fake_span_indent(" {\n") },
-            self.functions.into_iter()
+            self.functions.iter()
                 .map(|fun| fun.build_expr(gen))
                 .collect(),
             TokenCloseCurly { span: gen.next_fake_span_unindent("\n}") },
@@ -993,7 +1018,7 @@ impl<'a, 'i> ExprImplBlockBuilder<'a, 'i> {
 
 // helpers
 
-fn gen_expr_generics<'a, 'i>(gen: &ExprGen<'a, 'i>, generics: Vec<&'i str>) -> Option<ExprGenerics<'a, 'i>> {
+fn gen_expr_generics<'a, 'i>(gen: &ExprGen<'a, 'i>, generics: &[&'i str]) -> Option<ExprGenerics<'a, 'i>> {
     if generics.is_empty() {
         return None;
     }
