@@ -3,7 +3,6 @@ use crate::common::{Depth, Spanned, SpanWithId};
 use std::fmt::{self, Display, Formatter};
 use crate::lexer::{TokenCloseParen, TokenColon, TokenComma, TokenDoubleColon, TokenIdent, TokenOpenParen, TokenUnderscore};
 use super::helper;
-use derive_more::Display;
 use itertools::Itertools;
 
 // make trace! here log as if this still was the parser module
@@ -18,7 +17,7 @@ macro_rules! module_path {
 }
 
 
-#[derive(Debug, Clone, Display)]
+#[derive(Debug, Clone, derive_more::Display)]
 pub enum ExprPattern<'a, 'i> {
     Typed(ExprPatternTyped<'a, 'i>),
     Untyped(ExprPatternUntyped<'i>),
@@ -79,6 +78,7 @@ pub struct ExprPatternTyped<'a, 'i> {
 }
 impl<'a, 'i> ExprPatternTyped<'a, 'i> {
     pub fn new(pattern: ExprPatternUntyped<'i>, colon_token: TokenColon, typ: ExprType<'a, 'i>) -> Self {
+        dbg!(&pattern, colon_token, &typ);
         let span = pattern.span_with_id() | typ.span_with_id();
         ExprPatternTyped { pattern, colon_token, typ, span }
     }
@@ -102,7 +102,7 @@ impl<'a, 'i> Display for ExprPatternTyped<'a, 'i> {
     }
 }
 
-#[derive(Debug, Clone, Display)]
+#[derive(Debug, Clone, derive_more::Display)]
 #[allow(clippy::large_enum_variant)]
 pub enum ExprMatchPattern<'a, 'i> {
     Literal(ExprLiteral),

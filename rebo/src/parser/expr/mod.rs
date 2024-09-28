@@ -271,7 +271,7 @@ impl Spanned for ExprLiteral {
     }
 }
 
-#[derive(Debug, Display, rebo_derive::Functions, derive_more::From)]
+#[derive(Debug, Display, rebo_derive::Functions)]
 #[function(fn span_with_id(&self) -> SpanWithId = expr => expr.span_with_id())]
 #[allow(clippy::large_enum_variant)]
 pub enum Expr<'a, 'i> {
@@ -2263,13 +2263,7 @@ impl<'a, 'i> ExprFunctionDefinition<'a, 'i> {
         mark.apply();
         let fun = ExprFunctionDefinition::new(sig, captures, body);
         Ok(match fun.sig.gen_token {
-            Some(gen_token) => {
-                let fun = generator_transform::transform_generator(parser, gen_token, fun);
-                if let Some(ident) = fun.sig.name {
-                    parser.meta_info.generators.insert(ident.ident.to_string(), (String::new(), fun.to_string()));
-                }
-                fun
-            },
+            Some(gen_token) => generator_transform::transform_generator(parser, gen_token, fun),
             None => fun
         })
     }

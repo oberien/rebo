@@ -21,7 +21,8 @@ use crate::common::expr_gen::ExprBuilderBinding;
 
 pub fn transform_generator<'a, 'i>(parser: &mut Parser<'a, '_, 'i>, gen_token: TokenGen, fun: ExprFunctionDefinition<'a, 'i>) -> ExprFunctionDefinition<'a, 'i> {
     let trafo = GeneratorTransformator {
-        parser,
+        // FIXME: 'a = 'i
+        parser: unsafe { mem::transmute(parser) },
         graph: DiGraph::new(),
         gen_token,
         self_binding: ExprBuilder::binding_new("self", true),
@@ -31,39 +32,41 @@ pub fn transform_generator<'a, 'i>(parser: &mut Parser<'a, '_, 'i>, gen_token: T
         temp_fields: Vec::new(),
     };
 
-    trafo.transform(fun)
+    // FIXME: 'a = 'i
+    unsafe { mem::transmute(trafo.transform(fun)) }
 }
 
-enum TrafoResult<'a, 'i> {
-    Expr(&'a Expr<'a, 'i>),
+enum TrafoResult<'new> {
+    Expr(&'new Expr<'new, 'new>),
     // first node of yield-subgraph, node of the block executed after the yield
     Yielded(NodeId, NodeId),
 }
-enum Edge<'a, 'i> {
-    Pattern(ExprMatchPatternBuilder<'a, 'i>),
+#[derive(derive_more::Display)]
+enum Edge<'old> {
+    Pattern(ExprMatchPatternBuilder<'old>),
     // marker edge for visualization and debugging
     Yield,
 }
 
 type NodeId = NodeIndex<u32>;
 
-struct GeneratorTransformator<'a, 'i, 'p, 'm> {
-    parser: &'p mut Parser<'a, 'm, 'i>,
-    graph: DiGraph<Option<ExprBuilder<'a, 'i>>, Edge<'a, 'i>, u32>,
+struct GeneratorTransformator<'old, 'p, 'm> {
+    parser: &'p mut Parser<'old, 'm, 'old>,
+    graph: DiGraph<Option<ExprBuilder<'old>>, Edge<'old>, u32>,
     gen_token: TokenGen,
-    self_binding: ExprBuilderBinding<'i>,
+    self_binding: ExprBuilderBinding<'old>,
     /// each node needs its own match-binding as the types can be different
-    match_bindings: RefCell<HashMap<NodeId, ExprBuilderBinding<'i>>>,
+    match_bindings: RefCell<HashMap<NodeId, ExprBuilderBinding<'old>>>,
     /// List of bindings this generator needs to store temporaries
-    binding_fields: RefCell<HashMap<BindingId, TokenIdent<'i>>>,
+    binding_fields: RefCell<HashMap<BindingId, TokenIdent<'old>>>,
     /// Number of the next field that is needed to store temporary assignment
     next_tmp: u32,
-    /// List of all temprary bindings that are part of this generator's struct
-    temp_fields: Vec<TokenIdent<'i>>,
+    /// List of all temporary bindings that are part of this generator's struct
+    temp_fields: Vec<TokenIdent<'old>>,
 }
 
-impl<'a, 'i, 'p, 'm> GeneratorTransformator<'a, 'i, 'p, 'm> {
-    pub fn transform(mut self, fun: ExprFunctionDefinition<'a, 'i>) -> ExprFunctionDefinition<'a, 'i> {
+impl<'old, 'p, 'm> GeneratorTransformator<'old, 'p, 'm> {
+    pub fn transform(mut self, fun: ExprFunctionDefinition<'old, 'old>) -> ExprFunctionDefinition<'old, 'old> {
         let fun_span = fun.span_with_id();
         let body_open_span = fun.body.open.span;
         let body_close_span = fun.body.close.span;
@@ -90,6 +93,10 @@ impl<'a, 'i, 'p, 'm> GeneratorTransformator<'a, 'i, 'p, 'm> {
         self.graph.add_edge(end, fused_node, Edge::Pattern(self.get_match_pattern_into_node(fused_node)));
 
         // graph is finished
+        if log_enabled!(Level::Trace) {
+            // self.xdot();
+        }
+        let graph_dot_code = self.dot();
 
         // generate state machine
         let yield_type = match fun.sig.ret_type {
@@ -107,10 +114,6 @@ impl<'a, 'i, 'p, 'm> GeneratorTransformator<'a, 'i, 'p, 'm> {
         let struct_ident = self.create_ident(format!("Generator_{}_{}_{}_{}", fun.sig.name.map(|i| i.ident).unwrap_or(""), fun_span.file_id(), fun_span.start(), fun_span.end()));
         let impl_block_builder = self.generate_state_machine_impl_block(struct_ident, yield_type);
         let struct_builder = self.generate_generator_struct(struct_ident);
-
-        if log_enabled!(Level::Trace) {
-            // self.xdot();
-        }
 
 
         // generate replacement function body for original gen fn
@@ -142,7 +145,7 @@ impl<'a, 'i, 'p, 'm> GeneratorTransformator<'a, 'i, 'p, 'm> {
         function_body.close.span = body_close_span;
         function_body.span = body_span;
 
-        ExprFunctionDefinition {
+        let new_fn = ExprFunctionDefinition {
             sig: ExprFunctionSignature {
                 gen_token: Some(self.gen_token),
                 fn_token: fun.sig.fn_token,
@@ -167,7 +170,12 @@ impl<'a, 'i, 'p, 'm> GeneratorTransformator<'a, 'i, 'p, 'm> {
             captures: fun.captures,
             body: function_body,
             span: fun.span,
+        };
+
+        if let Some(ident) = fun.sig.name {
+            self.parser.meta_info.generators.insert(ident.ident.to_string(), (graph_dot_code, new_fn.to_string()));
         }
+        new_fn
     }
 
 
@@ -180,7 +188,7 @@ impl<'a, 'i, 'p, 'm> GeneratorTransformator<'a, 'i, 'p, 'm> {
 
     // actual transformation functions
 
-    fn transform_expr(&mut self, expr_outer: &'a Expr<'a, 'i>) -> TrafoResult<'a, 'i> {
+    fn transform_expr(&mut self, expr_outer: &'old Expr<'old, 'old>) -> TrafoResult<'old> {
         match expr_outer {
             Expr::Literal(_) => TrafoResult::Expr(expr_outer),
             Expr::FormatString(_) => todo!(),
@@ -354,10 +362,10 @@ impl<'a, 'i, 'p, 'm> GeneratorTransformator<'a, 'i, 'p, 'm> {
     }
     fn transform_unop(
         &mut self,
-        expr: &'a Expr<'a, 'i>,
-        make_expr: impl Fn(&'a Expr<'a, 'i>) -> Expr<'a, 'i>,
-        make_builder: impl Fn(ExprBuilder<'a, 'i>) -> ExprBuilder<'a, 'i>,
-    ) -> TrafoResult<'a, 'i> {
+        expr: &'old Expr<'old, 'old>,
+        make_expr: impl Fn(&'old Expr<'old, 'old>) -> Expr<'old, 'old>,
+        make_builder: impl Fn(ExprBuilder<'old>) -> ExprBuilder<'old>,
+    ) -> TrafoResult<'old> {
         match self.transform_expr(expr) {
             TrafoResult::Expr(expr) => TrafoResult::Expr(self.parser.arena.alloc(make_expr(expr))),
             TrafoResult::Yielded(start, end) => {
@@ -372,11 +380,11 @@ impl<'a, 'i, 'p, 'm> GeneratorTransformator<'a, 'i, 'p, 'm> {
     }
     fn transform_binop(
         &mut self,
-        a: &'a Expr<'a, 'i>,
-        b: &'a Expr<'a, 'i>,
-        make_expr: impl FnOnce(&'a Expr<'a, 'i>, &'a Expr<'a, 'i>) -> Expr<'a, 'i>,
-        make_builder: impl FnOnce(ExprBuilder<'a, 'i>, ExprBuilder<'a, 'i>) -> ExprBuilder<'a, 'i>,
-    ) -> TrafoResult<'a, 'i> {
+        a: &'old Expr<'old, 'old>,
+        b: &'old Expr<'old, 'old>,
+        make_expr: impl FnOnce(&'old Expr<'old, 'old>, &'old Expr<'old, 'old>) -> Expr<'old, 'old>,
+        make_builder: impl FnOnce(ExprBuilder<'old>, ExprBuilder<'old>) -> ExprBuilder<'old>,
+    ) -> TrafoResult<'old> {
         let a = self.transform_expr(a);
         let b = self.transform_expr(b);
         match (a, b) {
@@ -423,7 +431,7 @@ impl<'a, 'i, 'p, 'm> GeneratorTransformator<'a, 'i, 'p, 'm> {
             }
         }
     }
-    fn transform_block(&mut self, block: &ExprBlock<'a, 'i>) -> TrafoResult<'a, 'i> {
+    fn transform_block(&mut self, block: &ExprBlock<'old, 'old>) -> TrafoResult<'old> {
         let mut mapped_block = ExprBuilder::block();
         // used if no yield was encountered as body of the returned block
         let mut transformed_exprs = Vec::new();
@@ -486,11 +494,11 @@ impl<'a, 'i, 'p, 'm> GeneratorTransformator<'a, 'i, 'p, 'm> {
         }
     }
 
-    fn field_ident(&self, binding_id: BindingId) -> TokenIdent<'i> {
+    fn field_ident(&self, binding_id: BindingId) -> TokenIdent<'old> {
         *self.binding_fields.borrow_mut().entry(binding_id)
             .or_insert_with(|| self.create_ident(format!("binding_{}", binding_id)))
     }
-    fn create_ident(&self, name: String) -> TokenIdent<'i> {
+    fn create_ident(&self, name: String) -> TokenIdent<'old> {
         let len = name.len();
         let (file, ident) = self.parser.diagnostics.add_file(Uuid::new_v4().to_string(), name);
         TokenIdent {
@@ -498,55 +506,55 @@ impl<'a, 'i, 'p, 'm> GeneratorTransformator<'a, 'i, 'p, 'm> {
             ident,
         }
     }
-    fn next_tmp(&mut self) -> TokenIdent<'i> {
+    fn next_tmp(&mut self) -> TokenIdent<'old> {
         let cur = self.next_tmp;
         self.next_tmp += 1;
         let temp_ident = self.create_ident(format!("tmp_{cur}"));
         self.temp_fields.push(temp_ident);
         temp_ident
     }
-    fn get_match_pattern_into_node(&self, node: NodeId) -> ExprMatchPatternBuilder<'a, 'i> {
+    fn get_match_pattern_into_node(&self, node: NodeId) -> ExprMatchPatternBuilder<'old> {
         ExprBuilder::match_pattern_binding(self.get_match_binding_into_node(node))
     }
-    fn get_match_binding_into_node(&self, node: NodeId) -> ExprBuilderBinding<'i> {
+    fn get_match_binding_into_node(&self, node: NodeId) -> ExprBuilderBinding<'old> {
         self.match_bindings.borrow_mut().entry(node)
             .or_insert_with(|| ExprBuilder::binding_new("_match_binding", false))
             .clone()
     }
 
-    fn gen_assign_self_binding_field(&self, binding_id: BindingId, expr: ExprBuilder<'a, 'i>) -> ExprBuilder<'a, 'i> {
+    fn gen_assign_self_binding_field(&self, binding_id: BindingId, expr: ExprBuilder<'old>) -> ExprBuilder<'old> {
         ExprBuilder::assign(&self.self_binding)
             .access_field(self.field_ident(binding_id).ident)
             .assign(self.gen_option_some_call(expr))
     }
-    fn gen_access_self_field_for_binding(&self, binding_id: BindingId) -> ExprBuilder<'a, 'i> {
+    fn gen_access_self_field_for_binding(&self, binding_id: BindingId) -> ExprBuilder<'old> {
         ExprBuilder::access(&self.self_binding)
             .field(self.field_ident(binding_id).ident)
             .call_method("unwrap", Vec::new())
             .build()
     }
 
-    fn gen_assign_next_state_to_expr(&self, expr: ExprBuilder<'a, 'i>) -> ExprBuilder<'a, 'i> {
+    fn gen_assign_next_state_to_expr(&self, expr: ExprBuilder<'old>) -> ExprBuilder<'old> {
         ExprBuilder::assign(&self.self_binding)
             .access_field("state")
             .assign(expr)
     }
-    fn gen_assign_next_state(&self, id: NodeId) -> ExprBuilder<'a, 'i> {
+    fn gen_assign_next_state(&self, id: NodeId) -> ExprBuilder<'old> {
         self.gen_assign_next_state_to_expr(ExprBuilder::literal(id.index() as i64))
     }
 
-    fn gen_option_some_call(&self, expr: ExprBuilder<'a, 'i>) -> ExprBuilder<'a, 'i> {
+    fn gen_option_some_call(&self, expr: ExprBuilder<'old>) -> ExprBuilder<'old> {
         let option_some = self.parser.get_binding_unsafe_unsafe_unsafe("Option::Some").unwrap();
         ExprBuilder::function_call(option_some).arg(expr).call()
     }
 
-    fn gen_return_some(&mut self, expr: ExprBuilder<'a, 'i>) -> ExprBuilder<'a, 'i> {
+    fn gen_return_some(&mut self, expr: ExprBuilder<'old>) -> ExprBuilder<'old> {
         ExprBuilder::return_(Some(self.gen_option_some_call(expr)))
     }
 
     // code generation functions for the actual final code
 
-    fn generate_generator_struct(&mut self, struct_ident: TokenIdent<'i>) -> ExprStructDefinitionBuilder<'a, 'i> {
+    fn generate_generator_struct(&mut self, struct_ident: TokenIdent<'old>) -> ExprStructDefinitionBuilder<'old> {
         let mut struct_builder = ExprBuilder::struct_definition(struct_ident.ident);
         struct_builder.push_field("state", ExprBuilder::int_type());
         for field in self.binding_fields.borrow().values().chain(&self.temp_fields) {
@@ -558,7 +566,7 @@ impl<'a, 'i, 'p, 'm> GeneratorTransformator<'a, 'i, 'p, 'm> {
         struct_builder
     }
 
-    fn generate_generator_function_block(&mut self, start: NodeId, struct_ident: TokenIdent<'i>) -> ExprBlockBuilder<'a, 'i> {
+    fn generate_generator_function_block(&mut self, start: NodeId, struct_ident: TokenIdent<'old>) -> ExprBlockBuilder<'old> {
         // TODO: captures
         // TODO: arguments
 
@@ -571,7 +579,7 @@ impl<'a, 'i, 'p, 'm> GeneratorTransformator<'a, 'i, 'p, 'm> {
             .expr(struct_init.build())
             .without_terminating_semicolon()
     }
-    fn generate_state_machine_impl_block(&mut self, struct_ident: TokenIdent<'i>, yield_type: ExprType<'a, 'i>) -> ExprImplBlockBuilder<'a, 'i> {
+    fn generate_state_machine_impl_block(&mut self, struct_ident: TokenIdent<'old>, yield_type: ExprType<'old, 'old>) -> ExprImplBlockBuilder<'old> {
         let self_type = ExprBuilder::user_type(struct_ident.ident).build();
 
         let fun_sig = ExprBuilder::function_definition("next")
@@ -657,17 +665,18 @@ impl<'a, 'i, 'p, 'm> GeneratorTransformator<'a, 'i, 'p, 'm> {
             .function(fun_sig.body(fun_body))
     }
 
-    // pub fn dot(&self) -> String {
-    //     use petgraph::dot::Dot;
-    //     let dot = Dot::with_attr_getters(
-    //         &self.graph,
-    //         &[],
-    //         &|_, edge| match edge.weight() {
-    //             Edge::Pattern(p) => format!("label = \"{}\"", p),
-    //             Edge::Yield => "style = dotted".to_string(),
-    //         },
-    //         &|_, (node_id, expr)| format!("label = \"[{}]\n{}\"", node_id.index(), expr),
-    //     );
-    //     dot.to_string()
-    // }
+    pub fn dot(&self) -> String {
+        use petgraph::dot::Dot;
+        let graph = self.graph.map(|_, n| n.as_ref().unwrap(), |_, e| e);
+        let dot = Dot::with_attr_getters(
+            &graph,
+            &[],
+            &|_, edge| match edge.weight() {
+                Edge::Pattern(p) => format!("label = \"{}\"", p),
+                Edge::Yield => "style = dotted".to_string(),
+            },
+            &|_, (node_id, expr)| format!("label = \"[{}]\n{}\"", node_id.index(), expr),
+        );
+        dot.to_string()
+    }
 }

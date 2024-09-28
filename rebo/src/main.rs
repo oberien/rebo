@@ -28,7 +28,10 @@ fn main() {
     }
     for generator in args.generator {
         match result.generators.get(&generator) {
-            Some((_graph, code)) => println!("{code}"),
+            Some((graph_dot, code)) => {
+                println!("{code}");
+                xdot::xdot(graph_dot);
+            },
             None => println!("generator {generator} not found"),
         }
     }
