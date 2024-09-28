@@ -78,7 +78,6 @@ pub struct ExprPatternTyped<'a, 'i> {
 }
 impl<'a, 'i> ExprPatternTyped<'a, 'i> {
     pub fn new(pattern: ExprPatternUntyped<'i>, colon_token: TokenColon, typ: ExprType<'a, 'i>) -> Self {
-        dbg!(&pattern, colon_token, &typ);
         let span = pattern.span_with_id() | typ.span_with_id();
         ExprPatternTyped { pattern, colon_token, typ, span }
     }

@@ -8,6 +8,7 @@ use typed_arena::Arena;
 use rebo::common::SpanWithId;
 use rebo::lexer::{TokenBoolType, TokenCircumflex, TokenCloseCurly, TokenCloseParen, TokenColon, TokenComma, TokenDot, TokenDoubleAmp, TokenDoublePipe, TokenEquals, TokenFatArrow, TokenFloatType, TokenGreaterEquals, TokenGreaterThan, TokenIdent, TokenIntType, TokenLessThan, TokenLoop, TokenMatch, TokenMut, TokenOpenCurly, TokenPercent, TokenSlash, TokenStringType, TokenUnderscore};
 use rebo::parser::{Binding, BindingId, ExprAccess, ExprAdd, ExprBlock, ExprBoolAnd, ExprDiv, ExprEquals, ExprFunctionDefinition, ExprGreaterEquals, ExprImplBlock, ExprLabelDef, ExprLessEquals, ExprLessThan, ExprLoop, ExprMatch, ExprMatchPattern, ExprMethodCall, ExprMod, ExprMul, ExprPatternTyped, ExprReturn, ExprStructDefinition, ExprStructInitialization, ExprSub, ExprType, ExprTypeParenthesized, ExprXor, FieldOrMethod, Generic};
+use crate::common::Spanned;
 use crate::lexer::{Radix, TokenApostrophe, TokenArrow, TokenAssign, TokenBang, TokenBool, TokenDoubleColon, TokenDqString, TokenFloat, TokenFn, TokenImpl, TokenInteger, TokenLessEquals, TokenMinus, TokenNotEquals, TokenOpenParen, TokenPlus, TokenReturn, TokenStar, TokenStruct};
 use crate::parser::{BlockBody, Expr, ExprAssign, ExprAssignLhs, ExprBool, ExprBoolNot, ExprBoolOr, ExprEnumInitialization, ExprFieldAccess, ExprFloat, ExprFunctionCall, ExprFunctionSignature, ExprGenerics, ExprGreaterThan, ExprInteger, ExprLabel, ExprLiteral, ExprNeg, ExprNotEquals, ExprParenthesized, ExprPatternUntyped, ExprString, ExprTypeUnit, ExprTypeUserType, ExprUnit, ExprVariable};
 
@@ -186,6 +187,7 @@ impl<'old> ExprBuilder<'old> {
         ExprBuilderBinding {
             inner: Rc::new(RefCell::new(ExprBuilderBindingInner {
                 id: BindingId::unique(),
+                new: true,
                 name,
                 mutable,
                 mut_span: None,
@@ -525,22 +527,32 @@ pub struct ExprBuilderBinding<'old> {
 }
 struct ExprBuilderBindingInner<'old> {
     id: BindingId,
+    /// Whether this Binding-Builder refers to an existing Binding from the outside,
+    /// or whether it's a span that shall be newly created / generated.
+    // If this is a new binding, we can't just generate the spans once and reuse them forever.
+    // `Self::build_expr_part` can be called multiple times from within the same call to
+    // `ExprBuilder::generate`, in which case the same span must be reused.
+    // However, it can also be called from two different calls to `ExprBuilder::generate`,
+    // in which case a new span must be generated the first time it's used within the new call.
+    new: bool,
     name: &'old str,
     mutable: bool,
+    // a binding can be used multiple times -- create spans only once
     mut_span: Option<SpanWithId>,
     def_span: Option<SpanWithId>,
 }
 impl<'old> From<Binding<'old>> for ExprBuilderBinding<'old> {
     fn from(binding: Binding<'old>) -> Self {
-        // existing Bindings don't require wrapping in new spans as any usage
-        // of the binding will have a new use-span in the ExprVariable
         ExprBuilderBinding {
             inner: Rc::new(RefCell::new(ExprBuilderBindingInner {
                 id: binding.id,
+                new: false,
                 name: binding.ident.ident,
                 mutable: binding.mutable.is_some(),
                 mut_span: binding.mutable.map(|mutable| mutable.span),
                 def_span: Some(binding.ident.span),
+                // mut_span: None,
+                // def_span: None,
             })),
         }
     }
@@ -564,11 +576,14 @@ impl<'old> ExprBuilderBinding<'old> {
 impl<'old> BuildExprPart<'old> for ExprBuilderBinding<'old> {
     type ExprPart<'new> = Binding<'old> where 'old: 'new;
     fn build_expr_part<'new>(&self, gen: &ExprGen<'new>) -> Binding<'old> where 'old: 'new {
+        // A binding can be used multiple times -- create spans only the first time.
+        // However, if it's used in a different FileId, we need to regenerate it.
+        // That can happen if the same binding is used in multiple different generate-calls
         let (needs_def_span, needs_mut_span) = {
             let inner = self.inner.borrow();
             (
-                inner.def_span.is_none(),
-                inner.mut_span.is_none() && inner.mutable,
+                inner.def_span.is_none() || (inner.new && gen.file_id != inner.def_span.unwrap().file_id()),
+                inner.mutable && (inner.mut_span.is_none() || (inner.new && gen.file_id != inner.mut_span.unwrap().file_id())),
             )
         };
         if needs_mut_span {
