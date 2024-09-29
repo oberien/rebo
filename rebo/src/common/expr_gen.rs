@@ -12,10 +12,10 @@ use crate::common::Spanned;
 use crate::lexer::{Radix, TokenApostrophe, TokenArrow, TokenAssign, TokenBang, TokenBool, TokenDoubleColon, TokenDqString, TokenFloat, TokenFn, TokenImpl, TokenInteger, TokenLessEquals, TokenMinus, TokenNotEquals, TokenOpenParen, TokenPlus, TokenReturn, TokenStar, TokenStruct};
 use crate::parser::{BlockBody, Expr, ExprAssign, ExprAssignLhs, ExprBool, ExprBoolNot, ExprBoolOr, ExprEnumInitialization, ExprFieldAccess, ExprFloat, ExprFunctionCall, ExprFunctionSignature, ExprGenerics, ExprGreaterThan, ExprInteger, ExprLabel, ExprLiteral, ExprNeg, ExprNotEquals, ExprParenthesized, ExprPatternUntyped, ExprString, ExprTypeUnit, ExprTypeUserType, ExprUnit, ExprVariable};
 
-// impl<'a, 'i> BuildExpr<'a, 'i> for MyExprBuilder<'a, 'i> {
-//     type Expr = Expr<'a, 'i>;
+// impl<'i> BuildExpr<'i> for MyExprBuilder<'i> {
+//     type Expr = Expr<'i>;
 //
-//     fn build_expr(&self, gen: &ExprGen<'a, 'i>) -> Expr<'a, 'i> {
+//     fn build_expr(&self, gen: &ExprGen<'i>) -> Expr<'i> {
 //         todo!()
 //     }
 // }
@@ -25,13 +25,13 @@ pub trait BuildExprPart<'old> {
     fn build_expr_part<'new>(&self, gen: &ExprGen<'new>) -> Self::ExprPart<'new> where 'old: 'new;
 }
 trait BuildExpr<'old> where Self: 'old {
-    fn build_expr<'new>(&self, gen: &'_ ExprGen<'new>) -> &'new Expr<'new, 'new>
+    fn build_expr<'new>(&self, gen: &'_ ExprGen<'new>) -> &'new Expr<'new>
         where 'old: 'new;
 }
 
 pub struct ExprGen<'new> {
     indent: Cell<usize>,
-    arena: &'new Arena<Expr<'new, 'new>>,
+    arena: &'new Arena<Expr<'new>>,
     file_id: FileId,
     file_name: String,
     code: RefCell<String>,
@@ -100,12 +100,12 @@ impl<'old> Display for ExprBuilder<'old> {
     }
 }
 impl<'old> BuildExpr<'old> for ExprBuilder<'old> {
-    fn build_expr<'new>(&self, gen: &'_ ExprGen<'new>) -> &'new Expr<'new, 'new> where 'old: 'new {
+    fn build_expr<'new>(&self, gen: &'_ ExprGen<'new>) -> &'new Expr<'new> where 'old: 'new {
         self.expr.build_expr(gen)
     }
 }
 impl<'old> BuildExprPart<'old> for ExprBuilder<'old> {
-    type ExprPart<'new> = &'new Expr<'new, 'new> where 'old: 'new;
+    type ExprPart<'new> = &'new Expr<'new> where 'old: 'new;
     fn build_expr_part<'new>(&self, gen: &ExprGen<'new>) -> Self::ExprPart<'new> where 'old: 'new {
         (self.expr).build_expr(gen)
     }
@@ -132,14 +132,14 @@ macro_rules! impl_buildexpr {
             )*
         }
         impl<'old> BuildExprPart<'old> for AnonymousExprBuilder<'old> {
-            type ExprPart<'new> = Expr<'new, 'new> where 'old: 'new;
+            type ExprPart<'new> = Expr<'new> where 'old: 'new;
             fn build_expr_part<'new>(&self, $gen: &ExprGen<'new>) -> Self::ExprPart<'new> where 'old: 'new {
                 let AnonymousExprBuilder { marker: _, $($field),* } = self;
                 $expr
             }
         }
         impl<'old> BuildExpr<'old> for AnonymousExprBuilder<'old> {
-            fn build_expr<'new>(&self, gen: &'_ ExprGen<'new>) -> &'new Expr<'new, 'new> where 'old: 'new {
+            fn build_expr<'new>(&self, gen: &'_ ExprGen<'new>) -> &'new Expr<'new> where 'old: 'new {
                 gen.arena.alloc(self.build_expr_part(gen))
             }
         }
@@ -148,7 +148,7 @@ macro_rules! impl_buildexpr {
 }
 impl<'old> ExprBuilder<'old> {
     impl_buildexpr_fn! {
-        pub fn from_expr(gen, expr: &'old Expr<'old, 'old>) => ExprBuilder<'old> {
+        pub fn from_expr(gen, expr: &'old Expr<'old>) => ExprBuilder<'old> {
             Expr::Parenthesized(ExprParenthesized::new(
                 TokenOpenParen { span: gen.next_fake_span("(") },
                 {
@@ -160,7 +160,7 @@ impl<'old> ExprBuilder<'old> {
         }
     }
     impl_buildexpr_fn! {
-        pub fn from_block_with_new_spans(gen, block_body: BlockBody<'old, 'old>) => ExprBuilder<'old> {
+        pub fn from_block_with_new_spans(gen, block_body: BlockBody<'old>) => ExprBuilder<'old> {
             Expr::Block(ExprBlock::new(
                 TokenOpenCurly { span: gen.next_fake_span_indent("{\n") },
                 block_body.clone(),
@@ -196,13 +196,13 @@ impl<'old> ExprBuilder<'old> {
         }
     }
 
-    // FormatString(ExprFormatString<'a, 'i>),
-    // Bind(ExprBind<'a, 'i>),
-    // Static(ExprStatic<'a, 'i>),
+    // FormatString(ExprFormatString<'i>),
+    // Bind(ExprBind<'i>),
+    // Static(ExprStatic<'i>),
     pub fn assign<'x>(binding: impl Into<ExprBuilderBinding<'x>>) -> ExprAssignBuilder<'x> {
         ExprAssignBuilder { binding: binding.into(), fields: Vec::new() }
     }
-    // Assign(ExprAssign<'a, 'i>),
+    // Assign(ExprAssign<'i>),
     // unops
     impl_buildexpr_fn! {
         pub fn bool_not(gen, inner: ExprBuilder<'old>) => ExprBuilder<'old> {
@@ -294,14 +294,14 @@ impl<'old> ExprBuilder<'old> {
         }
     }
     // binop-assign
-    // AddAssign(ExprAddAssign<'a, 'i>),
-    // SubAssign(ExprSubAssign<'a, 'i>),
-    // MulAssign(ExprMulAssign<'a, 'i>),
-    // DivAssign(ExprDivAssign<'a, 'i>),
-    // ModAssign(ExprModAssign<'a, 'i>),
-    // XorAssign(ExprXorAssign<'a, 'i>),
-    // BoolAndAssign(ExprBoolAndAssign<'a, 'i>),
-    // BoolOrAssign(ExprBoolOrAssign<'a, 'i>),
+    // AddAssign(ExprAddAssign<'i>),
+    // SubAssign(ExprSubAssign<'i>),
+    // MulAssign(ExprMulAssign<'i>),
+    // DivAssign(ExprDivAssign<'i>),
+    // ModAssign(ExprModAssign<'i>),
+    // XorAssign(ExprXorAssign<'i>),
+    // BoolAndAssign(ExprBoolAndAssign<'i>),
+    // BoolOrAssign(ExprBoolOrAssign<'i>),
     // comparison ops
     impl_buildexpr_fn! {
         pub fn less_than(gen, a: ExprBuilder<'old>, b: ExprBuilder<'old>) => ExprBuilder<'old> {
@@ -386,7 +386,7 @@ impl<'old> ExprBuilder<'old> {
             ))
         }
     }
-    // IfElse(ExprIfElse<'a, 'i>),
+    // IfElse(ExprIfElse<'i>),
     pub fn match_(expr: ExprBuilder<'old>) -> ExprMatchBuilder<'old> {
         ExprMatchBuilder { expr, arms: Vec::new() }
     }
@@ -400,8 +400,8 @@ impl<'old> ExprBuilder<'old> {
     pub fn match_pattern_wildcard<'x>() -> ExprMatchPatternBuilder<'x> {
         ExprMatchPatternBuilder::Wildcard
     }
-    // While(ExprWhile<'a, 'i>),
-    // For(ExprFor<'a, 'i>),
+    // While(ExprWhile<'i>),
+    // For(ExprFor<'i>),
     pub fn loop_<'x>(label: Option<&'x str>, block: ExprBlockBuilder<'x>) -> ExprBuilder<'x> {
         impl_buildexpr!(|gen, label: Option<&'old str>, block: ExprBlockBuilder<'old>| {
             Expr::Loop(ExprLoop::new(
@@ -420,7 +420,7 @@ impl<'old> ExprBuilder<'old> {
             ))
         })
     }
-    // Break(ExprBreak<'a, 'i>),
+    // Break(ExprBreak<'i>),
     // Continue(ExprContinue<'i>),
     impl_buildexpr_fn! {
         pub fn return_(gen, expr: Option<ExprBuilder<'old>>) => ExprBuilder<'old> {
@@ -430,7 +430,7 @@ impl<'old> ExprBuilder<'old> {
             ))
         }
     }
-    // Yield(ExprYield<'a, 'i>),
+    // Yield(ExprYield<'i>),
     pub fn function_call<'x>(binding: impl Into<ExprBuilderBinding<'x>>) -> ExprFunctionCallBuilder<'x> {
         ExprFunctionCallBuilder { binding: binding.into(), args: Vec::new() }
     }
@@ -444,7 +444,7 @@ impl<'old> ExprBuilder<'old> {
     pub fn struct_initialization(name: &'_ str) -> ExprStructInitializationBuilder<'_> {
         ExprStructInitializationBuilder { name, fields: Vec::new() }
     }
-    // EnumDefinition(ExprEnumDefinition<'a, 'i>),
+    // EnumDefinition(ExprEnumDefinition<'i>),
     impl_buildexpr_fn! {
         pub fn enum_initialization(gen, enum_name: &'old str, variant_name: &'old str) => ExprBuilder<'old> {
             Expr::EnumInitialization(ExprEnumInitialization::new(
@@ -465,7 +465,7 @@ impl<'old> ExprBuilder<'old> {
     }
 
     // TYPES
-    pub fn from_expr_type(typ: ExprType<'old, 'old>) -> ExprTypeBuilder<'old> {
+    pub fn from_expr_type(typ: ExprType<'old>) -> ExprTypeBuilder<'old> {
         ExprTypeBuilder { inner: ExprTypeBuilderInner::Parenthesized(typ) }
     }
     pub fn string_type<'x>() -> ExprTypeBuilder<'x> {
@@ -498,7 +498,7 @@ impl<'old> ExprBuilder<'old> {
 
     pub fn generate<'new, B: BuildExprPart<'old>>(
         builder: &B,
-        arena: &'new Arena<Expr<'new, 'new>>,
+        arena: &'new Arena<Expr<'new>>,
         diagnostics: &Diagnostics<impl ErrorCode>,
         file_id: FileId,
         file_name: String,
@@ -677,7 +677,7 @@ impl<'old> ExprBlockBuilder<'old> {
     }
 }
 impl<'old> BuildExprPart<'old> for ExprBlockBuilder<'old> {
-    type ExprPart<'new> = ExprBlock<'new, 'new> where 'old: 'new;
+    type ExprPart<'new> = ExprBlock<'new> where 'old: 'new;
     fn build_expr_part<'new>(&self, gen: &ExprGen<'new>) -> Self::ExprPart<'new> where 'old: 'new {
         ExprBlock::new(
             TokenOpenCurly { span: gen.next_fake_span_indent("{\n") },
@@ -703,7 +703,7 @@ impl<'old> BuildExprPart<'old> for ExprBlockBuilder<'old> {
     }
 }
 impl<'old> BuildExpr<'old> for ExprBlockBuilder<'old> {
-    fn build_expr<'new>(&self, gen: &'_ ExprGen<'new>) -> &'new Expr<'new, 'new> where 'old: 'new {
+    fn build_expr<'new>(&self, gen: &'_ ExprGen<'new>) -> &'new Expr<'new> where 'old: 'new {
         gen.arena.alloc(Expr::Block(self.build_expr_part(gen)))
     }
 }
@@ -731,7 +731,7 @@ impl<'old> ExprAccessBuilder<'old> {
     }
 }
 impl<'old> BuildExprPart<'old> for ExprAccessBuilder<'old> {
-    type ExprPart<'new> = ExprAccess<'new, 'new> where 'old: 'new;
+    type ExprPart<'new> = ExprAccess<'new> where 'old: 'new;
     fn build_expr_part<'new>(&self, gen: &ExprGen<'new>) -> Self::ExprPart<'new> where 'old: 'new {
         ExprAccess::new(
             ExprBuilder::build_expr_variable(self.binding.clone(), gen),
@@ -761,7 +761,7 @@ impl<'old> BuildExprPart<'old> for ExprAccessBuilder<'old> {
     }
 }
 impl<'old> BuildExpr<'old> for ExprAccessBuilder<'old> {
-    fn build_expr<'new>(&self, gen: &'_ ExprGen<'new>) -> &'new Expr<'new, 'new> where 'old: 'new {
+    fn build_expr<'new>(&self, gen: &'_ ExprGen<'new>) -> &'new Expr<'new> where 'old: 'new {
         gen.arena.alloc(Expr::Access(self.build_expr_part(gen)))
     }
 }
@@ -785,7 +785,7 @@ impl<'old> ExprMatchBuilder<'old> {
     }
 }
 impl<'old> BuildExprPart<'old> for ExprMatchBuilder<'old> {
-    type ExprPart<'new> = ExprMatch<'new, 'new> where 'old: 'new;
+    type ExprPart<'new> = ExprMatch<'new> where 'old: 'new;
     fn build_expr_part<'new>(&self, gen: &ExprGen<'new>) -> Self::ExprPart<'new> where 'old: 'new {
         ExprMatch::new(
             TokenMatch { span: gen.next_fake_span("match ") },
@@ -806,7 +806,7 @@ impl<'old> BuildExprPart<'old> for ExprMatchBuilder<'old> {
     }
 }
 impl<'old> BuildExpr<'old> for ExprMatchBuilder<'old> {
-    fn build_expr<'new>(&self, gen: &'_ ExprGen<'new>) -> &'new Expr<'new, 'new> where 'old: 'new {
+    fn build_expr<'new>(&self, gen: &'_ ExprGen<'new>) -> &'new Expr<'new> where 'old: 'new {
         gen.arena.alloc(Expr::Match(self.build_expr_part(gen)))
     }
 }
@@ -821,7 +821,7 @@ pub enum ExprMatchPatternBuilder<'old> {
     Wildcard,
 }
 impl<'old> BuildExprPart<'old> for ExprMatchPatternBuilder<'old> {
-    type ExprPart<'new> = ExprMatchPattern<'new, 'new> where 'old: 'new;
+    type ExprPart<'new> = ExprMatchPattern<'new> where 'old: 'new;
     fn build_expr_part<'new>(&self, gen: &ExprGen<'new>) -> Self::ExprPart<'new> where 'old: 'new {
         match self {
             ExprMatchPatternBuilder::Literal(lit) => ExprMatchPattern::Literal(lit.build_expr_part(gen)),
@@ -862,7 +862,7 @@ impl<'old> ExprFunctionCallBuilder<'old> {
     }
 }
 impl<'old> BuildExprPart<'old> for ExprFunctionCallBuilder<'old> {
-    type ExprPart<'new> = ExprFunctionCall<'new, 'new> where 'old: 'new;
+    type ExprPart<'new> = ExprFunctionCall<'new> where 'old: 'new;
     fn build_expr_part<'new>(&self, gen: &ExprGen<'new>) -> Self::ExprPart<'new> where 'old: 'new {
         ExprFunctionCall::new(
             ExprBuilder::build_expr_variable(self.binding.clone(), gen),
@@ -876,7 +876,7 @@ impl<'old> BuildExprPart<'old> for ExprFunctionCallBuilder<'old> {
     }
 }
 impl<'old> BuildExpr<'old> for ExprFunctionCallBuilder<'old> {
-    fn build_expr<'new>(&self, gen: &'_ ExprGen<'new>) -> &'new Expr<'new, 'new> where 'old: 'new {
+    fn build_expr<'new>(&self, gen: &'_ ExprGen<'new>) -> &'new Expr<'new> where 'old: 'new {
         gen.arena.alloc(Expr::FunctionCall(self.build_expr_part(gen)))
     }
 }
@@ -938,7 +938,7 @@ impl<'old> ExprFunctionSignatureBuilder<'old> {
     }
 }
 impl<'old> BuildExprPart<'old> for ExprFunctionSignatureBuilder<'old> {
-    type ExprPart<'new> = ExprFunctionSignature<'new, 'new> where 'old: 'new;
+    type ExprPart<'new> = ExprFunctionSignature<'new> where 'old: 'new;
     fn build_expr_part<'new>(&self, gen: &ExprGen<'new>) -> Self::ExprPart<'new> where 'old: 'new {
         ExprFunctionSignature::new(
             None,
@@ -977,7 +977,7 @@ impl<'old> ExprFunctionDefinitionBuilder<'old> {
     }
 }
 impl<'old> BuildExprPart<'old> for ExprFunctionDefinitionBuilder<'old> {
-    type ExprPart<'new> = ExprFunctionDefinition<'new, 'new> where 'old: 'new;
+    type ExprPart<'new> = ExprFunctionDefinition<'new> where 'old: 'new;
     fn build_expr_part<'new>(&self, gen: &ExprGen<'new>) -> Self::ExprPart<'new> where 'old: 'new {
         ExprFunctionDefinition::new(
             self.sig.build_expr_part(gen),
@@ -987,7 +987,7 @@ impl<'old> BuildExprPart<'old> for ExprFunctionDefinitionBuilder<'old> {
     }
 }
 impl<'old> BuildExpr<'old> for ExprFunctionDefinitionBuilder<'old> {
-    fn build_expr<'new>(&self, gen: &'_ ExprGen<'new>) -> &'new Expr<'new, 'new> where 'old: 'new {
+    fn build_expr<'new>(&self, gen: &'_ ExprGen<'new>) -> &'new Expr<'new> where 'old: 'new {
         gen.arena.alloc(Expr::FunctionDefinition(self.build_expr_part(gen)))
     }
 }
@@ -1021,7 +1021,7 @@ impl<'old> ExprStructDefinitionBuilder<'old> {
     }
 }
 impl<'old> BuildExprPart<'old> for ExprStructDefinitionBuilder<'old> {
-    type ExprPart<'new> = ExprStructDefinition<'new, 'new> where 'old: 'new;
+    type ExprPart<'new> = ExprStructDefinition<'new> where 'old: 'new;
     fn build_expr_part<'new>(&self, gen: &ExprGen<'new>) -> Self::ExprPart<'new> where 'old: 'new {
         ExprStructDefinition::new(
             TokenStruct { span: gen.next_fake_span("struct ") },
@@ -1041,7 +1041,7 @@ impl<'old> BuildExprPart<'old> for ExprStructDefinitionBuilder<'old> {
     }
 }
 impl<'old> BuildExpr<'old> for ExprStructDefinitionBuilder<'old> {
-    fn build_expr<'new>(&self, gen: &'_ ExprGen<'new>) -> &'new Expr<'new, 'new> where 'old: 'new {
+    fn build_expr<'new>(&self, gen: &'_ ExprGen<'new>) -> &'new Expr<'new> where 'old: 'new {
         gen.arena.alloc(Expr::StructDefinition(self.build_expr_part(gen)))
     }
 }
@@ -1066,7 +1066,7 @@ impl<'old> ExprStructInitializationBuilder<'old> {
     }
 }
 impl<'old> BuildExprPart<'old> for ExprStructInitializationBuilder<'old> {
-    type ExprPart<'new> = ExprStructInitialization<'new, 'new> where 'old: 'new;
+    type ExprPart<'new> = ExprStructInitialization<'new> where 'old: 'new;
     fn build_expr_part<'new>(&self, gen: &ExprGen<'new>) -> Self::ExprPart<'new> where 'old: 'new {
         ExprStructInitialization::new(
             TokenIdent { ident: self.name, span: gen.next_fake_span(self.name) },
@@ -1084,7 +1084,7 @@ impl<'old> BuildExprPart<'old> for ExprStructInitializationBuilder<'old> {
     }
 }
 impl<'old> BuildExpr<'old> for ExprStructInitializationBuilder<'old> {
-    fn build_expr<'new>(&self, gen: &'_ ExprGen<'new>) -> &'new Expr<'new, 'new> where 'old: 'new {
+    fn build_expr<'new>(&self, gen: &'_ ExprGen<'new>) -> &'new Expr<'new> where 'old: 'new {
         gen.arena.alloc(Expr::StructInitialization(self.build_expr_part(gen)))
     }
 }
@@ -1097,7 +1097,7 @@ pub struct ExprTypeBuilder<'old> {
 #[derive(Clone)]
 enum ExprTypeBuilderInner<'old> {
     /// wrap an original ExprType to ensure start and end of any use belong to our file
-    Parenthesized(ExprType<'old, 'old>),
+    Parenthesized(ExprType<'old>),
     String,
     Int,
     Float,
@@ -1107,7 +1107,7 @@ enum ExprTypeBuilderInner<'old> {
     /// name, generics
     UserType(&'old str, Vec<ExprTypeBuilder<'old>>),
     // TODO: Generic(Generic<'i>),
-    // TODO: Function(Box<ExprFunctionType<'a, 'i>>),
+    // TODO: Function(Box<ExprFunctionType<'i>>),
     Never,
     Any,
 }
@@ -1127,7 +1127,7 @@ impl<'old> ExprTypeBuilder<'old> {
     }
 }
 impl<'old> BuildExprPart<'old> for ExprTypeBuilder<'old> {
-    type ExprPart<'new> = ExprType<'new, 'new> where 'old: 'new;
+    type ExprPart<'new> = ExprType<'new> where 'old: 'new;
     fn build_expr_part<'new>(&self, gen: &ExprGen<'new>) -> Self::ExprPart<'new> where 'old: 'new {
         match &self.inner {
             ExprTypeBuilderInner::Parenthesized(typ) => ExprType::Parenthesized(ExprTypeParenthesized::new(
@@ -1199,7 +1199,7 @@ impl<'old> ExprImplBlockBuilder<'old> {
 }
 
 impl<'old> BuildExprPart<'old> for ExprImplBlockBuilder<'old> {
-    type ExprPart<'new> = ExprImplBlock<'new, 'new> where 'old: 'new;
+    type ExprPart<'new> = ExprImplBlock<'new> where 'old: 'new;
     fn build_expr_part<'new>(&self, gen: &ExprGen<'new>) -> Self::ExprPart<'new> where 'old: 'new {
         ExprImplBlock::new(
             TokenImpl { span: gen.next_fake_span("impl ") },
@@ -1215,7 +1215,7 @@ impl<'old> BuildExprPart<'old> for ExprImplBlockBuilder<'old> {
     }
 }
 impl<'old> BuildExpr<'old> for ExprImplBlockBuilder<'old> {
-    fn build_expr<'new>(&self, gen: &'_ ExprGen<'new>) -> &'new Expr<'new, 'new> where 'old: 'new {
+    fn build_expr<'new>(&self, gen: &'_ ExprGen<'new>) -> &'new Expr<'new> where 'old: 'new {
         gen.arena.alloc(Expr::ImplBlock(self.build_expr_part(gen)))
     }
 }
@@ -1223,7 +1223,7 @@ impl<'old> BuildExpr<'old> for ExprImplBlockBuilder<'old> {
 
 // helpers
 
-fn gen_expr_generics<'old: 'new, 'new>(gen: &ExprGen<'new>, generics: &[&'old str]) -> Option<ExprGenerics<'old, 'old>> {
+fn gen_expr_generics<'old: 'new, 'new>(gen: &ExprGen<'new>, generics: &[&'old str]) -> Option<ExprGenerics<'old>> {
     if generics.is_empty() {
         return None;
     }

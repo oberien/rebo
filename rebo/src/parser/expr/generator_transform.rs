@@ -19,10 +19,9 @@ use crate::common::expr_gen::ExprBuilderBinding;
 // * if a yield is encountered, it's ensured that all original expressions keep their span
 //     * tail-expression: wrap in parens: (<expr>)
 
-pub fn transform_generator<'a, 'i>(parser: &mut Parser<'a, '_, 'i>, gen_token: TokenGen, fun: ExprFunctionDefinition<'a, 'i>) -> ExprFunctionDefinition<'a, 'i> {
+pub fn transform_generator<'i>(parser: &mut Parser<'i, '_>, gen_token: TokenGen, fun: ExprFunctionDefinition<'i>) -> ExprFunctionDefinition<'i> {
     let trafo = GeneratorTransformator {
-        // FIXME: 'a = 'i
-        parser: unsafe { mem::transmute(parser) },
+        parser,
         graph: DiGraph::new(),
         gen_token,
         self_binding: ExprBuilder::binding_new("self", true),
@@ -32,12 +31,11 @@ pub fn transform_generator<'a, 'i>(parser: &mut Parser<'a, '_, 'i>, gen_token: T
         temp_fields: Vec::new(),
     };
 
-    // FIXME: 'a = 'i
-    unsafe { mem::transmute(trafo.transform(fun)) }
+    trafo.transform(fun)
 }
 
 enum TrafoResult<'new> {
-    Expr(&'new Expr<'new, 'new>),
+    Expr(&'new Expr<'new>),
     // first node of yield-subgraph, node of the block executed after the yield
     Yielded(NodeId, NodeId),
 }
@@ -51,7 +49,7 @@ enum Edge<'old> {
 type NodeId = NodeIndex<u32>;
 
 struct GeneratorTransformator<'old, 'p, 'm> {
-    parser: &'p mut Parser<'old, 'm, 'old>,
+    parser: &'p mut Parser<'old, 'm>,
     graph: DiGraph<Option<ExprBuilder<'old>>, Edge<'old>, u32>,
     gen_token: TokenGen,
     self_binding: ExprBuilderBinding<'old>,
@@ -66,7 +64,7 @@ struct GeneratorTransformator<'old, 'p, 'm> {
 }
 
 impl<'old, 'p, 'm> GeneratorTransformator<'old, 'p, 'm> {
-    pub fn transform(mut self, fun: ExprFunctionDefinition<'old, 'old>) -> ExprFunctionDefinition<'old, 'old> {
+    pub fn transform(mut self, fun: ExprFunctionDefinition<'old>) -> ExprFunctionDefinition<'old> {
         let fun_span = fun.span_with_id();
         let body_open_span = fun.body.open.span;
         let body_close_span = fun.body.close.span;
@@ -188,7 +186,7 @@ impl<'old, 'p, 'm> GeneratorTransformator<'old, 'p, 'm> {
 
     // actual transformation functions
 
-    fn transform_expr(&mut self, expr_outer: &'old Expr<'old, 'old>) -> TrafoResult<'old> {
+    fn transform_expr(&mut self, expr_outer: &'old Expr<'old>) -> TrafoResult<'old> {
         match expr_outer {
             Expr::Literal(_) => TrafoResult::Expr(expr_outer),
             Expr::FormatString(_) => todo!(),
@@ -362,8 +360,8 @@ impl<'old, 'p, 'm> GeneratorTransformator<'old, 'p, 'm> {
     }
     fn transform_unop(
         &mut self,
-        expr: &'old Expr<'old, 'old>,
-        make_expr: impl Fn(&'old Expr<'old, 'old>) -> Expr<'old, 'old>,
+        expr: &'old Expr<'old>,
+        make_expr: impl Fn(&'old Expr<'old>) -> Expr<'old>,
         make_builder: impl Fn(ExprBuilder<'old>) -> ExprBuilder<'old>,
     ) -> TrafoResult<'old> {
         match self.transform_expr(expr) {
@@ -380,9 +378,9 @@ impl<'old, 'p, 'm> GeneratorTransformator<'old, 'p, 'm> {
     }
     fn transform_binop(
         &mut self,
-        a: &'old Expr<'old, 'old>,
-        b: &'old Expr<'old, 'old>,
-        make_expr: impl FnOnce(&'old Expr<'old, 'old>, &'old Expr<'old, 'old>) -> Expr<'old, 'old>,
+        a: &'old Expr<'old>,
+        b: &'old Expr<'old>,
+        make_expr: impl FnOnce(&'old Expr<'old>, &'old Expr<'old>) -> Expr<'old>,
         make_builder: impl FnOnce(ExprBuilder<'old>, ExprBuilder<'old>) -> ExprBuilder<'old>,
     ) -> TrafoResult<'old> {
         let a = self.transform_expr(a);
@@ -431,7 +429,7 @@ impl<'old, 'p, 'm> GeneratorTransformator<'old, 'p, 'm> {
             }
         }
     }
-    fn transform_block(&mut self, block: &ExprBlock<'old, 'old>) -> TrafoResult<'old> {
+    fn transform_block(&mut self, block: &ExprBlock<'old>) -> TrafoResult<'old> {
         let mut mapped_block = ExprBuilder::block();
         // used if no yield was encountered as body of the returned block
         let mut transformed_exprs = Vec::new();
@@ -579,7 +577,7 @@ impl<'old, 'p, 'm> GeneratorTransformator<'old, 'p, 'm> {
             .expr(struct_init.build())
             .without_terminating_semicolon()
     }
-    fn generate_state_machine_impl_block(&mut self, struct_ident: TokenIdent<'old>, yield_type: ExprType<'old, 'old>) -> ExprImplBlockBuilder<'old> {
+    fn generate_state_machine_impl_block(&mut self, struct_ident: TokenIdent<'old>, yield_type: ExprType<'old>) -> ExprImplBlockBuilder<'old> {
         let self_type = ExprBuilder::user_type(struct_ident.ident).build();
 
         let fun_sig = ExprBuilder::function_definition("next")

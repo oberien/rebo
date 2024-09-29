@@ -8,7 +8,7 @@ use crate::parser::ExprEnumDefinition;
 pub struct EnumDefInitLints;
 
 impl Visitor for EnumDefInitLints {
-    fn visit_enum_definition(&self, diagnostics: &Diagnostics<ErrorCode>, _: &MetaInfo, _: &BlockStack<'_, '_, ()>, expr: &ExprEnumDefinition) {
+    fn visit_enum_definition(&self, diagnostics: &Diagnostics<ErrorCode>, _: &MetaInfo, _: &BlockStack<'_, ()>, expr: &ExprEnumDefinition) {
         let mut map = IndexMap::new();
         for variant in &expr.variants {
             if let Some(old_span) = map.insert(variant.name.ident, variant.name.span_with_id()) {

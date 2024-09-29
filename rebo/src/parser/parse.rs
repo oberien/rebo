@@ -18,8 +18,8 @@ macro_rules! module_path {
     }}
 }
 
-pub trait Parse<'a, 'i>: Sized {
-    fn parse(parser: &mut Parser<'a, '_, 'i>, depth: Depth) -> Result<Self, InternalError> {
+pub trait Parse<'i>: Sized {
+    fn parse(parser: &mut Parser<'i, '_>, depth: Depth) -> Result<Self, InternalError> {
         lazy_static::lazy_static! {
             static ref REGEX: Regex = Regex::new(r#"\w*::[a-zA-Z0-9_:]*::"#).unwrap();
         }
@@ -30,30 +30,30 @@ pub trait Parse<'a, 'i>: Sized {
         Ok(res)
     }
     /// Parse the element, resetting the tokens to the previous state even on success
-    fn parse_reset(parser: &mut Parser<'a, '_, 'i>, depth: Depth) -> Result<Self, InternalError> {
+    fn parse_reset(parser: &mut Parser<'i, '_>, depth: Depth) -> Result<Self, InternalError> {
         let mark = parser.lexer.mark();
         let res = Self::parse(parser, depth);
         drop(mark);
         res
     }
-    fn parse_scoped(parser: &mut Parser<'a, '_, 'i>, depth: Depth) -> Result<Self, InternalError> {
+    fn parse_scoped(parser: &mut Parser<'i, '_>, depth: Depth) -> Result<Self, InternalError> {
         let scope_guard = parser.push_scope(ScopeType::Synthetic);
         let res = Self::parse(parser, depth);
         drop(scope_guard);
         res
     }
-    fn parse_marked(parser: &mut Parser<'a, '_, 'i>, depth: Depth) -> Result<Self, InternalError>;
+    fn parse_marked(parser: &mut Parser<'i, '_>, depth: Depth) -> Result<Self, InternalError>;
 }
-impl<'a, 'i, T: Parse<'a, 'i>> Parse<'a, 'i> for Option<T> {
-    fn parse_marked(parser: &mut Parser<'a, '_, 'i>, depth: Depth) -> Result<Self, InternalError> {
+impl<'i, T: Parse<'i>> Parse<'i> for Option<T> {
+    fn parse_marked(parser: &mut Parser<'i, '_>, depth: Depth) -> Result<Self, InternalError> {
         match parser.parse(depth.last()) {
             Ok(t) => Ok(Some(t)),
             Err(_) => Ok(None),
         }
     }
 }
-impl<'a, 'i, T: Parse<'a, 'i>> Parse<'a, 'i> for Vec<T> {
-    fn parse_marked(parser: &mut Parser<'a, '_, 'i>, depth: Depth) -> Result<Self, InternalError> {
+impl<'i, T: Parse<'i>> Parse<'i> for Vec<T> {
+    fn parse_marked(parser: &mut Parser<'i, '_>, depth: Depth) -> Result<Self, InternalError> {
         let mut vec = Vec::new();
         while let Ok(t) = parser.parse(depth.next()) {
             vec.push(t);
@@ -61,29 +61,29 @@ impl<'a, 'i, T: Parse<'a, 'i>> Parse<'a, 'i> for Vec<T> {
         Ok(vec)
     }
 }
-impl<'a, 'i, T: Parse<'a, 'i>> Parse<'a, 'i> for Box<T> {
-    fn parse_marked(parser: &mut Parser<'a, '_, 'i>, depth: Depth) -> Result<Self, InternalError> {
+impl<'i, T: Parse<'i>> Parse<'i> for Box<T> {
+    fn parse_marked(parser: &mut Parser<'i, '_>, depth: Depth) -> Result<Self, InternalError> {
         Ok(Box::new(parser.parse(depth)?))
     }
 }
 
 #[derive(Debug, Clone)]
 pub struct Scoped<T>(pub T);
-impl<'a, 'i, T: Parse<'a, 'i>> Parse<'a, 'i> for Scoped<T> {
-    fn parse_marked(parser: &mut Parser<'a, '_, 'i>, depth: Depth) -> Result<Self, InternalError> {
+impl<'i, T: Parse<'i>> Parse<'i> for Scoped<T> {
+    fn parse_marked(parser: &mut Parser<'i, '_>, depth: Depth) -> Result<Self, InternalError> {
         Ok(Scoped(parser.parse_scoped(depth)?))
     }
 }
 
 
 #[derive(Debug, Clone)]
-pub struct Separated<'a, 'i, T: 'a, D: 'a> {
+pub struct Separated<'i, T: 'i, D: 'i> {
     inner: Vec<(T, D)>,
     last: Option<T>,
-    marker: PhantomData<&'a Expr<'a, 'i>>,
+    marker: PhantomData<&'i Expr<'i>>,
 }
 
-impl<'a, 'i, T, D> Default for Separated<'a, 'i, T, D> {
+impl<'i, T, D> Default for Separated<'i, T, D> {
     fn default() -> Self {
         Separated {
             inner: Vec::new(),
@@ -93,8 +93,8 @@ impl<'a, 'i, T, D> Default for Separated<'a, 'i, T, D> {
     }
 }
 
-impl<'a, 'i, T: Parse<'a, 'i>, D: Parse<'a, 'i>> Parse<'a, 'i> for Separated<'a, 'i, T, D> {
-    fn parse_marked(parser: &mut Parser<'a, '_, 'i>, depth: Depth) -> Result<Self, InternalError> {
+impl<'i, T: Parse<'i>, D: Parse<'i>> Parse<'i> for Separated<'i, T, D> {
+    fn parse_marked(parser: &mut Parser<'i, '_>, depth: Depth) -> Result<Self, InternalError> {
         Ok(Separated {
             inner: parser.parse(depth.next())?,
             last: parser.parse(depth.last())?,
@@ -102,8 +102,8 @@ impl<'a, 'i, T: Parse<'a, 'i>, D: Parse<'a, 'i>> Parse<'a, 'i> for Separated<'a,
         })
     }
 }
-impl<'a, 'i, T, D> Separated<'a, 'i, T, D> {
-    pub fn from<U>(other: Separated<'a, 'i, U, D>) -> Self where T: From<U> {
+impl<'i, T, D> Separated<'i, T, D> {
+    pub fn from<U>(other: Separated<'i, U, D>) -> Self where T: From<U> {
         Separated {
             inner: other.inner.into_iter().map(|(u, d)| (T::from(u), d)).collect(),
             last: other.last.map(T::from),
@@ -111,7 +111,7 @@ impl<'a, 'i, T, D> Separated<'a, 'i, T, D> {
         }
     }
 }
-impl<'b, 'a: 'b, 'i: 'b, T: 'a, D: 'a> Separated<'a, 'i, T, D> {
+impl<'i: 'b, 'b, T: 'i, D: 'i> Separated<'i, T, D> {
     pub fn len(&self) -> usize {
         self.inner.len() + (self.last.is_some() as usize)
     }
@@ -164,7 +164,7 @@ impl<'b, 'a: 'b, 'i: 'b, T: 'a, D: 'a> Separated<'a, 'i, T, D> {
         self
     }
 }
-impl<'a, 'i, T: Spanned + 'a, D: 'a> Separated<'a, 'i, T, D> {
+impl<'i, T: Spanned + 'i, D: 'i> Separated<'i, T, D> {
     pub fn diagnostics_span(&self) -> Option<Span> {
         let first = self.iter().next();
         let last = self.last.as_ref().or_else(|| self.inner.iter().last().map(|(t, _d)| t));
@@ -176,15 +176,15 @@ impl<'a, 'i, T: Spanned + 'a, D: 'a> Separated<'a, 'i, T, D> {
         }
     }
 }
-impl<'a, 'i, T: 'a, D: 'a> IntoIterator for Separated<'a, 'i, T, D> {
+impl<'i, T: 'i, D: 'i> IntoIterator for Separated<'i, T, D> {
     type Item = T;
-    type IntoIter = Box<dyn Iterator<Item = T> + 'a>;
+    type IntoIter = Box<dyn Iterator<Item = T> + 'i>;
 
     fn into_iter(self) -> Self::IntoIter {
         Box::new(self.inner.into_iter().map(|(t, _)| t).chain(self.last))
     }
 }
-impl<'b, 'a: 'b, 'i: 'b, T: 'a, D: 'a> IntoIterator for &'b Separated<'a, 'i, T, D> {
+impl<'b, 'i: 'b, T: 'i, D: 'i> IntoIterator for &'b Separated<'i, T, D> {
     type Item = &'b T;
     type IntoIter = Box<dyn Iterator<Item = &'b T> + 'b>;
 
@@ -192,7 +192,7 @@ impl<'b, 'a: 'b, 'i: 'b, T: 'a, D: 'a> IntoIterator for &'b Separated<'a, 'i, T,
         Box::new(self.inner.iter().map(|(t, _)| t).chain(&self.last))
     }
 }
-impl<'b, 'a: 'b, 'i: 'b, T: 'a, D: 'a> IntoIterator for &'b mut Separated<'a, 'i, T, D> {
+impl<'b, 'i: 'b, T: 'i, D: 'i> IntoIterator for &'b mut Separated<'i, T, D> {
     type Item = &'b mut T;
     type IntoIter = Box<dyn Iterator<Item = &'b mut T> + 'b>;
 
@@ -200,21 +200,21 @@ impl<'b, 'a: 'b, 'i: 'b, T: 'a, D: 'a> IntoIterator for &'b mut Separated<'a, 'i
         Box::new(self.inner.iter_mut().map(|(t, _)| t).chain(&mut self.last))
     }
 }
-impl<'a, 'i, T: 'a, D: 'a> Extend<(D, T)> for Separated<'a, 'i, T, D> {
+impl<'i, T: 'i, D: 'i> Extend<(D, T)> for Separated<'i, T, D> {
     fn extend<I: IntoIterator<Item=(D, T)>>(&mut self, iter: I) {
         for (delim, element) in iter {
             self.push_back(Some(delim), element)
         }
     }
 }
-impl<'a, 'i, T: 'a, D: 'a> FromIterator<(D, T)> for Separated<'a, 'i, T, D> {
+impl<'i, T: 'i, D: 'i> FromIterator<(D, T)> for Separated<'i, T, D> {
     fn from_iter<I: IntoIterator<Item=(D, T)>>(iter: I) -> Self {
         let mut sep = Separated::default();
         sep.extend(iter);
         sep
     }
 }
-impl<'a, 'i, T: Display, D: Display> Display for Separated<'a, 'i, T, D> {
+impl<'i, T: Display, D: Display> Display for Separated<'i, T, D> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         let mut joined: String = self.inner.iter()
             .map(|(t, d)| format!("{}{}", t, d))
@@ -229,8 +229,8 @@ impl<'a, 'i, T: Display, D: Display> Display for Separated<'a, 'i, T, D> {
 
 macro_rules! impl_parse_for_tuples {
     ($last:ident $(,$name:ident)*) => {
-        impl<'a, 'i, $($name: Parse<'a, 'i>,)* $last: Parse<'a, 'i>> Parse<'a, 'i> for ($($name,)* $last,) {
-            fn parse_marked(parser: &mut Parser<'a, '_, 'i>, depth: Depth) -> Result<Self, InternalError> {
+        impl<'i, $($name: Parse<'i>,)* $last: Parse<'i>> Parse<'i> for ($($name,)* $last,) {
+            fn parse_marked(parser: &mut Parser<'i, '_>, depth: Depth) -> Result<Self, InternalError> {
                 Ok(($($name::parse(parser, depth.next())?,)* $last::parse(parser, depth.last())?,))
             }
         }
@@ -247,8 +247,8 @@ impl_parse_for_tuples!(A, B, C, D, E, F);
 macro_rules! impl_parse_for_tokens {
     ($($name:ident$(<$lt:lifetime>)?, $tokenname:ident;)+) => {
         $(
-            impl<'a, 'i> crate::parser::Parse<'a, 'i> for $tokenname $(<$lt>)? {
-                fn parse_marked(parser: &mut crate::parser::Parser<'a, '_, 'i>, _depth: Depth) -> Result<Self, crate::parser::InternalError> {
+            impl<'i> crate::parser::Parse<'i> for $tokenname $(<$lt>)? {
+                fn parse_marked(parser: &mut crate::parser::Parser<'i, '_>, _depth: Depth) -> Result<Self, crate::parser::InternalError> {
                     match parser.peek_token(0)? {
                         crate::lexer::Token::$name(t) => {
                             drop(parser.next_token());

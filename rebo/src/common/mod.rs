@@ -28,11 +28,11 @@ mod spanned;
 pub use spanned::*;
 
 #[derive(Debug)]
-pub enum UserType<'a, 'i> {
-    Struct(&'a ExprStructDefinition<'a, 'i>),
-    Enum(&'a ExprEnumDefinition<'a, 'i>),
+pub enum UserType<'i> {
+    Struct(&'i ExprStructDefinition<'i>),
+    Enum(&'i ExprEnumDefinition<'i>),
 }
-impl<'a, 'i> UserType<'a, 'i> {
+impl<'i> UserType<'i> {
     pub fn variant_initializer_diagnostics_span(&self, variant_name: &str) -> Option<Span> {
         match self {
             UserType::Enum(enum_def) => enum_def.variants.iter()
@@ -54,20 +54,20 @@ impl<'a, 'i> UserType<'a, 'i> {
             UserType::Enum(e) => e.name,
         }
     }
-    pub fn generics(&self) -> Option<&'a ExprGenerics<'a, 'i>> {
+    pub fn generics(&self) -> Option<&'i ExprGenerics<'i>> {
         match self {
             UserType::Struct(s) => s.generics.as_ref(),
             UserType::Enum(e) => e.generics.as_ref(),
         }
     }
-    pub fn unwrap_enum(&self) -> &'a ExprEnumDefinition<'a, 'i> {
+    pub fn unwrap_enum(&self) -> &'i ExprEnumDefinition<'i> {
         match self {
             UserType::Struct(_) => panic!("UserType::unwrap_enum called with struct"),
             UserType::Enum(e) => e,
         }
     }
 }
-impl<'a, 'i> Spanned for UserType<'a, 'i> {
+impl<'i> Spanned for UserType<'i> {
     fn span_with_id(&self) -> SpanWithId {
         match self {
             UserType::Struct(s) => s.span_with_id(),
@@ -77,11 +77,11 @@ impl<'a, 'i> Spanned for UserType<'a, 'i> {
 }
 
 /// Metadata / information needed before and/or during static analyses
-pub struct MetaInfo<'a, 'i> {
+pub struct MetaInfo<'i> {
     /// Tree of all the spans of expressions
     ///
     /// Available after the parser
-    pub expression_spans: IntervalTree<(FileId, usize), &'a Expr<'a, 'i>>,
+    pub expression_spans: IntervalTree<(FileId, usize), &'i Expr<'i>>,
     /// map from `ExprInclude::span` to its FileId
     ///
     /// Available after parser's first-pass.
@@ -103,11 +103,11 @@ pub struct MetaInfo<'a, 'i> {
     /// functions or associated functions found in the code
     ///
     /// Available after the parser.
-    pub rebo_functions: IndexMap<Cow<'i, str>, &'a ExprFunctionDefinition<'a, 'i>>,
+    pub rebo_functions: IndexMap<Cow<'i, str>, &'i ExprFunctionDefinition<'i>>,
     /// anonymous functions found in the code
     ///
     /// Available after the parser.
-    pub anonymous_rebo_functions: IndexMap<SpanWithId, (Vec<BindingId>, &'a ExprFunctionDefinition<'a, 'i>)>,
+    pub anonymous_rebo_functions: IndexMap<SpanWithId, (Vec<BindingId>, &'i ExprFunctionDefinition<'i>)>,
     /// functions defined in rust
     ///
     /// Available before the parser.
@@ -115,7 +115,7 @@ pub struct MetaInfo<'a, 'i> {
     /// functions defined in rust
     ///
     /// Available before the parser.
-    pub external_function_signatures: IndexMap<&'static str, ExprFunctionSignature<'a, 'i>>,
+    pub external_function_signatures: IndexMap<&'static str, ExprFunctionSignature<'i>>,
     /// variables defined by the user
     ///
     /// Available before the parser
@@ -123,11 +123,11 @@ pub struct MetaInfo<'a, 'i> {
     /// map names to enum / struct definitions found in the code
     ///
     /// Available after the first-pass of the parser.
-    pub user_types: IndexMap<&'i str, UserType<'a, 'i>>,
+    pub user_types: IndexMap<&'i str, UserType<'i>>,
     /// static variables defined in the code
     ///
     /// Available after the parser.
-    pub statics: IndexMap<&'i str, &'a ExprStatic<'a, 'i>>,
+    pub statics: IndexMap<&'i str, &'i ExprStatic<'i>>,
     /// static variable names defined in the code
     ///
     /// Available after the first-pass of the parser
@@ -156,7 +156,7 @@ pub struct MetaInfo<'a, 'i> {
     /// Available after the parser. Used for debugging
     pub generators: HashMap<String, (String, String)>,
 }
-impl<'a, 'i> MetaInfo<'a, 'i> {
+impl<'i> MetaInfo<'i> {
     pub fn new() -> Self {
         MetaInfo {
             expression_spans: <IntervalTree<_, _> as FromIterator<Element<_, _>>>::from_iter([]),
@@ -182,7 +182,7 @@ impl<'a, 'i> MetaInfo<'a, 'i> {
         }
     }
 
-    pub fn get_function_signature(&self, name: &str, def_span: SpanWithId) -> Option<&ExprFunctionSignature<'a, 'i>> {
+    pub fn get_function_signature(&self, name: &str, def_span: SpanWithId) -> Option<&ExprFunctionSignature<'i>> {
         if let Some(fun) = self.anonymous_rebo_functions.get(&def_span) {
             return Some(&fun.1.sig);
         }
@@ -194,7 +194,7 @@ impl<'a, 'i> MetaInfo<'a, 'i> {
         }
         None
     }
-    pub fn add_function(&mut self, diagnostics: &Diagnostics<ErrorCode>, name: Option<Cow<'i, str>>, fun: &'a ExprFunctionDefinition<'a, 'i>) {
+    pub fn add_function(&mut self, diagnostics: &Diagnostics<ErrorCode>, name: Option<Cow<'i, str>>, fun: &'i ExprFunctionDefinition<'i>) {
         let arg_binding_ids = fun.sig.args.iter().map(|ExprPatternTyped { pattern: ExprPatternUntyped { binding }, .. }| binding.id).collect();
         match name {
             Some(name) => {
@@ -210,7 +210,7 @@ impl<'a, 'i> MetaInfo<'a, 'i> {
             }
         }
     }
-    pub fn add_external_function(&mut self, arena: &'a Arena<Expr<'a, 'i>>, diagnostics: &'i Diagnostics<ErrorCode>, fun: ExternalFunction) {
+    pub fn add_external_function(&mut self, arena: &'i Arena<Expr<'i>>, diagnostics: &'i Diagnostics<ErrorCode>, fun: ExternalFunction) {
         let (file, _) = diagnostics.add_synthetic_named_file(fun.file_name, fun.code.to_string());
         if self.check_existing_function(diagnostics, fun.name, Span::new(FileId::synthetic_named(fun.file_name), 0, fun.code.len())) {
             return;
@@ -266,7 +266,7 @@ impl<'a, 'i> MetaInfo<'a, 'i> {
         diagnostics.add_synthetic_named_file(required_rebo_function.generics_file_name, required_rebo_function.generics_file_content.to_string());
         self.required_rebo_functions.insert(required_rebo_function);
     }
-    pub fn add_external_type<T: ExternalType>(&mut self, arena: &'a Arena<Expr<'a, 'i>>, diagnostics: &'i Diagnostics<ErrorCode>) {
+    pub fn add_external_type<T: ExternalType>(&mut self, arena: &'i Arena<Expr<'i>>, diagnostics: &'i Diagnostics<ErrorCode>) {
         let (file, _) = diagnostics.add_synthetic_named_file(T::FILE_NAME, T::CODE.to_string());
         self.external_types.insert(T::typ().type_name(), T::typ());
 
@@ -274,14 +274,14 @@ impl<'a, 'i> MetaInfo<'a, 'i> {
         let parser = Parser::new(IncludeDirectory::Path(PathBuf::new()), arena, lexer, diagnostics, self, true);
         parser.parse_ast().unwrap();
     }
-    pub fn add_external_code(&mut self, filename: String, code: String, arena: &'a Arena<Expr<'a, 'i>>, diagnostics: &'i Diagnostics<ErrorCode>, add_clone: bool) {
+    pub fn add_external_code(&mut self, filename: String, code: String, arena: &'i Arena<Expr<'i>>, diagnostics: &'i Diagnostics<ErrorCode>, add_clone: bool) {
         let (file, _) = diagnostics.add_file(filename, code);
 
         let lexer = Lexer::new(diagnostics, file);
         let parser = Parser::new(IncludeDirectory::Path(PathBuf::new()), arena, lexer, diagnostics, self, add_clone);
         parser.parse_ast().unwrap();
     }
-    pub fn add_enum(&mut self, diagnostics: &Diagnostics<ErrorCode>, enum_def: &'a ExprEnumDefinition<'a, 'i>) {
+    pub fn add_enum(&mut self, diagnostics: &Diagnostics<ErrorCode>, enum_def: &'i ExprEnumDefinition<'i>) {
         self.add_user_type(diagnostics, enum_def.name.ident, UserType::Enum(enum_def));
         for variant in enum_def.variants.iter() {
             if variant.fields.is_some() {
@@ -291,10 +291,10 @@ impl<'a, 'i> MetaInfo<'a, 'i> {
             }
         }
     }
-    pub fn add_struct(&mut self, diagnostics: &Diagnostics<ErrorCode>, struct_def: &'a ExprStructDefinition<'a, 'i>) {
+    pub fn add_struct(&mut self, diagnostics: &Diagnostics<ErrorCode>, struct_def: &'i ExprStructDefinition<'i>) {
         self.add_user_type(diagnostics, struct_def.name.ident, UserType::Struct(struct_def))
     }
-    pub fn add_user_type(&mut self, diagnostics: &Diagnostics<ErrorCode>, name: &'i str, user_type: UserType<'a, 'i>) {
+    pub fn add_user_type(&mut self, diagnostics: &Diagnostics<ErrorCode>, name: &'i str, user_type: UserType<'i>) {
         match self.user_types.entry(name) {
             Entry::Vacant(vacant) => { vacant.insert(user_type); },
             Entry::Occupied(occupied) => {
@@ -308,7 +308,7 @@ impl<'a, 'i> MetaInfo<'a, 'i> {
             }
         }
     }
-    pub fn add_static(&mut self, diagnostics: &Diagnostics<ErrorCode>, static_def: &'a ExprStatic<'a, 'i>) {
+    pub fn add_static(&mut self, diagnostics: &Diagnostics<ErrorCode>, static_def: &'i ExprStatic<'i>) {
         let name = match &static_def.sig.pattern {
             ExprPattern::Untyped(untyped) => untyped.binding.ident.ident,
             ExprPattern::Typed(typed) => typed.pattern.binding.ident.ident,
@@ -327,7 +327,7 @@ impl<'a, 'i> MetaInfo<'a, 'i> {
         }
     }
 }
-impl<'a, 'i> Default for MetaInfo<'a, 'i> {
+impl<'i> Default for MetaInfo<'i> {
     fn default() -> Self {
         Self::new()
     }
@@ -377,40 +377,40 @@ impl Display for Depth {
 }
 
 #[derive(Debug)]
-pub struct BlockStack<'a, 'i, T> {
-    blocks: Rc<RefCell<Vec<(BlockType<'a, 'i>, T)>>>,
+pub struct BlockStack<'i, T> {
+    blocks: Rc<RefCell<Vec<(BlockType<'i>, T)>>>,
 }
 #[derive(Clone, Debug)]
-pub enum BlockType<'a, 'i> {
+pub enum BlockType<'i> {
     Function,
-    Loop(Option<&'a ExprLabel<'i>>),
-    While(Option<&'a ExprLabel<'i>>),
-    For(Option<&'a ExprLabel<'i>>),
+    Loop(Option<&'i ExprLabel<'i>>),
+    While(Option<&'i ExprLabel<'i>>),
+    For(Option<&'i ExprLabel<'i>>),
 }
 #[must_use]
-pub struct BlockGuard<'a, 'i, T> {
-    blocks: Rc<RefCell<Vec<(BlockType<'a, 'i>, T)>>>
+pub struct BlockGuard<'i, T> {
+    blocks: Rc<RefCell<Vec<(BlockType<'i>, T)>>>
 }
-impl<'a, 'i, T> Drop for BlockGuard<'a, 'i, T> {
+impl<'i, T> Drop for BlockGuard<'i, T> {
     fn drop(&mut self) {
         self.blocks.borrow_mut().pop();
     }
 }
-impl<'a, 'i, T: Clone> BlockStack<'a, 'i, T> {
+impl<'i, T: Clone> BlockStack<'i, T> {
     pub fn new() -> Self {
         BlockStack { blocks: Rc::new(RefCell::new(Vec::new())) }
     }
-    pub fn push_block(&self, typ: BlockType<'a, 'i>, data: T) -> BlockGuard<'a, 'i, T> {
+    pub fn push_block(&self, typ: BlockType<'i>, data: T) -> BlockGuard<'i, T> {
         self.blocks.borrow_mut().push((typ, data));
         BlockGuard { blocks: Rc::clone(&self.blocks) }
     }
-    pub fn get_loop_like(&self, label: Option<&ExprLabel<'_>>) -> Option<(BlockType<'a, 'i>, T)> {
+    pub fn get_loop_like(&self, label: Option<&ExprLabel<'_>>) -> Option<(BlockType<'i>, T)> {
         match label {
             Some(label) => self.get_loop_like_named(label),
             None => self.get_loop_like_unnamed(),
         }
     }
-    fn get_loop_like_unnamed(&self) -> Option<(BlockType<'a, 'i>, T)> {
+    fn get_loop_like_unnamed(&self) -> Option<(BlockType<'i>, T)> {
         self.blocks.borrow().iter()
             .rev()
             .find(|(typ, _)| match typ {
@@ -418,7 +418,7 @@ impl<'a, 'i, T: Clone> BlockStack<'a, 'i, T> {
                 BlockType::Loop(_) | BlockType::While(_) | BlockType::For(_) => true,
             }).cloned()
     }
-    fn get_loop_like_named(&self, label: &ExprLabel<'_>) -> Option<(BlockType<'a, 'i>, T)> {
+    fn get_loop_like_named(&self, label: &ExprLabel<'_>) -> Option<(BlockType<'i>, T)> {
         self.blocks.borrow().iter()
             .rev()
             .find(|(typ, _)| match typ {
@@ -429,7 +429,7 @@ impl<'a, 'i, T: Clone> BlockStack<'a, 'i, T> {
                 BlockType::Loop(None) | BlockType::While(None) | BlockType::For(None) => false,
             }).cloned()
     }
-    pub fn get_function(&self) -> Option<(BlockType<'a, 'i>, T)> {
+    pub fn get_function(&self) -> Option<(BlockType<'i>, T)> {
         self.blocks.borrow().iter()
             .rev()
             .find(|(typ, _)| match typ {

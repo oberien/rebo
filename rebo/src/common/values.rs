@@ -220,8 +220,8 @@ impl PartialEq<ExprLiteral> for Value {
 
 macro_rules! fmt_value_wrappers {
     ($($fmt:ident, $struct_name:ident, float: $float:tt, bool: $bool:tt, string: $string:tt, debug_enum: $debug_enum:tt, Debug: $debug:tt;)*) => {$(
-        pub struct $struct_name<'a>(pub &'a Value);
-        impl<'a> fmt::$fmt for $struct_name<'a> {
+        pub struct $struct_name<'i>(pub &'i Value);
+        impl<'i> fmt::$fmt for $struct_name<'i> {
             fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
                 match self.0 {
                     Value::Unit => fmt::Debug::fmt(&(), f),
@@ -298,7 +298,7 @@ macro_rules! fmt_value_wrappers {
     (string, false, $fmt:ident, $string:expr, $f:expr) => { unreachable!("{} called on string", stringify!($fmt)) };
     // (string, $else:tt, $fmt:ident, $string:expr, $f:expr) => { compile_error!("string only accepts `true` or `false`") };
     (impl_debug, true, $fmt:ident, $struct_name:ident) => {
-        impl<'a> fmt::Debug for $struct_name<'a> {
+        impl<'i> fmt::Debug for $struct_name<'i> {
             fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
                 fmt::$fmt::fmt(self, f)
             }
@@ -476,7 +476,7 @@ impl RequiredReboFunctionStruct {
     }
 }
 
-pub type RustFunction = for<'a, 'i> fn(expr_span: Span, &mut VmContext<'a, '_, '_, 'i>, Vec<Value>) -> Result<Value, ExecError<'a, 'i>>;
+pub type RustFunction = for<'i> fn(expr_span: Span, &mut VmContext<'i, '_, '_>, Vec<Value>) -> Result<Value, ExecError<'i>>;
 #[derive(Clone)]
 pub enum Function {
     /// fn-pointer

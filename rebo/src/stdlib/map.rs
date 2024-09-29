@@ -94,7 +94,7 @@ macro_rules! impl_map {
 impl_map! { HashMap<K, V> where K: Hash + Eq }
 impl_map! { BTreeMap<K, V> where K: Ord }
 
-pub fn add_map<'a, 'i>(diagnostics: &'i Diagnostics<ErrorCode>, arena: &'a Arena<Expr<'a, 'i>>, meta_info: &mut MetaInfo<'a, 'i>) {
+pub fn add_map<'i>(diagnostics: &'i Diagnostics<ErrorCode>, arena: &'i Arena<Expr<'i>>, meta_info: &mut MetaInfo<'i>) {
     meta_info.add_external_type::<Map<Value, Value>>(arena, diagnostics);
     meta_info.add_external_type::<MapEntry<Value, Value>>(arena, diagnostics);
 

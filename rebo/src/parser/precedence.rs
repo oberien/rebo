@@ -18,9 +18,9 @@ macro_rules! module_path {
 pub(super) trait Precedence: Sized + Copy {
     fn try_from_token(token: Token<'_>) -> Result<Self, InternalError>;
     fn precedence(self) -> u8;
-    fn expr_type_constructor<'a, 'i>(self) -> fn(&'a Expr<'a, 'i>, Token<'i>, &'a Expr<'a, 'i>) -> Expr<'a, 'i>;
+    fn expr_type_constructor<'i>(self) -> fn(&'i Expr<'i>, Token<'i>, &'i Expr<'i>) -> Expr<'i>;
     fn expected() -> Cow<'static, [Expected]>;
-    fn primitive_parse_fn<'a, 'b, 'i>() -> fn(&mut Parser<'a, 'b, 'i>, Depth) -> Result<&'a Expr<'a, 'i>, InternalError>;
+    fn primitive_parse_fn<'i, 'b>() -> fn(&mut Parser<'i, 'b>, Depth) -> Result<&'i Expr<'i>, InternalError>;
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -54,7 +54,7 @@ impl Precedence for Math {
         }
     }
 
-    fn expr_type_constructor<'a, 'i>(self) -> fn(&'a Expr<'a, 'i>, Token<'i>, &'a Expr<'a, 'i>) -> Expr<'a, 'i> {
+    fn expr_type_constructor<'i>(self) -> fn(&'i Expr<'i>, Token<'i>, &'i Expr<'i>) -> Expr<'i> {
         match self {
             Math::Add => ExprAdd::new_as_expr,
             Math::Sub => ExprSub::new_as_expr,
@@ -69,7 +69,7 @@ impl Precedence for Math {
         Cow::Borrowed(Expected::MATH_OP)
     }
 
-    fn primitive_parse_fn<'a, 'b, 'i>() -> fn(&mut Parser<'a, 'b, 'i>, Depth) -> Result<&'a Expr<'a, 'i>, InternalError> {
+    fn primitive_parse_fn<'i, 'b>() -> fn(&mut Parser<'i, 'b>, Depth) -> Result<&'i Expr<'i>, InternalError> {
         |parser, depth| Expr::try_parse_until_excluding(parser, ParseUntil::Math, depth)
     }
 }
@@ -96,7 +96,7 @@ impl Precedence for BooleanExpr {
         }
     }
 
-    fn expr_type_constructor<'a, 'i>(self) -> fn(&'a Expr<'a, 'i>, Token<'i>, &'a Expr<'a, 'i>) -> Expr<'a, 'i> {
+    fn expr_type_constructor<'i>(self) -> fn(&'i Expr<'i>, Token<'i>, &'i Expr<'i>) -> Expr<'i> {
         match self {
             BooleanExpr::And => ExprBoolAnd::new_as_expr,
             BooleanExpr::Or => ExprBoolOr::new_as_expr,
@@ -107,13 +107,13 @@ impl Precedence for BooleanExpr {
         Cow::Borrowed(Expected::BOOL_OP)
     }
 
-    fn primitive_parse_fn<'a, 'b, 'i>() -> fn(&mut Parser<'a, 'b, 'i>, Depth) -> Result<&'a Expr<'a, 'i>, InternalError> {
+    fn primitive_parse_fn<'i, 'b>() -> fn(&mut Parser<'i, 'b>, Depth) -> Result<&'i Expr<'i>, InternalError> {
         |parser, depth| Expr::try_parse_until_excluding(parser, ParseUntil::BooleanExpr, depth)
     }
 }
 
-impl<'a, 'i> Expr<'a, 'i> {
-    pub(super) fn try_parse_precedence<P: Precedence>(parser: &mut Parser<'a, '_, 'i>, depth: Depth) -> Result<&'a Expr<'a, 'i>, InternalError> {
+impl<'i> Expr<'i> {
+    pub(super) fn try_parse_precedence<P: Precedence>(parser: &mut Parser<'i, '_>, depth: Depth) -> Result<&'i Expr<'i>, InternalError> {
         trace!("{} Expr::try_parse_precedence {}        ({:?})", depth, ::std::any::type_name::<P>(), parser.peek_token(0));
         let mark = parser.lexer.mark();
         let mut lhs = P::primitive_parse_fn()(parser, depth.next())?;
@@ -131,7 +131,7 @@ impl<'a, 'i> Expr<'a, 'i> {
         }
     }
 
-    fn try_parse_precedence_inner<P: Precedence>(parser: &mut Parser<'a, '_, 'i>, lhs: &'a Expr<'a, 'i>, depth: Depth) -> Result<&'a Expr<'a, 'i>, InternalError> {
+    fn try_parse_precedence_inner<P: Precedence>(parser: &mut Parser<'i, '_>, lhs: &'i Expr<'i>, depth: Depth) -> Result<&'i Expr<'i>, InternalError> {
         let op_token = parser.peek_token(0)?;
         let op = P::try_from_token(op_token.clone())?;
         drop(parser.next_token());

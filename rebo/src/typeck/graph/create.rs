@@ -172,11 +172,11 @@ impl Drop for GenericGuard {
     }
 }
 
-struct Context<'ctx, 'a, 'i> {
+struct Context<'ctx, 'i> {
     diagnostics: &'ctx Diagnostics<ErrorCode>,
-    meta_info: &'ctx MetaInfo<'a, 'i>,
+    meta_info: &'ctx MetaInfo<'i>,
     function_generics: &'ctx FunctionGenerics,
-    block_stack: &'ctx BlockStack<'a, 'i, Node>,
+    block_stack: &'ctx BlockStack<'i, Node>,
 }
 
 fn convert_expr_type(typ: &ExprType, diagnostics: &Diagnostics<ErrorCode>, meta_info: &MetaInfo) -> Type {
@@ -565,7 +565,7 @@ impl<'i> Graph<'i> {
             },
         }
     }
-    pub fn create(diagnostics: &'i Diagnostics<ErrorCode>, meta_info: &mut MetaInfo<'_, 'i>, exprs: &[&Expr<'_, 'i>]) -> Graph<'i> {
+    pub fn create(diagnostics: &'i Diagnostics<ErrorCode>, meta_info: &mut MetaInfo<'i>, exprs: &[&'i Expr<'i>]) -> Graph<'i> {
         Self::add_user_types(diagnostics, meta_info);
         Self::verify_external_types(diagnostics, meta_info);
         Self::add_function_types(diagnostics, meta_info);
@@ -604,7 +604,7 @@ impl<'i> Graph<'i> {
         graph
     }
 
-    fn visit_expr<'a>(&mut self, ctx: &Context<'_, 'a, 'i>, expr: &'a Expr<'a, 'i>) -> Node {
+    fn visit_expr(&mut self, ctx: &Context<'_, 'i>, expr: &'i Expr<'i>) -> Node {
         let node = Node::type_var(expr);
         self.add_node(node);
         match expr {
@@ -1088,7 +1088,7 @@ impl<'i> Graph<'i> {
         node
     }
 
-    fn visit_block<'a>(&mut self, ctx: &Context<'_, 'a, 'i>, block: &'a ExprBlock<'a, 'i>) -> Node {
+    fn visit_block(&mut self, ctx: &Context<'_, 'i>, block: &'i ExprBlock<'i>) -> Node {
         let node = Node::type_var(block);
         self.add_node(node);
         let ExprBlock { body: BlockBody { exprs, terminated_with_semicolon }, .. } = block;
@@ -1104,7 +1104,7 @@ impl<'i> Graph<'i> {
         node
     }
 
-    fn visit_function<'a>(&mut self, ctx: &Context<'_, 'a, 'i>, function: &'a ExprFunctionDefinition<'a, 'i>) -> Node {
+    fn visit_function(&mut self, ctx: &Context<'_, 'i>, function: &'i ExprFunctionDefinition<'i>) -> Node {
         let _scope_guard = ctx.function_generics.push_ununifyable();
         for generic in function.sig.generics.iter().flat_map(|g| &g.generics).flatten() {
             ctx.function_generics.insert_ununifyable(generic.def_ident.span);

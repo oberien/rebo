@@ -80,7 +80,7 @@ impl<T> DeepCopy for List<T> {
     }
 }
 
-pub fn add_list<'a, 'i>(diagnostics: &'i Diagnostics<ErrorCode>, arena: &'a Arena<Expr<'a, 'i>>, meta_info: &mut MetaInfo<'a, 'i>) {
+pub fn add_list<'i>(diagnostics: &'i Diagnostics<ErrorCode>, arena: &'i Arena<Expr<'i>>, meta_info: &mut MetaInfo<'i>) {
     meta_info.add_external_type::<List<Value>>(arena, diagnostics);
     meta_info.add_external_function(arena, diagnostics, list_new);
     meta_info.add_external_function(arena, diagnostics, list_of);

@@ -47,7 +47,7 @@ mod required {
     }
  }
 
-pub fn add_to_meta_info<'a, 'i>(stdlib: Stdlib, diagnostics: &'i Diagnostics<ErrorCode>, arena: &'a Arena<Expr<'a, 'i>>, meta_info: &mut MetaInfo<'a, 'i>) {
+pub fn add_to_meta_info<'i>(stdlib: Stdlib, diagnostics: &'i Diagnostics<ErrorCode>, arena: &'i Arena<Expr<'i>>, meta_info: &mut MetaInfo<'i>) {
     meta_info.add_external_function(arena, diagnostics, clone);
 
     meta_info.add_external_type::<FileError>(arena, diagnostics);
@@ -297,7 +297,7 @@ trait Sliceable: Sized {
     fn remove_start(&mut self, num: usize);
     fn remove_end(&mut self, num: usize);
     fn name() -> &'static str;
-    fn slice<'a, 'i>(mut self, vm: &VmContext<'a, '_, '_, 'i>, expr_span: Span, start: i64, mut args: impl Iterator<Item = Value>) -> Result<Self, ExecError<'a, 'i>> {
+    fn slice<'i>(mut self, vm: &VmContext<'i, '_, '_>, expr_span: Span, start: i64, mut args: impl Iterator<Item = Value>) -> Result<Self, ExecError<'i>> {
         let end = args.next().map(|val| val.expect_int("TypedVarargs is broken as fuck"));
         if args.next().is_some() {
             vm.diagnostics().error(ErrorCode::Panic)
@@ -421,7 +421,7 @@ fn string_parse_float(this: String) -> Result<f64, ()> {
     }
 }
 
-fn compile_regex<'a, 'i>(regex: String, vm: &VmContext<'a, '_, '_, 'i>, expr_span: Span) -> Result<Regex, ExecError<'a, 'i>> {
+fn compile_regex<'i>(regex: String, vm: &VmContext<'i, '_, '_>, expr_span: Span) -> Result<Regex, ExecError<'i>> {
     match Regex::new(&regex) {
         Ok(regex) => Ok(regex),
         Err(regex::Error::Syntax(msg)) => {

@@ -9,7 +9,7 @@ use crate::typeck::types::{SpecificType, Type};
 pub struct FunctionLints;
 
 impl Visitor for FunctionLints {
-    fn visit_function_definition(&self, diagnostics: &Diagnostics<ErrorCode>, meta_info: &MetaInfo, _: &BlockStack<'_, '_, ()>, def: &ExprFunctionDefinition) {
+    fn visit_function_definition(&self, diagnostics: &Diagnostics<ErrorCode>, meta_info: &MetaInfo, _: &BlockStack<'_, ()>, def: &ExprFunctionDefinition) {
         let ExprFunctionDefinition { sig, captures, body: ExprBlock { body: BlockBody { exprs, .. }, .. }, .. } = def;
         // TODO: can this be better?
         let rebo_function = meta_info.rebo_functions.iter().find(|(_name, fun)| fun.span_with_id() == def.span_with_id());

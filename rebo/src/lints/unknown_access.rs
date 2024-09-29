@@ -12,7 +12,7 @@ use crate::typeck::TypeVar;
 pub struct UnknownAccess;
 
 impl Visitor for UnknownAccess {
-    fn visit_access(&self, diagnostics: &Diagnostics<ErrorCode>, meta_info: &MetaInfo, _: &BlockStack<'_, '_, ()>, access: &ExprAccess) {
+    fn visit_access(&self, diagnostics: &Diagnostics<ErrorCode>, meta_info: &MetaInfo, _: &BlockStack<'_, ()>, access: &ExprAccess) {
         let ExprAccess { variable, accesses, .. } = access;
 
         let mut type_var = TypeVar::from_spanned(variable);

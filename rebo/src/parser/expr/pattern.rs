@@ -18,12 +18,12 @@ macro_rules! module_path {
 
 
 #[derive(Debug, Clone, derive_more::Display)]
-pub enum ExprPattern<'a, 'i> {
-    Typed(ExprPatternTyped<'a, 'i>),
+pub enum ExprPattern<'i> {
+    Typed(ExprPatternTyped<'i>),
     Untyped(ExprPatternUntyped<'i>),
 }
-impl<'a, 'i> Parse<'a, 'i> for ExprPattern<'a, 'i> {
-    fn parse_marked(parser: &mut Parser<'a, '_, 'i>, depth: Depth) -> Result<Self, InternalError> {
+impl<'i> Parse<'i> for ExprPattern<'i> {
+    fn parse_marked(parser: &mut Parser<'i, '_>, depth: Depth) -> Result<Self, InternalError> {
         let err1 = match ExprPatternTyped::parse(parser, depth.next()) {
             Ok(typed) => return Ok(ExprPattern::Typed(typed)),
             Err(e) => e,
@@ -35,7 +35,7 @@ impl<'a, 'i> Parse<'a, 'i> for ExprPattern<'a, 'i> {
         Err(helper::last_error(&[err1, err2]))
     }
 }
-impl<'a, 'i> Spanned for ExprPattern<'a, 'i> {
+impl<'i> Spanned for ExprPattern<'i> {
     fn span_with_id(&self) -> SpanWithId {
         match self {
             ExprPattern::Typed(t) => t.span_with_id(),
@@ -48,8 +48,8 @@ impl<'a, 'i> Spanned for ExprPattern<'a, 'i> {
 pub struct ExprPatternUntyped<'i> {
     pub binding: Binding<'i>,
 }
-impl<'a, 'i> Parse<'a, 'i> for ExprPatternUntyped<'i> {
-    fn parse_marked(parser: &mut Parser<'a, '_, 'i>, depth: Depth) -> Result<Self, InternalError> {
+impl<'i> Parse<'i> for ExprPatternUntyped<'i> {
+    fn parse_marked(parser: &mut Parser<'i, '_>, depth: Depth) -> Result<Self, InternalError> {
         let binding = Binding::parse_new(parser, depth.last())?;
         Ok(ExprPatternUntyped { binding })
     }
@@ -70,32 +70,32 @@ impl<'i> Display for ExprPatternUntyped<'i> {
 }
 
 #[derive(Debug, Clone)]
-pub struct ExprPatternTyped<'a, 'i> {
+pub struct ExprPatternTyped<'i> {
     pub pattern: ExprPatternUntyped<'i>,
     pub colon_token: TokenColon,
-    pub typ: ExprType<'a, 'i>,
+    pub typ: ExprType<'i>,
     pub span: SpanWithId,
 }
-impl<'a, 'i> ExprPatternTyped<'a, 'i> {
-    pub fn new(pattern: ExprPatternUntyped<'i>, colon_token: TokenColon, typ: ExprType<'a, 'i>) -> Self {
+impl<'i> ExprPatternTyped<'i> {
+    pub fn new(pattern: ExprPatternUntyped<'i>, colon_token: TokenColon, typ: ExprType<'i>) -> Self {
         let span = pattern.span_with_id() | typ.span_with_id();
         ExprPatternTyped { pattern, colon_token, typ, span }
     }
 }
-impl<'a, 'i> Parse<'a, 'i> for ExprPatternTyped<'a, 'i> {
-    fn parse_marked(parser: &mut Parser<'a, '_, 'i>, depth: Depth) -> Result<Self, InternalError> {
+impl<'i> Parse<'i> for ExprPatternTyped<'i> {
+    fn parse_marked(parser: &mut Parser<'i, '_>, depth: Depth) -> Result<Self, InternalError> {
         let pattern = parser.parse(depth.next())?;
         let colon_token = parser.parse(depth.next())?;
         let typ = parser.parse(depth.last())?;
         Ok(ExprPatternTyped::new(pattern, colon_token, typ))
     }
 }
-impl<'a, 'i> Spanned for ExprPatternTyped<'a, 'i> {
+impl<'i> Spanned for ExprPatternTyped<'i> {
     fn span_with_id(&self) -> SpanWithId {
         self.span
     }
 }
-impl<'a, 'i> Display for ExprPatternTyped<'a, 'i> {
+impl<'i> Display for ExprPatternTyped<'i> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "{}: {}", self.pattern, self.typ)
     }
@@ -103,14 +103,14 @@ impl<'a, 'i> Display for ExprPatternTyped<'a, 'i> {
 
 #[derive(Debug, Clone, derive_more::Display)]
 #[allow(clippy::large_enum_variant)]
-pub enum ExprMatchPattern<'a, 'i> {
+pub enum ExprMatchPattern<'i> {
     Literal(ExprLiteral),
-    Variant(ExprMatchPatternVariant<'a, 'i>),
+    Variant(ExprMatchPatternVariant<'i>),
     Binding(Binding<'i>),
     Wildcard(TokenUnderscore),
 }
-impl<'a, 'i> Parse<'a, 'i> for ExprMatchPattern<'a, 'i> {
-    fn parse_marked(parser: &mut Parser<'a, '_, 'i>, depth: Depth) -> Result<Self, InternalError> {
+impl<'i> Parse<'i> for ExprMatchPattern<'i> {
+    fn parse_marked(parser: &mut Parser<'i, '_>, depth: Depth) -> Result<Self, InternalError> {
         let err1 = match ExprMatchPatternVariant::parse(parser, depth.next()) {
             Ok(variant) => return Ok(ExprMatchPattern::Variant(variant)),
             Err(e) => e,
@@ -130,7 +130,7 @@ impl<'a, 'i> Parse<'a, 'i> for ExprMatchPattern<'a, 'i> {
         Err(helper::last_error(&[err1, err2, err3, err4]))
     }
 }
-impl<'a, 'i> Spanned for ExprMatchPattern<'a, 'i> {
+impl<'i> Spanned for ExprMatchPattern<'i> {
     fn span_with_id(&self) -> SpanWithId {
         match self {
             ExprMatchPattern::Literal(lit) => lit.span_with_id(),
@@ -142,36 +142,36 @@ impl<'a, 'i> Spanned for ExprMatchPattern<'a, 'i> {
 }
 
 #[derive(Debug, Clone)]
-pub struct ExprMatchPatternVariant<'a, 'i> {
+pub struct ExprMatchPatternVariant<'i> {
     pub enum_name: TokenIdent<'i>,
     pub double_colon: TokenDoubleColon,
     pub variant_name: TokenIdent<'i>,
-    pub fields: Option<(TokenOpenParen, Separated<'a, 'i, Binding<'i>, TokenComma>, TokenCloseParen)>,
+    pub fields: Option<(TokenOpenParen, Separated<'i, Binding<'i>, TokenComma>, TokenCloseParen)>,
     pub span: SpanWithId,
 }
-impl<'a, 'i> ExprMatchPatternVariant<'a, 'i> {
-    pub fn new(enum_name: TokenIdent<'i>, double_colon: TokenDoubleColon, variant_name: TokenIdent<'i>, fields: Option<(TokenOpenParen, Separated<'a, 'i, Binding<'i>, TokenComma>, TokenCloseParen)>) -> Self {
+impl<'i> ExprMatchPatternVariant<'i> {
+    pub fn new(enum_name: TokenIdent<'i>, double_colon: TokenDoubleColon, variant_name: TokenIdent<'i>, fields: Option<(TokenOpenParen, Separated<'i, Binding<'i>, TokenComma>, TokenCloseParen)>) -> Self {
         let span = enum_name.span | variant_name.span | fields.as_ref().map(|(.., close)| close.span_with_id());
         ExprMatchPatternVariant { enum_name, double_colon, variant_name, fields, span }
     }
 }
-impl<'a, 'i> Parse<'a, 'i> for ExprMatchPatternVariant<'a, 'i> {
-    fn parse_marked(parser: &mut Parser<'a, '_, 'i>, depth: Depth) -> Result<Self, InternalError> {
+impl<'i> Parse<'i> for ExprMatchPatternVariant<'i> {
+    fn parse_marked(parser: &mut Parser<'i, '_>, depth: Depth) -> Result<Self, InternalError> {
         Ok(ExprMatchPatternVariant::new(
             parser.parse(depth.next())?,
             parser.parse(depth.next())?,
             parser.parse(depth.next())?,
-            parser.parse::<Option<(TokenOpenParen, Separated<'a, 'i, NewBinding<'i>, TokenComma>, TokenCloseParen)>>(depth.next())?
+            parser.parse::<Option<(TokenOpenParen, Separated<'i, NewBinding<'i>, TokenComma>, TokenCloseParen)>>(depth.next())?
                 .map(|(open, sep, close)| (open, Separated::from(sep), close)),
         ))
     }
 }
-impl<'a, 'i> Spanned for ExprMatchPatternVariant<'a, 'i> {
+impl<'i> Spanned for ExprMatchPatternVariant<'i> {
     fn span_with_id(&self) -> SpanWithId {
         self.span
     }
 }
-impl<'a, 'i> Display for ExprMatchPatternVariant<'a, 'i> {
+impl<'i> Display for ExprMatchPatternVariant<'i> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "{}::{}", self.enum_name.ident, self.variant_name.ident)?;
         if let Some((_, sep, _)) = &self.fields {

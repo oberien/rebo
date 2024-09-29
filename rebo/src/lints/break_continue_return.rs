@@ -8,7 +8,7 @@ use crate::parser::{ExprBreak, ExprContinue, ExprReturn};
 pub struct BreakContinueReturn;
 
 impl Visitor for BreakContinueReturn {
-    fn visit_break(&self, diagnostics: &Diagnostics<ErrorCode>, _: &MetaInfo, block_stack: &BlockStack<'_, '_, ()>, br: &ExprBreak) {
+    fn visit_break(&self, diagnostics: &Diagnostics<ErrorCode>, _: &MetaInfo, block_stack: &BlockStack<'_, ()>, br: &ExprBreak) {
         let ExprBreak { break_token: _, label, expr, span: _ } = br;
 
         match (block_stack.get_loop_like(label.as_ref()), label) {
@@ -38,7 +38,7 @@ impl Visitor for BreakContinueReturn {
         }
     }
 
-    fn visit_continue(&self, diagnostics: &Diagnostics<ErrorCode>, _: &MetaInfo, block_stack: &BlockStack<'_, '_, ()>, cont: &ExprContinue) {
+    fn visit_continue(&self, diagnostics: &Diagnostics<ErrorCode>, _: &MetaInfo, block_stack: &BlockStack<'_, ()>, cont: &ExprContinue) {
         let ExprContinue { continue_token: _, label, span: _} = cont;
 
         match (block_stack.get_loop_like(label.as_ref()), label) {
@@ -56,7 +56,7 @@ impl Visitor for BreakContinueReturn {
         }
     }
 
-    fn visit_return(&self, diagnostics: &Diagnostics<ErrorCode>, _: &MetaInfo, block_stack: &BlockStack<'_, '_, ()>, ret: &ExprReturn) {
+    fn visit_return(&self, diagnostics: &Diagnostics<ErrorCode>, _: &MetaInfo, block_stack: &BlockStack<'_, ()>, ret: &ExprReturn) {
         if block_stack.get_function().is_none() {
             diagnostics.error(ErrorCode::ReturnOutsideOfFunction)
                 .with_error_label(ret.diagnostics_span(), "this return is not inside a function")

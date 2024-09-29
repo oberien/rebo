@@ -3,63 +3,63 @@ use diagnostic::Diagnostics;
 use crate::common::{MetaInfo, BlockStack, BlockType};
 use crate::ErrorCode;
 
-pub struct VisitorDriver<'a, 'b, 'i, 'v> {
+pub struct VisitorDriver<'i, 'b, 'v> {
     diagnostics: &'b Diagnostics<ErrorCode>,
-    meta_info: &'b MetaInfo<'a, 'i>,
-    block_stack: BlockStack<'a, 'i, ()>,
+    meta_info: &'b MetaInfo<'i>,
+    block_stack: BlockStack<'i, ()>,
     visitors: Vec<&'v dyn Visitor>,
 }
 
 pub trait Visitor {
-    fn visit_literal(&self, _: &Diagnostics<ErrorCode>, _: &MetaInfo, _: &BlockStack<'_, '_, ()>, _: &ExprLiteral) {}
-    fn visit_format_string(&self, _: &Diagnostics<ErrorCode>, _: &MetaInfo, _: &BlockStack<'_, '_, ()>, _: &ExprFormatString) {}
-    fn visit_bind(&self, _: &Diagnostics<ErrorCode>, _: &MetaInfo, _: &BlockStack<'_, '_, ()>, _: &ExprBind) {}
-    fn visit_static(&self, _: &Diagnostics<ErrorCode>, _: &MetaInfo, _: &BlockStack<'_, '_, ()>, _: &ExprStatic) {}
-    fn visit_assign(&self, _: &Diagnostics<ErrorCode>, _: &MetaInfo, _: &BlockStack<'_, '_, ()>, _: &ExprAssign) {}
-    fn visit_bool_not(&self, _: &Diagnostics<ErrorCode>, _: &MetaInfo, _: &BlockStack<'_, '_, ()>, _: &ExprBoolNot) {}
-    fn visit_neg(&self, _: &Diagnostics<ErrorCode>, _: &MetaInfo, _: &BlockStack<'_, '_, ()>, _: &ExprNeg) {}
-    fn visit_add(&self, _: &Diagnostics<ErrorCode>, _: &MetaInfo, _: &BlockStack<'_, '_, ()>, _: &ExprAdd) {}
-    fn visit_sub(&self, _: &Diagnostics<ErrorCode>, _: &MetaInfo, _: &BlockStack<'_, '_, ()>, _: &ExprSub) {}
-    fn visit_mul(&self, _: &Diagnostics<ErrorCode>, _: &MetaInfo, _: &BlockStack<'_, '_, ()>, _: &ExprMul) {}
-    fn visit_div(&self, _: &Diagnostics<ErrorCode>, _: &MetaInfo, _: &BlockStack<'_, '_, ()>, _: &ExprDiv) {}
-    fn visit_mod(&self, _: &Diagnostics<ErrorCode>, _: &MetaInfo, _: &BlockStack<'_, '_, ()>, _: &ExprMod) {}
-    fn visit_xor(&self, _: &Diagnostics<ErrorCode>, _: &MetaInfo, _: &BlockStack<'_, '_, ()>, _: &ExprXor) {}
-    fn visit_bool_and(&self, _: &Diagnostics<ErrorCode>, _: &MetaInfo, _: &BlockStack<'_, '_, ()>, _: &ExprBoolAnd) {}
-    fn visit_bool_or(&self, _: &Diagnostics<ErrorCode>, _: &MetaInfo, _: &BlockStack<'_, '_, ()>, _: &ExprBoolOr) {}
-    fn visit_add_assign(&self, _: &Diagnostics<ErrorCode>, _: &MetaInfo, _: &BlockStack<'_, '_, ()>, _: &ExprAddAssign) {}
-    fn visit_sub_assign(&self, _: &Diagnostics<ErrorCode>, _: &MetaInfo, _: &BlockStack<'_, '_, ()>, _: &ExprSubAssign) {}
-    fn visit_mul_assign(&self, _: &Diagnostics<ErrorCode>, _: &MetaInfo, _: &BlockStack<'_, '_, ()>, _: &ExprMulAssign) {}
-    fn visit_div_assign(&self, _: &Diagnostics<ErrorCode>, _: &MetaInfo, _: &BlockStack<'_, '_, ()>, _: &ExprDivAssign) {}
-    fn visit_mod_assign(&self, _: &Diagnostics<ErrorCode>, _: &MetaInfo, _: &BlockStack<'_, '_, ()>, _: &ExprModAssign) {}
-    fn visit_xor_assign(&self, _: &Diagnostics<ErrorCode>, _: &MetaInfo, _: &BlockStack<'_, '_, ()>, _: &ExprXorAssign) {}
-    fn visit_bool_and_assign(&self, _: &Diagnostics<ErrorCode>, _: &MetaInfo, _: &BlockStack<'_, '_, ()>, _: &ExprBoolAndAssign) {}
-    fn visit_bool_or_assign(&self, _: &Diagnostics<ErrorCode>, _: &MetaInfo, _: &BlockStack<'_, '_, ()>, _: &ExprBoolOrAssign) {}
-    fn visit_less_than(&self, _: &Diagnostics<ErrorCode>, _: &MetaInfo, _: &BlockStack<'_, '_, ()>, _: &ExprLessThan) {}
-    fn visit_less_equals(&self, _: &Diagnostics<ErrorCode>, _: &MetaInfo, _: &BlockStack<'_, '_, ()>, _: &ExprLessEquals) {}
-    fn visit_equals(&self, _: &Diagnostics<ErrorCode>, _: &MetaInfo, _: &BlockStack<'_, '_, ()>, _: &ExprEquals) {}
-    fn visit_not_equals(&self, _: &Diagnostics<ErrorCode>, _: &MetaInfo, _: &BlockStack<'_, '_, ()>, _: &ExprNotEquals) {}
-    fn visit_greater_equals(&self, _: &Diagnostics<ErrorCode>, _: &MetaInfo, _: &BlockStack<'_, '_, ()>, _: &ExprGreaterEquals) {}
-    fn visit_greater_than(&self, _: &Diagnostics<ErrorCode>, _: &MetaInfo, _: &BlockStack<'_, '_, ()>, _: &ExprGreaterThan) {}
-    fn visit_block(&self, _: &Diagnostics<ErrorCode>, _: &MetaInfo, _: &BlockStack<'_, '_, ()>, _: &ExprBlock) {}
-    fn visit_variable(&self, _: &Diagnostics<ErrorCode>, _: &MetaInfo, _: &BlockStack<'_, '_, ()>, _: &ExprVariable) {}
-    fn visit_access(&self, _: &Diagnostics<ErrorCode>, _: &MetaInfo, _: &BlockStack<'_, '_, ()>, _: &ExprAccess) {}
-    fn visit_parenthesized(&self, _: &Diagnostics<ErrorCode>, _: &MetaInfo, _: &BlockStack<'_, '_, ()>, _: &ExprParenthesized) {}
-    fn visit_if_else(&self, _: &Diagnostics<ErrorCode>, _: &MetaInfo, _: &BlockStack<'_, '_, ()>, _: &ExprIfElse) {}
-    fn visit_match(&self, _: &Diagnostics<ErrorCode>, _: &MetaInfo, _: &BlockStack<'_, '_, ()>, _: &ExprMatch) {}
-    fn visit_loop(&self, _: &Diagnostics<ErrorCode>, _: &MetaInfo, _: &BlockStack<'_, '_, ()>, _: &ExprLoop) {}
-    fn visit_while(&self, _: &Diagnostics<ErrorCode>, _: &MetaInfo, _: &BlockStack<'_, '_, ()>, _: &ExprWhile) {}
-    fn visit_for(&self, _: &Diagnostics<ErrorCode>, _: &MetaInfo, _: &BlockStack<'_, '_, ()>, _: &ExprFor) {}
-    fn visit_break(&self, _: &Diagnostics<ErrorCode>, _: &MetaInfo, _: &BlockStack<'_, '_, ()>, _: &ExprBreak) {}
-    fn visit_continue(&self, _: &Diagnostics<ErrorCode>, _: &MetaInfo, _: &BlockStack<'_, '_, ()>, _: &ExprContinue) {}
-    fn visit_return(&self, _: &Diagnostics<ErrorCode>, _: &MetaInfo, _: &BlockStack<'_, '_, ()>, _: &ExprReturn) {}
-    fn visit_yield(&self, _: &Diagnostics<ErrorCode>, _: &MetaInfo, _: &BlockStack<'_, '_, ()>, _: &ExprYield) {}
-    fn visit_function_call(&self, _: &Diagnostics<ErrorCode>, _: &MetaInfo, _: &BlockStack<'_, '_, ()>, _: &ExprFunctionCall) {}
-    fn visit_function_definition(&self, _: &Diagnostics<ErrorCode>, _: &MetaInfo, _: &BlockStack<'_, '_, ()>, _: &ExprFunctionDefinition) {}
-    fn visit_struct_definition(&self, _: &Diagnostics<ErrorCode>, _: &MetaInfo, _: &BlockStack<'_, '_, ()>, _: &ExprStructDefinition) {}
-    fn visit_struct_initialization(&self, _: &Diagnostics<ErrorCode>, _: &MetaInfo, _: &BlockStack<'_, '_, ()>, _: &ExprStructInitialization) {}
-    fn visit_enum_definition(&self, _: &Diagnostics<ErrorCode>, _: &MetaInfo, _: &BlockStack<'_, '_, ()>, _: &ExprEnumDefinition) {}
-    fn visit_enum_initialization(&self, _: &Diagnostics<ErrorCode>, _: &MetaInfo, _: &BlockStack<'_, '_, ()>, _: &ExprEnumInitialization) {}
-    fn visit_impl_block(&self, _: &Diagnostics<ErrorCode>, _: &MetaInfo, _: &BlockStack<'_, '_, ()>, _: &ExprImplBlock) {}
+    fn visit_literal(&self, _: &Diagnostics<ErrorCode>, _: &MetaInfo, _: &BlockStack<'_, ()>, _: &ExprLiteral) {}
+    fn visit_format_string(&self, _: &Diagnostics<ErrorCode>, _: &MetaInfo, _: &BlockStack<'_, ()>, _: &ExprFormatString) {}
+    fn visit_bind(&self, _: &Diagnostics<ErrorCode>, _: &MetaInfo, _: &BlockStack<'_, ()>, _: &ExprBind) {}
+    fn visit_static(&self, _: &Diagnostics<ErrorCode>, _: &MetaInfo, _: &BlockStack<'_, ()>, _: &ExprStatic) {}
+    fn visit_assign(&self, _: &Diagnostics<ErrorCode>, _: &MetaInfo, _: &BlockStack<'_, ()>, _: &ExprAssign) {}
+    fn visit_bool_not(&self, _: &Diagnostics<ErrorCode>, _: &MetaInfo, _: &BlockStack<'_, ()>, _: &ExprBoolNot) {}
+    fn visit_neg(&self, _: &Diagnostics<ErrorCode>, _: &MetaInfo, _: &BlockStack<'_, ()>, _: &ExprNeg) {}
+    fn visit_add(&self, _: &Diagnostics<ErrorCode>, _: &MetaInfo, _: &BlockStack<'_, ()>, _: &ExprAdd) {}
+    fn visit_sub(&self, _: &Diagnostics<ErrorCode>, _: &MetaInfo, _: &BlockStack<'_, ()>, _: &ExprSub) {}
+    fn visit_mul(&self, _: &Diagnostics<ErrorCode>, _: &MetaInfo, _: &BlockStack<'_, ()>, _: &ExprMul) {}
+    fn visit_div(&self, _: &Diagnostics<ErrorCode>, _: &MetaInfo, _: &BlockStack<'_, ()>, _: &ExprDiv) {}
+    fn visit_mod(&self, _: &Diagnostics<ErrorCode>, _: &MetaInfo, _: &BlockStack<'_, ()>, _: &ExprMod) {}
+    fn visit_xor(&self, _: &Diagnostics<ErrorCode>, _: &MetaInfo, _: &BlockStack<'_, ()>, _: &ExprXor) {}
+    fn visit_bool_and(&self, _: &Diagnostics<ErrorCode>, _: &MetaInfo, _: &BlockStack<'_, ()>, _: &ExprBoolAnd) {}
+    fn visit_bool_or(&self, _: &Diagnostics<ErrorCode>, _: &MetaInfo, _: &BlockStack<'_, ()>, _: &ExprBoolOr) {}
+    fn visit_add_assign(&self, _: &Diagnostics<ErrorCode>, _: &MetaInfo, _: &BlockStack<'_, ()>, _: &ExprAddAssign) {}
+    fn visit_sub_assign(&self, _: &Diagnostics<ErrorCode>, _: &MetaInfo, _: &BlockStack<'_, ()>, _: &ExprSubAssign) {}
+    fn visit_mul_assign(&self, _: &Diagnostics<ErrorCode>, _: &MetaInfo, _: &BlockStack<'_, ()>, _: &ExprMulAssign) {}
+    fn visit_div_assign(&self, _: &Diagnostics<ErrorCode>, _: &MetaInfo, _: &BlockStack<'_, ()>, _: &ExprDivAssign) {}
+    fn visit_mod_assign(&self, _: &Diagnostics<ErrorCode>, _: &MetaInfo, _: &BlockStack<'_, ()>, _: &ExprModAssign) {}
+    fn visit_xor_assign(&self, _: &Diagnostics<ErrorCode>, _: &MetaInfo, _: &BlockStack<'_, ()>, _: &ExprXorAssign) {}
+    fn visit_bool_and_assign(&self, _: &Diagnostics<ErrorCode>, _: &MetaInfo, _: &BlockStack<'_, ()>, _: &ExprBoolAndAssign) {}
+    fn visit_bool_or_assign(&self, _: &Diagnostics<ErrorCode>, _: &MetaInfo, _: &BlockStack<'_, ()>, _: &ExprBoolOrAssign) {}
+    fn visit_less_than(&self, _: &Diagnostics<ErrorCode>, _: &MetaInfo, _: &BlockStack<'_, ()>, _: &ExprLessThan) {}
+    fn visit_less_equals(&self, _: &Diagnostics<ErrorCode>, _: &MetaInfo, _: &BlockStack<'_, ()>, _: &ExprLessEquals) {}
+    fn visit_equals(&self, _: &Diagnostics<ErrorCode>, _: &MetaInfo, _: &BlockStack<'_, ()>, _: &ExprEquals) {}
+    fn visit_not_equals(&self, _: &Diagnostics<ErrorCode>, _: &MetaInfo, _: &BlockStack<'_, ()>, _: &ExprNotEquals) {}
+    fn visit_greater_equals(&self, _: &Diagnostics<ErrorCode>, _: &MetaInfo, _: &BlockStack<'_, ()>, _: &ExprGreaterEquals) {}
+    fn visit_greater_than(&self, _: &Diagnostics<ErrorCode>, _: &MetaInfo, _: &BlockStack<'_, ()>, _: &ExprGreaterThan) {}
+    fn visit_block(&self, _: &Diagnostics<ErrorCode>, _: &MetaInfo, _: &BlockStack<'_, ()>, _: &ExprBlock) {}
+    fn visit_variable(&self, _: &Diagnostics<ErrorCode>, _: &MetaInfo, _: &BlockStack<'_, ()>, _: &ExprVariable) {}
+    fn visit_access(&self, _: &Diagnostics<ErrorCode>, _: &MetaInfo, _: &BlockStack<'_, ()>, _: &ExprAccess) {}
+    fn visit_parenthesized(&self, _: &Diagnostics<ErrorCode>, _: &MetaInfo, _: &BlockStack<'_, ()>, _: &ExprParenthesized) {}
+    fn visit_if_else(&self, _: &Diagnostics<ErrorCode>, _: &MetaInfo, _: &BlockStack<'_, ()>, _: &ExprIfElse) {}
+    fn visit_match(&self, _: &Diagnostics<ErrorCode>, _: &MetaInfo, _: &BlockStack<'_, ()>, _: &ExprMatch) {}
+    fn visit_loop(&self, _: &Diagnostics<ErrorCode>, _: &MetaInfo, _: &BlockStack<'_, ()>, _: &ExprLoop) {}
+    fn visit_while(&self, _: &Diagnostics<ErrorCode>, _: &MetaInfo, _: &BlockStack<'_, ()>, _: &ExprWhile) {}
+    fn visit_for(&self, _: &Diagnostics<ErrorCode>, _: &MetaInfo, _: &BlockStack<'_, ()>, _: &ExprFor) {}
+    fn visit_break(&self, _: &Diagnostics<ErrorCode>, _: &MetaInfo, _: &BlockStack<'_, ()>, _: &ExprBreak) {}
+    fn visit_continue(&self, _: &Diagnostics<ErrorCode>, _: &MetaInfo, _: &BlockStack<'_, ()>, _: &ExprContinue) {}
+    fn visit_return(&self, _: &Diagnostics<ErrorCode>, _: &MetaInfo, _: &BlockStack<'_, ()>, _: &ExprReturn) {}
+    fn visit_yield(&self, _: &Diagnostics<ErrorCode>, _: &MetaInfo, _: &BlockStack<'_, ()>, _: &ExprYield) {}
+    fn visit_function_call(&self, _: &Diagnostics<ErrorCode>, _: &MetaInfo, _: &BlockStack<'_, ()>, _: &ExprFunctionCall) {}
+    fn visit_function_definition(&self, _: &Diagnostics<ErrorCode>, _: &MetaInfo, _: &BlockStack<'_, ()>, _: &ExprFunctionDefinition) {}
+    fn visit_struct_definition(&self, _: &Diagnostics<ErrorCode>, _: &MetaInfo, _: &BlockStack<'_, ()>, _: &ExprStructDefinition) {}
+    fn visit_struct_initialization(&self, _: &Diagnostics<ErrorCode>, _: &MetaInfo, _: &BlockStack<'_, ()>, _: &ExprStructInitialization) {}
+    fn visit_enum_definition(&self, _: &Diagnostics<ErrorCode>, _: &MetaInfo, _: &BlockStack<'_, ()>, _: &ExprEnumDefinition) {}
+    fn visit_enum_initialization(&self, _: &Diagnostics<ErrorCode>, _: &MetaInfo, _: &BlockStack<'_, ()>, _: &ExprEnumInitialization) {}
+    fn visit_impl_block(&self, _: &Diagnostics<ErrorCode>, _: &MetaInfo, _: &BlockStack<'_, ()>, _: &ExprImplBlock) {}
 }
 
 macro_rules! visit {
@@ -70,8 +70,8 @@ macro_rules! visit {
     }}
 }
 
-impl<'a, 'b, 'i, 'v> VisitorDriver<'a, 'b, 'i, 'v> {
-    pub fn new(diagnostics: &'b Diagnostics<ErrorCode>, meta_info: &'b MetaInfo<'a, 'i>) -> Self {
+impl<'i, 'b, 'v> VisitorDriver<'i, 'b, 'v> {
+    pub fn new(diagnostics: &'b Diagnostics<ErrorCode>, meta_info: &'b MetaInfo<'i>) -> Self {
         VisitorDriver {
             diagnostics,
             meta_info,
@@ -88,12 +88,12 @@ impl<'a, 'b, 'i, 'v> VisitorDriver<'a, 'b, 'i, 'v> {
         self.visitors.push(visitor);
     }
 
-    pub fn visit_exprs(&self, exprs: &[&'a Expr<'a, 'i>]) {
+    pub fn visit_exprs(&self, exprs: &[&'i Expr<'i>]) {
         for expr in exprs {
             self.visit_expr(expr);
         }
     }
-    fn visit_expr(&self, expr: &'a Expr<'a, 'i>) {
+    fn visit_expr(&self, expr: &'i Expr<'i>) {
         match expr {
             Expr::Literal(lit) => visit!(self, visit_literal, lit),
             Expr::FormatString(fs) => {

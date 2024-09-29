@@ -61,7 +61,7 @@ impl<T> DeepCopy for Set<T> {
     }
 }
 
-pub fn add_set<'a, 'i>(diagnostics: &'i Diagnostics<ErrorCode>, arena: &'a Arena<Expr<'a, 'i>>, meta_info: &mut MetaInfo<'a, 'i>) {
+pub fn add_set<'i>(diagnostics: &'i Diagnostics<ErrorCode>, arena: &'i Arena<Expr<'i>>, meta_info: &mut MetaInfo<'i>) {
     meta_info.add_external_type::<Set<Value>>(arena, diagnostics);
 
     meta_info.add_external_function(arena, diagnostics, set_new);

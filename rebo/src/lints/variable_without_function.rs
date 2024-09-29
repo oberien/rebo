@@ -9,29 +9,29 @@ use crate::parser::{ExprAddAssign, ExprAssign, ExprAssignLhs, ExprBoolAndAssign,
 pub struct VariableWithoutFunction;
 
 impl Visitor for VariableWithoutFunction {
-    fn visit_assign(&self, diagnostics: &Diagnostics<ErrorCode>, _: &MetaInfo, _: &BlockStack<'_, '_, ()>, ExprAssign { lhs, .. }: &ExprAssign) {
+    fn visit_assign(&self, diagnostics: &Diagnostics<ErrorCode>, _: &MetaInfo, _: &BlockStack<'_, ()>, ExprAssign { lhs, .. }: &ExprAssign) {
         visit_assign_lhs(diagnostics, lhs);
     }
-    fn visit_access(&self, diagnostics: &Diagnostics<ErrorCode>, _: &MetaInfo, _: &BlockStack<'_, '_, ()>, access: &ExprAccess) {
+    fn visit_access(&self, diagnostics: &Diagnostics<ErrorCode>, _: &MetaInfo, _: &BlockStack<'_, ()>, access: &ExprAccess) {
         let ExprAccess { variable, .. } = access;
         check_variable(diagnostics, variable);
     }
-    fn visit_add_assign(&self, diagnostics: &Diagnostics<ErrorCode>, _: &MetaInfo, _: &BlockStack<'_, '_, ()>, ExprAddAssign { lhs, .. }: &ExprAddAssign) {
+    fn visit_add_assign(&self, diagnostics: &Diagnostics<ErrorCode>, _: &MetaInfo, _: &BlockStack<'_, ()>, ExprAddAssign { lhs, .. }: &ExprAddAssign) {
         visit_assign_lhs(diagnostics, lhs);
     }
-    fn visit_sub_assign(&self, diagnostics: &Diagnostics<ErrorCode>, _: &MetaInfo, _: &BlockStack<'_, '_, ()>, ExprSubAssign { lhs, .. }: &ExprSubAssign) {
+    fn visit_sub_assign(&self, diagnostics: &Diagnostics<ErrorCode>, _: &MetaInfo, _: &BlockStack<'_, ()>, ExprSubAssign { lhs, .. }: &ExprSubAssign) {
         visit_assign_lhs(diagnostics, lhs);
     }
-    fn visit_mul_assign(&self, diagnostics: &Diagnostics<ErrorCode>, _: &MetaInfo, _: &BlockStack<'_, '_, ()>, ExprMulAssign { lhs, .. }: &ExprMulAssign) {
+    fn visit_mul_assign(&self, diagnostics: &Diagnostics<ErrorCode>, _: &MetaInfo, _: &BlockStack<'_, ()>, ExprMulAssign { lhs, .. }: &ExprMulAssign) {
         visit_assign_lhs(diagnostics, lhs);
     }
-    fn visit_div_assign(&self, diagnostics: &Diagnostics<ErrorCode>, _: &MetaInfo, _: &BlockStack<'_, '_, ()>, ExprDivAssign { lhs, .. }: &ExprDivAssign) {
+    fn visit_div_assign(&self, diagnostics: &Diagnostics<ErrorCode>, _: &MetaInfo, _: &BlockStack<'_, ()>, ExprDivAssign { lhs, .. }: &ExprDivAssign) {
         visit_assign_lhs(diagnostics, lhs);
     }
-    fn visit_bool_and_assign(&self, diagnostics: &Diagnostics<ErrorCode>, _: &MetaInfo, _: &BlockStack<'_, '_, ()>, ExprBoolAndAssign { lhs, .. }: &ExprBoolAndAssign) {
+    fn visit_bool_and_assign(&self, diagnostics: &Diagnostics<ErrorCode>, _: &MetaInfo, _: &BlockStack<'_, ()>, ExprBoolAndAssign { lhs, .. }: &ExprBoolAndAssign) {
         visit_assign_lhs(diagnostics, lhs);
     }
-    fn visit_bool_or_assign(&self, diagnostics: &Diagnostics<ErrorCode>, _: &MetaInfo, _: &BlockStack<'_, '_, ()>, ExprBoolOrAssign { lhs, .. }: &ExprBoolOrAssign) {
+    fn visit_bool_or_assign(&self, diagnostics: &Diagnostics<ErrorCode>, _: &MetaInfo, _: &BlockStack<'_, ()>, ExprBoolOrAssign { lhs, .. }: &ExprBoolOrAssign) {
         visit_assign_lhs(diagnostics, lhs);
     }
 }

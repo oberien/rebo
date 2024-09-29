@@ -15,14 +15,14 @@ enum StackElement {
     ImplBlock(String),
 }
 
-type DoPassFunction<'a, 'b, 'i> = for<'x> fn(&'x mut Parser<'a, 'b, 'i>, &Vec<StackElement>, Depth) -> Result<Option<&'a Expr<'a, 'i>>, InternalError>;
-impl<'a, 'b, 'i> Parser<'a, 'b, 'i> {
+type DoPassFunction<'i, 'b> = for<'x> fn(&'x mut Parser<'i, 'b>, &Vec<StackElement>, Depth) -> Result<Option<&'i Expr<'i>>, InternalError>;
+impl<'i, 'b> Parser<'i, 'b> {
     /// Parse struct and enum definitions
     pub(super) fn first_pass(&mut self, depth: Depth) {
         debug!("first_pass");
-        let functions: &[DoPassFunction<'a, 'b, 'i>] = &[
+        let functions: &[DoPassFunction<'i, 'b>] = &[
             // struct definitions
-            |parser: &mut Parser<'a, '_, 'i>, _, depth| {
+            |parser: &mut Parser<'i, '_>, _, depth| {
                 let expr = &*parser.arena.alloc(Expr::StructDefinition(ExprStructDefinition::parse_reset(parser, depth)?));
                 let struct_def = match expr {
                     Expr::StructDefinition(struct_def) => struct_def,
@@ -33,7 +33,7 @@ impl<'a, 'b, 'i> Parser<'a, 'b, 'i> {
                 Ok(Some(expr))
             },
             // enum definitions
-            |parser: &mut Parser<'a, '_, 'i>, _, depth| {
+            |parser: &mut Parser<'i, '_>, _, depth| {
                 let expr = &*parser.arena.alloc(Expr::EnumDefinition(ExprEnumDefinition::parse_reset(parser, depth)?));
                 let enum_def = match expr {
                     Expr::EnumDefinition(enum_def) => enum_def,
@@ -44,7 +44,7 @@ impl<'a, 'b, 'i> Parser<'a, 'b, 'i> {
                 Ok(Some(expr))
             },
             // function signatures
-            |parser: &mut Parser<'a, '_, 'i>, stack: &Vec<StackElement>, depth| {
+            |parser: &mut Parser<'i, '_>, stack: &Vec<StackElement>, depth| {
                 let old_scopes = std::mem::take(&mut parser.scopes);
                 // let scope_guard = parser.push_scope(ScopeType::Global);
                 let scope_guard = parser.push_scope(ScopeType::Synthetic);
@@ -66,7 +66,7 @@ impl<'a, 'b, 'i> Parser<'a, 'b, 'i> {
                 Ok(None)
             },
             // includes -> first-pass
-            |parser: &mut Parser<'a, '_, 'i>, _, depth| {
+            |parser: &mut Parser<'i, '_>, _, depth| {
                 let include = ExprInclude::parse_reset(parser, depth.duplicate())?;
                 let path = match util::try_resolve_file(&parser.include_directory, &include.file.string) {
                     Ok(path) => path,
@@ -110,9 +110,9 @@ impl<'a, 'b, 'i> Parser<'a, 'b, 'i> {
     }
     pub(super) fn second_pass(&mut self, depth: Depth) {
         debug!("second_pass");
-        let functions: &[DoPassFunction<'a, 'b, 'i>] = &[
+        let functions: &[DoPassFunction<'i, 'b>] = &[
             // static signatures
-            |parser: &mut Parser<'a, '_, 'i>, _, depth| {
+            |parser: &mut Parser<'i, '_>, _, depth| {
                 let static_sig = ExprStaticSignature::parse_reset(parser, depth)?;
                 let binding = match static_sig.pattern {
                     ExprPattern::Typed(typed) => typed.pattern.binding,
@@ -123,7 +123,7 @@ impl<'a, 'b, 'i> Parser<'a, 'b, 'i> {
                 Ok(None)
             },
             // includes -> second-pass
-            |parser: &mut Parser<'a, '_, 'i>, _, depth| {
+            |parser: &mut Parser<'i, '_>, _, depth| {
                 let include = ExprInclude::parse_reset(parser, depth.duplicate())?;
                 let file = match parser.meta_info.included_files.get(&include.span_with_id()) {
                     Some(&file) => file,
@@ -140,7 +140,7 @@ impl<'a, 'b, 'i> Parser<'a, 'b, 'i> {
         debug!("second pass done");
     }
 
-    fn do_pass(&mut self, functions: &[DoPassFunction<'a, 'b, 'i>], depth: Depth) {
+    fn do_pass(&mut self, functions: &[DoPassFunction<'i, 'b>], depth: Depth) {
         let mut stack: Vec<StackElement> = Vec::new();
         // create rogue scopes
         let old_scopes = ::std::mem::replace(&mut self.scopes, Rc::new(RefCell::new(vec![Scope { idents: IndexMap::new(), generics: IndexMap::new(), typ: ScopeType::Global }])));
@@ -200,12 +200,12 @@ impl<'a, 'b, 'i> Parser<'a, 'b, 'i> {
 pub struct ImplBlockSignature<'i> {
     pub name: TokenIdent<'i>,
 }
-impl<'a, 'i> Parse<'a, 'i> for ImplBlockSignature<'i> {
-    fn parse_marked(parser: &mut Parser<'a, '_, 'i>, depth: Depth) -> Result<Self, InternalError> {
+impl<'i> Parse<'i> for ImplBlockSignature<'i> {
+    fn parse_marked(parser: &mut Parser<'i, '_>, depth: Depth) -> Result<Self, InternalError> {
         // during the first pass when we find function signatures, we only need the impl-block-target
         let _: TokenImpl = parser.parse(depth.next())?;
         let name: TokenIdent<'i> = parser.parse(depth.next())?;
-        let _: Option<ExprGenerics<'a, 'i>> = parser.parse(depth.next())?;
+        let _: Option<ExprGenerics<'i>> = parser.parse(depth.next())?;
         let _: TokenOpenCurly = parser.parse(depth.last())?;
         Ok(ImplBlockSignature { name })
     }

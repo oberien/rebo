@@ -43,7 +43,7 @@ use crate::lints::variable_without_function::VariableWithoutFunction;
 use crate::lints::closure_capture_primitives::ClosureCapturePrimitives;
 use crate::ErrorCode;
 
-pub fn lint<'a, 'b, 'i>(diagnostics: &'b Diagnostics<ErrorCode>, meta_info: &'b MetaInfo<'a, 'i>, exprs: &[&'a Expr<'a, 'i>]) {
+pub fn lint<'i, 'b>(diagnostics: &'b Diagnostics<ErrorCode>, meta_info: &'b MetaInfo<'i>, exprs: &[&'i Expr<'i>]) {
     let mut visitor_driver = VisitorDriver::new(diagnostics, meta_info);
     visitor_driver.add_visitors(vec![
         &UnknownFunction as &dyn Visitor,

@@ -16,32 +16,32 @@ use crate::common::Spanned;
 
 mod scope;
 
-pub struct Vm<'a, 'b, 'i> {
+pub struct Vm<'i, 'b> {
     interrupt_interval: u32,
     instructions_since_last_interrupt: u32,
-    interrupt_function: fn(&mut VmContext<'a, '_, '_, 'i>) -> Result<(), ExecError<'a, 'i>>,
+    interrupt_function: fn(&mut VmContext<'i, '_, '_>) -> Result<(), ExecError<'i>>,
     diagnostics: &'i Diagnostics<ErrorCode>,
     scopes: Scopes,
     // read in the voice of Brüggi
     callstack: Rc<RefCell<Vec<SpanWithId>>>,
-    meta_info: &'b MetaInfo<'a, 'i>,
+    meta_info: &'b MetaInfo<'i>,
     include_directory: IncludeDirectory,
 }
 
 #[derive(Debug)]
-pub enum ExecError<'a, 'i> {
-    Break(Option<&'a ExprLabel<'i>>, Value),
-    Continue(Option<&'a ExprLabel<'i>>),
+pub enum ExecError<'i> {
+    Break(Option<&'i ExprLabel<'i>>, Value),
+    Continue(Option<&'i ExprLabel<'i>>),
     Return(Value),
     Panic,
 }
 
 /// Passed to external functions
-pub struct VmContext<'a, 'b, 'vm, 'i> {
-    vm: &'vm mut Vm<'a, 'b, 'i>,
+pub struct VmContext<'i, 'b, 'vm> {
+    vm: &'vm mut Vm<'i, 'b>,
 }
 
-impl<'a, 'b, 'vm, 'i> VmContext<'a, 'b, 'vm, 'i> {
+impl<'i, 'b, 'vm> VmContext<'i, 'b, 'vm> {
     pub fn diagnostics(&self) -> &Diagnostics<ErrorCode> {
         self.vm.diagnostics
     }
@@ -50,7 +50,7 @@ impl<'a, 'b, 'vm, 'i> VmContext<'a, 'b, 'vm, 'i> {
         &self.vm.include_directory
     }
 
-    pub fn call_required_rebo_function<T: RequiredReboFunction>(&mut self, args: Vec<Value>) -> Result<Value, ExecError<'a, 'i>> {
+    pub fn call_required_rebo_function<T: RequiredReboFunction>(&mut self, args: Vec<Value>) -> Result<Value, ExecError<'i>> {
         if !self.vm.meta_info.required_rebo_functions.contains(&RequiredReboFunctionStruct::from_required_rebo_function::<T>()) {
             panic!("required rebo function `{}` wasn't registered via `ReboConfig`", T::NAME);
         }
@@ -72,8 +72,8 @@ impl Drop for CallstackGuard {
     }
 }
 
-impl<'a, 'b, 'i> Vm<'a, 'b, 'i> {
-    pub fn new(include_directory: IncludeDirectory, diagnostics: &'i Diagnostics<ErrorCode>, meta_info: &'b MetaInfo<'a, 'i>, interrupt_interval: u32, interrupt_function: fn(&mut VmContext<'a, '_, '_, 'i>) -> Result<(), ExecError<'a, 'i>>) -> Self {
+impl<'i, 'b> Vm<'i, 'b> {
+    pub fn new(include_directory: IncludeDirectory, diagnostics: &'i Diagnostics<ErrorCode>, meta_info: &'b MetaInfo<'i>, interrupt_interval: u32, interrupt_function: fn(&mut VmContext<'i, '_, '_>) -> Result<(), ExecError<'i>>) -> Self {
         let scopes = Scopes::new();
         let root_scope = Scope::new();
         // we don't want to drop the root-scope, it should exist at all times
@@ -90,7 +90,7 @@ impl<'a, 'b, 'i> Vm<'a, 'b, 'i> {
         }
     }
 
-    pub fn run(mut self, ast: &[&'a Expr<'a, 'i>]) -> Result<Value, ExecError<'a, 'i>> {
+    pub fn run(mut self, ast: &[&'i Expr<'i>]) -> Result<Value, ExecError<'i>> {
         trace!("run");
         // add functions
         for (binding, name) in &self.meta_info.function_bindings {
@@ -147,7 +147,7 @@ impl<'a, 'b, 'i> Vm<'a, 'b, 'i> {
         self.scopes.assign(binding.id, value);
     }
 
-    fn interrupt_counter(&mut self) -> Result<(), ExecError<'a, 'i>> {
+    fn interrupt_counter(&mut self) -> Result<(), ExecError<'i>> {
         self.instructions_since_last_interrupt += 1;
         if self.instructions_since_last_interrupt > self.interrupt_interval {
             self.instructions_since_last_interrupt = 0;
@@ -158,7 +158,7 @@ impl<'a, 'b, 'i> Vm<'a, 'b, 'i> {
         Ok(())
     }
 
-    fn eval_expr(&mut self, expr: &'a Expr<'a, 'i>, depth: Depth) -> Result<Value, ExecError<'a, 'i>> {
+    fn eval_expr(&mut self, expr: &'i Expr<'i>, depth: Depth) -> Result<Value, ExecError<'i>> {
         trace!("{}eval_expr: {}", depth, expr);
         self.interrupt_counter()?;
         match expr {
@@ -469,7 +469,7 @@ impl<'a, 'b, 'i> Vm<'a, 'b, 'i> {
         }
     }
 
-    fn eval_block(&mut self, ExprBlock { body: BlockBody { exprs, terminated_with_semicolon }, .. }: &ExprBlock<'a, 'i>, depth: Depth) -> Result<Value, ExecError<'a, 'i>> {
+    fn eval_block(&mut self, ExprBlock { body: BlockBody { exprs, terminated_with_semicolon }, .. }: &ExprBlock<'i>, depth: Depth) -> Result<Value, ExecError<'i>> {
         self.interrupt_counter()?;
         let _guard = self.scopes.push_scope(Scope::new());
         let mut val = Value::Unit;
@@ -482,7 +482,7 @@ impl<'a, 'b, 'i> Vm<'a, 'b, 'i> {
             Ok(val)
         }
     }
-    fn call_function(&mut self, fun: &FunctionValue, expr_span: SpanWithId, args: Vec<Value>, depth: Depth) -> Result<Value, ExecError<'a, 'i>> {
+    fn call_function(&mut self, fun: &FunctionValue, expr_span: SpanWithId, args: Vec<Value>, depth: Depth) -> Result<Value, ExecError<'i>> {
         trace!("{}call_function: {:?}({:?})", depth, fun, args);
         let _guard = self.push_callstack(expr_span);
         let (arg_binding_ids, mut scope, fun) = match fun {
@@ -552,7 +552,7 @@ impl<'a, 'b, 'i> Vm<'a, 'b, 'i> {
         }
     }
 
-    fn load_lhs_value(&mut self, lhs: &ExprAssignLhs<'a, 'i>, depth: Depth) -> Result<Value, ExecError<'a, 'i>> {
+    fn load_lhs_value(&mut self, lhs: &ExprAssignLhs<'i>, depth: Depth) -> Result<Value, ExecError<'i>> {
         match lhs {
             ExprAssignLhs::Variable(variable) => Ok(self.load_binding(&variable.binding, variable.span_with_id(), depth.next())),
             ExprAssignLhs::FieldAccess(ExprFieldAccess { variable, fields, .. }) => {
@@ -561,7 +561,7 @@ impl<'a, 'b, 'i> Vm<'a, 'b, 'i> {
         }
     }
 
-    fn load_access(&mut self, variable: &ExprVariable, accesses: impl IntoIterator<Item = impl ::std::borrow::Borrow<FieldOrMethod<'a, 'i>>>, depth: Depth) -> Result<Value, ExecError<'a, 'i>> {
+    fn load_access(&mut self, variable: &ExprVariable, accesses: impl IntoIterator<Item = impl ::std::borrow::Borrow<FieldOrMethod<'i>>>, depth: Depth) -> Result<Value, ExecError<'i>> {
         let mut val = self.load_binding(&variable.binding, variable.span_with_id(), depth.next());
         for acc in accesses {
             let acc = acc.borrow();

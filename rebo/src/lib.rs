@@ -84,13 +84,13 @@ pub enum IncludeDirectoryConfig {
     Everywhere,
 }
 
-pub type ExternalTypeAdderFunction = for<'a, 'b, 'i> fn(&'a Arena<Expr<'a, 'i>>, &'i Diagnostics<ErrorCode>, &'b mut MetaInfo<'a, 'i>);
+pub type ExternalTypeAdderFunction = for<'i, 'b> fn(&'i Arena<Expr<'i>>, &'i Diagnostics<ErrorCode>, &'b mut MetaInfo<'i>);
 pub struct ReboConfig {
     stdlib: Stdlib,
     functions: Vec<ExternalFunction>,
     external_values: Vec<(String, Value)>,
     interrupt_interval: u32,
-    interrupt_function: for<'a, 'i> fn(&mut VmContext<'a, '_, '_, 'i>) -> Result<(), ExecError<'a, 'i>>,
+    interrupt_function: for<'i> fn(&mut VmContext<'i, '_, '_>) -> Result<(), ExecError<'i>>,
     diagnostic_output: Output,
     include_directory: IncludeDirectoryConfig,
     external_type_adder_functions: Vec<ExternalTypeAdderFunction>,
@@ -126,7 +126,7 @@ impl ReboConfig {
         self.interrupt_interval = interval;
         self
     }
-    pub fn interrupt_function(mut self, function: for <'a, 'i> fn(&mut VmContext<'a, '_, '_, 'i>) -> Result<(), ExecError<'a, 'i>>) -> Self {
+    pub fn interrupt_function(mut self, function: for <'i> fn(&mut VmContext<'i, '_, '_>) -> Result<(), ExecError<'i>>) -> Self {
         self.interrupt_function = function;
         self
     }
@@ -139,7 +139,7 @@ impl ReboConfig {
         self
     }
     pub fn add_external_type<T: ExternalTypeType>(mut self, _: T) -> Self {
-        pub fn add_external_type<'a, 'b, 'i, T: ExternalType>(arena: &'a Arena<Expr<'a, 'i>>, diagnostics: &'i Diagnostics<ErrorCode>, meta_info: &'b mut MetaInfo<'a, 'i>) {
+        pub fn add_external_type<'i, 'b, T: ExternalType>(arena: &'i Arena<Expr<'i>>, diagnostics: &'i Diagnostics<ErrorCode>, meta_info: &'b mut MetaInfo<'i>) {
             meta_info.add_external_type::<T>(arena, diagnostics);
         }
         self.external_type_adder_functions.push(add_external_type::<T::Type>);

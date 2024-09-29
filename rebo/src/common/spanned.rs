@@ -20,7 +20,7 @@ pub trait Spanned {
     }
 }
 
-impl<'a, T: Spanned> Spanned for &'a T {
+impl<'i, T: Spanned> Spanned for &'i T {
     fn span_with_id(&self) -> SpanWithId {
         <T as Spanned>::span_with_id(self)
     }

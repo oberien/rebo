@@ -13,7 +13,7 @@ use crate::typeck::TypeVar;
 pub struct InvalidNumberOfArguments;
 
 impl Visitor for InvalidNumberOfArguments {
-    fn visit_function_call(&self, diagnostics: &Diagnostics<ErrorCode>, meta_info: &MetaInfo, _: &BlockStack<'_, '_, ()>, call: &ExprFunctionCall) {
+    fn visit_function_call(&self, diagnostics: &Diagnostics<ErrorCode>, meta_info: &MetaInfo, _: &BlockStack<'_, ()>, call: &ExprFunctionCall) {
         let ExprFunctionCall { name, open, args, close, .. } = call;
 
         if let Type::Specific(SpecificType::Function(fun)) = &meta_info.types[&TypeVar::from_spanned(name)] {

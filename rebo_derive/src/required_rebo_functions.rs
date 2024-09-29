@@ -77,7 +77,7 @@ fn generate_fn(fn_ident: &Ident, sig: &FunctionSignature) -> TokenStream2 {
         }
     };
     quote::quote! {
-        fn #fn_ident<'a, 'i, #(#generic_idents: ::rebo::FromValue + ::rebo::IntoValue),*>(vm: &mut ::rebo::VmContext<'a, '_, '_, 'i>, #(#arg_idents: #arg_types),*) -> Result<#ret_type, ::rebo::ExecError<'a, 'i>> {
+        fn #fn_ident<'i, #(#generic_idents: ::rebo::FromValue + ::rebo::IntoValue),*>(vm: &mut ::rebo::VmContext<'i, '_, '_>, #(#arg_idents: #arg_types),*) -> Result<#ret_type, ::rebo::ExecError<'i>> {
             let values = #into_value_conversions;
             let res = vm.call_required_rebo_function::<#ident>(values)?;
             // unreachable_code annotation required if the function returns the never type
@@ -107,7 +107,7 @@ fn generate_struct(vis: Visibility, fn_ident: Ident, sig: &FunctionSignature) ->
         #[allow(non_camel_case_types)]
         #vis struct #ident;
         impl ::std::ops::Deref for #ident {
-            type Target = for<'a, 'i> fn(&mut ::rebo::VmContext<'a, '_, '_, 'i>, #(#value_arg_types),*) -> Result<#value_ret_type, ::rebo::ExecError<'a, 'i>>;
+            type Target = for<'i> fn(&mut ::rebo::VmContext<'i, '_, '_>, #(#value_arg_types),*) -> Result<#value_ret_type, ::rebo::ExecError<'i>>;
             fn deref(&self) -> &Self::Target {
                 &(#fn_ident as Self::Target)
             }

@@ -13,7 +13,7 @@ pub mod types;
 
 pub use type_var::TypeVar;
 
-pub fn typeck<'a, 'i>(diagnostics: &'i Diagnostics<ErrorCode>, meta_info: &mut MetaInfo<'a, 'i>, exprs: &[&'a Expr<'a, 'i>]) -> (String, String) {
+pub fn typeck<'i>(diagnostics: &'i Diagnostics<ErrorCode>, meta_info: &mut MetaInfo<'i>, exprs: &[&'i Expr<'i>]) -> (String, String) {
     let mut graph = Graph::create(diagnostics, meta_info, exprs);
     if log_enabled!(Level::Trace) {
         graph.xdot();

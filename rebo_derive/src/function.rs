@@ -83,7 +83,7 @@ pub fn function(args: TokenStream, input: TokenStream) -> TokenStream {
     };
 
     (quote::quote! {
-        fn #fn_ident <'a, 'i> (expr_span: ::rebo::Span, vm: &mut ::rebo::VmContext<'a, '_, '_, 'i>, args: ::std::vec::Vec<::rebo::Value>) -> ::std::result::Result<::rebo::Value, ::rebo::ExecError<'a, 'i>> {
+        fn #fn_ident <'i> (expr_span: ::rebo::Span, vm: &mut ::rebo::VmContext<'i, '_, '_>, args: ::std::vec::Vec<::rebo::Value>) -> ::std::result::Result<::rebo::Value, ::rebo::ExecError<'i>> {
             let mut args = args.into_iter();
             #(
                 #arg_transforms

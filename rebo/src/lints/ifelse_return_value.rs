@@ -10,7 +10,7 @@ use crate::typeck::types::{SpecificType, Type};
 pub struct IfElseReturnValue;
 
 impl Visitor for IfElseReturnValue {
-    fn visit_if_else(&self, diagnostics: &Diagnostics<ErrorCode>, meta_info: &MetaInfo, _: &BlockStack<'_, '_, ()>, ifelse: &ExprIfElse) {
+    fn visit_if_else(&self, diagnostics: &Diagnostics<ErrorCode>, meta_info: &MetaInfo, _: &BlockStack<'_, ()>, ifelse: &ExprIfElse) {
         let block_type_vars: Vec<_> = ifelse.iter_branches()
             .map(|(_cond, block)| TypeVar::from_spanned(block))
             .collect();

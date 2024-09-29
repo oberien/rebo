@@ -168,7 +168,7 @@ impl<'i> Graph<'i> {
         };
         self.get_function_generics(source_node, fn_typ, None, call_index)
     }
-    fn get_method_function_generics<'a>(&mut self, method_node: Node, call_index: u64) -> Option<(FunctionGenerics, FunctionType)> {
+    fn get_method_function_generics(&mut self, method_node: Node, call_index: u64) -> Option<(FunctionGenerics, FunctionType)> {
         let possible_types = &self.possible_types[&method_node];
         if possible_types.0.len() != 1 {
             return None;

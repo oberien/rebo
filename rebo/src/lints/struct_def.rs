@@ -12,7 +12,7 @@ use crate::common::Spanned;
 pub struct StructDefLints;
 
 impl Visitor for StructDefLints {
-    fn visit_struct_definition(&self, diagnostics: &Diagnostics<ErrorCode>, meta_info: &MetaInfo, _: &BlockStack<'_, '_, ()>, def: &ExprStructDefinition) {
+    fn visit_struct_definition(&self, diagnostics: &Diagnostics<ErrorCode>, meta_info: &MetaInfo, _: &BlockStack<'_, ()>, def: &ExprStructDefinition) {
         let ExprStructDefinition { name, fields, .. } = def;
 
         // ignore duplicate struct definitions

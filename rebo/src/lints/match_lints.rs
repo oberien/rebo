@@ -16,7 +16,7 @@ use crate::typeck::TypeVar;
 pub struct MatchLints;
 
 impl Visitor for MatchLints {
-    fn visit_match(&self, diagnostics: &Diagnostics<ErrorCode>, meta_info: &MetaInfo, _: &BlockStack<'_, '_, ()>, expr: &ExprMatch) {
+    fn visit_match(&self, diagnostics: &Diagnostics<ErrorCode>, meta_info: &MetaInfo, _: &BlockStack<'_, ()>, expr: &ExprMatch) {
         let match_span = expr.span_with_id();
         let ExprMatch { expr, arms, .. } = expr;
 

@@ -91,11 +91,11 @@ impl Expected {
 }
 
 #[derive(Debug)]
-pub struct Ast<'a, 'i> {
-    pub exprs: Vec<&'a Expr<'a, 'i>>,
+pub struct Ast<'i> {
+    pub exprs: Vec<&'i Expr<'i>>,
 }
 
-impl<'a, 'i> fmt::Display for Ast<'a, 'i> {
+impl<'i> fmt::Display for Ast<'i> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         for expr in &self.exprs {
             writeln!(f, "{}", expr)?;
@@ -104,25 +104,25 @@ impl<'a, 'i> fmt::Display for Ast<'a, 'i> {
     }
 }
 
-pub struct Parser<'a, 'm, 'i> {
+pub struct Parser<'i, 'm> {
     /// directory to search in when including files
     include_directory: IncludeDirectory,
     /// arena to allocate expressions into
-    arena: &'a Arena<Expr<'a, 'i>>,
+    arena: &'i Arena<Expr<'i>>,
     /// tokens to be consumed
     lexer: Lexer<'i>,
     diagnostics: &'i Diagnostics<ErrorCode>,
     /// pre-info to add first-pass definitions to
-    meta_info: &'m mut MetaInfo<'a, 'i>,
+    meta_info: &'m mut MetaInfo<'i>,
     /// already parsed expressions in the first-pass, to be consumed by the second pass
     ///
     /// (FileId, expr-start) -> Expr
-    pre_parsed: HashMap<(FileId, usize), &'a Expr<'a, 'i>>,
+    pre_parsed: HashMap<(FileId, usize), &'i Expr<'i>>,
     /// stack of scopes with bindings that are still live
     scopes: Rc<RefCell<Vec<Scope<'i>>>>,
     /// track captures within closures
     captures: Option<IndexSet<Binding<'i>>>,
-    memoization: IndexMap<(FileId, usize), (&'a Expr<'a, 'i>, ParseUntil)>,
+    memoization: IndexMap<(FileId, usize), (&'i Expr<'i>, ParseUntil)>,
     binding_memoization: BTreeMap<Span, Binding<'i>>,
     generic_memoization: HashSet<SpanWithId>,
     /// List of all encountered backtracks.
@@ -162,8 +162,8 @@ impl<'i> Drop for ScopeGuard<'i> {
 }
 
 /// All expression parsing function consume whitespace and comments before tokens, but not after.
-impl<'a, 'm, 'i> Parser<'a, 'm, 'i> {
-    pub fn new(include_directory: IncludeDirectory, arena: &'a Arena<Expr<'a, 'i>>, lexer: Lexer<'i>, diagnostics: &'i Diagnostics<ErrorCode>, meta_info: &'m mut MetaInfo<'a, 'i>, add_clone: bool) -> Self {
+impl<'i, 'm> Parser<'i, 'm> {
+    pub fn new(include_directory: IncludeDirectory, arena: &'i Arena<Expr<'i>>, lexer: Lexer<'i>, diagnostics: &'i Diagnostics<ErrorCode>, meta_info: &'m mut MetaInfo<'i>, add_clone: bool) -> Self {
         Parser {
             include_directory,
             arena,
@@ -181,7 +181,7 @@ impl<'a, 'm, 'i> Parser<'a, 'm, 'i> {
         }
     }
 
-    pub fn parse_ast(mut self) -> Result<Ast<'a, 'i>, Error> {
+    pub fn parse_ast(mut self) -> Result<Ast<'i>, Error> {
         trace!("parse_ast");
         self.first_pass(Depth::start());
         self.second_pass(Depth::start());
@@ -209,7 +209,7 @@ impl<'a, 'm, 'i> Parser<'a, 'm, 'i> {
 
         Ok(Ast { exprs: body.exprs })
     }
-    fn parse_file_content(&mut self) -> Result<BlockBody<'a, 'i>, Error> {
+    fn parse_file_content(&mut self) -> Result<BlockBody<'i>, Error> {
         // remove all scopes except the global one when parsing a new file
         let old_scopes: Vec<_> = self.scopes.borrow_mut().drain(1..).collect();
         // file scope
@@ -389,10 +389,10 @@ impl<'a, 'm, 'i> Parser<'a, 'm, 'i> {
         unreachable!()
     }
 
-    pub(in crate::parser) fn parse<T: Parse<'a, 'i>>(&mut self, depth: Depth) -> Result<T, InternalError> {
+    pub(in crate::parser) fn parse<T: Parse<'i>>(&mut self, depth: Depth) -> Result<T, InternalError> {
         T::parse(self, depth)
     }
-    pub(in crate::parser) fn parse_scoped<T: Parse<'a, 'i>>(&mut self, depth: Depth) -> Result<T, InternalError> {
+    pub(in crate::parser) fn parse_scoped<T: Parse<'i>>(&mut self, depth: Depth) -> Result<T, InternalError> {
         T::parse_scoped(self, depth)
     }
 
@@ -430,7 +430,7 @@ impl<'a, 'm, 'i> Parser<'a, 'm, 'i> {
         d.emit()
     }
 
-    fn add_free_function_to_meta_info(&mut self, fun: &'a ExprFunctionDefinition<'a, 'i>) {
+    fn add_free_function_to_meta_info(&mut self, fun: &'i ExprFunctionDefinition<'i>) {
         if let Some(self_arg) = &fun.sig.self_arg {
             self.diagnostics.error(ErrorCode::SelfBinding)
                 .with_error_label(self_arg.diagnostics_span(), "self-argument not allowed here")
@@ -441,7 +441,7 @@ impl<'a, 'm, 'i> Parser<'a, 'm, 'i> {
         let name = fun.sig.name.map(|name| Cow::Borrowed(name.ident));
         self.meta_info.add_function(self.diagnostics, name, fun);
     }
-    fn add_impl_block_functions_to_meta_info(&mut self, impl_block: &'a ExprImplBlock<'a, 'i>) {
+    fn add_impl_block_functions_to_meta_info(&mut self, impl_block: &'i ExprImplBlock<'i>) {
         for fun in &impl_block.functions {
             match fun.sig.name {
                 Some(name) => {
@@ -454,10 +454,10 @@ impl<'a, 'm, 'i> Parser<'a, 'm, 'i> {
             }
         }
     }
-    fn add_struct_to_meta_info(&mut self, struct_def: &'a ExprStructDefinition<'a, 'i>) {
+    fn add_struct_to_meta_info(&mut self, struct_def: &'i ExprStructDefinition<'i>) {
         self.meta_info.add_struct(self.diagnostics, struct_def);
     }
-    fn add_enum_to_meta_info(&mut self, enum_def: &'a ExprEnumDefinition<'a, 'i>) {
+    fn add_enum_to_meta_info(&mut self, enum_def: &'i ExprEnumDefinition<'i>) {
         self.meta_info.add_enum(self.diagnostics, enum_def);
     }
 

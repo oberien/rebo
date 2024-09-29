@@ -10,7 +10,7 @@ use crate::typeck::TypeVar;
 pub struct UnknownFunction;
 
 impl Visitor for UnknownFunction {
-    fn visit_variable(&self, diagnostics: &Diagnostics<ErrorCode>, meta_info: &MetaInfo, _: &BlockStack<'_, '_, ()>, var: &ExprVariable) {
+    fn visit_variable(&self, diagnostics: &Diagnostics<ErrorCode>, meta_info: &MetaInfo, _: &BlockStack<'_, ()>, var: &ExprVariable) {
         let ExprVariable { binding, .. } = var;
         if binding.ident.ident.contains("::") {
             match meta_info.functions.get(binding.ident.ident) {
@@ -27,7 +27,7 @@ impl Visitor for UnknownFunction {
             }
         }
     }
-    fn visit_function_call(&self, diagnostics: &Diagnostics<ErrorCode>, meta_info: &MetaInfo, _: &BlockStack<'_, '_, ()>, call: &ExprFunctionCall) {
+    fn visit_function_call(&self, diagnostics: &Diagnostics<ErrorCode>, meta_info: &MetaInfo, _: &BlockStack<'_, ()>, call: &ExprFunctionCall) {
         let ExprFunctionCall { name, .. } = call;
 
         match &meta_info.types[&TypeVar::from_spanned(name)] {

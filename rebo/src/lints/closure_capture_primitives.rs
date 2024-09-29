@@ -10,7 +10,7 @@ use crate::parser::ExprFunctionDefinition;
 pub struct ClosureCapturePrimitives;
 
 impl Visitor for ClosureCapturePrimitives {
-    fn visit_function_definition(&self, diagnostic: &Diagnostics<ErrorCode>, meta_info: &MetaInfo, _: &BlockStack<'_, '_, ()>, fun: &ExprFunctionDefinition) {
+    fn visit_function_definition(&self, diagnostic: &Diagnostics<ErrorCode>, meta_info: &MetaInfo, _: &BlockStack<'_, ()>, fun: &ExprFunctionDefinition) {
         let ExprFunctionDefinition { sig, captures, body: _, span: _ } = fun;
         if sig.name.is_some() {
             return;
