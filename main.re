@@ -1,15 +1,17 @@
-gen fn foo() -> bool {
-    // return within generators must not have an expression
-    yield true;
-    return;
-    yield false;
+gen fn bar() -> int {
+    yield if true {
+        yield 1;
+        3
+    } else {
+        yield 2;
+        4
+    };
 }
-let foo = foo();
-print(foo.next());
-print(foo.next());
-print(foo.next());
-print(foo.next());
-print(foo.next());
+let bar = bar();
+print(bar.next());
+print(bar.next());
+print(bar.next());
+
 
 // yield (1330 + {yield 42; 7})
 

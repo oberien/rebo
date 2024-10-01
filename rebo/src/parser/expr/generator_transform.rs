@@ -35,8 +35,11 @@ pub fn transform_generator<'i>(parser: &mut Parser<'i, '_>, gen_token: TokenGen,
 }
 
 enum TrafoResult<'new> {
+    /// Transformation did not yield -> return original (modified) expression
     Expr(&'new Expr<'new>),
-    // first node of yield-subgraph, node of the block executed after the yield
+    /// Transformation yielded -> state-graph nodes added / subgraph created
+    ///
+    /// first node (start) of subgraph, last node (end) of the subgraph
     Yielded(NodeId, NodeId),
 }
 #[derive(derive_more::Display)]
@@ -191,6 +194,14 @@ impl<'old, 'p, 'm> GeneratorTransformator<'old, 'p, 'm> {
             Expr::Literal(_) => TrafoResult::Expr(expr_outer),
             Expr::FormatString(_) => todo!(),
             Expr::Bind(_) => todo!(),
+            // Expr::Bind(ExprBind { let_token, pattern, assign, expr, span }) => {
+            //     let binding = match pattern {
+            //         ExprPattern::Untyped(pat) => pat.binding,
+            //         ExprPattern::Typed(pat) => pat.pattern.binding,
+            //     };
+            //     let expr = self.transform_expr(expr);
+            //     let self_binding = self.gen_assign_self_binding_field(binding.id, )
+            // }
             Expr::Static(_) => TrafoResult::Expr(expr_outer),
             Expr::Assign(_) => todo!(),
             // unops
@@ -294,7 +305,7 @@ impl<'old, 'p, 'm> GeneratorTransformator<'old, 'p, 'm> {
                 |expr| Expr::Parenthesized(ExprParenthesized { open, expr, close, span }),
                 |expr| ExprBuilder::parenthesized(expr),
             ),
-            Expr::IfElse(_) => todo!(),
+            Expr::IfElse(if_else) => self.transform_if_else(expr_outer, if_else),
             Expr::Match(_) => todo!(),
             Expr::While(_) => todo!(),
             Expr::For(_) => todo!(),
@@ -492,6 +503,59 @@ impl<'old, 'p, 'm> GeneratorTransformator<'old, 'p, 'm> {
         }
     }
 
+    fn transform_if_else(&mut self, expr_outer: &'old Expr<'old>, if_else: &'old ExprIfElse<'old>) -> TrafoResult<'old> {
+        let ExprIfElse { if_token: _, condition, then, else_ifs, els, span: _ } = if_else;
+        let new_condition = self.transform_expr(condition);
+        let new_then = self.transform_block(then);
+        let mut any_yielded = matches!(new_condition, TrafoResult::Yielded(..))
+            || matches!(new_then, TrafoResult::Yielded(..));
+        let new_else_ifs: Vec<_> = else_ifs.iter()
+            .map(|(_else, _if, cond, block)| {
+                (self.transform_expr(cond), self.transform_block(block))
+            }).inspect(|(cond, block)| {
+            any_yielded |= matches!(cond, TrafoResult::Yielded(..));
+            any_yielded |= matches!(block, TrafoResult::Yielded(..));
+        }).collect();
+        let new_els = els.as_ref().map(|(_else, block)| {
+            self.transform_block(block)
+        }).inspect(|block| any_yielded |= matches!(block, TrafoResult::Yielded(..)));
+
+        if !any_yielded {
+            return TrafoResult::Expr(expr_outer);
+        }
+        // at least one yielded -> build states
+        let new_end = self.empty_node();
+        self.graph[new_end] = Some(self.gen_access_self_field_for_binding(self.get_match_binding_into_node(new_end).id()));
+        fn new_nodes<'old>(this: &mut GeneratorTransformator<'old, '_, '_>, result: TrafoResult<'old>) -> (NodeId, NodeId) {
+            match result {
+                TrafoResult::Expr(expr) => {
+                    let node = this.graph.add_node(Some(ExprBuilder::from_expr(expr)));
+                    (node, node)
+                }
+                TrafoResult::Yielded(start, end) => (start, end),
+            }
+        }
+        let (cond_start, cond_end) = new_nodes(self, new_condition);
+        let (then_start, then_end) = new_nodes(self, new_then);
+        self.graph.add_edge(cond_end, then_start, Edge::Pattern(ExprBuilder::match_pattern_literal(true)));
+        self.add_value_forwarding_edge(then_end, new_end);
+        let mut false_start = cond_end;
+        for (cond, block) in new_else_ifs {
+            let (elseif_cond_start, elseif_cond_end) = new_nodes(self, cond);
+            let (elseif_block_start, elseif_block_end) = new_nodes(self, block);
+            self.graph.add_edge(false_start, elseif_cond_start, Edge::Pattern(ExprBuilder::match_pattern_literal(false)));
+            false_start = elseif_cond_end;
+            self.graph.add_edge(elseif_cond_end, elseif_block_start, Edge::Pattern(ExprBuilder::match_pattern_literal(true)));
+            self.add_value_forwarding_edge(elseif_block_end, new_end);
+        }
+        if let Some(else_block) = new_els {
+            let (else_block_start, else_block_end) = new_nodes(self, else_block);
+            self.graph.add_edge(false_start, else_block_start, Edge::Pattern(ExprBuilder::match_pattern_literal(false)));
+            self.add_value_forwarding_edge(else_block_end, new_end);
+        }
+        TrafoResult::Yielded(cond_start, new_end)
+    }
+
     fn field_ident(&self, binding_id: BindingId) -> TokenIdent<'old> {
         *self.binding_fields.borrow_mut().entry(binding_id)
             .or_insert_with(|| self.create_ident(format!("binding_{}", binding_id)))
@@ -678,7 +742,7 @@ impl<'old, 'p, 'm> GeneratorTransformator<'old, 'p, 'm> {
                 Edge::Pattern(p) => format!("label = \"{}\"", p),
                 Edge::Yield => "style = dotted".to_string(),
             },
-            &|_, (node_id, expr)| format!("label = \"[{}]\n{}\"", node_id.index(), expr),
+            &|_, (node_id, expr)| format!("label = \"[state {}]\n{}\"", node_id.index(), expr),
         );
         dot.to_string()
     }
