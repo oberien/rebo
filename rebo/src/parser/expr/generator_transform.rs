@@ -88,7 +88,7 @@ impl<'old, 'p, 'm> GeneratorTransformator<'old, 'p, 'm> {
             },
             TrafoResult::Yielded(start, end) => (start, end),
         };
-        self.graph.add_edge(end, fused_node, Edge::Pattern(self.get_match_pattern_into_node(fused_node)));
+        self.add_value_forwarding_edge(end, fused_node);
 
         // graph is finished
         if log_enabled!(Level::Trace) {
@@ -342,7 +342,7 @@ impl<'old, 'p, 'm> GeneratorTransformator<'old, 'p, 'm> {
                 self.graph[node] = Some(block);
                 self.graph.add_edge(node, dummy_node, Edge::Yield);
                 let start = if let Some((start, end)) = inner_start_end {
-                    self.graph.add_edge(end, node, Edge::Pattern(self.get_match_pattern_into_node(node)));
+                    self.add_value_forwarding_edge(end, node);
                     start
                 } else {
                     node
@@ -371,7 +371,7 @@ impl<'old, 'p, 'm> GeneratorTransformator<'old, 'p, 'm> {
                 let inner_expr = self.gen_access_self_field_for_binding(self.get_match_binding_into_node(node).id());
                 let expr = make_builder(inner_expr);
                 self.graph[node] = Some(expr);
-                self.graph.add_edge(end, node, Edge::Pattern(self.get_match_pattern_into_node(node)));
+                self.add_value_forwarding_edge(end, node);
                 TrafoResult::Yielded(start, node)
             }
         }
@@ -403,7 +403,7 @@ impl<'old, 'p, 'm> GeneratorTransformator<'old, 'p, 'm> {
                     self.gen_access_self_field_for_binding(self.get_match_binding_into_node(binop_node).id()),
                 ));
                 self.graph[binop_node] = binop_node_expr;
-                self.graph.add_edge(bend, binop_node, Edge::Pattern(self.get_match_pattern_into_node(binop_node)));
+                self.add_value_forwarding_edge(bend, binop_node);
                 TrafoResult::Yielded(anode, binop_node)
             }
             (TrafoResult::Yielded(astart, aend), TrafoResult::Expr(b)) => {
@@ -413,7 +413,7 @@ impl<'old, 'p, 'm> GeneratorTransformator<'old, 'p, 'm> {
                     ExprBuilder::from_expr(b),
                 ));
                 self.graph[binop_node] = binop_node_expr;
-                self.graph.add_edge(aend, binop_node, Edge::Pattern(self.get_match_pattern_into_node(binop_node)));
+                self.add_value_forwarding_edge(aend, binop_node);
                 TrafoResult::Yielded(astart, binop_node)
             }
             (TrafoResult::Yielded(astart, aend), TrafoResult::Yielded(bstart, bend)) => {
@@ -423,8 +423,8 @@ impl<'old, 'p, 'm> GeneratorTransformator<'old, 'p, 'm> {
                     self.gen_access_self_field_for_binding(self.get_match_binding_into_node(binop_node).id()),
                 ));
                 self.graph[binop_node] = binop_node_expr;
-                self.graph.add_edge(aend, bstart, Edge::Pattern(self.get_match_pattern_into_node(bstart)));
-                self.graph.add_edge(bend, binop_node, Edge::Pattern(self.get_match_pattern_into_node(binop_node)));
+                self.add_value_forwarding_edge(aend, bstart);
+                self.add_value_forwarding_edge(bend, binop_node);
                 TrafoResult::Yielded(astart, binop_node)
             }
         }
@@ -452,13 +452,13 @@ impl<'old, 'p, 'm> GeneratorTransformator<'old, 'p, 'm> {
                         .with_terminating_semicolon()
                         .build();
                     let node = self.graph.add_node(Some(block));
-                    self.graph.add_edge(node, start, Edge::Pattern(self.get_match_pattern_into_node(start)));
+                    self.add_value_forwarding_edge(node, start);
                     node
                 }
             };
             match &mut current_start_end {
                 Some((_, current_end)) => {
-                    self.graph.add_edge(*current_end, new_start, Edge::Pattern(self.get_match_pattern_into_node(new_start)));
+                    self.add_value_forwarding_edge(*current_end, new_start);
                     *current_end = end;
                 }
                 None => current_start_end = Some((new_start, end)),
@@ -477,7 +477,7 @@ impl<'old, 'p, 'm> GeneratorTransformator<'old, 'p, 'm> {
                 false => {
                     let block = mapped_block.build();
                     let node = self.graph.add_node(Some(block));
-                    self.graph.add_edge(end, node, Edge::Pattern(self.get_match_pattern_into_node(node)));
+                    self.add_value_forwarding_edge(end, node);
                     node
                 }
             };
@@ -511,8 +511,13 @@ impl<'old, 'p, 'm> GeneratorTransformator<'old, 'p, 'm> {
         self.temp_fields.push(temp_ident);
         temp_ident
     }
-    fn get_match_pattern_into_node(&self, node: NodeId) -> ExprMatchPatternBuilder<'old> {
-        ExprBuilder::match_pattern_binding(self.get_match_binding_into_node(node))
+    /// Add an edge between two nodes that forwards the from-node's value as match-pattern
+    ///
+    /// E.g. for `if cond { foo() } else { bar() }` we want for both branch-blocks to
+    /// return their value as value of the if-expression.
+    fn add_value_forwarding_edge(&mut self, from: NodeId, to: NodeId) {
+        let pattern = ExprBuilder::match_pattern_binding(self.get_match_binding_into_node(to));
+        self.graph.add_edge(from, to, Edge::Pattern(pattern));
     }
     fn get_match_binding_into_node(&self, node: NodeId) -> ExprBuilderBinding<'old> {
         self.match_bindings.borrow_mut().entry(node)
