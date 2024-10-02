@@ -611,7 +611,9 @@ impl<'old, 'p, 'm> GeneratorTransformator<'old, 'p, 'm> {
     }
 
     fn gen_option_some_call(&self, expr: ExprBuilder<'old>) -> ExprBuilder<'old> {
-        let option_some = self.parser.get_binding_unsafe_unsafe_unsafe("Option::Some").unwrap();
+        let mut option_some = self.parser.get_binding_unsafe_unsafe_unsafe("Option::Some").unwrap();
+        // hack to display the function call with its target until we have proper path resolution
+        option_some.ident.ident = "Option::Some";
         ExprBuilder::function_call(option_some).arg(expr).call()
     }
 

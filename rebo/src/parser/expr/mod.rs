@@ -102,11 +102,15 @@ impl<'i> Binding<'i> {
                 }
             }
         };
-        let binding = match parser.get_binding(ident.ident) {
+        let mut binding = match parser.get_binding(ident.ident) {
             Some(binding) => binding,
             None if ident.ident.contains("::") => parser.add_rogue_binding(ident, Some(TokenMut { span: SpanWithId::from(ident.span.diagnostics_span()) })),
             None => parser.diagnostic_unknown_identifier(ident, |d| d.with_info_label(ident.span.diagnostics_span(), format!("use `let {} = ...` to create a new binding", ident))),
         };
+        // hack to display the function call as `Target::function(...)` until we have proper path resolution
+        // (the existing binding's ident only contains `function` as the target and function name
+        // do not appear next to each other, e.g. `enum Foo { Foo(int) }` or `impl Foo { fn foo() {} }`)
+        binding.ident.ident = ident.ident;
         trace!("{} got binding {}", depth, binding);
         Ok((binding, ident.span))
     }
@@ -2216,7 +2220,7 @@ impl<'i> Display for ExprFunctionSignature<'i> {
             write!(f, "{}", generics)?;
         }
         // if there is a self-arg, it's an ExprPatternTyped; we need to remove the type
-        let self_arg = self.self_arg.as_ref().map(ToString::to_string);
+        let self_arg = self.self_arg.as_ref().map(|&binding| ExprPatternUntyped { binding }.to_string());
         let args = self.args.iter().skip(self_arg.is_some() as usize).map(ToString::to_string);
         write!(f, "({})", self_arg.into_iter().chain(args).join(", "))?;
         if let Some((_arrow, ret_type)) = &self.ret_type {
