@@ -112,7 +112,7 @@ impl<'old, 'p, 'm> GeneratorTransformator<'old, 'p, 'm> {
                 })
             },
         };
-        let struct_ident = self.create_ident(format!("Generator_{}_{}_{}_{}", fun.sig.name.map(|i| i.ident).unwrap_or(""), fun_span.file_id(), fun_span.start(), fun_span.end()));
+        let struct_ident = self.create_ident(format!("Generator_{}_{}_{}_{}", fun.sig.name.map(|i| i.ident).unwrap_or(""), fun_span.file_id(), fun_span.start(), fun_span.end()).replace(" ", "_"));
         let impl_block_builder = self.generate_state_machine_impl_block(struct_ident, yield_type);
         let struct_builder = self.generate_generator_struct(struct_ident);
 

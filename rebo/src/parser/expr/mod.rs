@@ -118,7 +118,7 @@ impl<'i> Spanned for Binding<'i> {
 }
 impl<'i> Display for Binding<'i> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "{}[{}]", self.ident.ident, self.id)
+        write!(f, "{}/*{}*/", self.ident.ident, self.id)
     }
 }
 struct NewBinding<'i> {
@@ -610,7 +610,7 @@ impl<'i> Parse<'i> for &'i Expr<'i> {
 pub type TypeGenerics<'i> = (TokenLessThan, Box<Separated<'i, ExprType<'i>, TokenComma>>, TokenGreaterThan);
 #[derive(Debug, Clone)]
 pub enum ExprType<'i> {
-    // can't be parsed, only generated
+    // can't be parsed, only generated for span-reasons -> ignore parens everywhere
     Parenthesized(ExprTypeParenthesized<'i>),
     String(TokenStringType),
     Int(TokenIntType),
@@ -787,7 +787,7 @@ impl<'i> Spanned for ExprType<'i> {
 impl<'i> Display for ExprType<'i> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            ExprType::Parenthesized(ExprTypeParenthesized { typ, .. }) => write!(f, "({typ})"),
+            ExprType::Parenthesized(ExprTypeParenthesized { typ, .. }) => write!(f, "{typ}"),
             ExprType::String(_) => write!(f, "string"),
             ExprType::Int(_) => write!(f, "int"),
             ExprType::Float(_) => write!(f, "float"),
@@ -2215,8 +2215,10 @@ impl<'i> Display for ExprFunctionSignature<'i> {
         if let Some(generics) = &self.generics {
             write!(f, "{}", generics)?;
         }
-        // self-arg is duplicated into the args - no need to use self.self_arg here
-        write!(f, "({})", self.args)?;
+        // if there is a self-arg, it's an ExprPatternTyped; we need to remove the type
+        let self_arg = self.self_arg.as_ref().map(ToString::to_string);
+        let args = self.args.iter().skip(self_arg.is_some() as usize).map(ToString::to_string);
+        write!(f, "({})", self_arg.into_iter().chain(args).join(", "))?;
         if let Some((_arrow, ret_type)) = &self.ret_type {
             write!(f, " -> {}", ret_type)?;
         }
