@@ -150,6 +150,11 @@ impl<'i: 'b, 'b, T: 'i, D: 'i> Separated<'i, T, D> {
             }
         }
     }
+    /// Builder pattern for push_front
+    pub fn prepend(mut self, element: T, delimiter: Option<D>) -> Self {
+        self.push_front(element, delimiter);
+        self
+    }
     /// Append an element to the separated list. If it's the only element in the list, the delimiter
     /// can be None, otherwise it panics if delimiter is None.
     pub fn push_back(&mut self, delimiter: Option<D>, element: T) {

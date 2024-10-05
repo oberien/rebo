@@ -239,3 +239,22 @@ fn generator_parenthesized() {
         assert_eq(bar.next(), Option::None);
     "#, ReturnValue::Ok(Value::Unit));
 }
+
+#[test]
+fn generator_field_access() {
+    test(r#"
+        static FOO: Foo = Foo { val: 42 };
+        struct Foo { val: int }
+        gen fn foo() -> int {
+            let mut a = Foo { val: 1 };
+            yield 2;
+            yield FOO.val;
+            yield a.val;
+        }
+        let bar = foo();
+        assert_eq(bar.next(), Option::Some(2));
+        assert_eq(bar.next(), Option::Some(42));
+        assert_eq(bar.next(), Option::Some(1));
+        assert_eq(bar.next(), Option::None);
+    "#, ReturnValue::Ok(Value::Unit));
+}

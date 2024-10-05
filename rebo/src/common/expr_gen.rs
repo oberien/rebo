@@ -1,11 +1,11 @@
 use std::cell::{Cell, RefCell};
-use std::fmt::{Display, Formatter};
+use std::fmt::{Debug, Display, Formatter};
 use std::iter;
 use std::rc::Rc;
 use diagnostic::{Diagnostics, ErrorCode, FileId};
 use indexmap::IndexSet;
 use typed_arena::Arena;
-use rebo::common::SpanWithId;
+use rebo::common::{SpanId, SpanWithId};
 use rebo::lexer::{TokenBoolType, TokenCircumflex, TokenCloseCurly, TokenCloseParen, TokenColon, TokenComma, TokenDot, TokenDoubleAmp, TokenDoublePipe, TokenEquals, TokenFatArrow, TokenFloatType, TokenGreaterEquals, TokenGreaterThan, TokenIdent, TokenIntType, TokenLessThan, TokenLoop, TokenMatch, TokenMut, TokenOpenCurly, TokenPercent, TokenSlash, TokenStringType, TokenUnderscore};
 use rebo::parser::{Binding, BindingId, ExprAccess, ExprAdd, ExprBlock, ExprBoolAnd, ExprDiv, ExprEquals, ExprFunctionDefinition, ExprGreaterEquals, ExprImplBlock, ExprLabelDef, ExprLessEquals, ExprLessThan, ExprLoop, ExprMatch, ExprMatchPattern, ExprMethodCall, ExprMod, ExprMul, ExprPatternTyped, ExprReturn, ExprStructDefinition, ExprStructInitialization, ExprSub, ExprType, ExprTypeParenthesized, ExprXor, FieldOrMethod, Generic};
 use crate::common::Spanned;
@@ -190,6 +190,21 @@ impl<'old> ExprBuilder<'old> {
                 new: true,
                 name,
                 mutable,
+                span_id: None,
+                mut_span: None,
+                def_span: None,
+            })),
+        }
+    }
+    /// WARNING: Duplicating a SpanId with a different Span is asking for trouble. Use at your own risk!
+    pub fn binding_new_with_span_id_unsafe(name: &'_ str, mutable: bool, binding_id: BindingId, span_id: SpanId) -> ExprBuilderBinding<'_> {
+        ExprBuilderBinding {
+            inner: Rc::new(RefCell::new(ExprBuilderBindingInner {
+                id: binding_id,
+                new: true,
+                name,
+                mutable,
+                span_id: Some(span_id),
                 mut_span: None,
                 def_span: None,
             })),
@@ -537,6 +552,8 @@ struct ExprBuilderBindingInner<'old> {
     new: bool,
     name: &'old str,
     mutable: bool,
+    // "unsafe" option for faking an existing span but using a new file
+    span_id: Option<SpanId>,
     // a binding can be used multiple times -- create spans only once
     mut_span: Option<SpanWithId>,
     def_span: Option<SpanWithId>,
@@ -549,6 +566,7 @@ impl<'old> From<Binding<'old>> for ExprBuilderBinding<'old> {
                 new: false,
                 name: binding.ident.ident,
                 mutable: binding.mutable.is_some(),
+                span_id: None,
                 mut_span: binding.mutable.map(|mutable| mutable.span),
                 def_span: Some(binding.ident.span),
                 // mut_span: None,
@@ -592,6 +610,9 @@ impl<'old> BuildExprPart<'old> for ExprBuilderBinding<'old> {
         }
         if needs_def_span {
             let def_span = gen.next_fake_span(self.inner.borrow().name);
+            let def_span = self.inner.borrow().span_id
+                .map(|id| SpanWithId::new_with_span_id_unsafe(id, def_span.file_id(), def_span.start(), def_span.end()))
+                .unwrap_or(def_span);
             self.inner.borrow_mut().def_span = Some(def_span);
         }
         let inner = self.inner.borrow();
@@ -605,6 +626,22 @@ impl<'old> BuildExprPart<'old> for ExprBuilderBinding<'old> {
             rogue: false,
             span: inner.mut_span | inner.def_span.unwrap()
         }
+    }
+}
+impl<'old> Display for ExprBuilderBinding<'old> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        let arena = Arena::new();
+        let diagnostics: Diagnostics<crate::ErrorCode> = Diagnostics::new();
+        let expr = ExprBuilder::generate(self, &arena, &diagnostics, FileId::new_synthetic_numbered(), "__ExprBuilderBinding::display__".to_string());
+        Display::fmt(&expr, f)
+    }
+}
+impl<'old> Debug for ExprBuilderBinding<'old> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        let arena = Arena::new();
+        let diagnostics: Diagnostics<crate::ErrorCode> = Diagnostics::new();
+        let expr = ExprBuilder::generate(self, &arena, &diagnostics, FileId::new_synthetic_numbered(), "__ExprBuilderBinding::display__".to_string());
+        Debug::fmt(&expr, f)
     }
 }
 

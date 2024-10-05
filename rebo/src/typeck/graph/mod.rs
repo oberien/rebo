@@ -192,7 +192,7 @@ impl<'i> Graph<'i> {
     }
 
     pub fn xdot(&self) {
-        crate::xdot::xdot(&self.to_string());
+        crate::xdot::xdot(&self.to_string()).wait().unwrap();
     }
 }
 
@@ -202,7 +202,10 @@ impl<'i> Display for Graph<'i> {
         let f1 = &|_, e: EdgeReference<Constraint>| format!("label = {:?}", e.weight().to_string());
         let f2 = &|_, (_, node): (NodeIndex<u32>, &Node)| {
             let code = format!("{:?}", self.diagnostics.resolve_span(node.diagnostics_span()));
-            format!("label = \"{node}: {}\\n{}\"", &code[1..code.len()-1], self.possible_types[node])
+            let code = escape_unescaped_doublequotes(&code[1..code.len()-1]);
+            let possible_types = format!("{}", self.possible_types[node]);
+            let possible_types = escape_unescaped_doublequotes(&possible_types);
+            format!("label = \"{node}: {code}\\n{possible_types}\"")
         };
         let graph = NodeFiltered::from_fn(&self.graph, |nid| {
             let file_name = self.diagnostics.file_name(self.graph.node_weight(nid).unwrap().file_id());
@@ -223,4 +226,22 @@ impl<'i> Display for Graph<'i> {
         writeln!(f, "}}")?;
         Ok(())
     }
+}
+
+fn escape_unescaped_doublequotes(s: &str) -> String {
+    let mut res = String::with_capacity(s.len() + s.len() / 1000);
+    let mut chars = s.chars().fuse();
+    while let Some(char) = chars.next() {
+        match char {
+            '\\' => {
+                res.push(char);
+                if let Some(char) = chars.next() {
+                    res.push(char);
+                }
+            },
+            '"' => res.push_str("\\\""),
+            c => res.push(c),
+        }
+    }
+    res
 }

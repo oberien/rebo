@@ -20,20 +20,24 @@ fn main() {
     let args = Args::parse();
     let code = std::fs::read_to_string(&args.filename).unwrap();
     let result = rebo::run(args.filename, code);
+    let mut children = Vec::new();
     if args.type_graph_before && result.type_graph_before.is_some() {
-        xdot::xdot(result.type_graph_before.as_deref().unwrap());
+        children.push(xdot::xdot(result.type_graph_before.as_deref().unwrap()));
     }
     if args.type_graph_after && result.type_graph_after.is_some() {
-        xdot::xdot(result.type_graph_after.as_deref().unwrap());
+        children.push(xdot::xdot(result.type_graph_after.as_deref().unwrap()));
     }
     for generator in args.generator {
         match result.generators.get(&generator) {
             Some((graph_dot, code)) => {
                 println!("{code}");
-                xdot::xdot(graph_dot);
+                children.push(xdot::xdot(graph_dot));
             },
             None => println!("generator {generator} not found"),
         }
+    }
+    for mut child in children {
+        child.wait().unwrap();
     }
     match result.return_value {
         ReturnValue::Ok(val) => println!("Result Value: {val:?}"),

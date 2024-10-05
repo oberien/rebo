@@ -20,11 +20,36 @@ use crate::common::expr_gen::ExprBuilderBinding;
 //     * tail-expression: wrap in parens: (<expr>)
 
 pub fn transform_generator<'i>(parser: &mut Parser<'i, '_>, gen_token: TokenGen, fun: ExprFunctionDefinition<'i>) -> ExprFunctionDefinition<'i> {
+    // Create the self-binding to be used both in non-yield and yield code:
+    // `let foo = bar` needs to be transformed to `self.foo = bar`, for which `self`
+    // must be a Binding and can't be a BindingBuilder
+    let generator_file_prefix = format!("Generator_{}_{}_{}_{}", fun.sig.name.map(|i| i.ident).unwrap_or(""), fun.file_id(), fun.start(), fun.end()).replace(" ", "_");
+    let (self_file, _self_code) = parser.diagnostics.add_file(format!("{generator_file_prefix}_self.re"), "mut self".to_string());
+    let self_binding_expr = Binding {
+        id: BindingId::unique(),
+        mutable: Some(TokenMut { span: SpanWithId::new(self_file, 0, 3) }),
+        ident: TokenIdent { ident: "self", span: SpanWithId::new(self_file, 4, 8) },
+        rogue: false,
+        span: SpanWithId::new(self_file, 0, 8),
+    };
+    // SAFETY: We must use the same SpanId for both self-bindings to become the same TypeVar and thus
+    //         Type. However, we need both a Binding and a BindingBuilder as we need to transform
+    //         bindings and assignments to assign into the state-machine-struct and they
+    //         may or may not be transformed.
+    let self_binding = ExprBuilder::binding_new_with_span_id_unsafe(
+        self_binding_expr.ident.ident,
+        true,
+        self_binding_expr.id,
+        self_binding_expr.ident.span_with_id().id(),
+    );
+
     let trafo = GeneratorTransformator {
+        generator_file_prefix,
         parser,
         graph: DiGraph::new(),
         gen_token,
-        self_binding: ExprBuilder::binding_new("self", true),
+        self_binding,
+        self_binding_expr,
         match_bindings: RefCell::new(HashMap::new()),
         next_tmp: 0,
         binding_fields: RefCell::new(HashMap::new()),
@@ -52,13 +77,16 @@ enum Edge<'old> {
 type NodeId = NodeIndex<u32>;
 
 struct GeneratorTransformator<'old, 'p, 'm> {
+    /// "Generator_{name}_{file}_{start}_{end}"
+    generator_file_prefix: String,
     parser: &'p mut Parser<'old, 'm>,
     graph: DiGraph<Option<ExprBuilder<'old>>, Edge<'old>, u32>,
     gen_token: TokenGen,
     self_binding: ExprBuilderBinding<'old>,
+    self_binding_expr: Binding<'old>,
     /// each node needs its own match-binding as the types can be different
     match_bindings: RefCell<HashMap<NodeId, ExprBuilderBinding<'old>>>,
-    /// List of bindings this generator needs to store temporaries
+    /// List of bindings this generator needs to store as self-fields
     binding_fields: RefCell<HashMap<BindingId, TokenIdent<'old>>>,
     /// Number of the next field that is needed to store temporary assignment
     next_tmp: u32,
@@ -68,7 +96,6 @@ struct GeneratorTransformator<'old, 'p, 'm> {
 
 impl<'old, 'p, 'm> GeneratorTransformator<'old, 'p, 'm> {
     pub fn transform(mut self, fun: ExprFunctionDefinition<'old>) -> ExprFunctionDefinition<'old> {
-        let fun_span = fun.span_with_id();
         let body_open_span = fun.body.open.span;
         let body_close_span = fun.body.close.span;
         let body_span = fun.body.span;
@@ -112,7 +139,7 @@ impl<'old, 'p, 'm> GeneratorTransformator<'old, 'p, 'm> {
                 })
             },
         };
-        let struct_ident = self.create_ident(format!("Generator_{}_{}_{}_{}", fun.sig.name.map(|i| i.ident).unwrap_or(""), fun_span.file_id(), fun_span.start(), fun_span.end()).replace(" ", "_"));
+        let struct_ident = self.create_ident(self.generator_file_prefix.clone());
         let impl_block_builder = self.generate_state_machine_impl_block(struct_ident, yield_type);
         let struct_builder = self.generate_generator_struct(struct_ident);
 
@@ -123,7 +150,7 @@ impl<'old, 'p, 'm> GeneratorTransformator<'old, 'p, 'm> {
         function_body.insert_expr(1, impl_block_builder.build());
 
         // actually build everything
-        let generator_file_name = format!("Generator_{}_{}_{}_{}.re", fun.sig.name.map(|i| i.ident).unwrap_or(""), fun_span.file_id(), fun_span.start(), fun_span.end());
+        let generator_file_name = format!("{}.re", self.generator_file_prefix);
         let generator_file_id = FileId::new_synthetic_numbered();
         let mut function_body = ExprBuilder::generate(&function_body, self.parser.arena, self.parser.diagnostics, generator_file_id, generator_file_name);
 
@@ -193,27 +220,44 @@ impl<'old, 'p, 'm> GeneratorTransformator<'old, 'p, 'm> {
         match expr_outer {
             Expr::Literal(_) => TrafoResult::Expr(expr_outer),
             Expr::FormatString(_) => todo!(),
-            Expr::Bind(_) => todo!(),
-            // Expr::Bind(ExprBind { let_token, pattern, assign, expr, span }) => {
-            //     let binding = match pattern {
-            //         ExprPattern::Untyped(pat) => pat.binding,
-            //         ExprPattern::Typed(pat) => pat.pattern.binding,
-            //     };
-            //     let expr = self.transform_expr(expr);
-            //     let self_binding = self.gen_assign_self_binding_field(binding.id, )
-            // }
+            &Expr::Bind(ExprBind { let_token: _, ref pattern, assign, expr, span }) => {
+                // let foo = bar;
+                // =>
+                // self.foo = Option::Some(bar);
+                let (ExprPattern::Typed(ExprPatternTyped { pattern, .. })
+                    | ExprPattern::Untyped(pattern)) = pattern;
+                // TODO: don't throw away type information (otherwise `let foo: () = 1337` is valid)
+                let binding = pattern.binding;
+                self.transform_unop(
+                    expr,
+                    |this, expr| Expr::Assign(ExprAssign {
+                        lhs: ExprAssignLhs::FieldAccess(ExprFieldAccess::new(
+                            ExprVariable { binding: this.self_binding_expr, span: pattern.span_with_id().new_span_id() },
+                            TokenDot { span: pattern.span_with_id().new_span_id() },
+                            Separated::default().append(None, TokenIdent {
+                                ident: this.field_ident(binding).ident,
+                                span: pattern.span_with_id().new_span_id(),
+                            }),
+                        )),
+                        assign,
+                        expr: this.parser.arena.alloc(this.gen_option_some_call_expr(assign.span_with_id().new_span_id(), expr)),
+                        span,
+                    }),
+                    |this, expr| this.gen_assign_self_binding_field(binding, this.gen_option_some_call(expr)),
+                )
+            },
             Expr::Static(_) => TrafoResult::Expr(expr_outer),
             Expr::Assign(_) => todo!(),
             // unops
             &Expr::BoolNot(ExprBoolNot { bang, expr, span }) => self.transform_unop(
                 expr,
-                |expr| Expr::BoolNot(ExprBoolNot { bang, expr, span }),
-                ExprBuilder::bool_not,
+                |_, expr| Expr::BoolNot(ExprBoolNot { bang, expr, span }),
+                |_, expr| ExprBuilder::bool_not(expr),
             ),
             &Expr::Neg(ExprNeg { minus, expr, span }) => self.transform_unop(
                 expr,
-                |expr| Expr::Neg(ExprNeg { minus, expr, span }),
-                ExprBuilder::neg,
+                |_, expr| Expr::Neg(ExprNeg { minus, expr, span }),
+                |_, expr| ExprBuilder::neg(expr),
             ),
 
             // binops
@@ -299,11 +343,41 @@ impl<'old, 'p, 'm> GeneratorTransformator<'old, 'p, 'm> {
             ),
             Expr::Block(block) => self.transform_block(block),
             Expr::Variable(_) => todo!(),
-            Expr::Access(_) => todo!(),
+            &Expr::Access(ExprAccess { ref variable, dot, ref accesses, span }) => {
+                if !self.binding_fields.borrow().contains_key(&variable.binding.id) {
+                    // static binding
+                    return TrafoResult::Expr(expr_outer);
+                }
+                TrafoResult::Expr(self.parser.arena.alloc(Expr::Access(ExprAccess {
+                    variable: ExprVariable {
+                        binding: self.self_binding_expr,
+                        span: variable.span_with_id().new_span_id(),
+                    },
+                    dot: TokenDot { span: variable.span_with_id().new_span_id() },
+                    accesses: accesses.clone().prepend(
+                        FieldOrMethod::Method(ExprMethodCall {
+                            // method-resolution in typeck uses the resolved span as method-name
+                            name: self.parser.meta_info.rebo_functions["Option::unwrap"].sig.name.unwrap(),
+                            open: TokenOpenParen { span: variable.span_with_id().new_span_id() },
+                            args: Separated::default(),
+                            close: TokenCloseParen { span: variable.span_with_id().new_span_id() },
+                            span: variable.span_with_id().new_span_id(),
+                        }),
+                        Some(TokenDot { span: variable.span_with_id().new_span_id() })
+                    ).prepend(
+                        FieldOrMethod::Field(TokenIdent {
+                            ident: self.field_ident(variable.binding).ident,
+                            span: variable.span_with_id().new_span_id(),
+                        }),
+                        Some(dot),
+                    ),
+                    span,
+                })))
+            },
             &Expr::Parenthesized(ExprParenthesized { open, expr, close, span }) => self.transform_unop(
                 expr,
-                |expr| Expr::Parenthesized(ExprParenthesized { open, expr, close, span }),
-                |expr| ExprBuilder::parenthesized(expr),
+                |_, expr| Expr::Parenthesized(ExprParenthesized { open, expr, close, span }),
+                |_, expr| ExprBuilder::parenthesized(expr),
             ),
             Expr::IfElse(if_else) => self.transform_if_else(expr_outer, if_else),
             Expr::Match(_) => todo!(),
@@ -338,7 +412,7 @@ impl<'old, 'p, 'm> GeneratorTransformator<'old, 'p, 'm> {
                     Some(expr) => match self.transform_expr(expr) {
                         TrafoResult::Expr(e) => (ExprBuilder::from_expr(e), None),
                         TrafoResult::Yielded(start, end) => (
-                            self.gen_access_self_field_for_binding(self.get_match_binding_into_node(node).id()),
+                            self.gen_access_self_field_for_binding(self.get_match_binding_into_node(node)),
                             Some((start, end))
                         ),
                     },
@@ -363,7 +437,10 @@ impl<'old, 'p, 'm> GeneratorTransformator<'old, 'p, 'm> {
             Expr::FunctionCall(_) => todo!(),
             Expr::FunctionDefinition(_) => TrafoResult::Expr(expr_outer),
             Expr::StructDefinition(_) => TrafoResult::Expr(expr_outer),
-            Expr::StructInitialization(_) => todo!(),
+            // TODO: only temporary forward for Access testing
+            // Expr::StructInitialization(_) => todo!(),
+            Expr::StructInitialization(_) => TrafoResult::Expr(expr_outer),
+            // END TODO
             Expr::EnumDefinition(_) => TrafoResult::Expr(expr_outer),
             Expr::EnumInitialization(_) => TrafoResult::Expr(expr_outer),
             Expr::ImplBlock(_) => TrafoResult::Expr(expr_outer),
@@ -372,15 +449,15 @@ impl<'old, 'p, 'm> GeneratorTransformator<'old, 'p, 'm> {
     fn transform_unop(
         &mut self,
         expr: &'old Expr<'old>,
-        make_expr: impl Fn(&'old Expr<'old>) -> Expr<'old>,
-        make_builder: impl Fn(ExprBuilder<'old>) -> ExprBuilder<'old>,
+        make_expr: impl FnOnce(&mut Self, &'old Expr<'old>) -> Expr<'old>,
+        make_builder: impl FnOnce(&mut Self, ExprBuilder<'old>) -> ExprBuilder<'old>,
     ) -> TrafoResult<'old> {
         match self.transform_expr(expr) {
-            TrafoResult::Expr(expr) => TrafoResult::Expr(self.parser.arena.alloc(make_expr(expr))),
+            TrafoResult::Expr(expr) => TrafoResult::Expr(self.parser.arena.alloc(make_expr(self, expr))),
             TrafoResult::Yielded(start, end) => {
                 let node = self.empty_node();
-                let inner_expr = self.gen_access_self_field_for_binding(self.get_match_binding_into_node(node).id());
-                let expr = make_builder(inner_expr);
+                let inner_expr = self.gen_access_self_field_for_binding(self.get_match_binding_into_node(node));
+                let expr = make_builder(self, inner_expr);
                 self.graph[node] = Some(expr);
                 self.add_value_forwarding_edge(end, node);
                 TrafoResult::Yielded(start, node)
@@ -411,7 +488,7 @@ impl<'old, 'p, 'm> GeneratorTransformator<'old, 'p, 'm> {
                 let binop_node = self.empty_node();
                 let binop_node_expr = Some(make_builder(
                     ExprBuilder::access(&self.self_binding).field(temp_ident.ident).call_method("unwrap", Vec::new()).build(),
-                    self.gen_access_self_field_for_binding(self.get_match_binding_into_node(binop_node).id()),
+                    self.gen_access_self_field_for_binding(self.get_match_binding_into_node(binop_node)),
                 ));
                 self.graph[binop_node] = binop_node_expr;
                 self.add_value_forwarding_edge(bend, binop_node);
@@ -420,7 +497,7 @@ impl<'old, 'p, 'm> GeneratorTransformator<'old, 'p, 'm> {
             (TrafoResult::Yielded(astart, aend), TrafoResult::Expr(b)) => {
                 let binop_node = self.empty_node();
                 let binop_node_expr = Some(make_builder(
-                    self.gen_access_self_field_for_binding(self.get_match_binding_into_node(binop_node).id()),
+                    self.gen_access_self_field_for_binding(self.get_match_binding_into_node(binop_node)),
                     ExprBuilder::from_expr(b),
                 ));
                 self.graph[binop_node] = binop_node_expr;
@@ -430,8 +507,8 @@ impl<'old, 'p, 'm> GeneratorTransformator<'old, 'p, 'm> {
             (TrafoResult::Yielded(astart, aend), TrafoResult::Yielded(bstart, bend)) => {
                 let binop_node = self.empty_node();
                 let binop_node_expr = Some(make_builder(
-                    self.gen_access_self_field_for_binding(self.get_match_binding_into_node(bstart).id()),
-                    self.gen_access_self_field_for_binding(self.get_match_binding_into_node(binop_node).id()),
+                    self.gen_access_self_field_for_binding(self.get_match_binding_into_node(bstart)),
+                    self.gen_access_self_field_for_binding(self.get_match_binding_into_node(binop_node)),
                 ));
                 self.graph[binop_node] = binop_node_expr;
                 self.add_value_forwarding_edge(aend, bstart);
@@ -525,7 +602,7 @@ impl<'old, 'p, 'm> GeneratorTransformator<'old, 'p, 'm> {
         }
         // at least one yielded -> build states
         let new_end = self.empty_node();
-        self.graph[new_end] = Some(self.gen_access_self_field_for_binding(self.get_match_binding_into_node(new_end).id()));
+        self.graph[new_end] = Some(self.gen_access_self_field_for_binding(self.get_match_binding_into_node(new_end)));
         fn new_nodes<'old>(this: &mut GeneratorTransformator<'old, '_, '_>, result: TrafoResult<'old>) -> (NodeId, NodeId) {
             match result {
                 TrafoResult::Expr(expr) => {
@@ -556,9 +633,9 @@ impl<'old, 'p, 'm> GeneratorTransformator<'old, 'p, 'm> {
         TrafoResult::Yielded(cond_start, new_end)
     }
 
-    fn field_ident(&self, binding_id: BindingId) -> TokenIdent<'old> {
-        *self.binding_fields.borrow_mut().entry(binding_id)
-            .or_insert_with(|| self.create_ident(format!("binding_{}", binding_id)))
+    fn field_ident(&self, binding: impl BindingLike) -> TokenIdent<'old> {
+        *self.binding_fields.borrow_mut().entry(binding.id())
+            .or_insert_with(|| self.create_ident(format!("{}_{}", binding.name(), binding.id())))
     }
     fn create_ident(&self, name: String) -> TokenIdent<'old> {
         let len = name.len();
@@ -589,14 +666,14 @@ impl<'old, 'p, 'm> GeneratorTransformator<'old, 'p, 'm> {
             .clone()
     }
 
-    fn gen_assign_self_binding_field(&self, binding_id: BindingId, expr: ExprBuilder<'old>) -> ExprBuilder<'old> {
+    fn gen_assign_self_binding_field(&self, binding: impl BindingLike, expr: ExprBuilder<'old>) -> ExprBuilder<'old> {
         ExprBuilder::assign(&self.self_binding)
-            .access_field(self.field_ident(binding_id).ident)
+            .access_field(self.field_ident(binding).ident)
             .assign(self.gen_option_some_call(expr))
     }
-    fn gen_access_self_field_for_binding(&self, binding_id: BindingId) -> ExprBuilder<'old> {
+    fn gen_access_self_field_for_binding(&self, binding: impl BindingLike) -> ExprBuilder<'old> {
         ExprBuilder::access(&self.self_binding)
-            .field(self.field_ident(binding_id).ident)
+            .field(self.field_ident(binding).ident)
             .call_method("unwrap", Vec::new())
             .build()
     }
@@ -615,6 +692,21 @@ impl<'old, 'p, 'm> GeneratorTransformator<'old, 'p, 'm> {
         // hack to display the function call with its target until we have proper path resolution
         option_some.ident.ident = "Option::Some";
         ExprBuilder::function_call(option_some).arg(expr).call()
+    }
+    fn gen_option_some_call_expr(&self, fn_span: SpanWithId, expr: &'old Expr<'old>) -> Expr<'old> {
+        let mut option_some = self.parser.get_binding_unsafe_unsafe_unsafe("Option::Some").unwrap();
+        // hack to display the function call with its target until we have proper path resolution
+        option_some.ident.ident = "Option::Some";
+        Expr::FunctionCall(ExprFunctionCall {
+            name: ExprVariable {
+                binding: option_some,
+                span: fn_span.new_span_id(),
+            },
+            open: TokenOpenParen { span: SpanWithId::new(expr.file_id(), expr.start(), expr.start()) },
+            args: Separated::default().append(None, expr),
+            close: TokenCloseParen { span: SpanWithId::new(expr.file_id(), expr.end(), expr.end()) },
+            span: fn_span,
+        })
     }
 
     fn gen_return_some(&mut self, expr: ExprBuilder<'old>) -> ExprBuilder<'old> {
@@ -700,7 +792,7 @@ impl<'old, 'p, 'm> GeneratorTransformator<'old, 'p, 'm> {
                     //     }
                     // },
                     ExprMatchPatternBuilder::Binding(binding) => {
-                        inner_match_block.push_expr(self.gen_assign_self_binding_field(binding.id(), ExprBuilder::variable(binding)));
+                        inner_match_block.push_expr(self.gen_assign_self_binding_field(binding, ExprBuilder::variable(binding)));
                     },
                     ExprMatchPatternBuilder::Literal(_)
                     | ExprMatchPatternBuilder::Wildcard
@@ -747,5 +839,34 @@ impl<'old, 'p, 'm> GeneratorTransformator<'old, 'p, 'm> {
             &|_, (node_id, expr)| format!("label = \"[state {}]\n{}\"", node_id.index(), expr),
         );
         dot.to_string()
+    }
+}
+
+trait BindingLike {
+    fn id(&self) -> BindingId;
+    fn name(&self) -> &str;
+}
+impl BindingLike for ExprBuilderBinding<'_> {
+    fn id(&self) -> BindingId {
+        self.id()
+    }
+    fn name(&self) -> &str {
+        self.name()
+    }
+}
+impl BindingLike for Binding<'_> {
+    fn id(&self) -> BindingId {
+        self.id
+    }
+    fn name(&self) -> &str {
+        self.ident.ident
+    }
+}
+impl<'a, T: BindingLike> BindingLike for &'a T {
+    fn id(&self) -> BindingId {
+        <T as BindingLike>::id(self)
+    }
+    fn name(&self) -> &str {
+        <T as BindingLike>::name(self)
     }
 }
