@@ -14,6 +14,7 @@ use itertools::Itertools;
 use crate::typeck::types::SpecificType;
 use std::collections::{BTreeMap, BTreeSet};
 use std::convert::{Infallible, TryInto};
+use std::iter::FromIterator;
 use rt_format::{FormatArgument, Specifier};
 use rebo::common::FunctionValue::{Anonymous, Named};
 use rebo::common::{SpanWithId, Spanned};
@@ -624,6 +625,9 @@ impl ListArc {
     pub fn new(values: Vec<Value>) -> ListArc {
         ListArc { list: Arc::new(ReentrantMutex::new(RefCell::new(values))) }
     }
+    pub fn clone_list<T, L: FromIterator<T>>(&self) -> L where T: FromValue {
+        self.list.lock().borrow().iter().cloned().map(FromValue::from_value).collect()
+    }
 }
 impl DeepCopy for ListArc {
     fn deep_copy(&self) -> Self {
@@ -654,6 +658,11 @@ pub struct MapArc {
 impl MapArc {
     pub fn new(map: BTreeMap<Value, Value>) -> MapArc {
         MapArc { map: Arc::new(ReentrantMutex::new(RefCell::new(map))) }
+    }
+    pub fn clone_map<K, V, M: FromIterator<(K, V)>>(&self) -> M where K: FromValue, V: FromValue {
+        self.map.lock().borrow().iter()
+            .map(|(k, v)| (FromValue::from_value(k.clone()), FromValue::from_value(v.clone())))
+            .collect()
     }
 }
 impl DeepCopy for MapArc {

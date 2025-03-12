@@ -22,6 +22,8 @@ mod option;
 mod result;
 mod map;
 mod set;
+#[cfg(feature = "serde_json_value")]
+mod serde_json_value;
 
 pub use list::List;
 pub use map::Map;
@@ -134,6 +136,9 @@ pub fn add_to_meta_info<'i>(stdlib: Stdlib, diagnostics: &'i Diagnostics<ErrorCo
 
     meta_info.add_external_type::<Option<Value>>(arena, diagnostics);
     meta_info.add_external_type::<Result<Value, Value>>(arena, diagnostics);
+    #[cfg(feature = "serde_json_value")] {
+        meta_info.add_external_type::<serde_json::Value>(arena, diagnostics);
+    }
     list::add_list(diagnostics, arena, meta_info);
     map::add_map(diagnostics, arena, meta_info);
     set::add_set(diagnostics, arena, meta_info);

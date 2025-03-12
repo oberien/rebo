@@ -1,3 +1,4 @@
+use std::iter::FromIterator;
 use diagnostic::Diagnostics;
 use typed_arena::Arena;
 use crate::parser::Expr;
@@ -22,8 +23,8 @@ impl<T: IntoValue> List<T> {
             _marker: PhantomData,
         }
     }
-    pub fn clone_vec(&self) -> Vec<T> where T: FromValue {
-        self.arc.list.lock().borrow().iter().cloned().map(FromValue::from_value).collect()
+    pub fn clone_list<L: FromIterator<T>>(&self) -> L where T: FromValue {
+        self.arc.clone_list()
     }
 }
 

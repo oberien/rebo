@@ -5,6 +5,7 @@ use crate::common::{MetaInfo, Value, MapArc, DeepCopy};
 use crate::typeck::types::{Type, SpecificType};
 use std::collections::{BTreeMap, HashMap};
 use std::hash::Hash;
+use std::iter::FromIterator;
 use std::marker::PhantomData;
 use std::sync::OnceLock;
 use crate::{ExternalType, FileId, FromValue, IntoValue, Typed, ErrorCode, SpanWithId};
@@ -22,10 +23,8 @@ impl<K: IntoValue, V: IntoValue> Map<K, V> {
             _marker: PhantomData,
         }
     }
-    pub fn clone_btreemap(&self) -> BTreeMap<K, V> where K: FromValue + Ord, V: FromValue {
-        self.arc.map.lock().borrow().iter()
-            .map(|(k, v)| (FromValue::from_value(k.clone()), FromValue::from_value(v.clone())))
-            .collect()
+    pub fn clone_map<M: FromIterator<(K, V)>>(&self) -> M where K: FromValue, V: FromValue {
+        self.arc.clone_map()
     }
 }
 

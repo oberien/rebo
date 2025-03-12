@@ -6,6 +6,9 @@ edition = "2018"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+[features]
+serde_json_value = ["dep:serde_json"]
+
 [dependencies]
 thiserror = "1.0.20"
 lexical = { version = "5.2.2", features = ["radix"] }
@@ -34,6 +37,7 @@ unicode-segmentation = "1.8.0"
 intervaltree = "0.2.7"
 num = "0.4.1"
 uuid = { version = "1.5.0", features = ["v4"] }
+serde_json = { version = "1.0.140", optional = true }
 
 # FIXME: bin-dependencies not supported: https://github.com/rust-lang/cargo/issues/1982
 env_logger = "0.8.4"
