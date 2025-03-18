@@ -2,7 +2,7 @@ use std::fmt;
 use std::fmt::{Display, Formatter};
 use std::hash::{Hash, Hasher};
 use std::ops::BitOr;
-use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::atomic::{AtomicU64, Ordering};
 use diagnostic::{FileId, Span};
 
 pub trait Spanned {
@@ -84,7 +84,7 @@ impl Spanned for SpanWithId {
 // However, `a.x` only has 0 through 3, so I can only get the unique spans `0-1`, `1-2` and `2-3`.
 // That's not enough for the 5 unique spans that are required.
 #[derive(Debug, Clone, Copy, Ord, PartialOrd, Eq, PartialEq, Hash)]
-pub struct SpanId(u32);
+pub struct SpanId(u64);
 
 impl Display for SpanId {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
@@ -105,10 +105,10 @@ pub struct SpanWithId {
 impl SpanWithId {
     /// Create a new Span with a new unique SpanId
     pub fn new(file: FileId, start: usize, end: usize) -> SpanWithId {
-        static NEXT_SPAN_ID: AtomicU32 = AtomicU32::new(0);
+        static NEXT_SPAN_ID: AtomicU64 = AtomicU64::new(0);
         let id = NEXT_SPAN_ID.fetch_add(1, Ordering::SeqCst);
         // why do we even have this check?!
-        if id == u32::MAX {
+        if id == u64::MAX {
             panic!("binding id overflow");
         }
         SpanWithId { id: SpanId(id), span: Span::new(file, start, end) }
