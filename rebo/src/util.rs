@@ -87,6 +87,7 @@ impl ArgumentSource<Value> for NoValues {
     fn lookup_argument_by_name(&self, _: &str) -> Option<&Value> { None }
 }
 
+#[derive(Debug, PartialEq)]
 pub enum TryParseNumberResult {
     /// number, radix, end-index
     Int(i64, Radix, usize),
@@ -178,5 +179,38 @@ pub fn lex_escaped_char(c: char) -> EscapedResult {
         'r' => EscapedResult::ControlChar('\r', "\r"),
         't' => EscapedResult::ControlChar('\t', "\t"),
         c => EscapedResult::Escaped(c),
+    }
+}
+
+macro_rules! assert_matches {
+    ($scrutinee:expr, $expected:pat) => {{
+        let scrutinee = $scrutinee;
+        match scrutinee {
+            $expected => (),
+            _ => panic!("assertion failed: {scrutinee:?} does not match {}", stringify!($expected))
+        }
+    }};
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use super::TryParseNumberResult::*;
+
+    #[test]
+    fn test_try_parse_number() {
+        assert_eq!(try_parse_number("1337"), Int(1337, Radix::Dec, 4));
+        assert_eq!(try_parse_number("0x1337"), Int(0x1337, Radix::Hex, 6));
+        assert_eq!(try_parse_number("0b1001"), Int(0b1001, Radix::Bin, 6));
+        assert_eq!(try_parse_number("1.5"), Float(1.5, Radix::Dec, 3));
+        assert_matches!(try_parse_number("."), Error(_, Radix::Dec, 1));
+        assert_matches!(try_parse_number("..."), Error(_, Radix::Dec, 3));
+        assert_eq!(try_parse_number(".5"), Float(0.5, Radix::Dec, 2));
+        assert_eq!(try_parse_number("5."), Float(5., Radix::Dec, 2));
+        assert_eq!(try_parse_number("0x10."), Float(16., Radix::Hex, 5));
+        assert_eq!(try_parse_number("0x10."), Float(16., Radix::Hex, 5));
+        
+        assert_matches!(try_parse_number("10.a"), Error(_, _, 4));
+        assert_eq!(try_parse_number("10. "), Float(10., Radix::Dec, 3));
     }
 }
