@@ -221,7 +221,7 @@ impl<'i, T: Clone + Hash + Eq + Debug> VariantChecker<'i, T> {
         if let Some(previous_span) = self.catchall {
             self.diag(value_span, previous_span);
         }
-        self.required.remove(&value);
+        self.required.shift_remove(&value);
         match self.cases.entry(value) {
             Entry::Vacant(vacant) => {
                 vacant.insert(value_span);

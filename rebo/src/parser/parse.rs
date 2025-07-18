@@ -9,15 +9,6 @@ use regex::Regex;
 use crate::common::Spanned;
 use crate::parser::scope::ScopeType;
 
-// make trace! here log as if this still was the parser module
-macro_rules! module_path {
-    () => {{
-        let path = std::module_path!();
-        let end = path.rfind("::").unwrap();
-        &path[..end]
-    }}
-}
-
 pub trait Parse<'i>: Sized {
     fn parse(parser: &mut Parser<'i, '_>, depth: Depth) -> Result<Self, InternalError> {
         lazy_static::lazy_static! {

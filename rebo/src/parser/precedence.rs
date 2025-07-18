@@ -6,15 +6,6 @@ use crate::parser::{Expected};
 use crate::parser::expr::{ExprBoolAnd, ExprBoolOr, ExprAdd, ExprSub, ExprMul, ExprDiv, ExprMod, ExprXor, ParseUntil};
 use crate::common::{Depth, Spanned};
 
-// make trace! here log as if this still was the parser module
-macro_rules! module_path {
-    () => {{
-        let path = std::module_path!();
-        let end = path.rfind("::").unwrap();
-        &path[..end]
-    }}
-}
-
 pub(super) trait Precedence: Sized + Copy {
     fn try_from_token(token: Token<'_>) -> Result<Self, InternalError>;
     fn precedence(self) -> u8;

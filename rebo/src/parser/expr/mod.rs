@@ -22,15 +22,6 @@ use indexmap::set::IndexSet;
 use rt_format::{Format, Specifier};
 use crate::util;
 
-// make trace! here log as if this still was the parser module
-macro_rules! module_path {
-    () => {{
-        let path = std::module_path!();
-        let end = path.rfind("::").unwrap();
-        &path[..end]
-    }}
-}
-
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Hash)]
 pub struct Binding<'i> {
     pub id: BindingId,
@@ -910,7 +901,7 @@ impl<'i> Display for ExprLabelDef<'i> {
 }
 
 #[derive(Debug, Clone, Display)]
-#[display(fmt = "()")]
+#[display("()")]
 pub struct ExprUnit {
     pub open: TokenOpenParen,
     pub close: TokenCloseParen,
@@ -960,7 +951,7 @@ impl<'i> Display for ExprVariable<'i> {
 }
 
 #[derive(Debug, Clone, Display)]
-#[display(fmt = "{}", int.value)]
+#[display("{}", int.value)]
 pub struct ExprInteger {
     pub int: TokenInteger,
 }
@@ -978,7 +969,7 @@ impl Spanned for ExprInteger {
 }
 
 #[derive(Debug, Clone, Display)]
-#[display(fmt = "{}", float.value)]
+#[display("{}", float.value)]
 pub struct ExprFloat {
     pub float: TokenFloat,
 }
@@ -996,7 +987,7 @@ impl Spanned for ExprFloat {
 }
 
 #[derive(Debug, Clone, Display)]
-#[display(fmt = "{}", b.value)]
+#[display("{}", b.value)]
 pub struct ExprBool {
     pub b: TokenBool,
 }
@@ -1014,7 +1005,7 @@ impl Spanned for ExprBool {
 }
 
 #[derive(Debug, Clone, Display)]
-#[display(fmt = "{}", string.string)]
+#[display("{}", string.string)]
 pub struct ExprString {
     pub string: TokenDqString,
 }

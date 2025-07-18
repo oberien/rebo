@@ -11,33 +11,32 @@ serde_json_value = ["dep:serde_json"]
 
 [dependencies]
 lexical = { version = "7.0.4", features = ["radix"] }
-typed-arena = "2.0.1"
+typed-arena = "2.0.2"
 diagnostic = { git = "https://github.com/oberien/diagnostic", rev = "889fb5da592d746b47b0fafca6bc7e71c4e2a55e" }
-log = "0.4.11"
+log = "0.4.27"
 rebo_derive = { path = "../rebo_derive" }
-lazy_static = "1.4.0"
-strsim = "0.10.0"
-itertools = "0.9.0"
+lazy_static = "1.5.0"
+strsim = "0.11.1"
+itertools = "0.14.0"
 lexical-sort = "0.3.1"
-indexmap = "1.6.2"
-derive_more = "0.99.14"
-paste = "1.0.5"
-regex = "1.5.4"
-parking_lot = "0.12.0"
-instant = { version = "0.1.12", features = ["wasm-bindgen"] }
-petgraph = "0.6.0"
-strum = "0.21.0"
-strum_macros = "0.21.1"
-bitflags = "1.3.2"
-rt-format = "0.3.0"
-rand = "0.8.4"
-rand_chacha = "0.3.1"
-unicode-segmentation = "1.8.0"
+indexmap = "2.10.0"
+derive_more = { version = "2.0.1", features = ["display"] }
+regex = "1.11.1"
+parking_lot = "0.12.4"
+instant = { version = "0.1.13", features = ["wasm-bindgen"] }
+petgraph = "0.8.2"
+strum = "0.27.1"
+strum_macros = "0.27.1"
+bitflags = "2.9.1"
+rt-format = "0.3.1"
+rand = "0.9.1"
+rand_chacha = "0.9.0"
+unicode-segmentation = "1.12.0"
 intervaltree = "0.2.7"
-num = "0.4.1"
-uuid = { version = "1.5.0", features = ["v4"] }
+num = "0.4.3"
+uuid = { version = "1.17.0", features = ["v4"] }
 serde_json = { version = "1.0.140", optional = true }
 
 # FIXME: bin-dependencies not supported: https://github.com/rust-lang/cargo/issues/1982
-env_logger = "0.8.4"
-clap = { version = "4.5.18", features = ["derive"] }
+env_logger = "0.11.8"
+clap = { version = "4.5.41", features = ["derive"] }

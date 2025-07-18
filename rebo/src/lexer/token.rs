@@ -4,7 +4,7 @@ use derive_more::Display;
 
 macro_rules! gen_tokens {
     ($(
-        $name:ident$(<$lt:lifetime>)?, $tokenname:ident, $repr:literal, {$($field:ident : $field_ty:ty,)*}, (fmt = $fmt:literal $(, $fmtarg:expr)*) $(, ($($copy:ident),+))? $(, #[$comment:meta])?;
+        $name:ident$(<$lt:lifetime>)?, $tokenname:ident, $repr:literal, {$($field:ident : $field_ty:ty,)*}, display($fmt:literal $(, $fmtarg:expr)*) $(, ($($copy:ident),+))? $(, #[$comment:meta])?;
     )+) => {
         #[derive(Debug, Clone, PartialEq, Display, rebo_derive::Functions)]
         pub enum Token<'i> {
@@ -56,7 +56,7 @@ macro_rules! gen_tokens {
 
         $(
             #[derive(Debug, Clone, $($($copy,)+)? PartialEq, Display)]
-            #[display(fmt = $fmt $(, $fmtarg)*)]
+            #[display($fmt $(, $fmtarg)*)]
             $(#[$comment])?
             #[doc = $repr]
             pub struct $tokenname $(<$lt>)? {
@@ -102,74 +102,74 @@ fn format_parts(parts: &[TokenFormatStringPart]) -> String {
 
 gen_tokens! {
     // primitives
-    Ident<'i>, TokenIdent, "ident", {ident: &'i str,}, (fmt = "{}", ident), (Copy, Eq, Hash);
-    DqString, TokenDqString, "double-quoted string", {string: String,}, (fmt = "{:?}", string), (Eq, Hash);
-    Integer, TokenInteger, "integer value", {value: i64, radix: Radix,}, (fmt = "{}", "util::to_string_radix(*value, *radix)"), (Copy, Eq, Hash);
-    Float, TokenFloat, "float value", {value: f64, radix: Radix,}, (fmt = "{}", "util::to_string_radix(*value, *radix)"), (Copy);
-    Bool, TokenBool, "bool value", {value: bool,}, (fmt = "{}", value), (Copy, Eq, Hash);
-    FormatString<'i>, TokenFormatString, "format string", {parts: Vec<TokenFormatStringPart<'i>>, rogue: bool,}, (fmt = "f{:?} ", "format_parts(parts)"), (Eq, Hash);
+    Ident<'i>, TokenIdent, "ident", {ident: &'i str,}, display("{ident}"), (Copy, Eq, Hash);
+    DqString, TokenDqString, "double-quoted string", {string: String,}, display("{string:?}"), (Eq, Hash);
+    Integer, TokenInteger, "integer value", {value: i64, radix: Radix,}, display("{}", util::to_string_radix(*value, *radix)), (Copy, Eq, Hash);
+    Float, TokenFloat, "float value", {value: f64, radix: Radix,}, display("{}", util::to_string_radix(*value, *radix)), (Copy);
+    Bool, TokenBool, "bool value", {value: bool,}, display("{value}"), (Copy, Eq, Hash);
+    FormatString<'i>, TokenFormatString, "format string", {parts: Vec<TokenFormatStringPart<'i>>, rogue: bool,}, display("f{:?} ", format_parts(parts)), (Eq, Hash);
     // keywords
-    Let, TokenLet, "let", {}, (fmt = "let"), (Copy, Eq, Hash);
-    Mut, TokenMut, "mut", {}, (fmt = "mut"), (Copy, Eq, Hash);
-    Fn, TokenFn, "fn", {}, (fmt = "fn"), (Copy, Eq, Hash);
-    Gen, TokenGen, "gen", {}, (fmt = "gen"), (Copy, Eq, Hash);
-    Yield, TokenYield, "yield", {}, (fmt = "yield"), (Copy, Eq, Hash);
-    Struct, TokenStruct, "struct", {}, (fmt = "struct"), (Copy, Eq, Hash);
-    Enum, TokenEnum, "enum", {}, (fmt = "enum"), (Copy, Eq, Hash);
-    Impl, TokenImpl, "impl", {}, (fmt = "impl"), (Copy, Eq, Hash);
-    Match, TokenMatch, "match", {}, (fmt = "match"), (Copy, Eq, Hash);
-    If, TokenIf, "if", {}, (fmt = "if"), (Copy, Eq, Hash);
-    Else, TokenElse, "else", {}, (fmt = "else"), (Copy, Eq, Hash);
-    While, TokenWhile, "while", {}, (fmt = "while"), (Copy, Eq, Hash);
-    For, TokenFor, "for", {}, (fmt = "for"), (Copy, Eq, Hash);
-    Loop, TokenLoop, "loop", {}, (fmt = "loop"), (Copy, Eq, Hash);
-    Break, TokenBreak, "break", {}, (fmt = "break"), (Copy, Eq, Hash);
-    Continue, TokenContinue, "continue", {}, (fmt = "continue"), (Copy, Eq, Hash);
-    Return, TokenReturn, "return", {}, (fmt = "return"), (Copy, Eq, Hash);
-    In, TokenIn, "in", {}, (fmt = "in"), (Copy, Eq, Hash);
-    Static, TokenStatic, "static", {}, (fmt = "static"), (Copy, Eq, Hash);
-    Include, TokenInclude, "include", {}, (fmt = "include"), (Copy, Eq, Hash);
+    Let, TokenLet, "let", {}, display("let"), (Copy, Eq, Hash);
+    Mut, TokenMut, "mut", {}, display("mut"), (Copy, Eq, Hash);
+    Fn, TokenFn, "fn", {}, display("fn"), (Copy, Eq, Hash);
+    Gen, TokenGen, "gen", {}, display("gen"), (Copy, Eq, Hash);
+    Yield, TokenYield, "yield", {}, display("yield"), (Copy, Eq, Hash);
+    Struct, TokenStruct, "struct", {}, display("struct"), (Copy, Eq, Hash);
+    Enum, TokenEnum, "enum", {}, display("enum"), (Copy, Eq, Hash);
+    Impl, TokenImpl, "impl", {}, display("impl"), (Copy, Eq, Hash);
+    Match, TokenMatch, "match", {}, display("match"), (Copy, Eq, Hash);
+    If, TokenIf, "if", {}, display("if"), (Copy, Eq, Hash);
+    Else, TokenElse, "else", {}, display("else"), (Copy, Eq, Hash);
+    While, TokenWhile, "while", {}, display("while"), (Copy, Eq, Hash);
+    For, TokenFor, "for", {}, display("for"), (Copy, Eq, Hash);
+    Loop, TokenLoop, "loop", {}, display("loop"), (Copy, Eq, Hash);
+    Break, TokenBreak, "break", {}, display("break"), (Copy, Eq, Hash);
+    Continue, TokenContinue, "continue", {}, display("continue"), (Copy, Eq, Hash);
+    Return, TokenReturn, "return", {}, display("return"), (Copy, Eq, Hash);
+    In, TokenIn, "in", {}, display("in"), (Copy, Eq, Hash);
+    Static, TokenStatic, "static", {}, display("static"), (Copy, Eq, Hash);
+    Include, TokenInclude, "include", {}, display("include"), (Copy, Eq, Hash);
     // types
-    StringType, TokenStringType, "string", {}, (fmt = "string"), (Copy, Eq, Hash);
-    IntType, TokenIntType, "int", {}, (fmt = "int"), (Copy, Eq, Hash);
-    FloatType, TokenFloatType, "float", {}, (fmt = "float"), (Copy, Eq, Hash);
-    BoolType, TokenBoolType, "bool", {}, (fmt = "bool"), (Copy, Eq, Hash);
+    StringType, TokenStringType, "string", {}, display("string"), (Copy, Eq, Hash);
+    IntType, TokenIntType, "int", {}, display("int"), (Copy, Eq, Hash);
+    FloatType, TokenFloatType, "float", {}, display("float"), (Copy, Eq, Hash);
+    BoolType, TokenBoolType, "bool", {}, display("bool"), (Copy, Eq, Hash);
     // symbols
-    Assign, TokenAssign, "=", {}, (fmt = "="), (Copy, Eq, Hash);
-    LessThan, TokenLessThan, "<", {}, (fmt = "<"), (Copy, Eq, Hash);
-    LessEquals, TokenLessEquals, "<=", {}, (fmt = "<="), (Copy, Eq, Hash);
-    Equals, TokenEquals, "==", {}, (fmt = "=="), (Copy, Eq, Hash);
-    NotEquals, TokenNotEquals, "!=", {}, (fmt = "!="), (Copy, Eq, Hash);
-    GreaterEquals, TokenGreaterEquals, ">=", {}, (fmt = ">="), (Copy, Eq, Hash);
-    GreaterThan, TokenGreaterThan, ">", {}, (fmt = ">"), (Copy, Eq, Hash);
-    Plus, TokenPlus, "+", {}, (fmt = "+"), (Copy, Eq, Hash);
-    Minus, TokenMinus, "-", {}, (fmt = "-"), (Copy, Eq, Hash);
-    Star, TokenStar, "*", {}, (fmt = "*"), (Copy, Eq, Hash);
-    Slash, TokenSlash, "/", {}, (fmt = "/"), (Copy, Eq, Hash);
-    Percent, TokenPercent, "%", {}, (fmt = "%"), (Copy, Eq, Hash);
-    Circumflex, TokenCircumflex, "^", {}, (fmt = "^"), (Copy, Eq, Hash);
-    Bang, TokenBang, "!", {}, (fmt = "!"), (Copy, Eq, Hash);
-    Amp, TokenAmp, "&", {}, (fmt = "&"), (Copy, Eq, Hash);
-    DoubleAmp, TokenDoubleAmp, "&&", {}, (fmt = "&&"), (Copy, Eq, Hash);
-    Pipe, TokenPipe, "|", {}, (fmt = "|"), (Copy, Eq, Hash);
-    DoublePipe, TokenDoublePipe, "||", {}, (fmt = "||"), (Copy, Eq, Hash);
-    OpenParen, TokenOpenParen, "(", {}, (fmt = "("), (Copy, Eq, Hash);
-    CloseParen, TokenCloseParen,")", {}, (fmt = ")"), (Copy, Eq, Hash);
-    OpenCurly, TokenOpenCurly, "{", {}, (fmt = "{{\n"), (Copy, Eq, Hash);
-    CloseCurly, TokenCloseCurly, "}", {}, (fmt = "}}\n"), (Copy, Eq, Hash);
-    Comma, TokenComma, ",", {}, (fmt = ","), (Copy, Eq, Hash);
-    Semicolon, TokenSemicolon, ";", {}, (fmt = ";\n"), (Copy, Eq, Hash);
-    Colon, TokenColon, ":", {}, (fmt = ":"), (Copy, Eq, Hash);
-    DoubleColon, TokenDoubleColon, "::", {}, (fmt = "::"), (Copy, Eq, Hash);
-    Arrow, TokenArrow, "->", {}, (fmt = "->"), (Copy, Eq, Hash);
-    FatArrow, TokenFatArrow, "=>", {}, (fmt = "=>"), (Copy, Eq, Hash);
-    Dot, TokenDot, ".", {}, (fmt = "."), (Copy, Eq, Hash);
-    DotDotDot, TokenDotDotDot, "...", {}, (fmt = "..."), (Copy, Eq, Hash);
-    Underscore, TokenUnderscore, "_", {}, (fmt = "_"), (Copy, Eq, Hash);
-    Apostrophe, TokenApostrophe, "'", {}, (fmt = "'"), (Copy, Eq, Hash);
-    LineComment<'i>, TokenLineComment, "//", {comment: &'i str,}, (fmt = "{}", comment), (Copy, Eq, Hash), #[doc = "Line Comment including starting `//` and ending newline"];
-    BlockComment<'i>, TokenBlockComment, "/* */", {comment: &'i str,}, (fmt = "{}", comment), (Copy, Eq, Hash), #[doc = "/// Block Comment including starting `/*` and ending `*/`"];
-    Eof, TokenEof, "EOF", {}, (fmt = "EOF");
+    Assign, TokenAssign, "=", {}, display("="), (Copy, Eq, Hash);
+    LessThan, TokenLessThan, "<", {}, display("<"), (Copy, Eq, Hash);
+    LessEquals, TokenLessEquals, "<=", {}, display("<="), (Copy, Eq, Hash);
+    Equals, TokenEquals, "==", {}, display("=="), (Copy, Eq, Hash);
+    NotEquals, TokenNotEquals, "!=", {}, display("!="), (Copy, Eq, Hash);
+    GreaterEquals, TokenGreaterEquals, ">=", {}, display(">="), (Copy, Eq, Hash);
+    GreaterThan, TokenGreaterThan, ">", {}, display(">"), (Copy, Eq, Hash);
+    Plus, TokenPlus, "+", {}, display("+"), (Copy, Eq, Hash);
+    Minus, TokenMinus, "-", {}, display("-"), (Copy, Eq, Hash);
+    Star, TokenStar, "*", {}, display("*"), (Copy, Eq, Hash);
+    Slash, TokenSlash, "/", {}, display("/"), (Copy, Eq, Hash);
+    Percent, TokenPercent, "%", {}, display("%"), (Copy, Eq, Hash);
+    Circumflex, TokenCircumflex, "^", {}, display("^"), (Copy, Eq, Hash);
+    Bang, TokenBang, "!", {}, display("!"), (Copy, Eq, Hash);
+    Amp, TokenAmp, "&", {}, display("&"), (Copy, Eq, Hash);
+    DoubleAmp, TokenDoubleAmp, "&&", {}, display("&&"), (Copy, Eq, Hash);
+    Pipe, TokenPipe, "|", {}, display("|"), (Copy, Eq, Hash);
+    DoublePipe, TokenDoublePipe, "||", {}, display("||"), (Copy, Eq, Hash);
+    OpenParen, TokenOpenParen, "(", {}, display("("), (Copy, Eq, Hash);
+    CloseParen, TokenCloseParen,")", {}, display(")"), (Copy, Eq, Hash);
+    OpenCurly, TokenOpenCurly, "{", {}, display("{{\n"), (Copy, Eq, Hash);
+    CloseCurly, TokenCloseCurly, "}", {}, display("}}\n"), (Copy, Eq, Hash);
+    Comma, TokenComma, ",", {}, display(","), (Copy, Eq, Hash);
+    Semicolon, TokenSemicolon, ";", {}, display(";\n"), (Copy, Eq, Hash);
+    Colon, TokenColon, ":", {}, display(":"), (Copy, Eq, Hash);
+    DoubleColon, TokenDoubleColon, "::", {}, display("::"), (Copy, Eq, Hash);
+    Arrow, TokenArrow, "->", {}, display("->"), (Copy, Eq, Hash);
+    FatArrow, TokenFatArrow, "=>", {}, display("=>"), (Copy, Eq, Hash);
+    Dot, TokenDot, ".", {}, display("."), (Copy, Eq, Hash);
+    DotDotDot, TokenDotDotDot, "...", {}, display("..."), (Copy, Eq, Hash);
+    Underscore, TokenUnderscore, "_", {}, display("_"), (Copy, Eq, Hash);
+    Apostrophe, TokenApostrophe, "'", {}, display("'"), (Copy, Eq, Hash);
+    LineComment<'i>, TokenLineComment, "//", {comment: &'i str,}, display("{comment}"), (Copy, Eq, Hash), #[doc = "Line Comment including starting `//` and ending newline"];
+    BlockComment<'i>, TokenBlockComment, "/* */", {comment: &'i str,}, display("{comment}"), (Copy, Eq, Hash), #[doc = "/// Block Comment including starting `/*` and ending `*/`"];
+    Eof, TokenEof, "EOF", {}, display("EOF");
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

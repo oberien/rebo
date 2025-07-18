@@ -23,7 +23,7 @@ impl Visitor for StructInitializationFields {
             let def_diagnostics_span = meta_info.user_types[name.ident].diagnostics_span();
             let mut expected_fields: IndexSet<_> = typ.fields.iter().map(|(name, _typ)| name.as_str()).collect();
             for (field, _colon, _expr) in fields {
-                if !expected_fields.remove(field.ident) {
+                if !expected_fields.shift_remove(field.ident) {
                     let similar = crate::util::similar_name(field.ident, expected_fields.iter());
                     let mut diag = diagnostics.error(ErrorCode::UnknownFieldInit)
                         .with_error_label(field.diagnostics_span(), format!("unknown field `{}`", field.ident))
