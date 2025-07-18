@@ -85,7 +85,8 @@ pub struct MetaInfo<'i> {
     /// map from `ExprInclude::span` to its FileId
     ///
     /// Available after parser's first-pass.
-    pub included_files: IndexMap<SpanWithId, FileId>,
+    // key must be Span as it's parsed multiple times resulting in different SpanIds
+    pub included_files: IndexMap<Span, FileId>,
     /// map of all rust / rebo functions or associated functions to their implementation reference
     ///
     /// Available after the parser's first-pass.

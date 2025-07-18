@@ -97,7 +97,7 @@ impl<'i, 'b> Parser<'i, 'b> {
                     }
                 };
                 let (file, _) = parser.diagnostics.add_file(include.file.string.clone(), code);
-                parser.meta_info.included_files.insert(include.span_with_id(), file);
+                parser.meta_info.included_files.insert(include.diagnostics_span(), file);
                 let lexer = Lexer::new(parser.diagnostics, file);
                 let old_lexer = ::std::mem::replace(&mut parser.lexer, lexer);
                 parser.first_pass(depth.next());
@@ -125,7 +125,7 @@ impl<'i, 'b> Parser<'i, 'b> {
             // includes -> second-pass
             |parser: &mut Parser<'i, '_>, _, depth| {
                 let include = ExprInclude::parse_reset(parser, depth.duplicate())?;
-                let file = match parser.meta_info.included_files.get(&include.span_with_id()) {
+                let file = match parser.meta_info.included_files.get(&include.diagnostics_span()) {
                     Some(&file) => file,
                     None => return Ok(None),
                 };

@@ -463,7 +463,7 @@ impl<'i> Expr<'i> {
                     span: include.include_token.span | include.file.span,
                 }))));
 
-                let file = match parser.meta_info.included_files.get(&include.span_with_id()) {
+                let file = match parser.meta_info.included_files.get(&include.diagnostics_span()) {
                     Some(&file) => file,
                     None => return err,
                 };
