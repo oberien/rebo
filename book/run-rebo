@@ -18,10 +18,12 @@ try:
 except (IsADirectoryError, FileExistsError):
     pass
 
+subprocess.run(["cargo", "run", "--release"], cwd="../", stdout=subprocess.DEVNULL, stderr=sys.stderr)
+
 error = False
-fnames = []
+file_paths = []
 for (i, code) in enumerate(re.findall(r'(?s)```rust\n(.*?)\n```', decoded)):
-    fname = f"out/{i}.re"
+    filename = f"{i}.re"
 
     skip = False
     if "// mdbook-run-rebo: skip\n" in code:
@@ -29,20 +31,21 @@ for (i, code) in enumerate(re.findall(r'(?s)```rust\n(.*?)\n```', decoded)):
 
     requested_name = re.search(r'^// filename: (.*)', code)
     if requested_name is not None:
-        fname = requested_name.group(1)
-    fnames.append(fname)
+        filename = f"{requested_name.group(1)}"
+    file_paths.append(f"out/{filename}")
 
-    with open(fname, "w") as f:
+    with open(f"out/{filename}", "w") as f:
         f.write(code)
 
     if skip:
         continue
 
     res = subprocess.run(
-        ["../target/release/rebo", fname],
+        ["../../target/release/rebo", f"{filename}"],
         stdout=subprocess.DEVNULL,
         stderr=sys.stderr,
         env={'RUST_LOG': 'off'},
+        cwd="out",
     )
     if res.returncode != 0:
         error = True
@@ -50,8 +53,8 @@ for (i, code) in enumerate(re.findall(r'(?s)```rust\n(.*?)\n```', decoded)):
 if error:
     exit(1)
 else:
-    for fname in fnames:
-        os.remove(fname)
+    for path in file_paths:
+        os.remove(path)
     os.rmdir("out/")
 
 print(output)
