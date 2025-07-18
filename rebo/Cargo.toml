@@ -10,8 +10,7 @@ edition = "2018"
 serde_json_value = ["dep:serde_json"]
 
 [dependencies]
-thiserror = "1.0.20"
-lexical = { version = "5.2.2", features = ["radix"] }
+lexical = { version = "7.0.4", features = ["radix"] }
 typed-arena = "2.0.1"
 diagnostic = { git = "https://github.com/oberien/diagnostic", rev = "889fb5da592d746b47b0fafca6bc7e71c4e2a55e" }
 log = "0.4.11"

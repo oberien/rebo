@@ -1,5 +1,6 @@
 use std::fmt;
 use std::path::{Path, PathBuf};
+use lexical::{NumberFormatBuilder, ParseFloatOptions, ToLexicalWithOptions};
 use rt_format::argument::ArgumentSource;
 use crate::{Value, IncludeDirectory};
 use crate::lexer::Radix;
@@ -97,6 +98,10 @@ pub enum TryParseNumberResult {
     Error(lexical::Error, Radix, usize),
 }
 
+const BIN: u128 = NumberFormatBuilder::binary();
+const DEC: u128 = NumberFormatBuilder::new().build();
+const HEX: u128 = NumberFormatBuilder::hexadecimal();
+
 pub fn try_parse_number(s: &str) -> TryParseNumberResult {
     let mut index = 0;
     let mut radix = Radix::Dec;
@@ -114,17 +119,52 @@ pub fn try_parse_number(s: &str) -> TryParseNumberResult {
         index += 2;
         radix = Radix::Hex;
     }
+    let mut foo = false;
     let number_end = index + s[index..].chars()
-        .take_while(|&c| c.is_alphanumeric() || c == '.')
+        .take_while(|&c| c.is_alphanumeric() || (c == '.' && { let x = !foo; foo = true; x }) || c == '^')
         .map(char::len_utf8)
         .sum::<usize>();
-    let int = lexical::parse_radix::<i64, _>(&s[index..number_end], radix.to_u8());
-    let float = lexical::parse_radix::<f64, _>(&s[index..number_end], radix.to_u8());
+    let (int, float) = match radix {
+        Radix::Bin => (
+            lexical::parse_with_options::<i64, _, BIN>(&s[index..number_end], &Default::default()),
+            lexical::parse_with_options::<f64, _, BIN>(&s[index..number_end], &Default::default()),
+        ),
+        Radix::Dec => (
+            lexical::parse_with_options::<i64, _, DEC>(&s[index..number_end], &Default::default()),
+            lexical::parse_with_options::<f64, _, DEC>(&s[index..number_end], &Default::default()),
+        ),
+        Radix::Hex => (
+            lexical::parse_with_options::<i64, _, HEX>(&s[index..number_end], &Default::default()),
+            lexical::parse_with_options::<f64, _, HEX>(&s[index..number_end], &ParseFloatOptions::from_radix(16)),
+        ),
+    };
 
     match (int, float) {
         (Ok(i), _) => TryParseNumberResult::Int(i * factor_int, radix, number_end),
         (_, Ok(f)) => TryParseNumberResult::Float(f * factor_float, radix, number_end),
         (_, Err(e)) => TryParseNumberResult::Error(e, radix, number_end),
+    }
+}
+
+pub trait ToStringRadix: ToLexicalWithOptions {
+    fn options(radix: u8) -> Self::Options;
+}
+impl ToStringRadix for i64 {
+    fn options(_: u8) -> Self::Options {
+        Default::default()
+    }
+}
+impl ToStringRadix for f64 {
+    fn options(radix: u8) -> Self::Options {
+        Self::Options::from_radix(radix)
+    }
+}
+
+pub fn to_string_radix<T: ToStringRadix>(number: T, radix: Radix) -> String {
+    match radix {
+        Radix::Bin => lexical::to_string_with_options::<_, BIN>(number, &T::options(2)),
+        Radix::Dec => lexical::to_string_with_options::<_, DEC>(number, &T::options(10)),
+        Radix::Hex => lexical::to_string_with_options::<_, HEX>(number, &T::options(16)),
     }
 }
 
@@ -182,20 +222,20 @@ pub fn lex_escaped_char(c: char) -> EscapedResult {
     }
 }
 
-macro_rules! assert_matches {
-    ($scrutinee:expr, $expected:pat) => {{
-        let scrutinee = $scrutinee;
-        match scrutinee {
-            $expected => (),
-            _ => panic!("assertion failed: {scrutinee:?} does not match {}", stringify!($expected))
-        }
-    }};
-}
-
 #[cfg(test)]
 mod test {
     use super::*;
     use super::TryParseNumberResult::*;
+
+    macro_rules! assert_matches {
+        ($scrutinee:expr, $expected:pat) => {{
+            let scrutinee = $scrutinee;
+            match scrutinee {
+                $expected => (),
+                _ => panic!("assertion failed:\n  left: {scrutinee:?}\n right: {}", stringify!($expected))
+            }
+        }};
+    }
 
     #[test]
     fn test_try_parse_number() {
@@ -204,13 +244,15 @@ mod test {
         assert_eq!(try_parse_number("0b1001"), Int(0b1001, Radix::Bin, 6));
         assert_eq!(try_parse_number("1.5"), Float(1.5, Radix::Dec, 3));
         assert_matches!(try_parse_number("."), Error(_, Radix::Dec, 1));
-        assert_matches!(try_parse_number("..."), Error(_, Radix::Dec, 3));
+        assert_matches!(try_parse_number("..."), Error(_, Radix::Dec, 1));
+        assert_matches!(try_parse_number(".foo"), Error(_, Radix::Dec, 4));
         assert_eq!(try_parse_number(".5"), Float(0.5, Radix::Dec, 2));
         assert_eq!(try_parse_number("5."), Float(5., Radix::Dec, 2));
         assert_eq!(try_parse_number("0x10."), Float(16., Radix::Hex, 5));
         assert_eq!(try_parse_number("0x10."), Float(16., Radix::Hex, 5));
         
         assert_matches!(try_parse_number("10.a"), Error(_, _, 4));
+        assert_matches!(try_parse_number("0x."), Error(_, _, 3));
         assert_eq!(try_parse_number("10. "), Float(10., Radix::Dec, 3));
     }
 }

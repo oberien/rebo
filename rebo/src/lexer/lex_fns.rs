@@ -135,10 +135,10 @@ pub fn try_lex_token<'i>(diagnostics: &Diagnostics<ErrorCode>, file: FileId, s: 
     let char = s[index..].chars().next().unwrap();
     let char_len = char.len_utf8();
     let span = SpanWithId::new(file, index, index + char.len_utf8());
-    let char2 = s[index+char_len..].chars().next();
+    let char2 = s[index+ char_len..].chars().next();
     let char2_len = char2.map(char::len_utf8).unwrap_or_default();
     let span2 = char2.map(|_| SpanWithId::new(file, index, index + char_len + char2_len));
-    let char3 = s[index+char_len+char2_len..].chars().next();
+    let char3 = s[index+ char_len +char2_len..].chars().next();
     let char3_len = char3.map(char::len_utf8).unwrap_or_default();
     let span3 = char3.map(|_| SpanWithId::new(file, index, index + char_len + char2_len + char3_len));
     match char {
@@ -222,10 +222,11 @@ pub fn try_lex_number<'i>(diagnostics: &Diagnostics<ErrorCode>, file: FileId, s:
             value,
             radix,
         }))),
-        TryParseNumberResult::Error(e, radix, _) if e.index == 0 && radix == Radix::Dec => Ok(MaybeToken::Backtrack),
+        TryParseNumberResult::Error(e, radix, _) if *e.index().unwrap() == 0 && radix == Radix::Dec => Ok(MaybeToken::Backtrack),
+        TryParseNumberResult::Error(_e, radix, _) if radix == Radix::Dec && s[index..].chars().next() == Some('.') => Ok(MaybeToken::Backtrack),
         TryParseNumberResult::Error(e, _, end) => {
             diagnostics.error(ErrorCode::InvalidNumber)
-                .with_error_label(Span::new(file, index, index + end), format!("{:?}", e.code))
+                .with_error_label(Span::new(file, index, index + end), e.to_string())
                 .emit();
             Ok(MaybeToken::Diagnostic(index + end))
         }

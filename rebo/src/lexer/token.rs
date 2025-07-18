@@ -1,4 +1,5 @@
 use rebo::common::{SpanWithId, Spanned};
+use rebo::util;
 use derive_more::Display;
 
 macro_rules! gen_tokens {
@@ -103,8 +104,8 @@ gen_tokens! {
     // primitives
     Ident<'i>, TokenIdent, "ident", {ident: &'i str,}, (fmt = "{}", ident), (Copy, Eq, Hash);
     DqString, TokenDqString, "double-quoted string", {string: String,}, (fmt = "{:?}", string), (Eq, Hash);
-    Integer, TokenInteger, "integer value", {value: i64, radix: Radix,}, (fmt = "{}", "lexical::to_string_radix(*value, radix.to_u8())"), (Copy, Eq, Hash);
-    Float, TokenFloat, "float value", {value: f64, radix: Radix,}, (fmt = "{}", "lexical::to_string_radix(*value, radix.to_u8())"), (Copy);
+    Integer, TokenInteger, "integer value", {value: i64, radix: Radix,}, (fmt = "{}", "util::to_string_radix(*value, *radix)"), (Copy, Eq, Hash);
+    Float, TokenFloat, "float value", {value: f64, radix: Radix,}, (fmt = "{}", "util::to_string_radix(*value, *radix)"), (Copy);
     Bool, TokenBool, "bool value", {value: bool,}, (fmt = "{}", value), (Copy, Eq, Hash);
     FormatString<'i>, TokenFormatString, "format string", {parts: Vec<TokenFormatStringPart<'i>>, rogue: bool,}, (fmt = "f{:?} ", "format_parts(parts)"), (Eq, Hash);
     // keywords
@@ -176,14 +177,4 @@ pub enum Radix {
     Bin,
     Dec,
     Hex,
-}
-
-impl Radix {
-    pub fn to_u8(self) -> u8 {
-        match self {
-            Radix::Bin => 2,
-            Radix::Dec => 10,
-            Radix::Hex => 16,
-        }
-    }
 }

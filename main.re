@@ -1,16 +1,20 @@
-gen fn bar() -> int {
-    yield if true {
-        yield 1;
-        3
-    } else {
-        yield 2;
-        4
-    };
-}
-let bar = bar();
-print(bar.next());
-print(bar.next());
-print(bar.next());
+fn foo(x: Foo...) {}
+
+struct Foo {}
+
+//gen fn bar() -> int {
+//    yield if true {
+//        yield 1;
+//        3
+//    } else {
+//        yield 2;
+//        4
+//    };
+//}
+//let bar = bar();
+//print(bar.next());
+//print(bar.next());
+//print(bar.next());
 
 
 // yield (1330 + {yield 42; 7})
