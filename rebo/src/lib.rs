@@ -1,5 +1,3 @@
-#[macro_use]
-extern crate log;
 extern crate self as rebo;
 
 use std::collections::HashMap;
@@ -39,6 +37,7 @@ pub use common::expr_gen::*;
 use std::path::PathBuf;
 use std::sync::LazyLock;
 use diagnostic::Emitted;
+use tracing::{debug, error, info};
 use rebo::parser::BindingId;
 use crate::error_codes::ErrorCode;
 

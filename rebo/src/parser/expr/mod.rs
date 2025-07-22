@@ -20,6 +20,7 @@ use itertools::{Either, Itertools};
 use crate::common::{Depth, Spanned, SpanWithId, UserType};
 use indexmap::set::IndexSet;
 use rt_format::{Format, Specifier};
+use tracing::trace;
 use crate::util;
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Hash)]

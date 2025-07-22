@@ -65,3 +65,13 @@ fn test_comparison() {
         assert(foo == bar);
     "#, ReturnValue::Ok(Value::Unit));
 }
+
+#[test]
+fn test_math() {
+    test(r#"
+        assert_eq(3, 1 + 2);
+        assert_eq(3, 1+2);
+        assert_eq(-2, 1 - 3);
+        assert_eq(-2, 1-3);
+    "#, ReturnValue::Ok(Value::Unit));
+}

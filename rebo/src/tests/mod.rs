@@ -1,4 +1,7 @@
 use diagnostic::Emitted;
+use tracing_subscriber::EnvFilter;
+use tracing_subscriber::layer::SubscriberExt;
+use tracing_tree::HierarchicalLayer;
 use rebo::{ErrorCode, ReboConfig};
 use crate::ReturnValue;
 
@@ -39,7 +42,11 @@ pub fn test(code: &str, expected: ReturnValue) {
     test_with_config(ReboConfig::new(), code, expected)
 }
 pub fn test_with_config(config: ReboConfig, code: &str, expected: ReturnValue) {
-    let _ = env_logger::builder().is_test(true).try_init();
+    tracing_subscriber::registry()
+        .with(EnvFilter::from_default_env())
+        .with(HierarchicalLayer::default().with_indent_lines(true))
+        .with(tracing_subscriber::fmt::layer().with_test_writer())
+    ;
     let res = rebo::run_with_config("test".to_string(), code.to_string(), config);
     assert_eq!(expected.sorted(), res.return_value.sorted());
 }

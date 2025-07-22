@@ -1,6 +1,7 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 use indexmap::IndexMap;
+use tracing::{debug, trace};
 use rebo::parser::ExprInclude;
 use rebo::{ErrorCode, Lexer, util};
 use rebo::util::ResolveFileError;

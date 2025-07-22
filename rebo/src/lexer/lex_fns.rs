@@ -1,5 +1,6 @@
 use crate::lexer::{Error, Token, TokenEof, LexerMode};
 use diagnostic::{FileId, Diagnostics, Span};
+use tracing::trace;
 use rebo::util::{EscapedResult, TryParseDqstringResult};
 use crate::common::{SpanWithId, Spanned};
 use crate::error_codes::ErrorCode;
@@ -32,9 +33,8 @@ pub fn lex_next<'i>(diagnostics: &Diagnostics<ErrorCode>, file: FileId, s: &'i s
         }
 
         let functions = [
-            // first numbers, then tokens, so that -1 becomes a num and not neg(num)
-            try_lex_number,
             try_lex_token,
+            try_lex_number,
             try_lex_bool,
             try_lex_ident,
         ];

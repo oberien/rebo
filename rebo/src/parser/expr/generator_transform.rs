@@ -5,8 +5,8 @@ use uuid::Uuid;
 use super::*;
 use std::mem;
 use diagnostic::FileId;
-use log::Level;
 use petgraph::{Direction, visit::EdgeRef};
+use tracing::{enabled, Level};
 use rebo::common::expr_gen::{ExprBlockBuilder, ExprBuilder, ExprImplBlockBuilder, ExprMatchPatternBuilder, ExprStructDefinitionBuilder};
 use crate::common::expr_gen::ExprBuilderBinding;
 
@@ -121,7 +121,7 @@ impl<'old, 'p, 'm> GeneratorTransformator<'old, 'p, 'm> {
         self.add_value_forwarding_edge(end, fused_node);
 
         // graph is finished
-        if log_enabled!(Level::Trace) {
+        if enabled!(Level::TRACE) {
             // self.xdot();
         }
         let graph_dot_code = self.dot();

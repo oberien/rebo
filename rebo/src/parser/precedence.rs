@@ -1,4 +1,5 @@
 use std::borrow::Cow;
+use tracing::trace;
 
 use crate::lexer::Token;
 use super::{Expr, InternalError, Parser, Backtrack};

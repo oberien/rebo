@@ -26,6 +26,7 @@ use std::ops::Range;
 use std::rc::{Rc, Weak};
 use indexmap::set::IndexSet;
 use intervaltree::Element;
+use tracing::trace;
 use rebo::common::{SpanWithId, Spanned};
 use crate::IncludeConfig;
 

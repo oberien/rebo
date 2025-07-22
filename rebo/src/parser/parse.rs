@@ -4,6 +4,7 @@ use std::iter::FromIterator;
 use crate::lexer::*;
 use diagnostic::Span;
 use std::marker::PhantomData;
+use std::sync::LazyLock;
 use crate::common::Depth;
 use regex::Regex;
 use crate::common::Spanned;
@@ -11,10 +12,12 @@ use crate::parser::scope::ScopeType;
 
 pub trait Parse<'i>: Sized {
     fn parse(parser: &mut Parser<'i, '_>, depth: Depth) -> Result<Self, InternalError> {
-        lazy_static::lazy_static! {
-            static ref REGEX: Regex = Regex::new(r#"\w*::[a-zA-Z0-9_:]*::"#).unwrap();
-        }
-        trace!("{} {}::parse        ({:?})", depth, REGEX.replace_all(::std::any::type_name::<Self>(), ""), parser.peek_token(0));
+        static REGEX: LazyLock<Regex> = LazyLock::new(|| Regex::new(r#"\w*::[a-zA-Z0-9_:]*::"#).unwrap());
+        let _guard = tracing::info_span!(
+            "parse",
+            type = %REGEX.replace_all(::std::any::type_name::<Self>(), ""),
+            token = ?parser.peek_token(0),
+        ).entered();
         let mark = parser.lexer.mark();
         let res = Self::parse_marked(parser, depth)?;
         mark.apply();

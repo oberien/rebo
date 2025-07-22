@@ -10,6 +10,7 @@ use crate::parser::{Binding, BlockBody, Expr, ExprAccess, ExprAdd, ExprAddAssign
 pub use crate::vm::scope::{Scope, Scopes};
 use diagnostic::Diagnostics;
 use rt_format::{Specifier, Substitution};
+use tracing::trace;
 use rebo::common::SpanWithId;
 use crate::{ErrorCode, EXTERNAL_SPAN, IncludeConfig};
 use crate::common::Spanned;
@@ -712,8 +713,8 @@ impl CmpOp for Gt {
     fn enums(a: EnumArc, b: EnumArc) -> bool { a > b }
     fn str() -> &'static str { ">" }
 }
-fn cmp<O: CmpOp>(a: Value, b: Value, depth: Depth) -> Value {
-    trace!("{} cmp: {:?} {} {:?}", depth, a, O::str(), b);
+#[tracing::instrument(skip_all, fields(?a, op = O::str(), ?b))]
+fn cmp<O: CmpOp>(a: Value, b: Value, _depth: Depth) -> Value {
     match (a, b) {
         (Value::Unit, Value::Unit) => Value::Bool(O::unit()),
         (Value::Integer(a), Value::Integer(b)) => Value::Bool(O::integer(a, b)),

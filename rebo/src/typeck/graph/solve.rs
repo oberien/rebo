@@ -2,9 +2,9 @@ use crate::typeck::graph::{Graph, Constraint, Node, PossibleTypes};
 use crate::common::{MetaInfo, Spanned};
 use std::collections::{VecDeque, HashSet};
 use std::iter::FromIterator;
-use log::Level;
 use crate::typeck::types::{ResolvableSpecificType, Type, FunctionType};
 use petgraph::prelude::EdgeIndex;
+use tracing::{enabled, Level, trace};
 use crate::SpecificType;
 use crate::typeck::graph::create::FunctionGenerics;
 
@@ -27,7 +27,7 @@ impl WorkQueue {
     }
     pub fn add_single(&mut self, node: Node) {
         if self.set.contains(&node) {
-            if log_enabled!(Level::Trace) {
+            if enabled!(Level::TRACE) {
                 // depth-first search-ish during debugging
                 let pos = self.queue.iter().position(|&n| n == node).unwrap();
                 self.queue.remove(pos);

@@ -1,4 +1,9 @@
 use clap::Parser;
+use tracing_chrome::ChromeLayerBuilder;
+use tracing_subscriber::layer::SubscriberExt;
+use tracing_subscriber::{EnvFilter, Registry};
+use tracing_subscriber::util::SubscriberInitExt;
+use tracing_tree::HierarchicalLayer;
 use rebo::ReturnValue;
 
 mod xdot;
@@ -16,7 +21,13 @@ struct Args {
 }
 
 fn main() {
-    env_logger::init();
+    let (chrome_layer, _guard) = ChromeLayerBuilder::new().build();
+    Registry::default()
+        .with(EnvFilter::from_default_env())
+        .with(HierarchicalLayer::default().with_indent_lines(true))
+        .with(chrome_layer)
+        .init();
+
     let args = Args::parse();
     let code = std::fs::read_to_string(&args.filename).unwrap();
     let result = rebo::run(args.filename, code);

@@ -10,6 +10,7 @@ use std::rc::Rc;
 use crate::error_codes::ErrorCode;
 use std::sync::atomic::{AtomicU64, Ordering};
 use rt_format::Format;
+use tracing::warn;
 use rebo::{FunctionValue, Value};
 use rebo::common::SpanWithId;
 use crate::EXTERNAL_SPAN;
