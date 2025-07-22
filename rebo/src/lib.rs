@@ -75,12 +75,6 @@ pub enum IncludeConfig {
     /// disallow file includes; only allow includes from `ReboConfig::external_includes`
     DisallowFromFiles,
 }
-#[derive(Debug, Clone)]
-pub enum IncludeDirectoryConfig {
-    Workdir,
-    Path(PathBuf),
-    Everywhere,
-}
 
 pub type ExternalTypeAdderFunction = for<'i, 'b> fn(&'i Arena<Expr<'i>>, &'i Diagnostics<ErrorCode>, &'b mut MetaInfo<'i>);
 pub struct ReboConfig {
