@@ -27,7 +27,7 @@ use std::rc::{Rc, Weak};
 use indexmap::set::IndexSet;
 use intervaltree::Element;
 use rebo::common::{SpanWithId, Spanned};
-use crate::IncludeDirectory;
+use crate::IncludeConfig;
 
 #[derive(Debug, Clone)]
 pub enum Error {
@@ -106,7 +106,9 @@ impl<'i> fmt::Display for Ast<'i> {
 
 pub struct Parser<'i, 'm> {
     /// directory to search in when including files
-    include_directory: IncludeDirectory,
+    include_config: IncludeConfig,
+    /// externally provided fixed includes; name/path -> content
+    external_includes: HashMap<String, String>,
     /// arena to allocate expressions into
     arena: &'i Arena<Expr<'i>>,
     /// tokens to be consumed
@@ -137,8 +139,8 @@ pub struct Parser<'i, 'm> {
     ///
     /// Adding clone impls parses a new ast, at which point the clone impls would be added again,
     /// resulting in a stack overflow.
-    /// Setting this bool to `true` during that process fixes the problem.
-    add_clone: bool,
+    /// Setting this to `AddClone::Yes` during that process fixes the problem.
+    add_clone: AddClone,
 }
 
 pub struct ScopeGuard<'i> {
@@ -161,11 +163,25 @@ impl<'i> Drop for ScopeGuard<'i> {
     }
 }
 
+pub enum AddClone {
+    Yes,
+    No,
+}
+
 /// All expression parsing function consume whitespace and comments before tokens, but not after.
 impl<'i, 'm> Parser<'i, 'm> {
-    pub fn new(include_directory: IncludeDirectory, arena: &'i Arena<Expr<'i>>, lexer: Lexer<'i>, diagnostics: &'i Diagnostics<ErrorCode>, meta_info: &'m mut MetaInfo<'i>, add_clone: bool) -> Self {
+    pub fn new(
+        include_config: IncludeConfig,
+        external_includes: HashMap<String, String>,
+        arena: &'i Arena<Expr<'i>>,
+        lexer: Lexer<'i>,
+        diagnostics: &'i Diagnostics<ErrorCode>,
+        meta_info: &'m mut MetaInfo<'i>,
+        add_clone: AddClone,
+    ) -> Self {
         Parser {
-            include_directory,
+            include_config,
+            external_includes,
             arena,
             lexer,
             diagnostics,
@@ -263,7 +279,7 @@ impl<'i, 'm> Parser<'i, 'm> {
         }
 
         // add <T>::clone() method to all types
-        if self.add_clone {
+        if let AddClone::Yes = self.add_clone {
             let types: Vec<_> = self.meta_info.user_types.iter().map(|(name, typ)| (*name, typ.generics())).collect();
             let mut clone_code = String::new();
             for (type_name, generics) in types {
@@ -275,7 +291,7 @@ impl<'i, 'm> Parser<'i, 'm> {
                 let generics = generics.map(ToString::to_string).unwrap_or_default();
                 clone_code.push_str(&format!("impl {type_name}{generics} {{\n    fn clone(self) -> {type_name}{generics} {{\n        __internal_clone_(self)\n    }}\n}}\n"));
             }
-            self.meta_info.add_external_code("external-clone.re".to_string(), clone_code, self.arena, self.diagnostics, false);
+            self.meta_info.add_external_code("external-clone.re".to_string(), clone_code, self.arena, self.diagnostics, AddClone::No);
         }
     }
 

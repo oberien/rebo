@@ -1,6 +1,6 @@
 use diagnostic::Emitted;
-use rebo::ErrorCode;
-use crate::{ReturnValue, Value};
+use rebo::{ErrorCode, ReboConfig};
+use crate::ReturnValue;
 
 mod lexer;
 mod binops;
@@ -12,6 +12,7 @@ mod enums;
 mod impl_blocks;
 mod generics;
 mod stdlib;
+mod includes;
 
 trait Sorted {
     fn sorted(&self) -> Self;
@@ -35,8 +36,11 @@ impl Sorted for ReturnValue {
 }
 
 pub fn test(code: &str, expected: ReturnValue) {
+    test_with_config(ReboConfig::new(), code, expected)
+}
+pub fn test_with_config(config: ReboConfig, code: &str, expected: ReturnValue) {
     let _ = env_logger::builder().is_test(true).try_init();
-    let res = rebo::run("test".to_string(), code.to_string());
+    let res = rebo::run_with_config("test".to_string(), code.to_string(), config);
     assert_eq!(expected.sorted(), res.return_value.sorted());
 }
 

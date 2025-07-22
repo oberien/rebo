@@ -1,6 +1,5 @@
 use std::borrow::Cow;
 use std::fmt::{self, Display, Formatter};
-use std::path::PathBuf;
 
 use diagnostic::{Diagnostics, Span};
 use indexmap::map::{Entry, IndexMap};
@@ -10,9 +9,9 @@ use typed_arena::Arena;
 pub use values::{BinaryValue, DebugValue, DeepCopy, DisplayValue, Enum, EnumArc, ExternalFunction, ExternalType, ExternalTypeType, FromValue, Function, FunctionValue, FuzzyFloat, IntoValue, ListArc, LowerExpValue, LowerHexValue, MapArc, OctalValue, RequiredReboFunction, RequiredReboFunctionStruct, SetArc, Struct, StructArc, Typed, UpperExpValue, UpperHexValue, Value};
 
 use crate::error_codes::ErrorCode;
-use crate::{FileId, IncludeDirectory, SpecificType};
+use crate::{FileId, IncludeConfig, SpecificType};
 use crate::lexer::{Lexer, TokenIdent};
-use crate::parser::{Binding, BindingId, Expr, ExprEnumDefinition, ExprFunctionDefinition, ExprFunctionSignature, ExprGenerics, ExprLabel, ExprPattern, ExprPatternTyped, ExprPatternUntyped, ExprStatic, ExprStructDefinition, Parse, Parser};
+use crate::parser::{AddClone, Binding, BindingId, Expr, ExprEnumDefinition, ExprFunctionDefinition, ExprFunctionSignature, ExprGenerics, ExprLabel, ExprPattern, ExprPatternTyped, ExprPatternUntyped, ExprStatic, ExprStructDefinition, Parse, Parser};
 use crate::typeck::types::{EnumType, FunctionType, StructType, Type};
 use crate::typeck::TypeVar;
 use std::rc::Rc;
@@ -219,7 +218,7 @@ impl<'i> MetaInfo<'i> {
         self.external_functions.insert(fun.name, fun.clone());
         self.functions.insert(Cow::Borrowed(fun.name), Function::Rust(fun.imp));
         let lexer = Lexer::new(diagnostics, file);
-        let mut parser = Parser::new(IncludeDirectory::Path(PathBuf::new()), arena, lexer, diagnostics, self, true);
+        let mut parser = Parser::new(IncludeConfig::DisallowFromFiles, HashMap::new(), arena, lexer, diagnostics, self, AddClone::No);
         let _guard = parser.push_scope(ScopeType::Global);
         let _guard = parser.push_scope(ScopeType::File);
         let sig = ExprFunctionSignature::parse(&mut parser, Depth::start()).unwrap();
@@ -272,14 +271,14 @@ impl<'i> MetaInfo<'i> {
         self.external_types.insert(T::typ().type_name(), T::typ());
 
         let lexer = Lexer::new(diagnostics, file);
-        let parser = Parser::new(IncludeDirectory::Path(PathBuf::new()), arena, lexer, diagnostics, self, true);
+        let parser = Parser::new(IncludeConfig::DisallowFromFiles, HashMap::new(), arena, lexer, diagnostics, self, AddClone::No);
         parser.parse_ast().unwrap();
     }
-    pub fn add_external_code(&mut self, filename: String, code: String, arena: &'i Arena<Expr<'i>>, diagnostics: &'i Diagnostics<ErrorCode>, add_clone: bool) {
+    pub fn add_external_code(&mut self, filename: String, code: String, arena: &'i Arena<Expr<'i>>, diagnostics: &'i Diagnostics<ErrorCode>, add_clone: AddClone) {
         let (file, _) = diagnostics.add_file(filename, code);
 
         let lexer = Lexer::new(diagnostics, file);
-        let parser = Parser::new(IncludeDirectory::Path(PathBuf::new()), arena, lexer, diagnostics, self, add_clone);
+        let parser = Parser::new(IncludeConfig::DisallowFromFiles, HashMap::new(), arena, lexer, diagnostics, self, add_clone);
         parser.parse_ast().unwrap();
     }
     pub fn add_enum(&mut self, diagnostics: &Diagnostics<ErrorCode>, enum_def: &'i ExprEnumDefinition<'i>) {

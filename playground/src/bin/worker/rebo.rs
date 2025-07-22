@@ -1,4 +1,4 @@
-use rebo::{ReboConfig, IncludeDirectoryConfig, ReturnValue, Output, Stdlib, DisplayValue, ExecError};
+use rebo::{ReboConfig, IncludeDirectoryConfig, ReturnValue, Output, Stdlib, DisplayValue, ExecError, IncludeConfig};
 use itertools::Itertools;
 use crate::post_output;
 use instant::Instant;
@@ -37,7 +37,7 @@ thread_local! {
 pub fn run_rebo(buf: Uint32Array, code: CodePayload) {
     let ret = {
         let config = ReboConfig::new()
-            .include_directory(IncludeDirectoryConfig::Everywhere)
+            .include_config(IncludeConfig::Everywhere)
             .diagnostic_output({
                 Output::buffered(move |s| STATE.with(|state| {
                     state.borrow_mut().output_buffer.push_str(&s);

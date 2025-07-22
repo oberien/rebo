@@ -2,7 +2,7 @@ use std::fmt;
 use std::path::{Path, PathBuf};
 use lexical::{NumberFormatBuilder, ParseFloatOptions, ToLexicalWithOptions};
 use rt_format::argument::ArgumentSource;
-use crate::{Value, IncludeDirectory};
+use crate::{Value, IncludeConfig};
 use crate::lexer::Radix;
 
 pub struct PadFmt<T: fmt::Write> {
@@ -53,30 +53,37 @@ pub fn similar_name<'i, T: AsRef<str> + 'i + ?Sized>(ident: &str, others: impl I
 }
 
 pub enum ResolveFileError {
-    Canonicalize(PathBuf, std::io::Error),
-    StartsWith(PathBuf),
+    CanonicalizeFailed(PathBuf, std::io::Error),
+    /// include_directory, gotten path
+    NotInIncludeDirectory(PathBuf, PathBuf),
+    IncludesDisallowed,
 }
-pub fn try_resolve_file<P: AsRef<Path>>(include_directory: &IncludeDirectory, file: P) -> Result<PathBuf, ResolveFileError> {
-    let include_directory = match include_directory {
-        IncludeDirectory::Everywhere => return Ok(file.as_ref().to_owned()),
-        IncludeDirectory::Path(path) => path,
+pub fn try_resolve_file<P: AsRef<Path>>(include_config: &IncludeConfig, file: P) -> Result<PathBuf, ResolveFileError> {
+    let include_directory = match include_config {
+        IncludeConfig::Everywhere => return Ok(file.as_ref().to_owned()),
+        IncludeConfig::Workdir => std::env::current_dir()
+            .expect("can't get current working directory")
+            .canonicalize()
+            .expect("can't canonicalize current working directory"),
+        IncludeConfig::InDirectory(path) => path.clone(),
+        IncludeConfig::DisallowFromFiles => return Err(ResolveFileError::IncludesDisallowed),
     };
     let path = include_directory.join(file.as_ref());
     let path = match path.canonicalize() {
         Ok(path) => path,
         Err(e) => {
-            return Err(ResolveFileError::Canonicalize(path, e));
+            return Err(ResolveFileError::CanonicalizeFailed(path, e));
         }
     };
     // we all love UNC
     let include_directory = match include_directory.canonicalize() {
         Ok(include_directory) => include_directory,
         Err(e) => {
-            return Err(ResolveFileError::Canonicalize(include_directory.clone(), e));
+            return Err(ResolveFileError::CanonicalizeFailed(include_directory.clone(), e));
         }
     };
     if !path.starts_with(&include_directory) {
-        return Err(ResolveFileError::StartsWith(path));
+        return Err(ResolveFileError::NotInIncludeDirectory(include_directory, path));
     }
     Ok(path)
 }

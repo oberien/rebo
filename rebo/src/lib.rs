@@ -11,7 +11,7 @@ use typed_arena::Arena;
 
 use crate::common::{MetaInfo, RequiredReboFunctionStruct, SpanWithId};
 use crate::lexer::{Lexer, TokenIdent};
-use crate::parser::{Ast, Binding, Expr, Parser};
+use crate::parser::{AddClone, Ast, Binding, Expr, Parser};
 use crate::vm::Vm;
 
 mod error_codes;
@@ -36,7 +36,7 @@ pub use common::{StructArc, Struct, EnumArc, Enum};
 pub use typeck::types::{Type, FunctionType, SpecificType};
 pub use stdlib::{Stdlib, List, Map};
 pub use common::expr_gen::*;
-use std::path::{PathBuf, Path};
+use std::path::PathBuf;
 use std::sync::LazyLock;
 use diagnostic::Emitted;
 use rebo::parser::BindingId;
@@ -65,17 +65,15 @@ pub enum ReturnValue {
 }
 
 #[derive(Debug, Clone)]
-pub enum IncludeDirectory {
-    Path(PathBuf),
+pub enum IncludeConfig {
+    /// allow file includes from anywhere
     Everywhere,
-}
-impl IncludeDirectory {
-    pub fn unwrap_path(&self) -> &Path {
-        match self {
-            IncludeDirectory::Path(path) => path,
-            IncludeDirectory::Everywhere => panic!("IncludeDirectory::unwrap_path called with everywhere"),
-        }
-    }
+    /// allow file includes from within the current working directory
+    Workdir,
+    /// allow includes from the files within the provided directory
+    InDirectory(PathBuf),
+    /// disallow file includes; only allow includes from `ReboConfig::external_includes`
+    DisallowFromFiles,
 }
 #[derive(Debug, Clone)]
 pub enum IncludeDirectoryConfig {
@@ -86,14 +84,25 @@ pub enum IncludeDirectoryConfig {
 
 pub type ExternalTypeAdderFunction = for<'i, 'b> fn(&'i Arena<Expr<'i>>, &'i Diagnostics<ErrorCode>, &'b mut MetaInfo<'i>);
 pub struct ReboConfig {
+    /// which parts of the standard library to allow
     stdlib: Stdlib,
+    /// externally provided functions to be called by rebo code
     functions: Vec<ExternalFunction>,
+    /// externally provided bindings / values
     external_values: Vec<(String, Value)>,
+    /// number of expressions to execute between calls to the `interrupt_function`
     interrupt_interval: u32,
+    /// function to call every `interrupt_interval` executed expressions
     interrupt_function: for<'i> fn(&mut VmContext<'i, '_, '_>) -> Result<(), ExecError<'i>>,
+    /// where to write diagnostics to
     diagnostic_output: Output,
-    include_directory: IncludeDirectoryConfig,
+    /// directory below which files in `include` expressions are resolved
+    include_config: IncludeConfig,
+    /// externally provided fixed includes; name/path -> content
+    external_includes: HashMap<String, String>,
+    /// functions that add an external type to MetaInfo
     external_type_adder_functions: Vec<ExternalTypeAdderFunction>,
+    /// `extern "rebo"` functions required to exist in the rebo code to be called by rust code
     required_rebo_functions: Vec<RequiredReboFunctionStruct>,
 }
 impl ReboConfig {
@@ -105,7 +114,8 @@ impl ReboConfig {
             interrupt_interval: 10000,
             interrupt_function: |_| Ok(()),
             diagnostic_output: Output::stderr(),
-            include_directory: IncludeDirectoryConfig::Workdir,
+            include_config: IncludeConfig::Workdir,
+            external_includes: HashMap::new(),
             external_type_adder_functions: Vec::new(),
             required_rebo_functions: Vec::new(),
         }
@@ -134,8 +144,12 @@ impl ReboConfig {
         self.diagnostic_output = output;
         self
     }
-    pub fn include_directory(mut self, dir: IncludeDirectoryConfig) -> Self {
-        self.include_directory = dir;
+    pub fn include_config(mut self, include_config: IncludeConfig) -> Self {
+        self.include_config = include_config;
+        self
+    }
+    pub fn add_external_include(mut self, filename: impl Into<String>, code: impl Into<String>) -> Self {
+        self.external_includes.insert(filename.into(), code.into());
         self
     }
     pub fn add_external_type<T: ExternalTypeType>(mut self, _: T) -> Self {
@@ -160,7 +174,18 @@ pub fn run(filename: String, code: String) -> RunResult {
     run_with_config(filename, code, ReboConfig::new())
 }
 pub fn run_with_config(filename: String, code: String, config: ReboConfig) -> RunResult {
-    let ReboConfig { stdlib, functions, external_values, interrupt_interval, interrupt_function, diagnostic_output, include_directory, external_type_adder_functions, required_rebo_functions } = config;
+    let ReboConfig {
+        stdlib,
+        functions,
+        external_values,
+        interrupt_interval,
+        interrupt_function,
+        diagnostic_output,
+        include_config,
+        external_includes,
+        external_type_adder_functions,
+        required_rebo_functions,
+    } = config;
 
     let diagnostics = Diagnostics::with_output(diagnostic_output);
     // register file for external sources
@@ -213,16 +238,10 @@ pub fn run_with_config(filename: String, code: String, config: ReboConfig) -> Ru
     debug!("TOKENS:\n{}\n", lexer.iter().map(|token| token.to_string()).join(""));
 
     // parse
-    let include_directory = match include_directory {
-        IncludeDirectoryConfig::Everywhere => IncludeDirectory::Everywhere,
-        IncludeDirectoryConfig::Workdir => IncludeDirectory::Path(std::env::current_dir()
-            .expect("can't get current working directory")
-            .canonicalize()
-            .expect("can't canonicalize current working directory")),
-        IncludeDirectoryConfig::Path(path) => IncludeDirectory::Path(path),
-    };
     let time = Instant::now();
-    let parser = Parser::new(include_directory.clone(), &arena, lexer, &diagnostics, &mut meta_info, true);
+    let parser = Parser::new(
+        include_config.clone(), external_includes, &arena, lexer, &diagnostics, &mut meta_info, AddClone::Yes
+    );
     let ast = match parser.parse_ast() {
         Ok(ast) => ast,
         Err(e) => {
@@ -270,7 +289,7 @@ pub fn run_with_config(filename: String, code: String, config: ReboConfig) -> Ru
 
     // run
     let time = Instant::now();
-    let vm = Vm::new(include_directory, &diagnostics, &meta_info, interrupt_interval, interrupt_function);
+    let vm = Vm::new(include_config, &diagnostics, &meta_info, interrupt_interval, interrupt_function);
     let result = vm.run(&exprs);
     info!("Execution took {}μs", time.elapsed().as_micros());
     error!("RESULT: {:?}", result);

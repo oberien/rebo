@@ -68,32 +68,42 @@ impl<'i, 'b> Parser<'i, 'b> {
             // includes -> first-pass
             |parser: &mut Parser<'i, '_>, _, depth| {
                 let include = ExprInclude::parse_reset(parser, depth.duplicate())?;
-                let path = match util::try_resolve_file(&parser.include_directory, &include.file.string) {
-                    Ok(path) => path,
-                    Err(ResolveFileError::Canonicalize(path, e)) => {
-                        parser.diagnostics.error(ErrorCode::ErrorReadingIncludedFile)
-                            .with_error_label(include.diagnostics_span(), format!("error canonicalizing `{}`", path.display()))
-                            .with_error_label(include.diagnostics_span(), e.to_string())
-                            .emit();
-                        return Ok(None);
-                    }
-                    Err(ResolveFileError::StartsWith(path)) => {
-                        parser.diagnostics.error(ErrorCode::ErrorReadingIncludedFile)
-                            .with_error_label(include.diagnostics_span(), "the file is not in the include directory")
-                            .with_info_label(include.diagnostics_span(), format!("this file resolved to {}", path.display()))
-                            .with_error_label(include.diagnostics_span(), format!("included files must be in {}", parser.include_directory.unwrap_path().display()))
-                            .emit();
-                        return Ok(None);
-                    }
-                };
-                let code = match ::std::fs::read_to_string(&path) {
-                    Ok(code) => code,
-                    Err(e) => {
-                        parser.diagnostics.error(ErrorCode::ErrorReadingIncludedFile)
-                            .with_error_label(include.diagnostics_span(), format!("error reading file `{}`", path.display()))
-                            .with_error_label(include.diagnostics_span(), e.to_string())
-                            .emit();
-                        return Ok(None);
+                let code = if let Some(code) = parser.external_includes.get(&include.file.string) {
+                    code.clone()
+                } else {
+                    let path = match util::try_resolve_file(&parser.include_config, &include.file.string) {
+                        Ok(path) => path,
+                        Err(ResolveFileError::CanonicalizeFailed(path, e)) => {
+                            parser.diagnostics.error(ErrorCode::ErrorReadingIncludedFile)
+                                .with_error_label(include.diagnostics_span(), format!("error canonicalizing `{}`", path.display()))
+                                .with_error_label(include.diagnostics_span(), e.to_string())
+                                .emit();
+                            return Ok(None);
+                        }
+                        Err(ResolveFileError::NotInIncludeDirectory(include_path, path)) => {
+                            parser.diagnostics.error(ErrorCode::ErrorReadingIncludedFile)
+                                .with_error_label(include.diagnostics_span(), "the file is not in the include directory")
+                                .with_info_label(include.diagnostics_span(), format!("this file resolved to {}", path.display()))
+                                .with_error_label(include.diagnostics_span(), format!("included files must be in {}", include_path.display()))
+                                .emit();
+                            return Ok(None);
+                        }
+                        Err(ResolveFileError::IncludesDisallowed) => {
+                            parser.diagnostics.error(ErrorCode::ErrorReadingIncludedFile)
+                                .with_error_label(include.diagnostics_span(), "includes are disallowed")
+                                .emit();
+                            return Ok(None);
+                        }
+                    };
+                    match ::std::fs::read_to_string(&path) {
+                        Ok(code) => code,
+                        Err(e) => {
+                            parser.diagnostics.error(ErrorCode::ErrorReadingIncludedFile)
+                                .with_error_label(include.diagnostics_span(), format!("error reading file `{}`", path.display()))
+                                .with_error_label(include.diagnostics_span(), e.to_string())
+                                .emit();
+                            return Ok(None);
+                        }
                     }
                 };
                 let (file, _) = parser.diagnostics.add_file(include.file.string.clone(), code);

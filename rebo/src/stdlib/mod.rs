@@ -510,20 +510,26 @@ enum FileError {
 #[rebo::function(raw("File::read_to_string"))]
 fn file_read_to_string(name: String) -> Result<String, FileError> {
     (|| {
-        let path = match util::try_resolve_file(vm.include_directory(), name) {
+        let path = match util::try_resolve_file(vm.include_config(), name) {
             Ok(path) => path,
-            Err(ResolveFileError::Canonicalize(path, e)) => {
+            Err(ResolveFileError::CanonicalizeFailed(path, e)) => {
                 vm.diagnostics().error(ErrorCode::FileError)
                     .with_error_label(expr_span, format!("error canonicalizing `{}`", path.display()))
                     .with_error_label(expr_span, e.to_string())
                     .emit();
                 return Err(ExecError::Panic);
             }
-            Err(ResolveFileError::StartsWith(path)) => {
+            Err(ResolveFileError::NotInIncludeDirectory(include_dir, path)) => {
                 vm.diagnostics().error(ErrorCode::FileError)
                     .with_error_label(expr_span, "the file is not in the include directory")
                     .with_info_label(expr_span, format!("this file resolved to {}", path.display()))
-                    .with_error_label(expr_span, format!("included files must be in {}", vm.include_directory().unwrap_path().display()))
+                    .with_error_label(expr_span, format!("included files must be in {}", include_dir.display()))
+                    .emit();
+                return Err(ExecError::Panic);
+            }
+            Err(ResolveFileError::IncludesDisallowed) => {
+                vm.diagnostics().error(ErrorCode::FileError)
+                    .with_error_label(expr_span, "files are not allowed to be opened")
                     .emit();
                 return Err(ExecError::Panic);
             }

@@ -11,7 +11,7 @@ pub use crate::vm::scope::{Scope, Scopes};
 use diagnostic::Diagnostics;
 use rt_format::{Specifier, Substitution};
 use rebo::common::SpanWithId;
-use crate::{ErrorCode, EXTERNAL_SPAN, IncludeDirectory};
+use crate::{ErrorCode, EXTERNAL_SPAN, IncludeConfig};
 use crate::common::Spanned;
 
 mod scope;
@@ -25,7 +25,7 @@ pub struct Vm<'i, 'b> {
     // read in the voice of Brüggi
     callstack: Rc<RefCell<Vec<SpanWithId>>>,
     meta_info: &'b MetaInfo<'i>,
-    include_directory: IncludeDirectory,
+    include_config: IncludeConfig,
 }
 
 #[derive(Debug)]
@@ -46,8 +46,8 @@ impl<'i, 'b, 'vm> VmContext<'i, 'b, 'vm> {
         self.vm.diagnostics
     }
 
-    pub fn include_directory(&self) -> &IncludeDirectory {
-        &self.vm.include_directory
+    pub fn include_config(&self) -> &IncludeConfig {
+        &self.vm.include_config
     }
 
     pub fn call_required_rebo_function<T: RequiredReboFunction>(&mut self, args: Vec<Value>) -> Result<Value, ExecError<'i>> {
@@ -73,7 +73,7 @@ impl Drop for CallstackGuard {
 }
 
 impl<'i, 'b> Vm<'i, 'b> {
-    pub fn new(include_directory: IncludeDirectory, diagnostics: &'i Diagnostics<ErrorCode>, meta_info: &'b MetaInfo<'i>, interrupt_interval: u32, interrupt_function: fn(&mut VmContext<'i, '_, '_>) -> Result<(), ExecError<'i>>) -> Self {
+    pub fn new(include_config: IncludeConfig, diagnostics: &'i Diagnostics<ErrorCode>, meta_info: &'b MetaInfo<'i>, interrupt_interval: u32, interrupt_function: fn(&mut VmContext<'i, '_, '_>) -> Result<(), ExecError<'i>>) -> Self {
         let scopes = Scopes::new();
         let root_scope = Scope::new();
         // we don't want to drop the root-scope, it should exist at all times
@@ -86,7 +86,7 @@ impl<'i, 'b> Vm<'i, 'b> {
             scopes,
             callstack: Rc::new(RefCell::new(Vec::new())),
             meta_info,
-            include_directory,
+            include_config,
         }
     }
 
