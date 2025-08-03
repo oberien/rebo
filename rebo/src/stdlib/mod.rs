@@ -115,6 +115,7 @@ pub fn add_to_meta_info<'i>(stdlib: Stdlib, diagnostics: &'i Diagnostics<ErrorCo
     meta_info.add_external_function(arena, diagnostics, string_sorted);
     meta_info.add_external_function(arena, diagnostics, string_contains);
     meta_info.add_external_function(arena, diagnostics, string_replace);
+    meta_info.add_external_function(arena, diagnostics, string_is_digit);
     meta_info.add_external_function(arena, diagnostics, current_time_millis);
     meta_info.add_external_function(arena, diagnostics, rng_set_random_seed);
     meta_info.add_external_function(arena, diagnostics, rng_set_seed);
@@ -471,6 +472,13 @@ fn string_contains(this: String, regex: String) -> bool {
 fn string_replace(this: String, regex: String, with: String) -> String {
     let regex = compile_regex(regex, vm, expr_span)?;
     regex.replace_all(&this, with).into_owned()
+}
+#[rebo::function("string::is_digit")]
+fn string_is_digit(this: String) -> bool {
+    let mut chars = this.chars();
+    let first = chars.next();
+    let second = chars.next();
+    first.map(|c| c.is_ascii_digit()).unwrap_or(false) && second.is_none()
 }
 
 #[rebo::function("current_time_millis")]
