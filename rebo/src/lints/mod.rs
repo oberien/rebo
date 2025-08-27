@@ -22,6 +22,7 @@ mod no_yield;
 use crate::parser::Expr;
 use crate::common::MetaInfo;
 use diagnostic::Diagnostics;
+use rebo::lints::no_yield::NoYieldOutsideOfGenerator;
 use crate::lints::visitor::{Visitor, VisitorDriver};
 use crate::lints::unknown_function::UnknownFunction;
 use crate::lints::invalid_number_of_arguments::InvalidNumberOfArguments;
@@ -64,6 +65,7 @@ pub fn lint<'i, 'b>(diagnostics: &'b Diagnostics<ErrorCode>, meta_info: &'b Meta
         &BreakContinueReturn,
         &VariableWithoutFunction,
         &ClosureCapturePrimitives,
+        &NoYieldOutsideOfGenerator
     ]);
 
     visitor_driver.visit_exprs(exprs);

@@ -4,15 +4,15 @@ use std::sync::Arc;
 
 use parking_lot::ReentrantMutex;
 
-use crate::common::{Depth, Enum, EnumArc, Function, FunctionValue, FuzzyFloat, MetaInfo, RequiredReboFunction, RequiredReboFunctionStruct, Struct, StructArc, Value};
+use crate::common::{Depth, Enum, EnumArc, Function, FunctionValue, FuzzyFloat, MetaInfo, RequiredReboFunction, RequiredReboFunctionStruct, Struct, StructArc, TypedFunction, Value};
 use crate::lexer::{TokenBool, TokenDqString, TokenFloat, TokenIdent, TokenInteger};
 use crate::parser::{Binding, BlockBody, Expr, ExprAccess, ExprAdd, ExprAddAssign, ExprAssign, ExprAssignLhs, ExprBind, ExprBlock, ExprBool, ExprBoolAnd, ExprBoolAndAssign, ExprBoolNot, ExprBoolOr, ExprBoolOrAssign, ExprBreak, ExprContinue, ExprDiv, ExprDivAssign, ExprEnumDefinition, ExprEnumInitialization, ExprEquals, ExprFieldAccess, ExprFloat, ExprFor, ExprFormatString, ExprFormatStringPart, ExprFunctionCall, ExprGreaterEquals, ExprGreaterThan, ExprIfElse, ExprInteger, ExprLabel, ExprLessEquals, ExprLessThan, ExprLiteral, ExprLoop, ExprMatch, ExprMatchPattern, ExprMethodCall, ExprMod, ExprModAssign, ExprMul, ExprMulAssign, ExprNeg, ExprNotEquals, ExprParenthesized, ExprPattern, ExprPatternTyped, ExprPatternUntyped, ExprReturn, ExprString, ExprStructDefinition, ExprStructInitialization, ExprSub, ExprSubAssign, ExprVariable, ExprWhile, ExprXor, ExprXorAssign, FieldOrMethod};
 pub use crate::vm::scope::{Scope, Scopes};
-use diagnostic::Diagnostics;
+use diagnostic::{Diagnostics, Span};
 use rt_format::{Specifier, Substitution};
 use tracing::trace;
 use rebo::common::SpanWithId;
-use crate::{ErrorCode, EXTERNAL_SPAN, IncludeConfig};
+use crate::{ErrorCode, EXTERNAL_SPAN, IncludeConfig, FromValue};
 use crate::common::Spanned;
 
 mod scope;
@@ -56,6 +56,11 @@ impl<'i, 'b, 'vm> VmContext<'i, 'b, 'vm> {
             panic!("required rebo function `{}` wasn't registered via `ReboConfig`", T::NAME);
         }
         self.vm.call_function(&FunctionValue::Named(T::NAME.to_string()), *EXTERNAL_SPAN, args, Depth::start())
+    }
+
+    pub fn call_typed_function<F: TypedFunction>(&mut self, function: F, args: F::Args, expr_span: Span) -> Result<F::Ret, ExecError<'i>> {
+        self.vm.call_function(function.function_value(), SpanWithId::from(expr_span), F::to_value_vec(args), Depth::start())
+            .map(F::Ret::from_value)
     }
 
     pub fn callstack(&self) -> Vec<SpanWithId> {

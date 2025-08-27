@@ -2,7 +2,8 @@ use std::collections::HashMap;
 use proc_macro2::{TokenStream, Span};
 use proc_macro_error::abort;
 use quote::ToTokens;
-use syn::{GenericArgument, GenericParam, Generics, Ident, PathArguments, Type, spanned::Spanned, Signature, FnArg, Pat, PatType, ReturnType};
+use syn::{GenericArgument, GenericParam, Generics, Ident, PathArguments, Type, spanned::Spanned, Signature, FnArg, Pat, PatType, ReturnType, Token, TypeBareFn, BareFnArg};
+use syn::punctuated::{Pair, Punctuated};
 
 #[derive(PartialEq)]
 pub enum Bounds {
@@ -52,19 +53,32 @@ pub fn generic_span_with_ids(generic_idents: &[Ident], code_filename: &str, code
     }
 }
 
+enum Transform {
+    ContinueWithGenerics(TokenStream),
+    IgnoreGenerics(TokenStream),
+}
+impl Transform {
+    fn into_token_stream(self) -> TokenStream {
+        match self {
+            Transform::ContinueWithGenerics(ts) => ts,
+            Transform::IgnoreGenerics(ts) => ts,
+        }
+    }
+}
+
 /// Convert a syn-Type to a TokenStream with the callback being called for each encountered Ident.
 ///
 /// For `Option<HashMap<i32, String>>` the callback will be called with `Option`, `HashMap`,
 /// `i32` and `String`.
-pub fn transform_path_type(typ: &Type, callback: &impl Fn(&Ident) -> Option<TokenStream>) -> TokenStream {
+fn transform_path_type(typ: &Type, callback: &impl Fn(&Ident, Option<&Punctuated<GenericArgument, Token![,]>>) -> Option<Transform>) -> TokenStream {
     let path = match typ {
         Type::Path(path) => path,
         typ => return quote::quote_spanned!(typ.span()=> #typ),
     };
     let mut res = quote::quote_spanned!(typ.span()=> );
     if let Some(ident) = path.path.get_ident() {
-        if let Some(res) = callback(ident) {
-            return res;
+        if let Some(res) = callback(ident, None) {
+            return res.into_token_stream();
         }
     }
 
@@ -72,25 +86,34 @@ pub fn transform_path_type(typ: &Type, callback: &impl Fn(&Ident) -> Option<Toke
         if !res.is_empty() {
             res = quote::quote_spanned!(segment.span()=> #res::);
         }
-        let ident = match callback(&segment.ident) {
-            Some(name) => name,
+
+        let generics = match &segment.arguments {
+            PathArguments::None => None,
+            PathArguments::Parenthesized(par) => abort!(par, "generics can only be <...>"),
+            PathArguments::AngleBracketed(generics) => Some(&generics.args),
+        };
+
+        let (ignore_generics, ident) = match callback(&segment.ident, generics) {
+            Some(Transform::ContinueWithGenerics(name)) => (false, name),
+            Some(Transform::IgnoreGenerics(name)) => (true, name),
             None => {
                 let ident = &segment.ident;
-                quote::quote_spanned!(ident.span()=> #ident)
+                let name = quote::quote_spanned!(ident.span()=> #ident);
+                (false, name)
             },
         };
         res = quote::quote_spanned!(segment.span()=> #res #ident);
-        let generics = match &segment.arguments {
-            PathArguments::None => continue,
-            PathArguments::Parenthesized(par) => abort!(par, "generics can only be <...>"),
-            PathArguments::AngleBracketed(generics) => generics,
-        };
-        if generics.args.is_empty() {
+        if ignore_generics || generics.is_none() || generics.unwrap().is_empty() {
             continue;
         }
+        let generic_args = match generics {
+            _ if ignore_generics => continue,
+            None => continue,
+            Some(args) => args,
+        };
 
         res = quote::quote_spanned!(segment.span()=> #res<);
-        for arg in &generics.args {
+        for arg in generic_args {
             match arg {
                 GenericArgument::Type(typ) => {
                     let transformed = transform_path_type(typ, callback);
@@ -106,24 +129,70 @@ pub fn transform_path_type(typ: &Type, callback: &impl Fn(&Ident) -> Option<Toke
 
 /// Convert a syn-Type to its corresponding rebo-code type, including Generics (e.g. `Vec<i32>` -> `List<int>`)
 pub fn convert_type_to_rebo(typ: &Type) -> TokenStream {
-    transform_path_type(typ, &|ident| {
+    transform_path_type(typ, &|ident, generics| {
         #[allow(clippy::if_same_then_else)]
-        if ident == "f32" { Some(quote::quote_spanned!(ident.span()=> float)) }
-        else if ident == "f64" { Some(quote::quote_spanned!(ident.span()=> float)) }
-        else if ident == "FuzzyFloat" { Some(quote::quote_spanned!(ident.span()=> float)) }
-        else if ident == "u8" { Some(quote::quote_spanned!(ident.span()=> int)) }
-        else if ident == "i8" { Some(quote::quote_spanned!(ident.span()=> int)) }
-        else if ident == "u16" { Some(quote::quote_spanned!(ident.span()=> int)) }
-        else if ident == "i16" { Some(quote::quote_spanned!(ident.span()=> int)) }
-        else if ident == "u32" { Some(quote::quote_spanned!(ident.span()=> int)) }
-        else if ident == "i32" { Some(quote::quote_spanned!(ident.span()=> int)) }
-        else if ident == "u64" { Some(quote::quote_spanned!(ident.span()=> int)) }
-        else if ident == "i64" { Some(quote::quote_spanned!(ident.span()=> int)) }
-        else if ident == "usize" { Some(quote::quote_spanned!(ident.span()=> int)) }
-        else if ident == "isize" { Some(quote::quote_spanned!(ident.span()=> int)) }
-        else if ident == "String" { Some(quote::quote_spanned!(ident.span()=> string)) }
-        else if ident == "Vec" { Some(quote::quote_spanned!(ident.span()=> List)) }
-        else { None }
+        Some(Transform::ContinueWithGenerics(
+            if ident == "f32" { quote::quote_spanned!(ident.span()=> float) }
+            else if ident == "f64" { quote::quote_spanned!(ident.span()=> float) }
+            else if ident == "FuzzyFloat" { quote::quote_spanned!(ident.span()=> float) }
+            else if ident == "u8" { quote::quote_spanned!(ident.span()=> int) }
+            else if ident == "i8" { quote::quote_spanned!(ident.span()=> int) }
+            else if ident == "u16" { quote::quote_spanned!(ident.span()=> int) }
+            else if ident == "i16" { quote::quote_spanned!(ident.span()=> int) }
+            else if ident == "u32" { quote::quote_spanned!(ident.span()=> int) }
+            else if ident == "i32" { quote::quote_spanned!(ident.span()=> int) }
+            else if ident == "u64" { quote::quote_spanned!(ident.span()=> int) }
+            else if ident == "i64" { quote::quote_spanned!(ident.span()=> int) }
+            else if ident == "usize" { quote::quote_spanned!(ident.span()=> int) }
+            else if ident == "isize" { quote::quote_spanned!(ident.span()=> int) }
+            else if ident == "String" { quote::quote_spanned!(ident.span()=> string) }
+            else if ident == "Vec" { quote::quote_spanned!(ident.span()=> List) }
+            else if ident == "TypedFunctionValue" {
+                let generics = generics.expect("TypedFunctionValue must have one generic");
+                assert_eq!(generics.len(), 1);
+                let TypeBareFn {
+                    lifetimes, unsafety, abi, fn_token, paren_token: _, inputs, variadic, output
+                } = match &generics[0] {
+                    GenericArgument::Type(Type::BareFn(function)) => function,
+                    arg => abort!(arg, "TypedFunctionValue allows only a single function type as generic"),
+                };
+                if let Some(lifetimes) = lifetimes {
+                    abort!(lifetimes, "lifetimes are not allowed in TypedFunctionValue");
+                }
+                if let Some(unsafety) = unsafety {
+                    abort!(unsafety, "unsafety is not allowed in TypedFunctionValue");
+                }
+                if let Some(abi) = abi {
+                    abort!(abi, "abi is not allowed in TypedFunctionValue");
+                }
+                if let Some(variadic) = variadic {
+                    abort!(variadic, "variadic is not allowed in TypedFunctionValue");
+                }
+                let inputs: Punctuated<TokenStream, Token![,]> = inputs.clone().into_pairs().map(|pair| {
+                    let (BareFnArg { attrs, name: _, ty }, comma) = match pair {
+                        Pair::Punctuated(typ, comma) => (typ, Some(comma)),
+                        Pair::End(typ) => (typ, None),
+                    };
+                    if !attrs.is_empty() {
+                        abort!(attrs[0], "attributes are not allowed in TypedReboFunctionn");
+                    }
+                    let typ = convert_type_to_rebo(&ty);
+                    match comma {
+                        Some(comma) => Pair::Punctuated(typ, comma),
+                        None => Pair::End(typ),
+                    }
+                }).collect();
+                let output = match output {
+                    ReturnType::Default => quote::quote_spanned!(output.span()=> ),
+                    ReturnType::Type(arrow, typ) => {
+                        let typ = convert_type_to_rebo(typ);
+                        quote::quote_spanned!(output.span()=> #arrow #typ)
+                    }
+                };
+                return Some(Transform::IgnoreGenerics(quote::quote_spanned! { generics.span()=> #fn_token(#inputs) #output }))
+            }
+            else { return None }
+        ))
     })
 }
 
@@ -244,11 +313,11 @@ pub fn replace_generics_with_value(typ: &Type, generic_idents: &[Ident]) -> Toke
 ///
 /// Both `T` will and the `T` in `Option<T>` will be replaced.
 pub fn replace_generics_with(typ: &Type, generic_idents: &[Ident], with: impl Fn(&Ident) -> TokenStream) -> TokenStream {
-    transform_path_type(typ, &|ident| if generic_idents.iter().any(|i| i == ident) {
+    transform_path_type(typ, &|ident, _| if generic_idents.iter().any(|i| i == ident) {
         let with = with(ident);
-        Some(quote::quote_spanned!(ident.span()=> #with))
+        Some(Transform::ContinueWithGenerics(quote::quote_spanned!(ident.span()=> #with)))
     } else {
-        Some(ident.into_token_stream())
+        Some(Transform::ContinueWithGenerics(ident.into_token_stream()))
     })
 }
 /// Convert a syn::Type to a rebo::Type, using the passed `SpanWithId`(-getter).

@@ -5,9 +5,9 @@ use crate::common::{BlockStack, MetaInfo};
 use crate::common::Spanned;
 use crate::error_codes::ErrorCode;
 
-pub struct ImplBlockLints;
+pub struct NoYieldOutsideOfGenerator;
 
-impl Visitor for ImplBlockLints {
+impl Visitor for NoYieldOutsideOfGenerator {
     fn visit_yield(&self, diagnostics: &Diagnostics<ErrorCode>, _: &MetaInfo, _: &BlockStack<'_, ()>, expr: &ExprYield) {
         // ExprYield within generators has already been transformed within the parser upon
         // encountering the generator function definition.

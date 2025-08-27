@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use crate::vm::{ExecError, VmContext};
 use crate::parser::BindingId;
 use std::sync::Arc;
@@ -15,10 +16,13 @@ use crate::typeck::types::SpecificType;
 use std::collections::{BTreeMap, BTreeSet};
 use std::convert::{Infallible, TryInto};
 use std::iter::FromIterator;
+use std::marker::PhantomData;
 use rt_format::{FormatArgument, Specifier};
 use rebo::common::FunctionValue::{Anonymous, Named};
 use rebo::common::{SpanWithId, Spanned};
+use rebo::FunctionType;
 use rebo::vm::Scope;
+use std::sync::OnceLock;
 
 pub trait ExternalTypeType {
     type Type: ExternalType;
@@ -878,3 +882,89 @@ impl FromValue for f64 {
         }
     }
 }
+
+pub trait TypedFunction {
+    type Args;
+    type Ret: FromValue;
+    fn function_value(&self) -> &FunctionValue;
+    fn to_value_vec(args: Self::Args) -> Vec<Value>;
+}
+
+#[derive(Debug, Clone)]
+pub struct TypedFunctionValue<T> {
+    function: FunctionValue,
+    _marker: PhantomData<T>,
+}
+
+macro_rules! impl_typed_function {
+    ($($generic:ident),*) => {
+        impl<$($generic: Typed,)* R: Typed> Typed for TypedFunctionValue<fn($($generic),*) -> R> {
+            fn typ() -> SpecificType {
+                static TYP: OnceLock<SpecificType> = OnceLock::new();
+                TYP.get_or_init(|| {
+                    SpecificType::Function(Box::new(FunctionType {
+                        is_method: false,
+                        generics: Cow::Borrowed(&[]),
+                        args: Cow::Owned(vec![
+                            $(
+                                Type::Specific($generic::typ()),
+                            )*
+                        ]),
+                        ret: Type::Specific(R::typ()),
+                    }))
+                }).clone()
+            }
+        }
+
+        impl<$($generic: FromValue + IntoValue,)* R: FromValue + IntoValue> FromValue for TypedFunctionValue<fn($($generic),*) -> R> {
+            fn from_value(value: Value) -> Self {
+                match value {
+                    Value::Function(function) => TypedFunctionValue {
+                        function,
+                        _marker: PhantomData,
+                    },
+                    _ => unreachable!("TypedFunctionValue::from_value called with non-function: {:?}", value),
+                }
+            }
+        }
+        impl<$($generic: FromValue + IntoValue,)* R: FromValue + IntoValue> IntoValue for TypedFunctionValue<fn($($generic),*) -> R> {
+            fn into_value(self) -> Value {
+                Value::Function(self.function)
+            }
+        }
+        impl<$($generic: FromValue + IntoValue,)* R: FromValue + IntoValue> TypedFunction for TypedFunctionValue<fn($($generic),*) -> R> {
+            #[allow(unused_parens)]
+            type Args = ($($generic),*);
+            type Ret = R;
+
+            fn function_value(&self) -> &FunctionValue {
+                &self.function
+            }
+            fn to_value_vec(args: Self::Args) -> Vec<Value> {
+                #[allow(non_snake_case)]
+            #[allow(unused_parens)]
+                let ($($generic),*) = args;
+                vec![
+                    $(
+                        $generic.into_value(),
+                    )*
+                ]
+            }
+        }
+    };
+}
+impl_typed_function!();
+impl_typed_function!(A);
+impl_typed_function!(A, B);
+impl_typed_function!(A, B, C);
+impl_typed_function!(A, B, C, D);
+impl_typed_function!(A, B, C, D, E);
+impl_typed_function!(A, B, C, D, E, F);
+impl_typed_function!(A, B, C, D, E, F, G);
+impl_typed_function!(A, B, C, D, E, F, G, H);
+impl_typed_function!(A, B, C, D, E, F, G, H, I);
+impl_typed_function!(A, B, C, D, E, F, G, H, I, J);
+impl_typed_function!(A, B, C, D, E, F, G, H, I, J, K);
+impl_typed_function!(A, B, C, D, E, F, G, H, I, J, K, L);
+impl_typed_function!(A, B, C, D, E, F, G, H, I, J, K, L, M);
+impl_typed_function!(A, B, C, D, E, F, G, H, I, J, K, L, M, N);

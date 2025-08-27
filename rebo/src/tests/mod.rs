@@ -16,6 +16,7 @@ mod impl_blocks;
 mod generics;
 mod stdlib;
 mod includes;
+mod external_type;
 
 trait Sorted {
     fn sorted(&self) -> Self;
