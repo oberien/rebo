@@ -1,5 +1,5 @@
 use rebo::{ReboConfig, ReturnValue, Value};
-use rebo::common::{FunctionValue, FuzzyFloat, TypedFunctionValue};
+use rebo::common::{FuzzyFloat, TypedFunctionValue};
 use crate::tests::test_with_config;
 
 #[test]

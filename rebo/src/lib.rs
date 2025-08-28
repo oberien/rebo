@@ -27,7 +27,7 @@ mod tests;
 
 pub use rebo_derive::{function, required_rebo_functions, ExternalType};
 pub use vm::{VmContext, ExecError};
-pub use common::{Value, FromValue, IntoValue, Typed, ExternalFunction, TypedFunctionValue, RequiredReboFunction, ExternalType, ExternalTypeType, DisplayValue, DebugValue, OctalValue, LowerHexValue, UpperHexValue, BinaryValue, LowerExpValue, UpperExpValue};
+pub use common::{Value, FromValue, IntoValue, Typed, ExternalFunction, TypedFunctionValue, BoundFunctionValue, RequiredReboFunction, ExternalType, ExternalTypeType, DisplayValue, DebugValue, OctalValue, LowerHexValue, UpperHexValue, BinaryValue, LowerExpValue, UpperExpValue};
 pub(crate) use common::FunctionValue;
 #[doc(hidden)] // only used for the derive macros
 pub use common::{StructArc, Struct, EnumArc, Enum};

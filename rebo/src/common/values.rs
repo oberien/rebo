@@ -902,8 +902,8 @@ pub struct BoundFunctionValue<Ret: FromValue> {
     args: Vec<Value>,
     _marker: PhantomData<Ret>
 }
-impl<Ret: FromValue> Into<(FunctionValue, Vec<Value>)> for BoundFunctionValue<Ret> {
-    fn into(self) -> (FunctionValue, Vec<Value>) {
+impl<Ret: FromValue> BoundFunctionValue<Ret> {
+    pub(crate) fn into(self) -> (FunctionValue, Vec<Value>) {
         (self.function, self.args)
     }
 }
