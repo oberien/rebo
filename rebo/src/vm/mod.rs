@@ -11,7 +11,7 @@ pub use crate::vm::scope::{Scope, Scopes};
 use diagnostic::{Diagnostics, Span};
 use rt_format::{Specifier, Substitution};
 use tracing::trace;
-use rebo::common::SpanWithId;
+use rebo::common::{BoundFunctionValue, SpanWithId};
 use crate::{ErrorCode, EXTERNAL_SPAN, IncludeConfig, FromValue};
 use crate::common::Spanned;
 
@@ -58,9 +58,15 @@ impl<'i, 'b, 'vm> VmContext<'i, 'b, 'vm> {
         self.vm.call_function(&FunctionValue::Named(T::NAME.to_string()), *EXTERNAL_SPAN, args, Depth::start())
     }
 
-    pub fn call_typed_function<F: TypedFunction>(&mut self, function: F, args: F::Args, expr_span: Span) -> Result<F::Ret, ExecError<'i>> {
+    pub fn call_typed_function<F: TypedFunction>(&mut self, function: &F, args: F::Args, expr_span: Span) -> Result<F::Ret, ExecError<'i>> {
         self.vm.call_function(function.function_value(), SpanWithId::from(expr_span), F::to_value_vec(args), Depth::start())
             .map(F::Ret::from_value)
+    }
+
+    pub fn call_bound_function<Ret: FromValue>(&mut self, function: BoundFunctionValue<Ret>, expr_span: Span) -> Result<Ret, ExecError<'i>> {
+        let (function, args) = function.into();
+        self.vm.call_function(&function, SpanWithId::from(expr_span), args, Depth::start())
+            .map(Ret::from_value)
     }
 
     pub fn callstack(&self) -> Vec<SpanWithId> {

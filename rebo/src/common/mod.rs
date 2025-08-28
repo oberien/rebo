@@ -6,7 +6,7 @@ use indexmap::map::{Entry, IndexMap};
 use indexmap::set::IndexSet;
 use typed_arena::Arena;
 
-pub use values::{BinaryValue, DebugValue, DeepCopy, DisplayValue, Enum, EnumArc, ExternalFunction, ExternalType, ExternalTypeType, FromValue, Function, FunctionValue, TypedFunctionValue, TypedFunction, FuzzyFloat, IntoValue, ListArc, LowerExpValue, LowerHexValue, MapArc, OctalValue, RequiredReboFunction, RequiredReboFunctionStruct, SetArc, Struct, StructArc, Typed, UpperExpValue, UpperHexValue, Value};
+pub use values::{BinaryValue, DebugValue, DeepCopy, DisplayValue, Enum, EnumArc, ExternalFunction, ExternalType, ExternalTypeType, FromValue, Function, FunctionValue, TypedFunctionValue, BoundFunctionValue, TypedFunction, FuzzyFloat, IntoValue, ListArc, LowerExpValue, LowerHexValue, MapArc, OctalValue, RequiredReboFunction, RequiredReboFunctionStruct, SetArc, Struct, StructArc, Typed, UpperExpValue, UpperHexValue, Value};
 
 use crate::error_codes::ErrorCode;
 use crate::{FileId, IncludeConfig, SpecificType};

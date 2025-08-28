@@ -896,8 +896,29 @@ pub struct TypedFunctionValue<T> {
     _marker: PhantomData<T>,
 }
 
+#[derive(Debug, Clone)]
+pub struct BoundFunctionValue<Ret: FromValue> {
+    function: FunctionValue,
+    args: Vec<Value>,
+    _marker: PhantomData<Ret>
+}
+impl<Ret: FromValue> Into<(FunctionValue, Vec<Value>)> for BoundFunctionValue<Ret> {
+    fn into(self) -> (FunctionValue, Vec<Value>) {
+        (self.function, self.args)
+    }
+}
+
 macro_rules! impl_typed_function {
     ($($generic:ident),*) => {
+        impl<$($generic: FromValue + IntoValue,)* R: FromValue + IntoValue> TypedFunctionValue<fn($($generic),*) -> R> {
+            pub fn bind(self, args: <Self as TypedFunction>::Args) -> BoundFunctionValue<<Self as TypedFunction>::Ret> {
+                BoundFunctionValue {
+                    function: self.function,
+                    args: Self::to_value_vec(args),
+                    _marker: PhantomData,
+                }
+            }
+        }
         impl<$($generic: Typed,)* R: Typed> Typed for TypedFunctionValue<fn($($generic),*) -> R> {
             fn typ() -> SpecificType {
                 static TYP: OnceLock<SpecificType> = OnceLock::new();

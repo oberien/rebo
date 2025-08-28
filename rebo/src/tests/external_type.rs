@@ -83,8 +83,9 @@ fn test_external_type_struct_functionvalue() {
     }
     #[rebo::function(raw("external_foo"))]
     fn external_foo(foo: Foo) {
-        let ret = vm.call_typed_function(foo.f, 5, expr_span).unwrap();
-        assert_eq!(ret, "10");
+        assert_eq!(vm.call_typed_function(&foo.f, 5, expr_span).unwrap(), "10");
+        let bound = foo.f.bind(5);
+        assert_eq!(vm.call_bound_function(bound, expr_span).unwrap(), "11");
     }
     test_with_config(
         ReboConfig::new()
@@ -98,6 +99,6 @@ fn test_external_type_struct_functionvalue() {
             let f = foo.f;
             f(6)
         "#,
-        ReturnValue::Ok(Value::String("12".to_string())),
+        ReturnValue::Ok(Value::String("13".to_string())),
     );
 }
