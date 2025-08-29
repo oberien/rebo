@@ -74,6 +74,11 @@ impl Typed for List<Value> {
     }
 }
 
+impl<T: Typed> Typed for Vec<T> {
+    fn typ() -> SpecificType {
+        List::<T>::typ()
+    }
+}
 impl<T: IntoValue> IntoValue for Vec<T> {
     fn into_value(self) -> Value {
         Value::List(List::new(self).arc)
