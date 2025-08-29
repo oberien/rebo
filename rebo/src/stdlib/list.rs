@@ -30,7 +30,11 @@ impl<T: IntoValue> List<T> {
 
 const FILE_NAME: &str = "external-List.re";
 
-impl<T: FromValue + IntoValue> ExternalType for List<T> {
+impl<T: FromValue + IntoValue + Typed> ExternalType for List<T> {
+    const CODE: &'static str = "struct List<T> {\n    /* ... */\n}";
+    const FILE_NAME: &'static str = FILE_NAME;
+}
+impl ExternalType for List<Value> {
     const CODE: &'static str = "struct List<T> {\n    /* ... */\n}";
     const FILE_NAME: &'static str = FILE_NAME;
 }
@@ -47,7 +51,18 @@ impl<T: IntoValue> IntoValue for List<T> {
         Value::List(self.arc)
     }
 }
-impl<T> Typed for List<T> {
+impl<T: Typed> Typed for List<T> {
+    fn typ() -> SpecificType {
+        static TYPE: OnceLock<SpecificType> = OnceLock::new();
+        TYPE.get_or_init(|| {
+            SpecificType::Struct(
+                "List".to_string(),
+                vec![(SpanWithId::new(FileId::synthetic_named(FILE_NAME), 12, 13), Type::Specific(T::typ()))],
+            )
+        }).clone()
+    }
+}
+impl Typed for List<Value> {
     fn typ() -> SpecificType {
         static TYPE: OnceLock<SpecificType> = OnceLock::new();
         TYPE.get_or_init(|| {
