@@ -463,6 +463,14 @@ impl<'i> Graph<'i> {
                             Err((actual.to_string(), expected.to_string()))
                         }
                     }
+                    (
+                        Type::Specific(SpecificType::Struct(name1, generics1)),
+                        Type::Specific(SpecificType::Struct(name2, generics2)),
+                    ) | (
+                        Type::Specific(SpecificType::Enum(name1, generics1)),
+                        Type::Specific(SpecificType::Enum(name2, generics2)),
+                    ) if name1 == name2 && generics1.iter().zip(generics2).all(|((_span1, typ1), (_span2, typ2))| required_rebo_type_equal(typ1, typ2, diagnostics).is_ok())
+                        => Ok(()),
                     _ => if actual == expected {
                         Ok(())
                     } else {
