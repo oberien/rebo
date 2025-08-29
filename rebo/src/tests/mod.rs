@@ -17,6 +17,7 @@ mod generics;
 mod stdlib;
 mod includes;
 mod external_type;
+mod required_rebo_function;
 
 trait Sorted {
     fn sorted(&self) -> Self;
